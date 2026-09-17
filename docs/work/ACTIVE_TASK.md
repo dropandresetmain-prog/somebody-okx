@@ -1,23 +1,34 @@
 # ACTIVE TASK — Somebody × OKX Dev Day 2026
 
-Status: ACTIVE
-Updated: 17 September 2026
+Status: **ACTIVE**  
+Updated: **17 September 2026**
 
 ## Goal
 
 Deliver one reliable 2–4 minute end-to-end demo proving:
 
-`founder objective → capability plan → MAKE + BUY → verified result → useful business outcome`
+`founder objective → capability/resource plan → MAKE + BUY → verified result → useful business outcome`
 
 ## Authoritative repo
 
 `dropandresetmain-prog/somebody-okx`
 
-## Canonical execution plan
+## Read order
 
-Read `MASTER_PLAN.md` first.
+Read these before implementation:
 
-Key dates:
+1. `README.md`
+2. `MASTER_PLAN.md`
+3. `ARCHITECTURE.md`
+4. `PRODUCT_SPEC.md`
+5. `DECISIONS_LOG.md`
+6. `REUSE_AUDIT.md`
+7. `BUILD_DELTA.md`
+8. this file
+
+Architecture, integration decisions, wallet/signing/payment work, security-sensitive code and final verification remain primary-model responsibilities.
+
+## Key dates
 
 - canonical demo gate: **18 Sep 2026, 12:00 SGT**;
 - hard feature freeze: **23 Sep 2026, 18:00 SGT**;
@@ -29,37 +40,44 @@ Key dates:
 
 - Somebody: `dropandresetmain-prog/somebody-ai@709a169a1a4f71b8dc2d7427438ff514999fb07e`
 - Army of Interns: `dropandresetmain-prog/army-of-interns@677166db591465fb6d201fb12db7cfe038557a92`
-- Pre-build planning evidence: `dropandresetmain-prog/wip-personal`, branch `planning/somebody-okx`, commit `1ca59ce4aad64b04fc1ed8caadd2301eb33033ab`
 - Model guidance source: `dropandresetmain-prog/resume-copilot@78d147716cf314b766aaed91d9fcde23959ea690`
 
-## Canonical operating documents
+## Locked architectural constraints
 
-- `MASTER_PLAN.md` — locked milestone sequence, product surface, cuts and freeze.
-- `BUILD_DELTA.md` — hackathon provenance/evidence ledger.
-- `PRODUCT_SPEC.md` — locked product scope.
-- `ARCHITECTURE.md` — technical boundaries.
-- `DECISIONS_LOG.md` — decision history.
-- `docs/agents/AGENT_MODEL_SELECTION.md` — default model/harness/effort and subagent routing.
-- `docs/agents/MODEL_ARSENAL.md` — deeper model reference.
-
-Architecture, integration decisions, wallet/signing/payment work, security-sensitive code and final verification stay with the primary model.
-
-## Locked constraints
-
-- Somebody remains the product/brand and accountable manager.
+- Somebody remains the accountable manager/product.
 - MAKE and BUY must both be real in the final demo.
 - Missing worker != missing capability.
-- MAKE requires real bounded worker execution, not only a WorkerSpec.
-- Do not buy generic cognition merely because another agent sells it.
+- MAKE requires real bounded worker execution, not only a `WorkerSpec`.
+- `WorkerSpec` describes reusable capability/tool/resource envelope.
+- `WorkContract` describes one assignment's authority, required evidence/outputs/effects and completion requirements.
+- The inherited `CoreWorkerContract` is the starting architecture for WorkContract, not a frozen universal interface.
+- Role/capability-specific policy remains specialized; do not build a generic workflow DSL.
+- Model may propose capabilities/resources/actions; application policy validates/authorizes.
+- The model does not grant itself spend authority or approval.
+- Execution/provider success is not verification/completion.
+- Evidence/provenance and stable effect identity are retained where relevant.
 - BUY must be justified by an externally controlled scarce resource or materially impractical internal reproduction.
-- Models may propose capabilities/resources; application policy validates and decides sourcing.
-- External payment/result must be verified; submission is not completion.
 - Prefer testnet/sandbox for payment development when supported.
 - Never silently spend real funds or expose wallet credentials/private keys.
 - One external provider on the critical path.
 - One canonical demo only.
-- Build the Company Mission product surface incrementally from M1.
-- Do not generalize into an autonomous-company platform.
+- Reuse useful Mission Control visual direction/primitives, not its procurement-shaped architecture.
+- Do not generalize into a company-OS platform.
+
+## Fresh OKX data-plane decision
+
+Somebody-OKX will use a **fresh Convex project/deployment and fresh operational state**.
+
+Do not migrate or preserve by default:
+
+- `acrobatic-swan-765` data/deployment identity;
+- old procurement rows/fixtures;
+- `healthProbes`;
+- `HEALTH_PROBE_WRITES_ENABLED`;
+- old provider bindings;
+- old deployment-specific write/health machinery.
+
+Old procurement code may remain temporarily for provenance/reference/reuse, but keeping the old procurement demo operational is **not** an M1 acceptance criterion.
 
 ## Provenance vocabulary
 
@@ -67,10 +85,10 @@ Use four categories:
 
 - **Inherited** — working pre-OKX capability;
 - **Pre-existing R&D** — prior concepts/prototypes outside Somebody;
-- **Rebuilt / Adapted during OKX** — prior idea newly reimplemented inside Somebody-OKX after discarding unsuitable architecture;
+- **Rebuilt / Adapted during OKX** — prior idea/inherited primitive changed/reimplemented for the current product;
 - **New during OKX** — capability neither prior project had in working product form.
 
-`BUILD_DELTA.md` remains the evidence ledger. Planned work cannot be called built before repo evidence passes.
+`BUILD_DELTA.md` remains the evidence ledger. Planned work cannot be called built before repository evidence passes.
 
 ## Current checkpoint
 
@@ -88,21 +106,23 @@ Completed:
 - [x] inherited Somebody baseline transferred and verified;
 - [x] `BUILD_DELTA.md` created;
 - [x] model/subagent selection guidance imported;
-- [x] minimal workforce kernel rebuilt from Army-inspired R&D.
+- [x] minimal workforce kernel rebuilt from Army-inspired R&D;
+- [x] pre-OKX Somebody runtime directly re-audited;
+- [x] canonical docs reconciled around the inherited worker/reliability architecture and fresh OKX data plane.
 
-Baseline evidence:
+Evidence already established:
 
-- transfer commit: `a47cc93`;
+- baseline transfer commit: `a47cc93`;
 - baseline verification at `093d247`: 78/78 inherited tests, clean root + Convex typechecks;
-- workforce implementation checkpoint: `dfae75af9326a8e719033948ede8b2b481b423bd`;
-- current pre-plan HEAD: `85b3ef9c9feff7cd165de70cabe195b2edff4f07`;
-- workforce evidence: focused 11/11, cumulative 89/89, root typecheck clean.
+- workforce implementation: `dfae75af9326a8e719033948ede8b2b481b423bd`;
+- workforce evidence: focused 11/11, cumulative 89/89 at that checkpoint, root typecheck clean;
+- doc-reconciliation branch base: `4eb34800dc7aa7c6991474ab6787e40eafd124f0`.
 
-### Canonical demo selection — PARALLEL / OPEN
+## Canonical demo selection — PARALLEL / OPEN
 
 Hard deadline: **18 Sep, 12:00 SGT**.
 
-The demo-selection lane is running in parallel with M1. It must produce:
+The demo-selection lane runs in parallel with M1 and must produce:
 
 - canonical founder objective;
 - MAKE path;
@@ -112,109 +132,143 @@ The demo-selection lane is running in parallel with M1. It must produce:
 - reliability/environment evidence;
 - fallback.
 
-Do not block M1 on the exact scenario; M1 is scenario-independent.
+Do not block M1 on the exact final scenario; M1 is architecture/proof oriented.
 
 ## Immediate next milestone
 
-# M1 — Company Mission spine + active MAKE
+# M1 — Objective spine + active MAKE
 
 Target: **17–18 Sep**
 
+M1 is **one project milestone**. Internal implementation checkpoints are allowed; do not create M1.1/M1.2-style milestone sprawl.
+
 Objective:
 
-> Turn the existing workforce kernel into a real execution capability and render it through the first Company Mission surface.
+> Turn the inherited Somebody worker/reliability architecture plus the OKX workforce kernel into a real dynamically assembled internal capability on a fresh current-project backend.
 
-### M1-A — Inspect inherited blockers first
+### Build scope
 
-Before new persisted Company Mission writes:
+#### Fresh current backend
 
-- inspect `acrobatic-swan-765` usage and current Convex deployment assumptions;
-- inspect `HEALTH_PROBE_WRITES_ENABLED` and confirm why it gates writes;
-- decide the smallest safe configuration change needed for Company Mission development;
-- do not perform broad config cleanup.
+- create a fresh Somebody-OKX Convex project/deployment;
+- design only the current Objective/WorkItem operational state required for M1;
+- reuse Convex patterns, not old deployment/schema baggage;
+- no migration from `acrobatic-swan-765`.
 
-Classify findings: Act Now / Investigate Now / Park for Later / Ignore / Accept Risk.
+#### Objective → capability/resource planner
 
-### M1-B — Company Mission spine
+Model proposes:
 
-Build a sibling path beside procurement; do not refactor procurement into a universal engine.
-
-Represent only what is currently needed:
-
-- objective;
-- capability plan;
-- resource requirements;
-- workers;
-- sourcing decision;
-- work results/evidence;
-- external effects placeholder/boundary where required;
-- mission events/status;
-- final outcome slot.
-
-### M1-C — Objective → capability planner contract
-
-Model proposes controlled capability keys, bounded responsibility and resource requirements.
+- controlled capability key;
+- bounded responsibility;
+- required resource classes.
 
 Application validates:
 
 - capability exists;
 - resource classes are recognized;
-- requested permissions stay inside the capability envelope;
+- proposal matches controlled capability requirements;
+- tool permissions cannot exceed capability envelope;
 - invalid proposals fail closed.
 
 No spend authority in planner output.
 
-### M1-D — Company resource inventory
+#### Factual company resource inventory
 
-Introduce the explicit factual inventory needed by later MAKE/BUY policy.
+Represent what the company actually controls now.
 
-Start with scenario-independent owned classes already represented by the workforce kernel; do not create a giant ontology.
+Do not equate catalog membership with factual availability.
 
-### M1-E — Active internal agent spawning
+Keep it minimal and scenario-independent for M1.
 
-Core requirement:
+#### WorkerSpec → WorkContract
 
-`WorkerSpec → model selection → bounded agent instantiation → allowed tools → execution → result/evidence`
+Use the existing workforce kernel to create/reuse an `InternalWorker` / `WorkerSpec`.
 
-Use imported model-selection guidance.
+Create an assignment-specific `WorkContract` that carries the objective, idempotency/authority requirements, required evidence/outputs/effects and completion criteria.
 
-The spawned worker must actually execute; UI-only worker creation is not sufficient.
+Adapt the inherited `CoreWorkerContract` only as much as current M1 behavior requires. In particular, legitimate evidence-only MAKE work must not need a fake external effect solely to satisfy completion.
 
-Persistent cross-mission workforce is not required. Mission-local creation/reuse is acceptable.
+#### Role/capability policy
 
-### M1-F — First Company Mission product surface
+Implement the smallest policy needed for the selected M1 internal role.
 
-Render the actual mission state from the start.
+It should own work-specific truth/evidence/completion rules. Do not put role semantics into the generic runtime.
+
+#### Active internal agent spawning
+
+Required runtime path:
+
+`WorkerSpec → WorkContract → deliberate model selection → bounded Agent/Runner → allowed tools → execution → evidence/result`
+
+Reuse useful inherited patterns:
+
+- read/act application boundary;
+- bounded Zod tool schemas;
+- run status;
+- lease/stale-run fencing where needed;
+- safe provider errors;
+- tool-progress requirement;
+- activity/event history.
+
+Persistent cross-objective workforce is not required. Objective-local creation/reuse is acceptable.
+
+#### M1 proof quality
+
+The M1 worker must do genuinely useful autonomous work.
+
+A single free-form LLM completion or simple document drafting is **not** sufficient.
+
+Require multiple meaningful tool-mediated observations/actions appropriate to the role, ideally across at least two distinct information sources or resource classes.
+
+Persist enough evidence/provenance to show what the worker actually used/did.
+
+Application/domain policy, not the model, decides whether the work is complete.
+
+#### First current-product surface
+
+Render real persisted current-product state from the fresh backend.
 
 Minimum visible information:
 
 - founder objective;
-- capabilities;
+- capabilities/resources;
 - MAKE reasoning;
-- worker creation/reuse;
-- worker status;
-- worker result.
+- That Guy creation/reuse;
+- worker status/activity;
+- evidence;
+- worker result/outcome.
 
-Product surface may label the internal worker **That Guy**. Engineering types remain neutral.
-
-Do not build giant graphs, permanent org charts or agent-chat theater.
+Reuse Somebody/Mission-Control visual direction where useful. Do not build a procurement dashboard, giant graph, permanent org chart or agent-chat theater.
 
 ## M1 acceptance criteria
 
 PASS only when one bounded objective can:
 
-1. enter Company Mission;
-2. produce an application-validated capability plan;
-3. resolve an internal worker through the workforce kernel;
-4. select an execution model deliberately;
-5. instantiate a bounded real agent;
-6. expose only allowed tools;
-7. execute useful internal work;
-8. return/persist result/evidence;
-9. render meaningful Company Mission state;
-10. leave inherited procurement behavior intact.
+1. enter the fresh current Objective runtime;
+2. produce an application-validated capability/resource plan;
+3. prove required resources are factually available for MAKE;
+4. resolve/create an internal worker through `lib/workforce/`;
+5. bind that worker to an assignment-specific WorkContract;
+6. select an execution model deliberately;
+7. instantiate a real bounded agent;
+8. expose only tools allowed by WorkerSpec + WorkContract;
+9. perform nontrivial tool-mediated work;
+10. persist meaningful evidence/result/activity;
+11. reach completion only when application/domain policy says proof is sufficient;
+12. render meaningful real state in the current product surface.
 
-Use focused changed-behavior tests first. Escalate only to affected seams and cumulative checks justified by the changes.
+No BUY required yet.
+
+## M1 test/evidence hierarchy
+
+1. **Focused changed-behavior tests** — planner validation, resource inventory, WorkerSpec/WorkContract boundaries, role policy, permission/tool materialization, completion behavior.
+2. **Direct seams** — Agent/Runner with injected test model; fresh Convex persistence/read model; run/fencing behavior if touched.
+3. **Risk-specific checks only if needed** — no broad inherited-provider testing unless reused by M1.
+4. **One bounded live Development proof** on the fresh Convex deployment after focused evidence passes.
+5. Broader cumulative/build/typecheck gate only at the justified M1 checkpoint, not after every edit.
+
+Historical inherited tests are evidence of the old baseline, not a requirement to preserve unrelated legacy behavior.
 
 ## M1 non-goals
 
@@ -224,11 +278,13 @@ Do not yet implement:
 - full Make-vs-Buy policy;
 - marketplace discovery/ranking;
 - OKX payment code;
-- real provider adapter;
+- real BUY provider adapter;
 - wallet/signing integration;
-- cross-mission persistent workforce;
+- cross-objective persistent workforce;
 - multiple simultaneous workers unless M1 genuinely requires them;
-- visual polish/animation.
+- generic workflow DSL;
+- visual polish/animation;
+- old procurement compatibility work for its own sake.
 
 ## Next milestones after M1
 
@@ -245,12 +301,13 @@ Do not yet implement:
 - Never claim live OKX call/payment/confirmation/deployment/persistence without observing it.
 - Keep mock/testnet/mainnet visibly distinct.
 - Update `BUILD_DELTA.md` at each accepted milestone with exact SHA and evidence.
+- For cloud coding agents, require meaningful checkpoint commits/pushes rather than one giant unreviewable final commit.
 
 ## Cut order if schedule slips
 
 1. marketplace discovery/ranking;
 2. second provider;
-3. cross-mission persistent worker reuse;
+3. cross-objective persistent worker reuse;
 4. multiple internal workers;
 5. broad capability ontology;
 6. fancy worker visualization;
