@@ -13,8 +13,13 @@
 
 import { Agent, Runner, OpenAIProvider, tool, type Model } from "@openai/agents";
 import { z } from "zod";
-import type { WorkContract, FindingInput } from "../objective/types";
-import type { WorkerPort, WorkerCommand, WorkerObservationFinding } from "./port";
+import type { WorkContract } from "../objective/types";
+import type {
+  ModelNoteInput,
+  WorkerPort,
+  WorkerCommand,
+  WorkerObservationFinding,
+} from "./port";
 import { providerConfiguration } from "./modelSelection";
 
 export const MAX_TURNS = 24;
@@ -255,7 +260,7 @@ export async function runWorker(
               ...(url ? { url } : {}),
               ...(recordRef ? { recordRef } : {}),
               observedAt: Date.now(),
-            } satisfies FindingInput,
+            } satisfies ModelNoteInput,
             ...(basedOnEvidenceId ? { basedOnEvidenceId } : {}),
           }),
       });
@@ -335,26 +340,4 @@ Return only a short operational update, never private reasoning.`;
   } finally {
     await provider?.close();
   }
-}
-
-// Observation intents. The port's act() resolves them into real observations
-// through application adapters; the runtime never performs IO itself.
-export function readCompanyRecordFinding(recordRef: string): FindingInput {
-  return {
-    sourceClass: "company_record",
-    label: `Company record ${recordRef}`,
-    text: "", // filled by the application adapter
-    recordRef,
-    observedAt: Date.now(),
-  };
-}
-
-export function readPublicWebFinding(url: string, focus: string): FindingInput {
-  return {
-    sourceClass: "public_web",
-    label: `Public page: ${focus}`,
-    text: "", // filled by the application adapter
-    url,
-    observedAt: Date.now(),
-  };
 }

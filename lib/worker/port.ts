@@ -4,8 +4,19 @@
 
 import type { FindingInput } from "../objective/types";
 
+// What a worker may hand over for a note: content and source fields only.
+// `origin` and `sourceId` are deliberately NOT part of this shape. Proof
+// origin is assigned by the application when the note is persisted, so the
+// runtime cannot assert `application_observation` or invent a source identity
+// even by mistake (R1 Blocker A).
+export type ModelNoteInput = Omit<FindingInput, "origin" | "sourceId">;
+
 export type WorkerCommand =
-  | { type: "record_finding"; finding: FindingInput; basedOnEvidenceId?: string }
+  | {
+      type: "record_finding";
+      finding: ModelNoteInput;
+      basedOnEvidenceId?: string;
+    }
   | {
       type: "record_observation";
       source: "company_record" | "public_web";

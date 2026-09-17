@@ -13,13 +13,9 @@ import {
   runWorker,
   toolNamesForContract,
 } from "../lib/worker/runtime";
-import type { WorkerObservation, WorkerPort } from "../lib/worker/port";
-import type {
-  ActivityResult,
-  EvidenceRecord,
-  FindingInput,
-  WorkContract,
-} from "../lib/workforce";
+import type { ModelNoteInput, WorkerObservation, WorkerPort } from "../lib/worker/port";
+import { sourceIdentity } from "../lib/objective/contract";
+import type { ActivityResult, EvidenceRecord, WorkContract } from "../lib/workforce";
 import { COMPANY_RECORDS } from "../lib/objective/policy";
 
 const fetchImpl: typeof fetch = (async (url: string | URL | Request) =>
@@ -29,6 +25,13 @@ const fetchImpl: typeof fetch = (async (url: string | URL | Request) =>
   )) as unknown as typeof fetch;
 
 const now = 1800000000000;
+
+// The M1 role proof, stated here the same way lib/objective/policy.ts states
+// RESEARCH_ROLE: one distinct internal record and two distinct public sources.
+const ROLE_SOURCE_PROOFS = [
+  { sourceClass: "company_record" as const, minDistinctSources: 1 },
+  { sourceClass: "public_web" as const, minDistinctSources: 2 },
+];
 
 function contract(
   overrides: Partial<Parameters<typeof createWorkContract>[0]> = {},
@@ -40,22 +43,27 @@ function contract(
       "company_records_lookup",
       "public_information_research",
     ]),
-    requiredSourceClasses: ["company_record", "public_web"],
-    minObservations: 3,
+    sourceProofs: ROLE_SOURCE_PROOFS,
     ...overrides,
   });
 }
 
 // In-memory application state backing the port: the test twin of what Convex
-// persists durably. Extended with `origin` to mirror the contract §1 shape
-// that AGENT A is adding to EvidenceRecord.
-type TestEvidence = EvidenceRecord & { origin: string };
+// persists durably. `origin` and `sourceId` live on EvidenceRecord because the
+// application assigns them when it stores the row — the runtime never can.
 type TestState = {
-  evidence: TestEvidence[];
+  evidence: EvidenceRecord[];
   result: ActivityResult | null;
   completed: boolean;
   completionError: string | null;
 };
+
+// Mirror of convex/objectiveRunner.ts: an observation's identity is derived
+// from the source the application actually resolved; a note gets a unique
+// identity inside the `note:` namespace so it can never credit a proof count.
+function noteIdentity(state: TestState): string {
+  return `note:manual-${state.evidence.length + 1}`;
+}
 
 function makePort(contract: WorkContract, state: TestState): WorkerPort & {
   state: TestState;
@@ -129,6 +137,11 @@ function makePort(contract: WorkContract, state: TestState): WorkerPort & {
           recordedBy: contract.workerKey,
           runId: "run-test",
           origin: "application_observation",
+          sourceId: sourceIdentity({
+            sourceClass: command.source,
+            ...(command.url ? { url: command.url } : {}),
+            ...(command.recordRef ? { recordRef: command.recordRef } : {}),
+          }),
         });
         return `Observation recorded: ${label}`;
       }
@@ -146,13 +159,15 @@ function makePort(contract: WorkContract, state: TestState): WorkerPort & {
             );
           }
         }
-        const finding: FindingInput = command.finding;
+        const finding: ModelNoteInput = command.finding;
         state.evidence.push({
           ...finding,
           id: `ev-${state.evidence.length + 1}`,
           recordedBy: contract.workerKey,
           runId: "run-test",
           origin: "model_note",
+          sourceId: noteIdentity(state),
+          ...(command.basedOnEvidenceId ? { basedOnEvidenceId: command.basedOnEvidenceId } : {}),
         });
         return `Note recorded: ${finding.label}`;
       }
@@ -559,8 +574,7 @@ test("long content is truncated at the 1200-char bound with a truncation marker"
     new Response(longText, { status: 200 })) as unknown as typeof fetch;
 
   const c = contract();
-  type TestEvidenceLocal = EvidenceRecord & { origin: string };
-  const state: { evidence: TestEvidenceLocal[]; result: ActivityResult | null; completed: boolean; completionError: string | null } = {
+  const state: TestState = {
     evidence: [],
     result: null,
     completed: false,
@@ -623,6 +637,11 @@ test("long content is truncated at the 1200-char bound with a truncation marker"
           recordedBy: c.workerKey,
           runId: "run-test",
           origin: "application_observation",
+          sourceId: sourceIdentity({
+            sourceClass: command.source,
+            ...(command.url ? { url: command.url } : {}),
+            ...(command.recordRef ? { recordRef: command.recordRef } : {}),
+          }),
         });
         return `Observation recorded: ${label}`;
       }
@@ -633,6 +652,7 @@ test("long content is truncated at the 1200-char bound with a truncation marker"
           recordedBy: c.workerKey,
           runId: "run-test",
           origin: "model_note",
+          sourceId: noteIdentity(state),
         });
         return `Note recorded: ${command.finding.label}`;
       }
