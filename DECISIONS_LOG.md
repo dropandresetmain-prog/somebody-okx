@@ -82,11 +82,29 @@ From Army, prioritize controlled capability validation and deny-by-default tool 
 
 ## 17 September 2026 — Test environment
 
-**Decision:** prefer X Layer Testnet and official test tooling during routine development.
+**Decision:** X Layer Testnet plus the official Mock Merchant is the **preferred initial OKX payment development environment**.
 
-Official docs support X Layer Testnet (`eip155:1952`), faucet test OKB/test USD₮0 and an official Mock Merchant for x402 verification.
+Official docs support X Layer Testnet (`eip155:1952`), faucet test OKB/test USD₮0 and an official Mock Merchant for the full x402 buyer lifecycle without real funds. The complete buyer flow is developed there before any mainnet consideration.
 
-Third-party OKX.AI providers may still be mainnet-only; provider environment support must be checked independently before live spending.
+**Marketplace-provider environment support remains provider-specific.** The payment rails have a testnet; the OKX AI marketplace is not mirrored into it. Individual providers may support testnet, be mainnet-only, or expose free/unpaid test endpoints. The selected BUY provider must be individually verified before live use, and mainnet expenditure stays bounded and explicitly approved.
+
+The environment details live in `README.md`; the payment-state safety requirements live in `ARCHITECTURE.md`.
+
+## 17 September 2026 — Build provenance ledger
+
+**Decision:** `BUILD_DELTA.md` is the canonical hackathon provenance/evidence ledger.
+
+It is the single place that separates capabilities inherited from `somebody-ai@709a169` and R&D available in `army-of-interns@677166d` from work actually built during 17–25 September 2026. Completed work requires a commit SHA and an observed verification result; everything else stays under `Planned / Not Yet Built`.
+
+Transferring inherited code during the build period does **not** convert it into hackathon work.
+
+## 17 September 2026 — Model/subagent operating guidance
+
+**Decision:** `docs/agents/MODEL_ARSENAL.md` and `docs/agents/AGENT_MODEL_SELECTION.md` are imported canonical operating guidance, sourced from `dropandresetmain-prog/resume-copilot@78d1477`.
+
+They are the project's default model, harness, effort and subagent-selection guidance.
+
+This does **not** override the existing project rule: architecture, integration decisions, wallet/signing/payment work, security-sensitive code and final verification stay with the primary model. Bounded independent low-risk work may be delegated according to the imported guidance. Any OKX payment, spend-authorization, wallet-credential or settlement path is Critical by default.
 
 ## Superseded / rejected ideas
 

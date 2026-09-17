@@ -18,6 +18,15 @@ Deliver one reliable 2–4 minute end-to-end demo proving:
 - Somebody: `dropandresetmain-prog/somebody-ai@709a169a1a4f71b8dc2d7427438ff514999fb07e`
 - Army of Interns: `dropandresetmain-prog/army-of-interns@677166db591465fb6d201fb12db7cfe038557a92`
 - Pre-build planning evidence: `dropandresetmain-prog/wip-personal`, branch `planning/somebody-okx`, commit `1ca59ce4aad64b04fc1ed8caadd2301eb33033ab`
+- Model guidance source: `dropandresetmain-prog/resume-copilot@78d147716cf314b766aaed91d9fcde23959ea690`
+
+## Canonical operating documents
+
+- `BUILD_DELTA.md` — canonical hackathon provenance/evidence ledger. Inherited vs built 17–25 Sep 2026. Update at every milestone.
+- `docs/agents/AGENT_MODEL_SELECTION.md` — default model/harness/effort and subagent routing.
+- `docs/agents/MODEL_ARSENAL.md` — deeper model reference behind that routing.
+
+Architecture, integration decisions, wallet/signing/payment work, security-sensitive code and final verification stay with the primary model. Bounded independent low-risk work may be delegated per the imported guidance.
 
 ## Locked constraints
 
@@ -46,11 +55,14 @@ Deliver one reliable 2–4 minute end-to-end demo proving:
 - [x] Source-repo reuse audit distilled into SSOT.
 - [x] X Layer / Onchain OS test environment verified from official docs.
 - [x] First canonical documentation pass created in final repo.
+- [x] Transfer working Somebody baseline into this repo — `a47cc93`; 113/115 shared files byte-identical to `somebody-ai@709a169`.
+- [x] Verify transferred baseline with relevant existing checks — 17 Sep 2026 at `093d247`: `npm test` 78/78 pass, `npm run typecheck` clean, `npm run typecheck:convex` clean.
+- [x] Build-provenance ledger created (`BUILD_DELTA.md`).
+- [x] Model/subagent selection guidance imported into `docs/agents/`.
+- [x] OKX sandbox/test strategy recorded in `README.md`.
 
 ### Not yet complete
 
-- [ ] Transfer working Somebody baseline into this repo.
-- [ ] Verify transferred baseline with relevant existing checks.
 - [ ] Transfer/rewrite minimal workforce primitives from Army.
 - [ ] Choose canonical business objective/demo.
 - [ ] Choose and validate canonical BUY provider.
@@ -61,24 +73,24 @@ Deliver one reliable 2–4 minute end-to-end demo proving:
 
 ## Immediate next action
 
-### Transfer Pass A — Somebody baseline
+### Transfer Pass A — Somebody baseline — **COMPLETE**
 
-Bring the working Somebody application from the exact audited source SHA into this repo.
+Bring the working Somebody application from the exact audited source SHA into this repo, without redesign.
 
-Acceptance evidence:
+Acceptance evidence, all satisfied 17 September 2026:
 
-1. transferred files match intended source provenance;
-2. no secrets/local env files are transferred;
-3. install succeeds;
-4. existing relevant test suite passes;
-5. root + Convex typechecks pass if those scripts remain applicable;
-6. repo clearly distinguishes inherited baseline from OKX-specific work.
+1. transferred files match intended source provenance — 113/115 shared blobs byte-identical to `somebody-ai@709a169`; only `README.md`/`ARCHITECTURE.md` intentionally replaced by OKX SSOT, originals preserved under `docs/legacy/somebody-ai/`;
+2. no secrets/local env files are transferred — only `.env.example` (variable names only) is tracked; all `.env*` gitignored;
+3. install succeeds — `npm ci`, 140 packages;
+4. existing relevant test suite passes — `npm test`, 78/78;
+5. root + Convex typechecks pass — `npm run typecheck` and `npm run typecheck:convex`, both clean;
+6. repo clearly distinguishes inherited baseline from OKX-specific work — `BUILD_DELTA.md`.
 
-Do not redesign during transfer.
+No redesign occurred during transfer.
 
-### Transfer Pass B — minimal workforce primitives
+### Transfer Pass B — minimal workforce primitives — **NEXT**
 
-After Pass A is healthy:
+Pass A is healthy, so this is the current next action:
 
 - inspect the Army source files identified in `REUSE_AUDIT.md`;
 - transfer or rewrite only controlled capability validation + deny-by-default tool permissions + minimal worker shape;

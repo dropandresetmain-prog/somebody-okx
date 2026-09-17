@@ -50,9 +50,13 @@ internal result        payment/request
 
 ## 3. Source-project reuse strategy
 
+Provenance for every inherited capability — and the split between inherited work and work built during 17–25 September 2026 — is recorded in `BUILD_DELTA.md`, the canonical hackathon evidence ledger. This section states strategy only; it does not restate the inventory.
+
 ### Somebody (`dropandresetmain-prog/somebody-ai`)
 
-Pre-transfer audited reference: `709a169a1a4f71b8dc2d7427438ff514999fb07e`.
+Audited reference: `709a169a1a4f71b8dc2d7427438ff514999fb07e`.
+
+**Transfer status:** complete and verified in this repository (see `BUILD_DELTA.md` §3). The transfer carried no redesign and added no capability.
 
 Treat Somebody as the mature execution/reliability source.
 
@@ -170,20 +174,17 @@ Requirements:
 
 ## 6. OKX / X Layer test environments
 
-Official OKX documentation provides a real X Layer testnet:
+**X Layer Testnet (`eip155:1952`) plus the official Mock Merchant is the preferred initial OKX payment development environment.** The payment path is developed and exercised there — request → 402 → authorize/sign → pay → retry → receipt — before any mainnet consideration.
 
-- X Layer Testnet chain ID: `1952` (`eip155:1952`);
-- test OKB for gas;
-- test USD₮0 stablecoin via faucet;
-- official Mock Merchant for exercising the x402 buyer flow without real funds.
+Chain IDs, faucet assets and official documentation links are recorded once in `README.md` and are not duplicated here.
 
-The Onchain OS buyer quickstart explicitly demonstrates the payment flow on X Layer Testnet before switching to mainnet.
-
-Important limitation:
+Architectural consequence:
 
 > **The payment rails have a sandbox/testnet, but third-party OKX.AI providers are not automatically mirrored into that sandbox.**
 
-Each canonical BUY provider must be checked for its supported network/environment. A provider that only settles on X Layer Mainnet requires a separate explicit live-integration decision.
+Marketplace-provider environment support is therefore **provider-specific**. Each canonical BUY provider must be individually checked for its supported network/environment. A provider that only settles on X Layer Mainnet requires a separate explicit live-integration decision, with bounded and explicitly approved expenditure.
+
+This is the reason provider-specific code sits behind the smallest practical adapter seam (§7): the network/environment a provider supports is discovered late and must not be able to force a policy or workforce rewrite.
 
 ## 7. Canonical-demo independence
 
@@ -215,9 +216,11 @@ Preserve the existing Somebody principle: model proposals are not authoritative 
 
 Verification is risk-based.
 
+Model, harness and effort selection for implementation work follows `docs/agents/AGENT_MODEL_SELECTION.md`. Architecture, integration decisions, wallet/signing/payment work, security-sensitive code and final verification stay with the primary model regardless of that routing.
+
 Initial gates:
 
-1. transferred Somebody baseline still passes its existing relevant tests/typechecks;
+1. transferred Somebody baseline still passes its existing relevant tests/typechecks — **satisfied 17 September 2026: 78/78 tests, clean root and Convex typechecks; evidence in `BUILD_DELTA.md` §3**;
 2. transferred workforce primitives have focused tests around capability validation/tool permissions;
 3. OKX testnet payment path works against official Mock Merchant before provider-specific live spending;
 4. canonical external provider passes one bounded end-to-end validation before UI polish;
