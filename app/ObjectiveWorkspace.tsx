@@ -483,12 +483,10 @@ function ObjectiveWorkspace() {
     try {
       const { key } = await submitObjective({ request });
       setActiveKey(key);
-      // Blocker D: the client must NOT author the plan. The server decides
-      // capabilities, resources, and responsibility from the objective model.
-      // Expected Convex action: api.objectives.planObjectiveFromModel
-      //   args: { objectiveKey: string }
-      //   returns: { decision: string }
-      // This is an action (not a mutation) because it makes an external model call.
+      // Blocker D: the client does not author the plan. This action performs one
+      // bounded model call server-side and returns the deterministic validation
+      // decision; capabilities, resources and responsibility never come from
+      // here. It is an action, not a mutation, because it calls the model.
       await requestServerPlan({ objectiveKey: key });
       await startRun({ objectiveKey: key });
       setNotice({ kind: "ok", text: "Objective accepted. Somebody is on it." });
