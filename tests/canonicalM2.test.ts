@@ -44,6 +44,7 @@ import {
   CANONICAL_EXECUTION_NEED,
 } from "../lib/objective/seedData";
 import type { ResourceNeed } from "../lib/objective/resourceNeed";
+import { objectiveStateForSourcing } from "../lib/objective/sourcing";
 
 const OBJECTIVE_KEY = "obj-canonical-launch";
 const discovery = createSnapshotDiscovery();
@@ -291,5 +292,31 @@ Source: external social intelligence (simulated fixture for seam test).`,
     // A separate decision id — two independent decisions under one objective.
     assert.equal(result.decision!.id, "decision-2");
     assert.notEqual(result.decision!.id, "decision-1");
+  });
+});
+
+describe("Canonical M2 — objective lifecycle: BUY is not failure", () => {
+  it("maps a BUY sourcing decision to waiting_for_resource, not failed", () => {
+    const buy = objectiveStateForSourcing("BUY");
+    assert.equal(buy.state, "waiting_for_resource");
+    assert.equal(buy.proceeds, false);
+  });
+
+  it("maps MAKE to executing (proceeds) and BLOCKED to terminal failed", () => {
+    const make = objectiveStateForSourcing("MAKE");
+    assert.equal(make.state, "executing");
+    assert.equal(make.proceeds, true);
+    const blocked = objectiveStateForSourcing("BLOCKED");
+    assert.equal(blocked.state, "failed");
+    assert.equal(blocked.proceeds, false);
+  });
+
+  it("a buy_pending need means the objective has an unresolved required resource (blocks completion)", () => {
+    // The need reaching buy_pending (proven above) is the same fact that drives
+    // the objective into waiting_for_resource: an unresolved required external
+    // resource blocks completion rather than being treated as done or failed.
+    const buyState = objectiveStateForSourcing("BUY");
+    assert.notEqual(buyState.state, "completed");
+    assert.notEqual(buyState.state, "failed");
   });
 });

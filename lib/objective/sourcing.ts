@@ -11,6 +11,7 @@ import { evaluateSourcingPolicy } from "../sourcing/policy";
 import type {
   ApprovedProviderPath,
   SourcingAuthorizingResult,
+  SourcingDecision,
 } from "../sourcing/types";
 import type {
   CompanyResourceInventory,
@@ -93,4 +94,25 @@ export function decideObjectiveSourcing(input: {
     approvedProviderPaths: [...result.approvedProviderPaths],
     reason: describe(result),
   };
+}
+
+// ── Objective state after a plan-level sourcing decision ────────────────────
+//
+// BUY is NOT failure (§8). A plan that requires an external resource the
+// company does not control puts the objective into an explicit waiting state
+// until that resource is acquired; it does not fail. BLOCKED (no approved
+// path) remains terminal-failed because nothing can currently satisfy it. MAKE
+// proceeds to execution. This is a pure rule so the Convex runtime and the
+// tests share one authority and cannot drift.
+export function objectiveStateForSourcing(
+  decision: SourcingDecision,
+): { state: "executing" | "waiting_for_resource" | "failed"; proceeds: boolean } {
+  switch (decision) {
+    case "MAKE":
+      return { state: "executing", proceeds: true };
+    case "BUY":
+      return { state: "waiting_for_resource", proceeds: false };
+    case "BLOCKED":
+      return { state: "failed", proceeds: false };
+  }
 }

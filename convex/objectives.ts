@@ -37,6 +37,7 @@ import {
   createWorkContract,
   evaluateCompletion,
   decideObjectiveSourcing,
+  objectiveStateForSourcing,
   resolveWorker,
   validatePlannerProposal,
 } from "../lib/workforce";
@@ -279,13 +280,19 @@ export const planObjective = internalMutation({
     // provider call or payment: the decision, the named missing resource and
     // the approved provider path are recorded, nothing more.
     if (sourcing.decision !== "MAKE") {
+      // BUY is NOT failure (§8): the plan requires an external resource the
+      // company does not control, so the objective enters an explicit waiting
+      // state until that resource is acquired. BLOCKED (no approved path)
+      // remains terminal-failed because nothing can currently satisfy it.
+      // The state rule lives in one pure authority (objectiveStateForSourcing).
+      const { state } = objectiveStateForSourcing(sourcing.decision);
+      const isBuy = sourcing.decision === "BUY";
       const updated: ObjectiveRecord = {
         ...record,
-        state: "failed",
-        activity:
-          sourcing.decision === "BUY"
-            ? `Buy required: ${sourcing.reason}`
-            : `Blocked: ${sourcing.reason}`,
+        state,
+        activity: isBuy
+          ? `Waiting for external resource: ${sourcing.reason}`
+          : `Blocked: ${sourcing.reason}`,
         plan,
         updatedAt: now,
       };

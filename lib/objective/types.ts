@@ -78,6 +78,9 @@ export type ObjectiveState =
   | "planning"
   | "ready_to_execute"
   | "executing"
+  // A required ResourceNeed is buy_pending: the objective is waiting for an
+  // external acquisition, NOT failed. BUY is not failure (§8).
+  | "waiting_for_resource"
   | "completed"
   | "failed";
 
@@ -85,6 +88,8 @@ export type WorkItemState =
   | "defined"
   | "assigned"
   | "running"
+  // The work item paused safely because a resource it needs is buy_pending.
+  | "waiting_for_resource"
   | "completed"
   | "failed";
 

@@ -31,6 +31,7 @@ export {
   APPROVED_PROVIDER_PATHS,
   approvedPathsFor,
   decideObjectiveSourcing,
+  objectiveStateForSourcing,
 } from "../objective/sourcing";
 export type {
   ApprovedProviderPath,
