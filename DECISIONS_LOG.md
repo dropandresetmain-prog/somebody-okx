@@ -6,9 +6,7 @@ Status: canonical decision history
 
 **Decision:** `dropandresetmain-prog/somebody-okx` is the authoritative implementation and submission repository for OKX Dev Day 2026.
 
-`somebody-ai` and `army-of-interns` are source/reference repositories only.
-
-The earlier `wip-personal/somebody-okx/` planning documents are research inputs, not SSOT.
+`somebody-ai` and `army-of-interns` are source/reference repositories only. Earlier `wip-personal/somebody-okx/` planning documents are research inputs, not SSOT.
 
 ## 17 September 2026 — Product vision
 
@@ -38,7 +36,57 @@ BUY when the capability depends on a genuinely externally controlled scarce reso
 
 **Decision:** do not preserve “Army of Interns” as a required product/module/brand.
 
-Use the source repo only for useful patterns and code. The hackathon needs a minimal dynamic internal workforce path, not a generalized organization simulator.
+Use Army only as pre-existing R&D. The useful concepts have already been rewritten into a minimal `lib/workforce/` kernel inside Somebody-OKX.
+
+Army-specific keyword analysis, duplicated permission sources, ranks, personalities, org hierarchy, Telegram/Twilio coupling and demo runtime are not carried forward.
+
+## 17 September 2026 — Active internal agent spawning
+
+**Decision:** MAKE is not complete when Somebody merely creates a `WorkerSpec`.
+
+The canonical product must support:
+
+`WorkerSpec → model selection → bounded agent instantiation → allowed tools → execution → result/evidence`
+
+This is core hackathon scope, not stretch.
+
+Model/harness selection follows `docs/agents/AGENT_MODEL_SELECTION.md` and `MODEL_ARSENAL.md`; architecture, security-sensitive work, wallet/signing/payment and final verification remain primary-model responsibilities.
+
+## 17 September 2026 — Company Mission path
+
+**Decision:** build a new bounded Company Mission path beside the inherited procurement mission.
+
+Do not refactor the procurement aggregate into a universal workflow engine.
+
+Company Mission should minimally represent objective, capability plan, workers, sourcing decisions, work results, external effects, verification, final outcome and event history.
+
+## 17 September 2026 — Product surface
+
+**Decision:** the Company Mission product surface is developed incrementally from M1, not added after the engine is complete.
+
+The surface should show objective, capabilities, MAKE/BUY reasons, internal worker status/result, external provider and price, approval/payment/verification, and Somebody's unified outcome.
+
+Avoid giant graphs, permanent org charts, raw agent-chat logs and Web3-first wallet UX.
+
+## 17 September 2026 — Product language
+
+**Decision:** the demo/product surface may use:
+
+- **That Guy** for an internal worker created or reused by Somebody;
+- **Somebody Else** for an external provider used when the company lacks a required scarce capability.
+
+Engineering terminology remains `InternalWorker` / `ExternalProvider`. The playful labels do not enter core architecture types.
+
+## 17 September 2026 — Build provenance vocabulary
+
+**Decision:** `BUILD_DELTA.md` distinguishes four categories:
+
+- **Inherited** — working pre-OKX capability;
+- **Pre-existing R&D** — prior concepts/prototypes outside Somebody;
+- **Rebuilt / Adapted during OKX** — a prior idea reimplemented inside Somebody-OKX after discarding broken/demo-specific architecture;
+- **New during OKX** — capability neither prior project had in working product form.
+
+Rebuilt/adapted implementation created during 17–25 September is legitimate OKX-period engineering even when the original concept predates the hackathon. The source inspiration must still be disclosed.
 
 ## 17 September 2026 — Web3 positioning
 
@@ -48,11 +96,11 @@ OKX AI / X Layer are used at the cross-company machine-commerce boundary. “Web
 
 ## 17 September 2026 — Canonical demo
 
-**Decision:** OPEN.
+**Decision:** OPEN until **18 September 2026, 12:00 SGT**.
 
-The supplier-invoice / changed-bank-details / Dial scenario is a researched candidate only. Earlier planning documents that called it canonical were premature.
+The supplier-invoice / changed-bank-details / Dial scenario is a researched candidate only.
 
-A demo becomes canonical only after user acceptance and provider/payment feasibility evidence.
+After the decision gate, broad scenario ideation stops unless material technical/provider failure requires a reopen.
 
 ## 17 September 2026 — Scope boundary
 
@@ -72,39 +120,45 @@ Not required on critical path:
 - org-chart theater;
 - multiple polished workflows.
 
-## 17 September 2026 — Source-project reuse
-
-**Decision:** Somebody is the primary mature engineering source; Army is an R&D source.
-
-From Somebody, prioritize reliability/effect/approval/verification patterns, agent execution scaffolding, Convex realtime patterns and relevant UI/project configuration.
-
-From Army, prioritize controlled capability validation and deny-by-default tool permission patterns. Do not wholesale merge its schema/runtime.
-
 ## 17 September 2026 — Test environment
 
-**Decision:** X Layer Testnet plus the official Mock Merchant is the **preferred initial OKX payment development environment**.
+**Decision:** X Layer Testnet plus the official Mock Merchant is the preferred initial OKX payment development environment.
 
-Official docs support X Layer Testnet (`eip155:1952`), faucet test OKB/test USD₮0 and an official Mock Merchant for the full x402 buyer lifecycle without real funds. The complete buyer flow is developed there before any mainnet consideration.
+Official docs support X Layer Testnet (`eip155:1952`), faucet test OKB/test USD₮0 and an official Mock Merchant for the full x402 buyer lifecycle without real funds.
 
-**Marketplace-provider environment support remains provider-specific.** The payment rails have a testnet; the OKX AI marketplace is not mirrored into it. Individual providers may support testnet, be mainnet-only, or expose free/unpaid test endpoints. The selected BUY provider must be individually verified before live use, and mainnet expenditure stays bounded and explicitly approved.
+Marketplace-provider environment support remains provider-specific. Mainnet expenditure stays bounded and explicitly approved.
 
-The environment details live in `README.md`; the payment-state safety requirements live in `ARCHITECTURE.md`.
+## 17 September 2026 — Master Plan and release freeze
+
+**Decision:** `MASTER_PLAN.md` is the canonical execution plan.
+
+Milestones:
+
+- M0 foundation/provenance — complete;
+- M1 Company Mission spine + active MAKE + first product surface;
+- M2 canonical MAKE + Make-vs-Buy policy;
+- M3 safe generic OKX buyer rail on testnet;
+- M4 selected provider + full backend E2E;
+- M5 surface/story hardening + first backup video;
+- M6 release candidate.
+
+**Hard feature freeze: 23 September 2026, 18:00 SGT.**
+
+24 September is debugging/hardening only. 25 September is video/submission only, with an internal submission target of 22:00 SGT.
 
 ## 17 September 2026 — Build provenance ledger
 
 **Decision:** `BUILD_DELTA.md` is the canonical hackathon provenance/evidence ledger.
 
-It is the single place that separates capabilities inherited from `somebody-ai@709a169` and R&D available in `army-of-interns@677166d` from work actually built during 17–25 September 2026. Completed work requires a commit SHA and an observed verification result; everything else stays under `Planned / Not Yet Built`.
+Completed work requires repository evidence and observed verification. Planned work remains under Planned / Not Yet Built until proven.
 
-Transferring inherited code during the build period does **not** convert it into hackathon work.
+Transferring inherited code during the build period does not convert inherited capability into hackathon work.
 
 ## 17 September 2026 — Model/subagent operating guidance
 
-**Decision:** `docs/agents/MODEL_ARSENAL.md` and `docs/agents/AGENT_MODEL_SELECTION.md` are imported canonical operating guidance, sourced from `dropandresetmain-prog/resume-copilot@78d1477`.
+**Decision:** `docs/agents/MODEL_ARSENAL.md` and `docs/agents/AGENT_MODEL_SELECTION.md` are imported canonical operating guidance from `dropandresetmain-prog/resume-copilot@78d1477`.
 
-They are the project's default model, harness, effort and subagent-selection guidance.
-
-This does **not** override the existing project rule: architecture, integration decisions, wallet/signing/payment work, security-sensitive code and final verification stay with the primary model. Bounded independent low-risk work may be delegated according to the imported guidance. Any OKX payment, spend-authorization, wallet-credential or settlement path is Critical by default.
+They do not override the project rule that architecture, integration decisions, wallet/signing/payment work, security-sensitive code and final verification stay with the primary model.
 
 ## Superseded / rejected ideas
 
@@ -114,3 +168,5 @@ This does **not** override the existing project rule: architecture, integration 
 - Previous public-web-heavy market-research demo — rejected as too easy to reproduce internally.
 - Treating the Opus invoice/Dial demo as already canonical — corrected; candidate only.
 - Making `somebody-ai` the final OKX repo — corrected; final repo is `somebody-okx`.
+- Treating MAKE as only a worker-spec/planning exercise — superseded; active internal execution is required.
+- Delaying product-surface work until after the engine — superseded; surface starts in M1.
