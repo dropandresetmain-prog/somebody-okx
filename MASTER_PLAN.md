@@ -237,7 +237,9 @@ Avoid giant dependency graphs, permanent org charts, agent-to-agent chat transcr
 
 The demo should feel like **a company assembling around the work**, not a multi-agent debugging dashboard.
 
-## 8. Build milestones
+## 8. Build milestones and review gates
+
+Reviews are **risk-boundary gates, not per-milestone ceremony**. Do not automatically review every milestone. A review should answer a materially different risk question. Normal milestones use focused tests and primary-model integration judgment unless a listed review gate or new high-risk boundary is reached.
 
 ### M0 — Foundation and provenance — COMPLETE
 
@@ -297,6 +299,39 @@ M1 acceptance:
 
 No BUY required yet.
 
+### R1 — Foundation Review — STATIC CHATGPT + GITHUB
+
+Run after the M1 implementation candidate exists and before beginning M2.
+
+**Reviewer:** static ChatGPT with GitHub read access. A coding agent is **not required**.
+
+Why static is sufficient:
+
+- R1 is primarily an architecture/authority/code-read review of the new foundation;
+- the implementer already supplies focused execution/test evidence;
+- R1 should inspect the candidate diff and source rather than rerun the same suite for ceremony;
+- any uncertainty that truly requires execution should be classified `Investigate Now` and resolved during M1 acceptance/fix work.
+
+Review the M1 candidate read-only, focusing on:
+
+- `Objective → planner validation → resource decision → WorkerSpec → WorkContract → bounded tools → Runner → evidence → application-owned completion → persistence/UI`;
+- permission widening or self-authorization paths;
+- whether proof/completion is enforced by application state rather than prompting;
+- evidence provenance and distinct-source requirements;
+- stale/replaced run fencing and double-finalization risks;
+- failure/prose-only paths falsely reaching success;
+- whether fresh Convex codegen/schema assumptions are sound;
+- whether UI renders persisted truth rather than inventing status client-side.
+
+Every material finding must be classified exactly as:
+
+- `Act Now`
+- `Investigate Now`
+- `Park for Later`
+- `Ignore / Accept Risk`
+
+R1 itself does not replace M1 acceptance evidence. After blocker fixes, the fresh authenticated Convex/codegen + one bounded live worker smoke completes the remaining M1 acceptance proof. Do not run a second formal review after that smoke unless the fix materially changes the reviewed architecture.
+
 ### Canonical demo gate
 
 Hard deadline: **18 Sep, 12:00 SGT**.
@@ -323,6 +358,8 @@ M2 acceptance:
 
 `objective → capability plan → real MAKE execution → explicit BUY requirement with named missing resource`
 
+**No formal review gate after M2 by default.** Use focused changed-behavior tests and primary-model integration judgment. Trigger an extra review only if M2 unexpectedly changes foundational authority/runtime contracts or introduces another high-risk boundary.
+
 ### M3 — Generic OKX buyer rail + spend safety
 
 Target: **19–20 Sep**
@@ -347,6 +384,31 @@ Never equate submission with confirmation. Never blindly repay after an ambiguou
 
 Wallet credentials/private keys do not enter ordinary Convex state or logs.
 
+### R2 — Payment Safety Review — CODING AGENT
+
+Run after the M3 buyer-rail candidate exists and before integrating the real provider in M4.
+
+**Reviewer:** strong coding agent with repository execution capability. Static-only review is insufficient.
+
+Why a coding agent is required:
+
+- wallet/signing/payment state is financial/security-sensitive;
+- the reviewer must be able to execute focused probes around retries, duplicate prevention and ambiguous submission states;
+- payment correctness depends on runtime behavior, not just source shape.
+
+R2 should remain review-first rather than implementation-first. Inspect code, then run only risk-specific tests/probes needed to answer:
+
+- can approval/signing authority be bypassed?;
+- can retry/timeout paths double-pay?;
+- does ambiguous submission reconcile before another payment?;
+- are prepared/signed/submitted/settled/verified states kept distinct?;
+- are network, amount, asset, recipient and approved terms bound before signing?;
+- are secrets excluded from Convex/logs?;
+- does testnet/mainnet remain explicit and fail closed?;
+- does the Mock Merchant flow actually prove the expected lifecycle?
+
+Classify every material finding with the standard four-way triage. Fix only `Act Now` blockers before M4; rerun only invalidated evidence.
+
 ### M4 — Real BUY provider + full engine
 
 Target: **20–21 Sep**
@@ -368,6 +430,25 @@ Prove:
 
 `objective → MAKE → That Guy executes → BUY → Somebody Else executes → verify → Somebody synthesizes outcome`
 
+### R3 — Economic Integration Review — CODING AGENT
+
+Run after the M4 full-engine candidate exists and before M5 polish.
+
+**Reviewer:** strong coding agent with repository execution capability.
+
+R3 is the cross-seam review. It should dynamically test the places where individually-correct components can still fail together:
+
+- MAKE result feeding BUY decision;
+- provider timeout/rate-limit/partial failure;
+- payment succeeds but provider/result retrieval fails;
+- provider returns malformed or unverifiable output;
+- duplicate invocation / replay;
+- stale state or crash between economic steps;
+- result verification failure;
+- synthesis must not claim success when any required proof remains unresolved.
+
+Use targeted failure injection and seam tests, not a broad test blast. Review and classify findings first; fix only blockers that threaten correctness/demo reliability.
+
 ### M5 — Product surface + story hardening
 
 Target: **21–22 Sep**
@@ -386,6 +467,8 @@ Optimize the current product surface for a 2–4 minute demo:
 
 Record the **first complete backup demo video immediately** when M5 works.
 
+**No formal technical review after M5 by default.** Use product/demo judgment, focused UI checks and the actual recorded demo. Escalate only if polish changes backend/security/payment behavior.
+
 ### M6 — Release candidate
 
 Target: **23 Sep**
@@ -402,7 +485,24 @@ Required before freeze:
 - submission description drafted;
 - first backup video recorded.
 
-Run the canonical promotion/release gate once on the exact candidate SHA.
+### G1 — Release Promotion Gate — CODING AGENT
+
+Run once on the **exact M6 release-candidate SHA** before feature freeze.
+
+G1 is not another architecture review. It is the canonical promotion gate and therefore requires executable repository/runtime access.
+
+Verify only what is needed to promote the exact candidate:
+
+- expected branch/SHA and clean committed state;
+- canonical focused/broader gate appropriate to the final candidate;
+- build/typecheck as required by the repo;
+- one no-cut canonical E2E;
+- demo reset/setup path;
+- no unresolved `Act Now` findings;
+- documentation/provenance current;
+- remote/deployment state matches the candidate.
+
+Do not use G1 to redesign architecture or introduce new capability. If G1 finds a blocker, fix the smallest blocker and rerun only invalidated evidence plus the exact promotion check needed.
 
 ### HARD FEATURE FREEZE
 
@@ -470,13 +570,19 @@ Possible closing line:
 Approximate focused budget:
 
 - M1 fresh spine + active MAKE: 4–5 h;
+- R1 static foundation review: bounded review pass;
 - M2 canonical MAKE + Make-vs-Buy: 3–4 h;
 - M3 OKX test rail: 3–4 h;
+- R2 payment-safety review: bounded risk-specific pass;
 - M4 provider + full backend E2E: 4–5 h;
+- R3 economic-integration review: bounded cross-seam pass;
 - M5 surface/story hardening: 3–4 h;
-- M6 release-candidate prep: 2–3 h.
+- M6 release-candidate prep: 2–3 h;
+- G1 exact-RC promotion gate: one final candidate gate.
 
-Target total: roughly **20–25 focused build hours** before debugging/video days.
+Reviews are intentionally sparse and bounded. Do not let them consume the build schedule through repeated full-suite or duplicate-review cycles.
+
+Target build effort remains roughly **20–25 focused implementation hours** before debugging/video days, with review time kept proportional to risk.
 
 ## 12. Cut order
 
