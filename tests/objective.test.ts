@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import {
   createWorkContract,
   createWorkerSpec,
+  decideObjectiveSourcing,
   evaluateCompletion,
-  evaluateSourcing,
   isKnownResourceClass,
   resolveWorker,
   validatePlannerProposal,
@@ -15,6 +15,7 @@ import {
 } from "../lib/objective/contract";
 import type {
   ActivityResult,
+  ApprovedProviderPath,
   CompanyResourceInventory,
   EvidenceOrigin,
   EvidenceRecord,
@@ -275,24 +276,26 @@ test("an empty or unbounded proposal is rejected", () => {
 });
 
 // ── Resource evaluation ─────────────────────────────────────────────────────
+// These go through decideObjectiveSourcing, the same seam the Convex spine
+// uses, so the persisted decision shape is what is actually being proven.
 
 test("MAKE requires the factual inventory to cover every required resource", () => {
   const plan = validatePlannerProposal(plannerProposal());
-  const sourcing = evaluateSourcing({
-    requiredResourceClasses: plan.requiredResourceClasses,
-    inventory: fullInventory(),
-  });
+  const sourcing = decideObjectiveSourcing({ validated: plan, inventory: fullInventory() });
   assert.equal(sourcing.decision, "MAKE");
+  assert.equal(sourcing.reasonCode, "all_resources_controlled");
   assert.equal(sourcing.missing.length, 0);
+  assert.equal(sourcing.approvedProviderPaths.length, 0);
 });
 
 test("a missing required resource does not silently pass as MAKE", () => {
   const plan = validatePlannerProposal(plannerProposal());
-  const sourcing = evaluateSourcing({
-    requiredResourceClasses: plan.requiredResourceClasses,
+  const sourcing = decideObjectiveSourcing({
+    validated: plan,
     inventory: inventory(["llm_reasoning", "ordinary_compute"]),
   });
   assert.equal(sourcing.decision, "BLOCKED");
+  assert.equal(sourcing.reasonCode, "missing_without_approved_path");
   assert.deepEqual(sourcing.missing.sort(), [
     "company_records",
     "company_tools",
@@ -300,8 +303,8 @@ test("a missing required resource does not silently pass as MAKE", () => {
   ]);
   // No catalog membership trick: an empty inventory blocks everything.
   assert.equal(
-    evaluateSourcing({
-      requiredResourceClasses: plan.requiredResourceClasses,
+    decideObjectiveSourcing({
+      validated: plan,
       inventory: inventory([]),
     }).decision,
     "BLOCKED",

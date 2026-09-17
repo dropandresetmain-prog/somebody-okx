@@ -12,7 +12,7 @@
  * 5. Determinism: same inputs → byte-identical outputs. Lists are sorted and deduplicated.
  */
 
-import type { ResourceClass } from "@/lib/workforce/types";
+import type { ResourceClass } from "../workforce/types";
 
 // ─── Decision Union ──────────────────────────────────────────────────────────
 

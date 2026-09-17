@@ -1,5 +1,5 @@
 // Minimal internal-workforce kernel for the MAKE path, plus the current
-// Objective spine modules (planner validation, factual inventory sourcing,
+// Objective spine modules (planner validation, canonical sourcing policy,
 // WorkContract adapted from the inherited CoreWorkerContract).
 // Workforce kernel adapted from pre-OKX Army of Interns R&D (BUILD_DELTA.md §2).
 
@@ -23,7 +23,19 @@ export {
   toolPermissionsForCapabilities,
 } from "./permissions";
 export { createWorkerSpec, resolveWorker } from "./workers";
-export { evaluateSourcing, isKnownResourceClass, validatePlannerProposal } from "../objective/planner";
+export { isKnownResourceClass, validatePlannerProposal } from "../objective/planner";
+// The canonical sourcing authority (rule) and the Objective seam (adapter).
+// One policy, one seam — nothing in the Objective layer decides MAKE/BUY/BLOCKED.
+export { evaluateSourcingPolicy, validateModelProposal } from "../sourcing";
+export {
+  APPROVED_PROVIDER_PATHS,
+  approvedPathsFor,
+  decideObjectiveSourcing,
+} from "../objective/sourcing";
+export type {
+  ApprovedProviderPath,
+  SourcingReasonCode,
+} from "../sourcing";
 export {
   createWorkContract,
   evaluateCompletion,

@@ -22,6 +22,7 @@
  */
 
 export { evaluateSourcingPolicy, validateModelProposal } from "./policy";
+export { KNOWN_RESOURCE_CLASSES } from "./policy";
 
 export type {
   ApprovedProviderPath,

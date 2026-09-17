@@ -16,7 +16,7 @@
  * 6. Empty/invalid requirements fail closed. They MUST NOT yield MAKE.
  */
 
-import type { ResourceClass } from "@/lib/workforce/types";
+import type { ResourceClass } from "../workforce/types";
 import type {
   ApprovedProviderPath,
   FactualResourceInventory,
@@ -42,23 +42,36 @@ import type {
  * inventory must be reported as missing. This kernel does not call isOwnedResourceClass
  * or any catalog helper to infer control.
  *
- * This list must be kept in sync with the canonical ResourceClass union in
- * lib/workforce/types.ts. If a new ResourceClass is added there, it must be added
- * here for identity validation to succeed.
+ * SYNC: declared as an exhaustive Record over the canonical ResourceClass union, so
+ * adding a ResourceClass to lib/workforce/types.ts without declaring it here is a
+ * COMPILE error. A newly valid class therefore cannot silently fail closed.
+ * tests/sourcing.test.ts asserts the same equality at runtime against the catalog's
+ * own ResourceDefinition list.
  */
-const KNOWN_RESOURCE_CLASSES: readonly ResourceClass[] = [
-  "llm_reasoning",
-  "public_web",
-  "company_records",
-  "company_tools",
-  "ordinary_compute",
-  "proprietary_data",
-  "privileged_access",
-  "specialist_compute",
-  "human_voice_contact",
-  "physical_presence",
-  "attestation",
-] as const;
+type ResourceClassIdentityRecord = Record<ResourceClass, true>;
+
+const RESOURCE_CLASS_IDENTITIES: ResourceClassIdentityRecord = {
+  llm_reasoning: true,
+  public_web: true,
+  company_records: true,
+  company_tools: true,
+  ordinary_compute: true,
+  proprietary_data: true,
+  privileged_access: true,
+  specialist_compute: true,
+  human_voice_contact: true,
+  physical_presence: true,
+  attestation: true,
+};
+
+/**
+ * The complete set of known ResourceClass identities, derived from the
+ * exhaustive identity record above. Exported for the identity-sync invariant
+ * test only; callers must not use it to infer ownership.
+ */
+export const KNOWN_RESOURCE_CLASSES: readonly ResourceClass[] = (
+  Object.keys(RESOURCE_CLASS_IDENTITIES) as ResourceClass[]
+).sort();
 
 const knownResourceClassSet = new Set<ResourceClass>(KNOWN_RESOURCE_CLASSES);
 

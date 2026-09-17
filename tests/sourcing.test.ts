@@ -463,3 +463,72 @@ test("BUY decision includes the correct provider paths, sorted by resource class
     assert.equal(result.approvedProviderPaths[1].pathId, "field_agent");
   }
 });
+
+// ─── ResourceClass identity sync invariant (§6) ─────────────────────────────
+//
+// The kernel keeps a local identity allow-list so that identity validation does
+// not depend on catalog metadata. That is deliberate, but it creates a drift
+// risk: if the canonical ResourceClass vocabulary changes and the allow-list
+// does not, a newly valid class would silently fail closed. These tests pin the
+// two sets together and keep identity distinct from ownership.
+
+test("identity sync: the kernel identity set exactly matches the canonical ResourceClass vocabulary", async () => {
+  const { KNOWN_RESOURCE_CLASSES } = await import("@/lib/sourcing");
+  const { RESOURCE_CLASSES } = await import("@/lib/workforce/catalog");
+
+  // The catalog's own ResourceDefinition list is the canonical vocabulary.
+  const canonical = RESOURCE_CLASSES.map((resource) => resource.class).sort();
+
+  assert.deepEqual(
+    [...KNOWN_RESOURCE_CLASSES].sort(),
+    canonical,
+    "lib/sourcing identity allow-list has drifted from the canonical ResourceClass vocabulary",
+  );
+  // Guard against a vacuous pass from two empty lists.
+  assert.ok(canonical.length > 0);
+});
+
+test("identity sync: every legal ResourceClass is a valid identity AND none is implied owned", async () => {
+  const { KNOWN_RESOURCE_CLASSES, evaluateSourcingPolicy } = await import(
+    "@/lib/sourcing"
+  );
+  const { RESOURCE_CLASSES } = await import("@/lib/workforce/catalog");
+
+  // Classes the catalog labels "owned" are still only legal identities here —
+  // catalog metadata must never act as an ownership authority.
+  const catalogOwned = RESOURCE_CLASSES.filter(
+    (resource) => resource.ownership === "owned",
+  ).map((resource) => resource.class);
+  assert.ok(catalogOwned.length > 0);
+
+  for (const resource of KNOWN_RESOURCE_CLASSES) {
+    const needs = {
+      requiredResourceClasses: [resource] as const,
+      rejectedUnknownClasses: [] as const,
+    };
+
+    // (a) With an EMPTY inventory, no class may come back satisfied — not even
+    // a catalog-"owned" one. Identity validation passing must not imply control.
+    const empty = evaluateSourcingPolicy({
+      validatedNeeds: needs,
+      factualInventory: { controlledResourceClasses: [] },
+    });
+    assert.equal(empty.outcome, "authorizing");
+    if (empty.outcome === "authorizing") {
+      assert.deepEqual([...empty.missingResourceClasses], [resource]);
+      assert.deepEqual([...empty.satisfiedResourceClasses], []);
+      assert.equal(empty.decision, "BLOCKED");
+    }
+
+    // (b) With the class present in the FACTUAL inventory, it is satisfied.
+    const full = evaluateSourcingPolicy({
+      validatedNeeds: needs,
+      factualInventory: { controlledResourceClasses: [resource] },
+    });
+    assert.equal(full.outcome, "authorizing");
+    if (full.outcome === "authorizing") {
+      assert.equal(full.decision, "MAKE");
+      assert.deepEqual([...full.satisfiedResourceClasses], [resource]);
+    }
+  }
+});

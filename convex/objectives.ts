@@ -36,7 +36,7 @@ import type { Id } from "./_generated/dataModel";
 import {
   createWorkContract,
   evaluateCompletion,
-  evaluateSourcing,
+  decideObjectiveSourcing,
   resolveWorker,
   validatePlannerProposal,
 } from "../lib/workforce";
@@ -255,9 +255,13 @@ export const planObjective = internalMutation({
         : {}),
     });
 
-    // 2. Factual resource inventory → sourcing decision.
-    const sourcing = evaluateSourcing({
-      requiredResourceClasses: validated.requiredResourceClasses,
+    // 2. Factual resource inventory → canonical sourcing decision.
+    //    The rule itself lives in lib/sourcing/policy.ts; this seam only
+    //    adapts shapes. The model cannot reach this decision: it proposed
+    //    capability/resource needs, the controlled catalog derived the
+    //    requirements, and only the factual inventory determines ownership.
+    const sourcing = decideObjectiveSourcing({
+      validated,
       inventory: {
         availableResourceClasses: [...CURRENT_RESOURCE_INVENTORY],
         observedAt: now,
@@ -271,11 +275,17 @@ export const planObjective = internalMutation({
       decidedAt: now,
     };
 
+    // Only MAKE can spawn internal work here. M2 stops a BUY before any
+    // provider call or payment: the decision, the named missing resource and
+    // the approved provider path are recorded, nothing more.
     if (sourcing.decision !== "MAKE") {
       const updated: ObjectiveRecord = {
         ...record,
         state: "failed",
-        activity: `Blocked: ${sourcing.reason}`,
+        activity:
+          sourcing.decision === "BUY"
+            ? `Buy required: ${sourcing.reason}`
+            : `Blocked: ${sourcing.reason}`,
         plan,
         updatedAt: now,
       };

@@ -16,14 +16,30 @@ export const validatedPlan = v.object({
   deniedToolPermissions: v.array(v.string()),
 });
 
+// Mirrors SourcingReason in lib/objective/types.ts. The decision + reasonCode
+// vocabulary is owned by lib/sourcing; this is only its persisted shape.
+// M2 records the sourcing truth and nothing payment-related: the approved
+// provider paths describe an approved acquisition ROUTE, not a call, spend or
+// receipt.
+export const approvedProviderPath = v.object({
+  forResourceClass: vResourceClass,
+  pathId: v.string(),
+});
+
 export const sourcingReason = v.object({
   decision: v.union(
     v.literal("MAKE"),
     v.literal("BUY"),
     v.literal("BLOCKED"),
   ),
+  reasonCode: v.union(
+    v.literal("all_resources_controlled"),
+    v.literal("missing_with_approved_path"),
+    v.literal("missing_without_approved_path"),
+  ),
   satisfied: v.array(vResourceClass),
   missing: v.array(vResourceClass),
+  approvedProviderPaths: v.array(approvedProviderPath),
   reason: v.string(),
 });
 

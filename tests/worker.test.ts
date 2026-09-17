@@ -6,7 +6,6 @@ import {
   createWorkerSpec,
   evaluateCompletion,
   validatePlannerProposal,
-  evaluateSourcing,
 } from "../lib/workforce";
 import { providerConfiguration, selectWorkerModel } from "../lib/worker/modelSelection";
 import {

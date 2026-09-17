@@ -3,6 +3,11 @@
 // WorkerSpec / WorkContract / Evidence / Outcome. No procurement Mission nouns.
 
 import type { CapabilityKey, ResourceClass, WorkerSpec } from "../workforce/types";
+import type {
+  ApprovedProviderPath,
+  SourcingDecision,
+  SourcingReasonCode,
+} from "../sourcing/types";
 
 // ── Planner boundary ─────────────────────────────────────────────────────────
 
@@ -33,12 +38,31 @@ export type CompanyResourceInventory = {
 
 // ── Objective spine ──────────────────────────────────────────────────────────
 
-export type SourcingDecision = "MAKE" | "BUY" | "BLOCKED";
+// The MAKE/BUY/BLOCKED vocabulary, reason codes and provider-path shape are
+// owned by lib/sourcing — the single canonical sourcing authority. The
+// Objective layer consumes and re-exports them rather than redeclaring them,
+// so no second competing policy vocabulary can drift into existence.
+export type {
+  ApprovedProviderPath,
+  SourcingDecision,
+  SourcingReasonCode,
+} from "../sourcing/types";
 
+// Persisted sourcing truth for one capability plan. This is the Objective
+// layer's presentation shape, adapted from the canonical policy result by
+// decideObjectiveSourcing() in ./sourcing. It records WHY the decision holds
+// and, for BUY, which approved external path exists.
+//
+// M2 deliberately stops here: there is no payment, receipt, provider-result or
+// wallet state in this shape. That belongs to M3/M4.
 export type SourcingReason = {
   decision: SourcingDecision;
+  reasonCode: SourcingReasonCode;
   satisfied: ResourceClass[];
   missing: ResourceClass[];
+  // Only non-empty for BUY. Each entry is resource-specific; a path approved
+  // for one resource cannot satisfy a different missing resource.
+  approvedProviderPaths: ApprovedProviderPath[];
   reason: string;
 };
 

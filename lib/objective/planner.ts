@@ -11,7 +11,7 @@ import {
 } from "../workforce/catalog";
 import { enforcePermissionEnvelope, toolPermissionsForCapabilities } from "../workforce/permissions";
 import type { CapabilityKey, ResourceClass, ToolPermissionId } from "../workforce/types";
-import type { CompanyResourceInventory, PlannerProposal, ValidatedPlan } from "./types";
+import type { PlannerProposal, ValidatedPlan } from "./types";
 
 // Guard the catalog at module load so a bad definition fails at the source.
 assertCatalogIntegrity();
@@ -70,33 +70,11 @@ export function validatePlannerProposal(
   };
 }
 
-// Factual inventory check: MAKE only when every required resource class is
-// actually available right now. Catalog membership is not ownership.
-export function evaluateSourcing(input: {
-  requiredResourceClasses: readonly ResourceClass[];
-  inventory: CompanyResourceInventory;
-}): import("./types").SourcingReason {
-  const available = new Set(input.inventory.availableResourceClasses);
-  const satisfied: ResourceClass[] = [];
-  const missing: ResourceClass[] = [];
-  for (const resource of input.requiredResourceClasses) {
-    if (available.has(resource)) satisfied.push(resource);
-    else missing.push(resource);
-  }
-  if (missing.length === 0)
-    return {
-      decision: "MAKE",
-      satisfied,
-      missing,
-      reason: "The company currently controls every required resource class",
-    };
-  return {
-    decision: "BLOCKED",
-    satisfied,
-    missing,
-    reason: `Missing resources the company does not currently control: ${missing.join(", ")}`,
-  };
-}
+// Sourcing is NOT decided here. The MAKE/BUY/BLOCKED rule lives in exactly one
+// place — lib/sourcing/policy.ts — and the Objective layer reaches it through
+// decideObjectiveSourcing() in lib/objective/sourcing.ts. An earlier M1
+// MAKE/BLOCKED rule lived in this file; it was removed rather than left beside
+// the canonical policy, because two sourcing authorities always diverge.
 
 // ── Role-capability satisfiability (contract §7) ────────────────────────────
 
