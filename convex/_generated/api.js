@@ -1,14 +1,23 @@
 /* eslint-disable */
 /**
- * Hand-maintained stand-in for Convex codegen output. `npx convex codegen`
- * requires deployment authentication that is unavailable in this sandbox, so
- * this file mirrors what codegen would emit for the current modules. Replace
- * by running `npx convex dev` against the fresh somebody-okx deployment.
+ * Generated `api` utility.
  *
+ * THIS CODE IS AUTOMATICALLY GENERATED.
+ *
+ * To regenerate, run `npx convex dev`.
  * @module
  */
 
-import { anyApi } from "convex/server";
+import { anyApi, componentsGeneric } from "convex/server";
 
+/**
+ * A utility for referencing Convex functions in your app's API.
+ *
+ * Usage:
+ * ```js
+ * const myFunctionReference = api.myModule.myFunction;
+ * ```
+ */
 export const api = anyApi;
 export const internal = anyApi;
+export const components = componentsGeneric();

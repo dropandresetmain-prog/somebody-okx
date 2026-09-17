@@ -1,31 +1,54 @@
 /* eslint-disable */
 /**
- * Hand-maintained stand-in for Convex codegen output. `npx convex codegen`
- * requires deployment authentication that is unavailable in this sandbox, so
- * this file mirrors what codegen would emit for the current modules. Replace
- * by running `npx convex dev` against the fresh somebody-okx deployment.
+ * Generated `api` utility.
  *
+ * THIS CODE IS AUTOMATICALLY GENERATED.
+ *
+ * To regenerate, run `npx convex dev`.
  * @module
  */
+
+import type * as objectiveArgs from "../objectiveArgs.js";
+import type * as objectiveRunner from "../objectiveRunner.js";
+import type * as objectiveValidators from "../objectiveValidators.js";
+import type * as objectives from "../objectives.js";
+import type * as workforceValidators from "../workforceValidators.js";
 
 import type {
   ApiFromModules,
   FilterApi,
   FunctionReference,
 } from "convex/server";
-import type * as objectives from "../objectives.js";
-import type * as objectiveRunner from "../objectiveRunner.js";
 
 declare const fullApi: ApiFromModules<{
-  objectives: typeof objectives;
+  objectiveArgs: typeof objectiveArgs;
   objectiveRunner: typeof objectiveRunner;
+  objectiveValidators: typeof objectiveValidators;
+  objectives: typeof objectives;
+  workforceValidators: typeof workforceValidators;
 }>;
 
+/**
+ * A utility for referencing Convex functions in your app's public API.
+ *
+ * Usage:
+ * ```js
+ * const myFunctionReference = api.myModule.myFunction;
+ * ```
+ */
 export declare const api: FilterApi<
   typeof fullApi,
   FunctionReference<any, "public">
 >;
 
+/**
+ * A utility for referencing Convex functions in your app's internal API.
+ *
+ * Usage:
+ * ```js
+ * const myFunctionReference = internal.myModule.myFunction;
+ * ```
+ */
 export declare const internal: FilterApi<
   typeof fullApi,
   FunctionReference<any, "internal">
