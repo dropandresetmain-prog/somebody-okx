@@ -21,6 +21,12 @@ export const validatedPlan = v.object({
 // M2 records the sourcing truth and nothing payment-related: the approved
 // provider paths describe an approved acquisition ROUTE, not a call, spend or
 // receipt.
+//
+// reasonCode and approvedProviderPaths are OPTIONAL here on purpose. Objectives
+// persisted during accepted M1 predate both fields, and this validator is also
+// the read/return shape — requiring them would make every existing row fail to
+// load. Writers cannot skip them: lib/objective/sourcing.ts always sets both,
+// and ObjectiveRecord in lib/objective/types.ts declares them as required.
 export const approvedProviderPath = v.object({
   forResourceClass: vResourceClass,
   pathId: v.string(),
@@ -32,14 +38,16 @@ export const sourcingReason = v.object({
     v.literal("BUY"),
     v.literal("BLOCKED"),
   ),
-  reasonCode: v.union(
-    v.literal("all_resources_controlled"),
-    v.literal("missing_with_approved_path"),
-    v.literal("missing_without_approved_path"),
+  reasonCode: v.optional(
+    v.union(
+      v.literal("all_resources_controlled"),
+      v.literal("missing_with_approved_path"),
+      v.literal("missing_without_approved_path"),
+    ),
   ),
   satisfied: v.array(vResourceClass),
   missing: v.array(vResourceClass),
-  approvedProviderPaths: v.array(approvedProviderPath),
+  approvedProviderPaths: v.optional(v.array(approvedProviderPath)),
   reason: v.string(),
 });
 

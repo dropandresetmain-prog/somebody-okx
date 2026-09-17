@@ -505,16 +505,39 @@ approved route exists". That is M3/M4 work.
 **Checks run (observed, not reported):**
 
 - `npx tsx --test tests/sourcing.test.ts`: **19/19 pass** (16 prepared + 3 added invariants);
-- `npx tsx --test tests/sourcingSeam.test.ts`: **14/14 pass** (new Level-2 seam file);
-- `npx tsx --test tests/ui.test.ts`: **13/13 pass** (5 pre-existing + 8 sourcing display);
-- affected M1 regression `npx tsx --test tests/sourcing.test.ts tests/sourcingSeam.test.ts tests/objective.test.ts tests/planner.test.ts tests/workforce.test.ts`: **81/81 pass**;
-- full suite `npx tsx --test tests/*.test.ts`: **118/118 pass**;
+- `npx tsx --test tests/sourcingSeam.test.ts`: **15/15 pass** (new Level-2 seam file);
+- `npx tsx --test tests/ui.test.ts`: **15/15 pass** (5 pre-existing + 8 sourcing display + 2 M1 back-compat);
+- affected M1 regression `npx tsx --test tests/sourcing.test.ts tests/sourcingSeam.test.ts tests/objective.test.ts tests/planner.test.ts tests/workforce.test.ts`: **82/82 pass**;
+- full suite `npx tsx --test tests/*.test.ts`: **121/121 pass**;
 - `npx tsc --noEmit`: clean; `npx tsc -p convex/tsconfig.json --noEmit`: clean;
+- `npx next build`: compiles, static prerender OK;
 - validator coupling proven, not assumed: adding a field to the persisted `sourcingReason`
   validator was observed to break the root typecheck, confirming the Convex shape and
   `lib/objective/types.ts` are compiler-checked against each other. No hand-edited generated
   files; `convex/_generated/dataModel.d.ts` derives types from `typeof schema`, so this schema-free
   validator change needs no codegen regeneration.
+
+### 3.7.1 M1 back-compatibility found during M2 (acceptance item 1)
+
+The M2 validator additions are `required` in the TypeScript type but **optional** in the persisted
+validator, deliberately: `convex/objectiveValidators.ts::sourcingReason` is both the write guard and
+the read/return shape for `getObjective`. Had `reasonCode` / `approvedProviderPaths` been required at
+the validator level, objectives persisted during accepted M1 — including the live proofs
+`obj_1789659986103_l9gomb` and `obj_1789661449740_36j0y3` on `clean-tapir-151` — would have failed to
+load at all. A test now pins that the four original M1 fields stay required and the two M2 additions
+stay optional. New writes always include both (the seam cannot omit them), and
+`describeSourcing` defaults the two arrays defensively when absent, so a legacy row renders instead
+of throwing. (`missing` was already stored in M1; the defensive read there is belt-and-braces.)
+
+Also corrected: the workspace header hard-coded spend authority as "None (MAKE)", which would have
+contradicted a BUY or BLOCKED sourcing decision. It now names the actual persisted decision while
+still stating None — accurate, because M2 records an approved path without ever spending.
+
+**Method note, recorded honestly:** this was first "confirmed" with a probe using
+`validator.isValue(...)`, which is not part of the Convex validator API; that run errored rather than
+proved anything. The finding is real but was established afterwards from the validators' actual
+field metadata plus the read-path inspection above. Do not reuse `isValue` as a validation primitive.
+
 
 `worker.test.ts` lost only an unused `evaluateSourcing` import; the worker/run-lifecycle seams
 themselves were not changed, and both files still pass.

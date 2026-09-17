@@ -301,12 +301,15 @@ Do not invent a scenario or provider to close M2. Do not start M3 while this gat
 
 Checks run at this checkpoint (observed):
 
-- `npx tsx --test tests/sourcing.test.ts` → 19/19; `tests/sourcingSeam.test.ts` → 14/14; `tests/ui.test.ts` → 13/13;
-- M1 regression + sourcing focused set `tests/sourcing.test.ts tests/sourcingSeam.test.ts tests/objective.test.ts tests/planner.test.ts tests/workforce.test.ts` → **81/81**;
-- full suite `npx tsx --test tests/*.test.ts` → **118/118 pass**;
-- `npx tsc --noEmit` clean; `npx tsc -p convex/tsconfig.json --noEmit` clean;
+- `npx tsx --test tests/sourcing.test.ts` → 19/19; `tests/sourcingSeam.test.ts` → 15/15; `tests/ui.test.ts` → 15/15;
+- M1 regression + sourcing focused set `tests/sourcing.test.ts tests/sourcingSeam.test.ts tests/objective.test.ts tests/planner.test.ts tests/workforce.test.ts` → **82/82**;
+- full suite `npx tsx --test tests/*.test.ts` → **121/121 pass**;
+- `npx tsc --noEmit` clean; `npx tsc -p convex/tsconfig.json --noEmit` clean; `npx next build` compiles;
 - Convex validator ↔ TypeScript coupling proven by a temporary added-field probe (it broke the
-  typecheck as expected, then was reverted); no generated files hand-edited.
+  typecheck as expected, then was reverted); no generated files hand-edited;
+- **M1 back-compat:** the two M2 persisted fields are optional in the read/return validator so
+  objectives stored during accepted M1 still load (`BUILD_DELTA.md` §3.7.1), and the workspace
+  renders a legacy row without throwing.
 
 ## Immediate next milestone
 

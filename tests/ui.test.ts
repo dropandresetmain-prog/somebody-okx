@@ -184,3 +184,39 @@ test("sourcing fields absent from persistence render as nothing", () => {
   assert.strictEqual(view.missingLine, null);
   assert.strictEqual(view.approvedLine, null);
 });
+
+// ── M1 backward compatibility ───────────────────────────────────────────────
+// Objectives persisted during accepted M1 carry only decision/satisfied/
+// missing/reason. M2's reasonCode and approvedProviderPaths arrived later, so
+// an existing row must still render instead of throwing.
+
+test("an M1-persisted sourcing row without the M2 fields still renders", () => {
+  const legacy = {
+    decision: "MAKE",
+    satisfied: ["llm_reasoning", "public_web"],
+    missing: [],
+    reason: "The company currently controls every required resource class",
+  } as unknown as SourcingReason;
+
+  const view = describeSourcing(legacy);
+  assert.strictEqual(view.title, "Make it in-house");
+  assert.strictEqual(view.missingLine, null);
+  assert.strictEqual(view.approvedLine, null);
+});
+
+test("a legacy BLOCKED row missing the provider-path array does not throw", () => {
+  const legacy = {
+    decision: "BLOCKED",
+    satisfied: ["llm_reasoning"],
+    missing: ["attestation"],
+    reason: "Missing resources the company does not currently control: attestation",
+  } as unknown as SourcingReason;
+
+  const view = describeSourcing(legacy);
+  assert.strictEqual(view.title, "Blocked");
+  assert.strictEqual(view.missingLine, "Missing resources: attestation");
+  assert.strictEqual(
+    view.noApprovedLine,
+    "No approved external path is currently available.",
+  );
+});

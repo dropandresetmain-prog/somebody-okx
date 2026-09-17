@@ -359,3 +359,31 @@ test("provider-path approval has exactly one source: the application registry", 
       `the model may submit '${forbidden}' in a planner proposal`,
     );
 });
+
+// ── Persisted-shape backward compatibility (M1 must stay intact) ────────────
+
+test("the persisted sourcing shape still accepts rows written during accepted M1", async () => {
+  const { sourcingReason } = await import("@/convex/objectiveValidators");
+  const { decideObjectiveSourcing: seam } = await import(
+    "@/lib/objective/sourcing"
+  );
+
+  // This validator is both the write guard and the read/return shape for
+  // getObjective, so a newly REQUIRED field would make every pre-M2 row fail
+  // to load. M1 wrote exactly these four fields.
+  const m1Fields = ["decision", "satisfied", "missing", "reason"];
+  const fields = (sourcingReason as unknown as { fields: Record<string, { isOptional: string }> })
+    .fields;
+  assert.deepEqual(Object.keys(fields).sort(), [...m1Fields, "approvedProviderPaths", "reasonCode"].sort());
+  for (const field of m1Fields)
+    assert.equal(fields[field].isOptional, "required", `${field} must stay required`);
+  // The two M2 additions must be optional so accepted M1 rows still validate.
+  assert.equal(fields.reasonCode.isOptional, "optional");
+  assert.equal(fields.approvedProviderPaths.isOptional, "optional");
+
+  // What M2 writes now is complete, independent of the validator's leniency.
+  const validated = validatePlannerProposal(proposal());
+  const m2Row = seam({ validated, inventory: fullInventory() });
+  assert.equal(typeof m2Row.reasonCode, "string");
+  assert.ok(Array.isArray(m2Row.approvedProviderPaths));
+});

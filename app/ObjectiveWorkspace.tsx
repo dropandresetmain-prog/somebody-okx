@@ -33,6 +33,9 @@ type NoticeState = { kind: "ok" | "error"; text: string } | null;
 // come from plan.sourcing (decided by lib/sourcing, adapted in
 // lib/objective/sourcing.ts); this only labels what is already stored.
 // Extracted for testability without React (see tests/ui.test.ts).
+// The arrays arrived with M2, so objectives persisted before it legitimately
+// lack them. `decision` and `reason` have always been stored; the new fields
+// are read defensively so an existing row renders rather than throwing.
 export function describeSourcing(sourcing: SourcingReason): {
   title: string;
   tone: Tone;
@@ -41,10 +44,10 @@ export function describeSourcing(sourcing: SourcingReason): {
   approvedLine: string | null;
   noApprovedLine: string | null;
 } {
+  const missing = sourcing.missing ?? [];
+  const paths = sourcing.approvedProviderPaths ?? [];
   const missingLine =
-    sourcing.missing.length > 0
-      ? `Missing resources: ${sourcing.missing.join(", ")}`
-      : null;
+    missing.length > 0 ? `Missing resources: ${missing.join(", ")}` : null;
   if (sourcing.decision === "MAKE") {
     return {
       title: "Make it in-house",
@@ -62,8 +65,8 @@ export function describeSourcing(sourcing: SourcingReason): {
       whyLabel: "WHY BUY?",
       missingLine,
       approvedLine:
-        sourcing.approvedProviderPaths.length > 0
-          ? `Approved external path: ${sourcing.approvedProviderPaths
+        paths.length > 0
+          ? `Approved external path: ${paths
               .map((path) => `${path.pathId} (${path.forResourceClass})`)
               .join(", ")}`
           : null,
@@ -629,7 +632,14 @@ function ObjectiveWorkspace() {
               <dt>
                 <Icon name="ledger" size={14} /> Spend authority
               </dt>
-              <dd>None (MAKE)</dd>
+              {/* Spend stays None for every decision: M2 records an approved
+                  provider path but never pays or calls a provider. The old copy
+                  hard-coded "(MAKE)", which mislabelled BUY/BLOCKED rows. */}
+              <dd>
+                {record?.plan
+                  ? `None — sourcing ${record.plan.sourcing.decision}`
+                  : "None"}
+              </dd>
             </dl>
           </div>
         </div>
