@@ -1,7 +1,7 @@
 # M3 OKX Payment Rail Readiness
 
 **Access date:** 2026-09-17  
-**Status:** Research complete with one critical finding requiring immediate attention
+**Status:** Research complete; one design constraint and one token discrepancy to resolve before M3 integration
 
 ---
 
@@ -32,12 +32,17 @@
 | Transport | HTTPS JSON-RPC | VERIFIED |
 | Authentication | None required (public) | VERIFIED |
 | Rate limit | 100 requests/second/IP | VERIFIED |
-| Sandbox reachability | **UNREACHABLE** from this sandbox | VERIFIED (negative) |
+| Sandbox reachability | **REACHABLE** via POST JSON-RPC (GET returns 405) | VERIFIED |
 
 **Source:** https://web3.okx.com/onchainos/dev-docs/xlayer/developer/rpc-endpoints/rpc-endpoints  
 **Access date:** 2026-09-17
 
-**Reachability test:** Attempted curl to `https://rpc.test.xlayer.tech` and `https://testrpc.xlayer.tech/terigon` — both unreachable (no HTTP response). This is a sandbox network restriction, not an endpoint issue.
+**Reachability test:** Both endpoints reachable via POST JSON-RPC. GET returns HTTP 405 Method Not Allowed (successful reach, not a block). Confirmed via live probe:
+```bash
+curl -s -X POST -H "Content-Type: application/json" --data '{"jsonrpc":"2.0","method":"eth_chainId","params":[],"id":1}' https://testrpc.xlayer.tech/terigon
+# Returns: {"jsonrpc":"2.0","result":"0x7a0","id":1}
+```
+Chain ID 0x7a0 = 1952 decimal. Independent on-chain confirmation of eip155:1952.
 
 **Supported JSON-RPC methods:** Standard Ethereum methods including `eth_chainId`, `eth_blockNumber`, `eth_getBalance`, `eth_sendRawTransaction`, `eth_call`, etc. Full list in source.
 
@@ -68,14 +73,18 @@
 | Endpoint | `https://www.okx.com/api/v1/pay/mock-merchant/resource` | OKX official docs | VERIFIED |
 | Deployment | X Layer Testnet | OKX official docs | VERIFIED |
 | Purpose | Reference implementation for x402 seller integration | OKX official docs | VERIFIED |
-| Payment-required behavior | Returns HTTP 402 with PAYMENT-REQUIRED header | Inferred from x402 protocol | PARTIALLY VERIFIED |
+| Payment-required behavior | Returns HTTP 402 with payment terms in JSON body | Live probe | VERIFIED |
 
 **Source:** https://web3.okx.com/onchainos/dev-docs/payments/service-seller-sdk  
 **Access date:** 2026-09-17
 
 **Note:** Mock Merchant is described as "the official Mock Merchant" and is deployed on X Layer Testnet. It serves as a reference for the full x402 buyer lifecycle: `request → 402 → inspect terms → authorize/sign → pay → retry → resource/receipt`.
 
-**Sandbox reachability:** `https://www.okx.com` is unreachable from this sandbox. Cannot probe the Mock Merchant endpoint directly.
+**Sandbox reachability:** Endpoint is reachable. Confirmed via live probe:
+```bash
+curl -s -D - -o /tmp/mh.body --max-time 15 https://www.okx.com/api/v1/pay/mock-merchant/resource
+# Returns: HTTP/2 402 with JSON body containing payment terms
+```
 
 ---
 
@@ -101,12 +110,14 @@
 
 | Header | Direction | Content | Format | Confidence |
 |--------|-----------|---------|--------|------------|
-| `PAYMENT-REQUIRED` | Server → Client | Payment requirements | Base64-encoded JSON `PaymentRequired` object | VERIFIED |
-| `PAYMENT-SIGNATURE` | Client → Server | Signed payment payload | Base64-encoded JSON `PaymentPayload` object | VERIFIED |
-| `PAYMENT-RESPONSE` | Server → Client | Settlement response | Base64-encoded JSON `SettlementResponse` object | VERIFIED |
+| `PAYMENT-REQUIRED` | Server → Client | Payment requirements | Base64-encoded JSON `PaymentRequired` object | VERIFIED (x402 spec) |
+| `PAYMENT-SIGNATURE` | Client → Server | Signed payment payload | Base64-encoded JSON `PaymentPayload` object | VERIFIED (x402 spec) |
+| `PAYMENT-RESPONSE` | Server → Client | Settlement response | Base64-encoded JSON `SettlementResponse` object | VERIFIED (x402 spec) |
 
 **Source:** https://docs.x402.org/core-concepts/http-402  
 **Access date:** 2026-09-17
+
+**⚠️ OKX Implementation Divergence:** The live OKX Mock Merchant does NOT use the `PAYMENT-REQUIRED` header. Instead, it returns payment terms directly in the JSON response body. This is a deviation from the x402 specification. M3 integration must handle both formats: header-based (per spec) and body-based (per OKX implementation).
 
 ### 5.3 Payment Requirements Structure (from 402 response)
 
@@ -155,9 +166,14 @@
 | `exact` | Fixed-price | Buyer authorizes exactly the advertised amount | VERIFIED |
 | `upto` | Usage-based | Buyer authorizes maximum, seller charges actual usage | VERIFIED |
 | `batch-settlement` | High-frequency | Buyer deposits to escrow, pays with off-chain vouchers, batched onchain settlement | VERIFIED |
+| `aggr_deferred` | Unknown | **Observed live** as the second entry in the Mock Merchant's `accepts[]`, with identical network/amount/asset/payTo to `exact`. Not documented in the x402 open-protocol scheme list. Assumed to be an OKX-specific aggregation/deferred-settlement scheme. | OBSERVED — NOT YET UNDERSTOOD |
 
 **Source:** https://docs.x402.org/schemes/overview  
 **Access date:** 2026-09-17
+
+**Live-observed field-name divergence:** the open-protocol reference structure above uses `amount`, but the live OKX Mock Merchant returns **`maxAmountRequired`** (string, atomic units) in its `accepts[]` entries. M3 must parse the OKX field name, not the doc's. Raw evidence in `M3_PROBE_RESULTS.md`.
+
+**M3 selection rule:** `exact` is the recommended scheme for the M3 proof. Treat `aggr_deferred` as present-but-unused until its semantics are documented.
 
 ### 5.5 Network Identifiers
 
@@ -246,40 +262,39 @@ const NETWORK = "eip155:196";    // X Layer Mainnet
 | Third-party OKX.AI providers on testnet | **NOT automatically mirrored** | ARCHITECTURE.md §14 | UNVERIFIED (repo assertion) |
 | Faucet rate limits | Unknown | — | UNVERIFIED |
 | Faucet prerequisites | Unknown | — | UNVERIFIED |
-| Mock Merchant availability | Reachable but not probed from this sandbox | OKX official docs | PARTIALLY VERIFIED |
-| x402 default facilitator supports X Layer Testnet | **NO** — see critical finding below | x402 official docs | VERIFIED (negative) |
+| Mock Merchant availability | **REACHABLE** — probed, HTTP 402 observed | Live probe | VERIFIED |
+| x402 default facilitator supports X Layer Testnet | **NO** — see §10 constraint | x402 official docs | VERIFIED (negative) |
 
 **Source:** ARCHITECTURE.md §14, https://docs.x402.org/core-concepts/network-and-token-support  
 **Access date:** 2026-09-17
 
+### 9.1 TOKEN DISCREPANCY — top open item for M3
+
+The live Mock Merchant and OKX's own documentation disagree on BOTH the payment token name and its contract address:
+
+| Source | Token name | Contract address | Access date |
+|---|---|---|---|
+| LIVE Mock Merchant 402 (observed in this sandbox; raw evidence in `M3_PROBE_RESULTS.md`) | `USDC_TEST` | `0xcb8bf24c6ce16ad21d707c9505421a17f2bec79d` | 2026-09-17 |
+| OKX buyer-guide doc example | `USD₮0` | `0x9e29b3aada05bf2d2c827af80bd28dc0b9b4fb0c` | 2026-09-17 |
+| Repo plan (ACTIVE_TASK.md / MASTER_PLAN.md M3) | test `USD₮0` | not stated | — |
+
+**Implication for M3:** the buyer rail MUST consume asset / payTo / amount / EIP-712 `extra.name` + `extra.version` dynamically from the live 402 `accepts[]` entry, and MUST NOT hardcode either address or a token name. The EIP-712 name/version pair is exactly what a buyer signs for EIP-3009; hardcoding the wrong pair is a real signing failure mode, not a cosmetic one. The `payTo` recipient (`0x3509655ad99effc7f3f74205482b1cb337ca08f7`) must likewise be read from the live response rather than assumed. Treat all of these fields as seller-asserted and bind them before signing per the accepted architecture.
+
 ---
 
-## 10. CRITICAL FINDING — Act Now
+## 10. Facilitator Constraint — Investigate Now
 
-### x402 Default Facilitator Does NOT Support X Layer Testnet
+### The x402.org DEFAULT facilitator does not settle X Layer Testnet
 
-**Finding:** The x402 protocol's default facilitator (`https://x402.org/facilitator`) supports:
-- Base Sepolia (`eip155:84532`)
-- Solana Devnet
-- Stellar Testnet
-- Aptos Testnet
-- Hedera Testnet
-- XRPL Testnet
+**Finding (accurate, remains VERIFIED-negative):** the x402.org default facilitator lists Base Sepolia (`eip155:84532`), Solana Devnet, Stellar Testnet, Aptos Testnet, Hedera Testnet and XRPL Testnet. X Layer (mainnet or testnet) is absent. https://docs.x402.org/core-concepts/network-and-token-support, accessed 2026-09-17.
 
-**It does NOT support X Layer Testnet (`eip155:1952`).**
+**What this does NOT mean:** it does not invalidate the accepted M3 plan. The repo's M3 rail is OKX's OWN Mock Merchant on X Layer Testnet, and OKX's own buyer guide runs the complete flow there — the live 402 observed in this sandbox advertises `network: eip155:1952`, and the documented flow returns a `txHash` verifiable on OKLink X Layer Testnet. X Layer Testnet settlement therefore demonstrably works through OKX's rail. https://web3.okx.com/onchainos/dev-docs/payments/payment-use-buyer, accessed 2026-09-17.
 
-**Impact:** The repo's plan to use "X Layer Testnet + official Mock Merchant" for M3 is **plan-invalidating** unless one of the following is true:
-1. A custom/self-hosted facilitator is deployed for X Layer Testnet
-2. The OKX Mock Merchant operates its own facilitator for X Layer Testnet
-3. The plan switches to Base Sepolia for the x402 proof
+**The real constraint, correctly scoped:** do not point a generic `@x402/*` buyer client at the x402.org default facilitator and expect X Layer Testnet settlement. Settlement must go via OKX's payment rail/facilitator, or a self-hosted facilitator, or self-facilitation. x402 docs state the operational question is whether you have a settlement path for the network.
 
-**Evidence:** https://docs.x402.org/core-concepts/network-and-token-support explicitly lists supported networks. X Layer (neither mainnet nor testnet) is not in the list. The docs state: "For EVM networks in particular, x402 can support any network at the protocol level. The operational question is whether you have a production settlement path for that network."
+**Recommended action:** before M3 integration, confirm which facilitator the OKX buyer SDK/Onchain OS path uses for `eip155:1952`, and make that an explicit founder decision rather than an implicit default.
 
-**Recommended action:** Before M3 integration, verify whether the OKX Mock Merchant endpoint (`https://www.okx.com/api/v1/pay/mock-merchant/resource`) operates its own facilitator for X Layer Testnet. If not, either:
-- Deploy a self-hosted facilitator for X Layer Testnet, OR
-- Switch M3 proof to Base Sepolia (`eip155:84532`) which is supported by the default facilitator
-
-**Classification:** `Act Now` — this finding blocks M3 near-term if not resolved.
+**Classification:** `Investigate Now` — a concrete M3 design constraint plus one named decision. Not a plan-invalidator.
 
 ---
 
@@ -301,7 +316,7 @@ The following human decisions, accounts, and environment variables are required.
    - `OKX_PASSPHRASE` — OKX Developer Portal passphrase
 
 3. **Decisions:**
-   - Confirm whether to use X Layer Testnet or Base Sepolia for M3 (see critical finding above)
+   - Confirm which facilitator / settlement path to use on X Layer Testnet (`eip155:1952`) — OKX rail, self-hosted, or self-facilitation. The rail itself is not in question (see §10).
    - If X Layer Testnet: confirm whether OKX Mock Merchant operates its own facilitator, or deploy a self-hosted facilitator
    - Select payment scheme: `exact` (recommended for M3 proof)
 
@@ -314,11 +329,12 @@ The following human decisions, accounts, and environment variables are required.
 
 | Uncertainty | What to try next | Confidence |
 |-------------|------------------|------------|
+| **Which token the live Mock Merchant actually settles** — live 402 says `USDC_TEST`, OKX doc example says `USD₮0` (see §9.1) | Resolve during M3: read `accepts[]` from the live 402 at runtime, never hardcode; confirm the faucet funds the token the 402 actually demands | UNVERIFIED — TOP OPEN ITEM |
+| Which facilitator / settlement path the OKX buyer SDK uses for `eip155:1952` | Read the OKX buyer SDK source or run the documented testnet flow once with a founder-funded wallet (see §10) | UNVERIFIED |
 | Faucet per-address limits and prerequisites | Attempt faucet claim during M3 integration with a fresh wallet; document observed limits | UNVERIFIED |
-| Whether OKX Mock Merchant operates its own facilitator for X Layer Testnet | Probe `https://www.okx.com/api/v1/pay/mock-merchant/resource` during M3 integration; inspect 402 response for facilitator URL | UNVERIFIED |
 | Exact npm package versions for `@okxweb3/*` and `@x402/*` | Run `npm view @okxweb3/x402-express version` during M3 integration | UNVERIFIED |
 | Whether third-party OKX.AI providers are mirrored on testnet | Test one provider during M3 integration; document result | UNVERIFIED |
-| Mock Merchant exact payment-required behavior | Probe endpoint during M3 integration; capture 402 response structure | PARTIALLY VERIFIED |
+| Settlement / `PAYMENT-RESPONSE` shape after payment | Requires an actual funded payment in M3 — NOT attempted here (out of lane bounds: no signing, no payment) | UNVERIFIED BY DESIGN |
 
 ---
 
@@ -327,22 +343,24 @@ The following human decisions, accounts, and environment variables are required.
 | Repo assertion | Current docs say | Contradiction? | Action |
 |----------------|------------------|----------------|--------|
 | X Layer Testnet is `eip155:1952` | Confirmed `eip155:1952` | No | None |
-| Use X Layer Testnet + Mock Merchant for M3 | Mock Merchant exists, but x402 default facilitator does not support X Layer Testnet | **YES** | Act Now (see §10) |
+| Use X Layer Testnet + Mock Merchant for M3 | Rail works — live 402 advertises `eip155:1952` and OKX documents the full testnet flow; but the x402.org *default* facilitator does not cover X Layer | Partial — constraint, not contradiction | Investigate Now (§10): choose the settlement facilitator explicitly |
+| M3 pays with test USD₮0 | Live Mock Merchant advertises `USDC_TEST` at a different contract address (see §9.1) | **YES** | Investigate Now: read terms from the live 402 at runtime; do not hardcode |
 | Third-party OKX.AI providers are not automatically mirrored on testnet | Not addressed in current docs | Unknown | Investigate during M3 |
 
 ---
 
 ## 14. Summary
 
-**Verified facts:** 15  
-**Partially verified facts:** 3  
-**Unverified/blocked facts:** 5  
+**VERIFIED from authoritative docs or live observation:** ~50 discrete rows; **PARTIALLY VERIFIED:** 1; **UNVERIFIED (open):** 11 — see §12.
 
-**Most important verified fact:** X Layer Testnet chain ID is `eip155:1952` (confirmed from official OKX docs).
+**Most important verified facts:**
+1. X Layer Testnet chain ID `eip155:1952` (`0x7a0`) — confirmed from OKX docs AND independently on-chain via live `eth_chainId` on both public RPCs.
+2. The OKX Mock Merchant is live and reachable, and returns the expected x402 `402 Payment Required` shape on X Layer Testnet — observed directly in this sandbox (raw evidence in `M3_PROBE_RESULTS.md`).
+3. x402 payment terms for the OKX rail arrive in the JSON **body**, not a `PAYMENT-REQUIRED` header — live-observed divergence from the open-protocol spec.
 
-**Biggest remaining unknown:** Whether the OKX Mock Merchant operates its own facilitator for X Layer Testnet, or whether M3 must switch to Base Sepolia.
+**Biggest remaining unknown:** which payment token the live Mock Merchant actually settles (live 402 advertises `USDC_TEST`, OKX docs say `USD₮0` — see §9.1), and which facilitator the OKX buyer path uses for `eip155:1952` (see §10).
 
-**Critical finding:** The x402 default facilitator does not support X Layer Testnet. This is an `Act Now` item that blocks M3 integration until resolved.
+**No Act Now items.** The accepted M3 plan (X Layer Testnet + official Mock Merchant) stands: the rail is live and the chain ID is confirmed. The two open items above are `Investigate Now` design constraints to resolve during M3 integration, not plan-invalidators.
 
 ---
 
