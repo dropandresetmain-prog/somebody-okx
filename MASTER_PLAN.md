@@ -1,632 +1,378 @@
 # Somebody × OKX Dev Day 2026 — Master Plan
 
-Status: **LOCKED**  
+Status: **LOCKED — canonical demo approved 18 September 2026**  
 Build period: **17–25 September 2026**  
 Authoritative repo: `dropandresetmain-prog/somebody-okx`  
-Locked on: **17 September 2026**  
-Architecture reconciled: **17 September 2026**
+Hard feature freeze: **23 September 2026, 18:00 SGT**
 
 ## 1. Goal
 
 Build the smallest reliable product that proves:
 
-> **Somebody dynamically expands what a company is capable of doing.**
+> **One person can operate with the functional reach of a much larger company because Somebody builds the internal capability it can, then buys the scarce external resources that capability cannot make.**
 
-The founder gives Somebody a business objective. Somebody determines what capabilities/resources are required and chooses:
+Canonical founder objective:
 
-- **MAKE** — assemble internal capacity from resources the company already controls;
-- **BUY** — acquire an external capability when execution depends on a resource the company does not control.
+> **“Our launch isn’t working. Fix it and relaunch today.”**
 
-Somebody remains accountable for the work and for the final verified outcome.
+The exact demo wording and bounded spend limit may be refined, but broad scenario ideation is closed unless a provider or technical blocker forces substitution.
 
-Canonical demo shape:
+## 2. Canonical operating model
 
-`objective → capabilities/resources → MAKE + BUY → verified work → founder-facing outcome`
+The product is not an agent-shopping interface. The founder gives Somebody an objective, not an agent specification.
 
-The specific business scenario remains open until the demo-selection gate.
+```text
+Founder objective
+    ↓
+Determine capabilities + resource needs
+    ↓
+Check company-owned resources
+    ↓
+Do internal work where possible
+    ↓
+New resource need may emerge
+    ↓
+Discover relevant market offerings
+    ↓
+Assess candidates economically
+    ↓
+MAKE / BUY / BLOCKED
+    ↓
+Execute
+    ↓
+Repeat sourcing as needed
+    ↓
+Verify effects/results
+    ↓
+Founder outcome
+```
 
-## 2. Product thesis
+MAKE when the required resources are already controlled by the company. Examples: generic model reasoning, public web, company records, authenticated company systems, ordinary compute and reusable internal tools.
 
-### Vision
-
-> **One person should be able to operate with the functional reach of a much larger company.**
-
-Somebody is the AI manager for that company. The user should not have to manually assemble agents, SaaS tools, freelancers, vendors or APIs.
-
-### MAKE
-
-MAKE when the required resources are already controlled by the company.
-
-Examples:
-
-- general LLM reasoning;
-- public web/search;
-- company records;
-- authenticated company systems;
-- ordinary compute;
-- existing reusable tools.
-
-A missing worker is **not** a missing capability. If the resources exist, Somebody should create or reuse bounded internal capacity.
-
-### BUY
-
-BUY when execution depends on an externally controlled scarce resource.
-
-Examples:
-
-- proprietary/licensed data;
-- privileged access;
-- independent attestation;
-- physical presence;
-- real-world action;
-- specialist infrastructure or compute;
-- external identity/reputation;
-- resources materially impractical to reproduce internally.
+BUY only when execution depends on an externally controlled scarce resource such as proprietary/licensed data, privileged access, distribution/execution infrastructure, independent attestation, physical capacity or specialist infrastructure.
 
 Guiding principle:
 
 > **Never buy generic cognition merely because somebody wrapped another LLM. Buy scarce capability.**
 
-## 3. Product language
+## 3. Canonical demo sequence
 
-Product/demo labels:
-
-- **Somebody** — accountable AI manager;
-- **That Guy** — internal worker dynamically created or reused by Somebody for bounded work;
-- **Somebody Else** — external provider used when the company lacks a required scarce capability.
-
-Engineering names remain neutral: `InternalWorker`, `ExternalProvider`, `Objective`, `WorkItem`, `WorkerSpec`, `WorkContract`, `Evidence`, `Effect`, `Outcome`.
-
-Do not carry old procurement nouns into the current architecture merely because they existed before.
-
-## 4. Provenance and source-project roles
-
-Use four provenance categories:
-
-- **Inherited** — working capability that existed before 17 September 2026;
-- **Pre-existing R&D** — prior concepts/prototypes outside Somebody;
-- **Rebuilt / Adapted during OKX** — a prior idea or inherited primitive changed/reimplemented during OKX for the current product;
-- **New during OKX** — capability neither prior project had in working product form.
-
-`BUILD_DELTA.md` is the canonical evidence ledger.
-
-### Somebody baseline
-
-Source: `somebody-ai@709a169a1a4f71b8dc2d7427438ff514999fb07e`.
-
-Treat Somebody as the mature worker-execution/reliability source.
-
-Architectural inheritance includes:
-
-- Next.js / React / Convex product foundation;
-- `@openai/agents` Agent/Runner patterns;
-- `CoreWorkerContract` and controlled transitions;
-- role-specific policy compiling into a generic worker contract;
-- model-proposes/application-authorizes boundary;
-- bounded read/act agent ports;
-- run leases/fencing and durable progress;
-- evidence/provenance patterns;
-- stable effect identity/idempotency;
-- persisted approval/authority;
-- execution separated from verification;
-- verification-before-completion;
-- realtime state/event patterns;
-- useful Somebody/Mission-Control visual language.
-
-Do **not** treat old procurement as the product architecture. Procurement is one inherited role-specific implementation on top of the generic reliability pattern.
-
-Do **not** inherit deployment-specific state or machinery by default. `acrobatic-swan-765`, old Convex rows, health probes/write flags and old provider integrations are not current-project requirements.
-
-### Army of Interns R&D
-
-Source: `army-of-interns@677166db591465fb6d201fb12db7cfe038557a92`.
-
-Treat Army as R&D inspiration only.
-
-Useful ideas:
-
-- controlled capabilities/resources;
-- fail-closed capability validation;
-- deny-by-default tool permissions;
-- worker construction;
-- worker reuse.
-
-Rejected baggage:
-
-- scenario keyword analysis;
-- duplicated permission sources;
-- ranks/promotions;
-- personalities;
-- org hierarchy;
-- Telegram/Twilio coupling;
-- demo-specific runtime/state machines;
-- wholesale Army schema/runtime.
-
-The rewritten `lib/workforce/` kernel is already the first built OKX-period product capability.
-
-## 5. Target architecture
+The final demo must prove one mission containing repeated resource-level sourcing decisions:
 
 ```text
-Founder objective
-      |
-      v
-   Somebody
-      |
-      v
-Capability planner
-      |
-      v
-validated capability/resource needs
-      |
-      v
-Resource evaluation
-   /             \
-MAKE              BUY
- |                 |
-resolve/create      approved provider path
-InternalWorker      |
- |                  spend authority
-WorkerSpec          |
- |                  x402 / X Layer
-WorkContract        |
- |                  ExternalProvider
-role/capability     |
-policy              result/receipt
- |                  |
-bounded worker      verification
-runtime             |
- |                  |
-evidence/effects ---+
-        |
-        v
-     Somebody
-        |
-        v
- verified outcome
+MAKE
+→ market discovery
+→ reject unnecessary external cognition
+→ BUY #1 external intelligence
+→ MAKE reacts / owned state changes
+→ BUY #2 external execution infrastructure
+→ external action
+→ verify
+→ complete
 ```
 
-Somebody remains accountable. Workers/providers are resources used by Somebody, not separate product protagonists.
+Hackathon scope is explicitly:
 
-## 6. Core OKX-period capabilities
+- **1 meaningful MAKE path**;
+- **maximum 2 real BUY transactions**;
+- ideally two different resource types;
+- **1 visible rejected external option** where useful;
+- **1 final founder outcome**.
 
-By feature freeze, the intended OKX delta is:
+Do not add transactions for spectacle.
 
-1. scenario-independent workforce kernel — **DONE**;
-2. capability/resource vocabulary — **PARTIALLY DONE**;
-3. fresh OKX Convex data plane;
-4. Objective/WorkItem operational spine;
-5. objective → capability planning;
-6. explicit company resource inventory;
-7. `WorkerSpec → WorkContract` assignment boundary;
-8. dynamic internal agent spawning;
-9. deliberate model routing for dynamic workers;
-10. current-role policy + evidence-based completion;
-11. deterministic Make-vs-Buy policy;
-12. unified internal/external work model;
-13. OKX buyer lifecycle;
-14. X Layer testnet payment integration;
-15. spend authorization/reconciliation;
-16. selected external-provider adapter;
-17. external-result verification;
-18. final objective synthesis;
-19. current product surface / Objective Workspace;
-20. MAKE/BUY UX and visual language;
-21. one canonical end-to-end workflow.
+### MAKE — internal growth operator
 
-Planned items stay planned in `BUILD_DELTA.md` until repo evidence proves them.
+Somebody creates or reuses a bounded internal growth/launch worker using company-controlled resources. The worker must perform real work, not merely produce a consulting report. At minimum it changes or creates a controlled launch artifact such as landing-page messaging or campaign copy.
 
-## 7. Product surface
+### Rejected option — external generic growth work
 
-Build the current-product surface incrementally from M1 rather than bolting UI on at the end.
+A marketplace candidate whose service mostly reproduces internal reasoning/research/planning should be rejected with a clear reason. Current live illustrative candidate: **FlyBeacon**. The purpose is to prove Somebody has economic/resource judgment and is not an OKX shopping bot.
 
-Reuse the useful visual direction of inherited Mission Control — Somebody identity, calm operator state, activity/evidence/approval/verification patterns — but do not extend its procurement-shaped information architecture into a universal screen.
+### BUY #1 — proprietary / privileged social intelligence
 
-The surface should progressively show:
+Primary candidate: **Newsliquid**.
 
-1. founder objective;
-2. capability/resource decomposition;
-3. why each capability is MAKE or BUY;
-4. internal worker creation/reuse and execution;
-5. evidence and meaningful activity;
-6. external provider, price and missing resource;
-7. approval/payment state;
-8. verification state;
-9. Somebody's unified final outcome.
+Target resource class: external proprietary/privileged social intelligence unavailable from the company’s owned resources.
 
-Avoid giant dependency graphs, permanent org charts, agent-to-agent chat transcripts, raw wallet UI, token counters and Web3-first UX.
+The purchased evidence must materially change the internal worker’s positioning, message, segment or launch artifact.
 
-The demo should feel like **a company assembling around the work**, not a multi-agent debugging dashboard.
+### BUY #2 — external execution infrastructure
 
-## 8. Build milestones and review gates
+Primary candidate: **xbird**.
 
-Reviews are **risk-boundary gates, not per-milestone ceremony**. Do not automatically review every milestone. A review should answer a materially different risk question. Normal milestones use focused tests and primary-model integration judgment unless a listed review gate or new high-risk boundary is reached.
+Target resource class: external social execution infrastructure / privileged execution interface. The company still owns the underlying X account and intent; xbird supplies the paid automation interface. Treat this as an external execution resource, not as buying an X identity.
 
-### M0 — Foundation and provenance — COMPLETE
+The final action should publish the revised launch message if provider/environment feasibility permits, then verify that the effect occurred.
 
-Completed:
+## 4. Marketplace discovery
 
-- final repo established;
-- inherited Somebody baseline transferred and verified;
-- canonical SSOT created;
-- `BUILD_DELTA.md` created;
-- model-selection guidance imported;
-- X Layer sandbox/test strategy documented;
-- minimal workforce kernel built and tested;
-- inherited Somebody runtime architecture re-audited and reconciled into the current SSOT.
+Marketplace discovery is part of the product flow, but a universal marketplace engine is out of scope.
 
-Do not keep expanding generic foundations.
+Preferred order:
 
-### M1 — Objective spine + active MAKE
+1. use a supported OKX/Onchain OS discovery/search primitive if one is officially available and appropriate;
+2. otherwise use a small application-owned synchronized snapshot/catalog of the relevant current OKX.AI offerings behind a replaceable discovery interface;
+3. never scrape undocumented/private APIs.
 
-Target: **17–18 Sep**
+Provider invocation/payment remains real even if discovery uses the synchronized catalog fallback.
 
-Objective:
+## 5. Current state
 
-> Turn the inherited worker/reliability architecture plus the new workforce kernel into real dynamically assembled internal capacity on a fresh OKX data plane.
+### M0 — Foundation / provenance — COMPLETE
 
-M1 is **one milestone**. The implementation may use internal checkpoints, but do not create M1.1/M1.2-style project milestones.
+Repo, provenance, workforce kernel, model-selection guidance and initial architecture established.
 
-Build:
+### M1 — Objective spine + active MAKE — ACCEPTED
 
-- fresh `somebody-okx` Convex project/deployment; no migration from `acrobatic-swan-765`;
-- current-project Objective/WorkItem persistence and realtime read model;
-- objective → capability planner contract;
-- explicit factual company resource inventory;
-- planner proposal → application validation;
-- reuse/create worker resolution through `lib/workforce/`;
-- assignment-specific `WorkContract` evolved from the inherited `CoreWorkerContract` pattern;
-- role/capability-specific policy for the M1 internal proof;
-- **active internal agent spawning**:
-  `WorkerSpec → WorkContract → model selection → bounded Agent/Runner → allowed tools → execution → evidence/result`;
-- durable worker-run status/activity using useful inherited lease/fencing/event patterns;
-- first current-product Objective Workspace using useful Mission Control visual primitives/direction.
+Accepted on `main@1e2c1a484713792cead51b85e1e1ae36d28b3e77`.
 
-Do **not** make inherited procurement compatibility an M1 requirement.
+Proven live on fresh Convex:
 
-Do **not** carry forward old health-probe/write-gate machinery merely to preserve the previous deployment.
+- Objective/WorkItem state;
+- server-side model-proposed / application-authorized planning;
+- factual company resource inventory;
+- `WorkerSpec → WorkContract`;
+- bounded real Agent/Runner execution;
+- evidence/provenance;
+- lease/fencing;
+- application-owned completion;
+- Objective Workspace;
+- live positive MAKE proof;
+- deterministic negative proof.
 
-M1 proof quality requirement:
+Do not rebuild M1.
 
-- the worker must perform nontrivial tool-mediated work;
-- a single free-form LLM response is insufficient;
-- the proof should require multiple meaningful observations/actions appropriate to the role, ideally across at least two distinct information sources or resource classes;
-- evidence/result must be persisted and visible;
-- application/domain policy, not the model, decides whether the work is complete.
+### M2 preparation already exists
 
-M1 acceptance:
+Branch: `feat/m2-make-buy-policy`  
+Observed checkpoint: `4a827e891af3dd7e61cf529482a7656ee23bcb34`
 
-`objective → validated capability/resource plan → create/reuse InternalWorker → WorkContract → bounded real agent → tool-mediated work → evidence/result → application-owned completion → visible Objective state`
+Already implemented:
 
-No BUY required yet.
+- deterministic `MAKE / BUY / BLOCKED` sourcing kernel;
+- factual inventory as sole ownership authority;
+- provider paths bound to exact resource classes;
+- model cannot choose sourcing or approve spend/provider authority;
+- sourcing truth persisted/rendered;
+- M1 row compatibility.
 
-### R1 — Foundation Review — STATIC CHATGPT + GITHUB
+The pure sourcing kernel remains authoritative and should be reused **per bounded resource need**, not discarded.
 
-Run after the M1 implementation candidate exists and before beginning M2.
+## 6. Revised milestones
 
-**Reviewer:** static ChatGPT with GitHub read access. A coding agent is **not required**.
+Reviews are risk-boundary gates, not per-milestone ceremony.
 
-Why static is sufficient:
-
-- R1 is primarily an architecture/authority/code-read review of the new foundation;
-- the implementer already supplies focused execution/test evidence;
-- R1 should inspect the candidate diff and source rather than rerun the same suite for ceremony;
-- any uncertainty that truly requires execution should be classified `Investigate Now` and resolved during M1 acceptance/fix work.
-
-Review the M1 candidate read-only, focusing on:
-
-- `Objective → planner validation → resource decision → WorkerSpec → WorkContract → bounded tools → Runner → evidence → application-owned completion → persistence/UI`;
-- permission widening or self-authorization paths;
-- whether proof/completion is enforced by application state rather than prompting;
-- evidence provenance and distinct-source requirements;
-- stale/replaced run fencing and double-finalization risks;
-- failure/prose-only paths falsely reaching success;
-- whether fresh Convex codegen/schema assumptions are sound;
-- whether UI renders persisted truth rather than inventing status client-side.
-
-Every material finding must be classified exactly as:
-
-- `Act Now`
-- `Investigate Now`
-- `Park for Later`
-- `Ignore / Accept Risk`
-
-R1 itself does not replace M1 acceptance evidence. After blocker fixes, the fresh authenticated Convex/codegen + one bounded live worker smoke completes the remaining M1 acceptance proof. Do not run a second formal review after that smoke unless the fix materially changes the reviewed architecture.
-
-### Canonical demo gate
-
-Hard deadline: **18 Sep, 12:00 SGT**.
-
-Broad scenario ideation stops after this gate. Only a material technical/provider failure may reopen selection.
-
-### M2 — Canonical MAKE path + Make-vs-Buy policy
+### M2 — Repeated resource sourcing + canonical mission spine
 
 Target: **18–19 Sep**
 
-Requires accepted canonical scenario.
+Adapt the existing M2 implementation from one objective-level sourcing verdict to repeated resource-level sourcing decisions inside one mission.
 
-Build only the scenario-specific capabilities required by the demo.
+Build:
 
-Implement deterministic sourcing:
+- canonical failing-launch objective;
+- bounded internal growth/launch capability;
+- real MAKE work that changes a controlled launch artifact;
+- a durable resource-need / sourcing-decision record that can occur multiple times in one objective;
+- bounded marketplace discovery interface;
+- synchronized current-market snapshot if no supported service-search primitive exists;
+- candidate assessment with explicit `REJECT / MAKE`, `BUY` or `BLOCKED` reasoning;
+- application-owned approved provider paths for Newsliquid and xbird only after feasibility confirmation;
+- first canonical discovery proof showing a generic growth provider rejected and Newsliquid selected for a genuine scarce resource.
 
-- all required resources actually owned → `MAKE`;
-- external resource required + approved provider path available → `BUY`;
-- external resource required + no approved path → `BLOCKED`.
+Preserve the existing `lib/sourcing` kernel as the single sourcing authority.
 
-The model proposes resource needs; application code decides sourcing.
+Do **not** pay providers in M2.
 
 M2 acceptance:
 
-`objective → capability plan → real MAKE execution → explicit BUY requirement with named missing resource`
+```text
+canonical objective
+→ internal growth capability MAKE
+→ controlled artifact changed
+→ new scarce resource need recorded
+→ market candidates discovered
+→ generic growth option rejected
+→ Newsliquid path selected as BUY
+```
 
-**No formal review gate after M2 by default.** Use focused changed-behavior tests and primary-model integration judgment. Trigger an extra review only if M2 unexpectedly changes foundational authority/runtime contracts or introduces another high-risk boundary.
+Focused tests only; no formal review after M2 unless foundational authority/runtime unexpectedly changes.
 
-### M3 — Generic OKX buyer rail + spend safety
+### M3 — Repeatable OKX buyer rail + spend safety
 
 Target: **19–20 Sep**
 
-First prove the official safe development rail:
+Consume the prepared work on `prep/m3-okx-readiness`; do not restart payment research.
 
-- X Layer Testnet;
-- `eip155:1952`;
-- faucet test OKB;
-- test USD₮0;
-- official Mock Merchant.
+Build one reusable buyer rail that can safely perform **more than one purchase in the same mission**.
 
-Prove:
+Prove first against the official safe rail:
 
-`request → 402 → inspect terms → approval → sign/pay → retry → resource → receipt`
+- X Layer Testnet / `eip155:1952`;
+- official Mock Merchant;
+- dynamic challenge terms;
+- explicit lifecycle;
+- reconciliation before retry.
 
-Maintain explicit lifecycle states such as:
+Required lifecycle:
+
+`request → 402 → inspect live terms → approval → sign/pay → retry → resource → receipt → verify`
+
+Never hardcode asset, amount, recipient or signing metadata from docs when the live challenge supplies them.
+
+The payment lifecycle must distinguish at least:
 
 `prepared → awaiting_approval → approved → payment_attempted → submitted → settled → result_received → verified`
 
-Never equate submission with confirmation. Never blindly repay after an ambiguous state; reconcile first.
+with failure / reconciliation-required states where needed.
 
-Wallet credentials/private keys do not enter ordinary Convex state or logs.
+No silent mainnet spend. Wallet credentials/private keys do not enter ordinary Convex state or logs.
 
 ### R2 — Payment Safety Review — CODING AGENT
 
-Run after the M3 buyer-rail candidate exists and before integrating the real provider in M4.
+Run after the complete M3 buyer-rail candidate exists.
 
-**Reviewer:** strong coding agent with repository execution capability. Static-only review is insufficient.
+Review/probe:
 
-Why a coding agent is required:
+- approval bypass;
+- double-pay / retry hazards;
+- ambiguous submission reconciliation;
+- dynamic binding of network/asset/amount/recipient/signing terms;
+- testnet/mainnet separation;
+- secret handling;
+- idempotency across two sequential purchases.
 
-- wallet/signing/payment state is financial/security-sensitive;
-- the reviewer must be able to execute focused probes around retries, duplicate prevention and ambiguous submission states;
-- payment correctness depends on runtime behavior, not just source shape.
+Fix only `Act Now` blockers, rerun only invalidated evidence.
 
-R2 should remain review-first rather than implementation-first. Inspect code, then run only risk-specific tests/probes needed to answer:
-
-- can approval/signing authority be bypassed?;
-- can retry/timeout paths double-pay?;
-- does ambiguous submission reconcile before another payment?;
-- are prepared/signed/submitted/settled/verified states kept distinct?;
-- are network, amount, asset, recipient and approved terms bound before signing?;
-- are secrets excluded from Convex/logs?;
-- does testnet/mainnet remain explicit and fail closed?;
-- does the Mock Merchant flow actually prove the expected lifecycle?
-
-Classify every material finding with the standard four-way triage. Fix only `Act Now` blockers before M4; rerun only invalidated evidence.
-
-### M4 — Real BUY provider + full engine
+### M4 — Two real BUY providers + complete mission engine
 
 Target: **20–21 Sep**
 
-Validate the selected provider before integration:
+Integrate the canonical providers behind the smallest practical adapter seams.
 
-- endpoint/tool;
-- price;
-- network/environment;
-- latency;
-- rate limits;
-- result contract;
-- proof/verification mechanism;
-- failure modes.
+Primary BUY #1: **Newsliquid** — proprietary/privileged social intelligence.
 
-Provider-specific behavior stays behind the smallest practical adapter seam.
+Primary BUY #2: **xbird** — paid social execution infrastructure using founder-controlled X credentials/account access.
 
-Prove:
+If a provider fails immediate feasibility/reliability gates, substitute the nearest reliable provider of the **same resource type** without reopening broad scenario ideation.
 
-`objective → MAKE → That Guy executes → BUY → Somebody Else executes → verify → Somebody synthesizes outcome`
+Prove the complete backend mission:
+
+```text
+MAKE growth operator
+→ discovery / reject redundant growth provider
+→ BUY Newsliquid
+→ purchased evidence persisted + verified
+→ MAKE resumes and changes launch artifact
+→ new execution resource need
+→ BUY xbird
+→ publish
+→ independent read-back / verification
+→ founder outcome
+```
+
+Maximum two real purchases.
+
+Prefer A2MCP/x402 style providers. Do not add A2A negotiation/escrow unless a provider forces it and no simpler reliable path exists.
 
 ### R3 — Economic Integration Review — CODING AGENT
 
-Run after the M4 full-engine candidate exists and before M5 polish.
+Run after M4 and before UI/story polish.
 
-**Reviewer:** strong coding agent with repository execution capability.
+Use targeted failure injection across the seams:
 
-R3 is the cross-seam review. It should dynamically test the places where individually-correct components can still fail together:
-
-- MAKE result feeding BUY decision;
-- provider timeout/rate-limit/partial failure;
-- payment succeeds but provider/result retrieval fails;
-- provider returns malformed or unverifiable output;
-- duplicate invocation / replay;
-- stale state or crash between economic steps;
-- result verification failure;
-- synthesis must not claim success when any required proof remains unresolved.
-
-Use targeted failure injection and seam tests, not a broad test blast. Review and classify findings first; fix only blockers that threaten correctness/demo reliability.
+- discovery returns stale/missing candidate;
+- MAKE → BUY handoff;
+- BUY #1 payment succeeds but data retrieval fails;
+- malformed/unverifiable external intelligence;
+- MAKE reaction fails after paid data arrives;
+- BUY #2 payment/action ambiguity;
+- duplicate external publish;
+- publish succeeds but verification fails;
+- crash/retry between economic steps;
+- final synthesis must not claim completion with unresolved proof.
 
 ### M5 — Product surface + story hardening
 
 Target: **21–22 Sep**
 
-This is refinement, not first UI implementation.
+Refine the existing Objective Workspace to make the repeated economic reasoning obvious in 2–4 minutes:
 
-Optimize the current product surface for a 2–4 minute demo:
+- founder objective;
+- internal growth worker / changed owned artifact;
+- resource needs as they emerge;
+- marketplace candidate cards;
+- rejected FlyBeacon-style option with MAKE rationale;
+- Newsliquid BUY #1, cost/payment/result;
+- MAKE reaction;
+- xbird BUY #2, cost/action/verification;
+- final verified outcome.
 
-- objective;
-- capability plan;
-- MAKE/BUY reasoning;
-- internal worker status/result/evidence;
-- external provider, cost, approval and execution;
-- receipt/result verification;
-- unified outcome.
+No giant graph, raw wallet UX, agent-chat transcript or universal marketplace UI.
 
-Record the **first complete backup demo video immediately** when M5 works.
+Record the **first full backup demo video immediately** when this works.
 
-**No formal technical review after M5 by default.** Use product/demo judgment, focused UI checks and the actual recorded demo. Escalate only if polish changes backend/security/payment behavior.
+No formal technical review after M5 unless polish changes backend/payment/security behavior.
 
 ### M6 — Release candidate
 
 Target: **23 Sep**
 
-Required before freeze:
+Required:
 
-- canonical workflow complete;
-- MAKE + BUY verified end-to-end;
-- provider validated;
-- reset/setup path reliable;
-- README and `BUILD_DELTA.md` current;
-- OKX integration/service URL identified;
-- product/test link available where applicable;
-- submission description drafted;
-- first backup video recorded.
+- exact canonical workflow complete;
+- reset/setup reliable;
+- provider fallbacks documented;
+- bounded spend policy;
+- demo-critical E2E verified;
+- final docs/evidence current;
+- backup video exists.
 
 ### G1 — Release Promotion Gate — CODING AGENT
 
-Run once on the **exact M6 release-candidate SHA** before feature freeze.
+Run once on the exact release-candidate SHA before freeze.
 
-G1 is not another architecture review. It is the canonical promotion gate and therefore requires executable repository/runtime access.
+This is the canonical promotion gate, not another architecture review. Run the final justified build/typecheck/test/E2E/reset/deployment checks once on the exact candidate.
 
-Verify only what is needed to promote the exact candidate:
+## 7. Five-day implementation priorities
 
-- expected branch/SHA and clean committed state;
-- canonical focused/broader gate appropriate to the final candidate;
-- build/typecheck as required by the repo;
-- one no-cut canonical E2E;
-- demo reset/setup path;
-- no unresolved `Act Now` findings;
-- documentation/provenance current;
-- remote/deployment state matches the candidate.
+1. **18 Sep:** reconcile docs; adapt M2 to repeated resource-level sourcing; lock discovery snapshot and provider identities.
+2. **19 Sep:** complete M2 canonical mission spine; integrate prepared payment lifecycle and buyer rail.
+3. **20 Sep:** R2; integrate Newsliquid + xbird; complete backend mission.
+4. **21 Sep:** R3; fix blockers; harden product surface.
+5. **22 Sep:** complete M5 and record backup demo.
+6. **23 Sep:** M6 + G1; feature freeze 18:00 SGT.
+7. **24 Sep:** debugging/hardening only.
+8. **25 Sep:** video/submission only; internal submission target 22:00 SGT.
 
-Do not use G1 to redesign architecture or introduce new capability. If G1 finds a blocker, fix the smallest blocker and rerun only invalidated evidence plus the exact promotion check needed.
+## 8. Hard non-goals
 
-### HARD FEATURE FREEZE
+Do not build:
 
-**23 Sep, 18:00 SGT**
+- universal marketplace indexing;
+- provider auctions;
+- general reputation/ranking infrastructure;
+- automated negotiation;
+- general A2A escrow machinery;
+- generalized build-vs-buy cost optimization;
+- three or more providers;
+- workflow DSL;
+- permanent giant org chart;
+- second polished scenario;
+- arbitrary-prompt support;
+- broad company-OS architecture.
 
-After this:
+## 9. Demo success criterion
 
-- no new capability;
-- no second provider;
-- no redesign;
-- no new scenario;
-- no stretch feature.
+A judge should understand:
 
-Only release-blocking fixes.
+> The founder did not hire a marketing team. Somebody created the capability internally, refused to pay for work it could already do, bought proprietary market evidence only when it needed it, used that evidence to continue working, bought external execution infrastructure only when the mission reached that boundary, verified the relaunch, and returned one finished outcome.
 
-## 9. Sep 24 — debugging/hardening only
+Core line:
 
-No planned feature development.
+> **Somebody builds the company it needs, then buys what that company cannot make.**
 
-Attack realistic failures:
+Shared OKX vision:
 
-- malformed planner output;
-- invalid capability/resource proposal;
-- worker/tool failure;
-- stale/replaced worker run;
-- incomplete/conflicting evidence;
-- provider timeout/rate limit;
-- quote mismatch;
-- insufficient balance;
-- uncertain payment state;
-- duplicate invocation;
-- malformed external result;
-- verification failure;
-- demo reset failure.
-
-Fix only material blockers. Rerun only invalidated evidence after each fix.
-
-Finish with one exact-candidate end-to-end rehearsal and another backup recording.
-
-## 10. Sep 25 — video + submission only
-
-No planned product development.
-
-Official submission deadline: **25 Sep 23:59 UTC / 26 Sep 07:59 SGT**.
-
-Internal target: **25 Sep, 22:00 SGT**.
-
-Submission package must include the required repo/README, working 2–4 minute demo video, project summary, product/test link where available, and OKX AI service/listing/integration URL. Existing-project provenance and commit evidence must remain explicit.
-
-Suggested ~3-minute video structure:
-
-- **0:00–0:20** — problem;
-- **0:20–0:40** — founder objective;
-- **0:40–1:20** — MAKE: Somebody creates/reuses That Guy and internal work executes;
-- **1:20–2:15** — BUY: missing resource, Somebody Else, provider, price, approval, payment, external work;
-- **2:15–2:40** — verification;
-- **2:40–3:00** — Somebody's final outcome and thesis.
-
-Possible closing line:
-
-> **Somebody builds what your company can do — and finds Somebody Else for what it can't.**
-
-## 11. Time budget before freeze
-
-Approximate focused budget:
-
-- M1 fresh spine + active MAKE: 4–5 h;
-- R1 static foundation review: bounded review pass;
-- M2 canonical MAKE + Make-vs-Buy: 3–4 h;
-- M3 OKX test rail: 3–4 h;
-- R2 payment-safety review: bounded risk-specific pass;
-- M4 provider + full backend E2E: 4–5 h;
-- R3 economic-integration review: bounded cross-seam pass;
-- M5 surface/story hardening: 3–4 h;
-- M6 release-candidate prep: 2–3 h;
-- G1 exact-RC promotion gate: one final candidate gate.
-
-Reviews are intentionally sparse and bounded. Do not let them consume the build schedule through repeated full-suite or duplicate-review cycles.
-
-Target build effort remains roughly **20–25 focused implementation hours** before debugging/video days, with review time kept proportional to risk.
-
-## 12. Cut order
-
-If behind schedule, cut in this order:
-
-1. marketplace discovery/ranking;
-2. second provider;
-3. cross-objective persistent worker reuse;
-4. multiple simultaneous MAKE workers;
-5. broad capability ontology;
-6. fancy worker visualization;
-7. UI animation;
-8. flexible arbitrary decomposition.
-
-Never cut:
-
-- active MAKE execution;
-- clear Make-vs-Buy decision;
-- genuinely scarce BUY;
-- actual OKX integration;
-- spend/payment safety;
-- external-result verification;
-- final synthesis;
-- understandable working demo.
-
-## 13. Stretch
-
-Only after M5 works and a complete backup video exists.
-
-Potential stretch:
-
-- publish Somebody as an OKX AI seller;
-- provider discovery/ranking;
-- second external capability;
-- persistent company workforce;
-- richer That Guy roster;
-- multi-objective worker reuse.
-
-Stretch never jeopardizes the Sep 23 feature freeze.
-
-## 14. Definition of success
-
-A judge should be able to watch once and explain the product back as:
-
-> “I give Somebody a business objective. It figures out what capabilities and resources are required. If my company already has the resources, it creates a bounded internal AI worker to handle it. If not, it acquires an external capability through OKX, pays for it safely, verifies the result, and gives me one finished outcome.”
-
-If that is obvious in 2–4 minutes, the engine and product surface have done their jobs.
+> **As OKX AI’s supply side expands, the number of resources a one-person company can procure at runtime expands with it. Somebody remains the manager; OKX AI becomes the economic/resource layer it can reach into.**
