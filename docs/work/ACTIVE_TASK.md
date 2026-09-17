@@ -1,7 +1,7 @@
 # ACTIVE TASK — Somebody × OKX Dev Day 2026
 
 Status: **ACTIVE**  
-Updated: **17 September 2026**
+Updated: **17 September 2026** (M2 generic sourcing integration complete; M2 acceptance blocked on the canonical demo gate — see "M2 checkpoint" below)
 
 ## Goal
 
@@ -106,7 +106,7 @@ Built and verified:
 
 - [x] fresh current-product Convex schema (`objectives`, `objectiveEvents`, `evidence` only) — `convex/schema.ts`;
 - [x] fail-closed planner validation (unknown capability keys / resource classes / permission smuggling fail closed; permission envelope derived by application code) — `lib/objective/planner.ts`;
-- [x] factual company resource inventory + MAKE/BLOCKED sourcing — `lib/objective/policy.ts` + `evaluateSourcing`;
+- [x] factual company resource inventory + MAKE/BLOCKED sourcing — `lib/objective/policy.ts` + `evaluateSourcing` *(superseded in M2: this rule was deleted; the single authority is now `lib/sourcing/policy.ts::evaluateSourcingPolicy` behind the `decideObjectiveSourcing` seam — see §M2 checkpoint)*;
 - [x] worker resolution through `lib/workforce/` (`resolveWorker`), WorkerSpec-derived `workerKey`;
 - [x] assignment-specific WorkContract (`createWorkContract`), spend-binding rejected, evidence-only completion (`evaluateCompletion`); inherited `lib/reliability/core.ts` untouched;
 - [x] deliberate model selection, fail-closed live provider gate — `lib/worker/modelSelection.ts`;
@@ -240,9 +240,77 @@ The demo-selection lane runs in parallel with M1 and must produce:
 
 Do not block M1 on the exact final scenario; M1 is architecture/proof oriented.
 
+**M2 dependency (new):** scenario selection now gates M2 *acceptance*, not M2 *implementation*.
+The generic deterministic sourcing policy is complete (see §M2 checkpoint). What the gate must
+still name is the canonical objective and **one real approved external provider path** for a
+genuinely missing resource, so `APPROVED_PROVIDER_PATHS` can be populated with an actual provider
+instead of an invented one. Until then a missing resource correctly yields BLOCKED.
+
+## M2 checkpoint — canonical MAKE path + deterministic Make-vs-Buy policy
+
+Status: **IMPLEMENTATION READY — ACCEPTANCE BLOCKED ON CANONICAL DEMO GATE**
+
+Updated: 17 September 2026. Branch `feat/m2-make-buy-policy`, cut from accepted M1
+`1e2c1a484713792cead51b85e1e1ae36d28b3e77` (promoted to `main`).
+
+Prepared material consumed: `prep/m2-sourcing-policy` @ `3de805ec564bf85bfd4ac398eab2c207f526aee1`
+(`lib/sourcing/{types,policy,index}.ts`, `tests/sourcing.test.ts`), cherry-picked as `82dbfa29`.
+
+Checkpoint SHAs:
+
+| Checkpoint | SHA | Scope |
+|---|---|---|
+| kernel cherry-pick | `82dbfa29dde40c59357cc88b4480f3c6a1abc7f1` | prepared kernel applied |
+| 1 | `530ff67c20cec48c18e81fd5a5fe71eb4eb7d5b5` | single sourcing authority integrated |
+| 1b | `71eed968c55d56487b183d8bb8694ac615dc556d` | fail-closed + provider-approval invariants |
+| 2 | `266b3db8e24c6435a62647c708627908c4a0e7bc` | persisted + UI sourcing truth |
+
+Complete and verified:
+
+- [x] exactly one canonical sourcing authority: `lib/sourcing/policy.ts::evaluateSourcingPolicy`;
+- [x] the duplicate M1 MAKE/BLOCKED rule removed from `lib/objective/planner.ts` (not left beside the canonical policy);
+- [x] Objective layer consumes it through a thin adapter with no rule of its own: `lib/objective/sourcing.ts::decideObjectiveSourcing`;
+- [x] authoritative rule: all resources controlled → MAKE; missing + every missing has an approved path → BUY; missing + any lacking a path → BLOCKED;
+- [x] missing worker ≠ BUY; model cannot choose the decision and cannot approve a provider path (test-enforced, including that the spine never passes provider paths in and `vPlannerProposal` has no decision/provider/pathId field);
+- [x] factual inventory is the sole ownership authority; catalog `ownership` metadata never implies control (test-enforced);
+- [x] `ResourceClass` identity allow-list is an exhaustive `Record<ResourceClass, true>`, so a new class that is undeclared is a compile error; identity-sync tests pin the kernel set to the catalog vocabulary and keep identity distinct from ownership;
+- [x] unknown/tampered identities and empty requirements fail closed (never MAKE), including identities injected directly past `validateModelProposal`;
+- [x] decision + reason code + named missing resources + approved provider paths persisted on the objective plan (`convex/objectiveValidators.ts`) and rendered truthfully by the Objective Workspace (display-only; no payment UI);
+- [x] deterministic: same inputs → same output (test-enforced).
+
+**Adaptation found by verification, not by the cherry-pick:** the prepared kernel imported
+`@/lib/workforce/types`, but `convex/tsconfig.json` defines no `paths` mapping, so that alias does
+not resolve in the Convex compilation unit. Proven with a throwaway `convex/` probe (`TS2307`),
+fixed with relative type-only imports per M1 convention. A clean cherry-pick apply is not semantic
+proof; the prep branch was based on an earlier M1 SHA.
+
+Not in M2 scope, deliberately absent: payment, wallet, signing, x402, provider calls, receipts,
+payment-lifecycle state, provider result/receipt state. `ApprovedProviderPath` means only that the
+application knows an approved acquisition route exists.
+
+Remaining gate (acceptance items 11–12):
+
+1. canonical scenario must be selected at the 18 Sep 12:00 SGT gate;
+2. then wire only that scenario's capability/resource requirements;
+3. prove a **real MAKE** through the accepted M1 machinery (validated capability → MAKE → That Guy
+   → bounded WorkContract → real worker execution → evidence/result), not a stub;
+4. expose at least one **genuine BUY** with a named missing resource and a real approved provider
+   path — recorded, not paid.
+
+Do not invent a scenario or provider to close M2. Do not start M3 while this gate is open.
+
+Checks run at this checkpoint (observed):
+
+- `npx tsx --test tests/sourcing.test.ts` → 19/19; `tests/sourcingSeam.test.ts` → 14/14; `tests/ui.test.ts` → 13/13;
+- M1 regression + sourcing focused set `tests/sourcing.test.ts tests/sourcingSeam.test.ts tests/objective.test.ts tests/planner.test.ts tests/workforce.test.ts` → **81/81**;
+- full suite `npx tsx --test tests/*.test.ts` → **118/118 pass**;
+- `npx tsc --noEmit` clean; `npx tsc -p convex/tsconfig.json --noEmit` clean;
+- Convex validator ↔ TypeScript coupling proven by a temporary added-field probe (it broke the
+  typecheck as expected, then was reverted); no generated files hand-edited.
+
 ## Immediate next milestone
 
-# M1 — Objective spine + active MAKE
+# M1 — Objective spine + active MAKE *(ACCEPTED — retained below as the M1 record)*
 
 Target: **17–18 Sep**
 

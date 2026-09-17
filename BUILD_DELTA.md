@@ -424,6 +424,101 @@ this branch.
 - live `npx convex dev --once`-equivalent state: deployment already current (functions
   pushed at earlier checkpoints); no redeploy was needed for this pass.
 
+### 3.7 M2 — canonical MAKE path + deterministic Make-vs-Buy policy
+
+**Branch:** `feat/m2-make-buy-policy` (from accepted M1 `1e2c1a484713792cead51b85e1e1ae36d28b3e77`,
+promoted to `main`).
+
+**Prepared material consumed:** `prep/m2-sourcing-policy` @ `3de805ec564bf85bfd4ac398eab2c207f526aee1`
+— `lib/sourcing/{types,policy,index}.ts` + `tests/sourcing.test.ts`. Cherry-picked, not rewritten.
+Provenance: **New during OKX** (current OKX implementation work); the concept was not inherited.
+
+**Checkpoints:**
+
+- kernel cherry-pick: `82dbfa29dde40c59357cc88b4480f3c6a1abc7f1`;
+- Checkpoint 1 (single sourcing authority integrated): `530ff67c20cec48c18e81fd5a5fe71eb4eb7d5b5`;
+- sourcing invariant hardening: `71eed968c55d56487b183d8bb8694ac615dc556d`;
+- Checkpoint 2 (persisted + UI sourcing truth): `266b3db8e24c6435a62647c708627908c4a0e7bc`.
+
+**Architecture — exactly one sourcing authority:**
+
+```
+model proposes capability/resource needs
+  → lib/objective/planner.ts validates controlled identities (fail-closed)
+  → factual company inventory (CURRENT_RESOURCE_INVENTORY)
+  → lib/sourcing/policy.ts :: evaluateSourcingPolicy()   ← the only MAKE/BUY/BLOCKED rule
+  → lib/objective/sourcing.ts :: decideObjectiveSourcing()  ← thin adapter, contains no rule
+  → Objective layer persists + presents the decision
+```
+
+The competing M1 rule (`evaluateSourcing()` in `planner.ts`, MAKE/BLOCKED only) was **deleted**
+rather than left beside the canonical policy. `SourcingDecision` is now declared once in
+`lib/sourcing/types.ts` and re-exported by the Objective layer, so no second vocabulary can drift.
+
+**Rule implemented:** all required resources factually controlled → MAKE; one or more missing and
+*every* missing resource has an approved provider path → BUY; one or more missing and at least one
+lacks an approved path → BLOCKED. Missing worker never implies BUY. The model cannot choose the
+decision and cannot approve a provider path.
+
+**Adaptations made to the prepared kernel (not cosmetic):**
+
+1. **Path-alias drift, found by verification, not by the cherry-pick.** The kernel imported
+   `@/lib/workforce/types`; `convex/tsconfig.json` defines no `paths` mapping, so that alias does
+   not resolve inside the Convex compilation unit. Proven with a throwaway probe importing the
+   kernel from `convex/` (`TS2307` twice), then fixed with relative type-only imports matching M1
+   convention. The cherry-pick applied cleanly and still carried a real defect — a clean apply is
+   not semantic proof.
+2. **Identity allow-list made exhaustively compile-checked.** `KNOWN_RESOURCE_CLASSES` was a
+   hand-maintained array whose drift risk was only documented in a comment. It is now derived from
+   a `Record<ResourceClass, true>`, so adding a `ResourceClass` without declaring it is a
+   *compilation error* instead of a silent fail-closed rejection of a valid class. The array is
+   exported and pinned to the catalog vocabulary by a runtime sync test as well.
+   Identity validation and ownership stay distinct: the kernel never consults catalog
+   `ownership` metadata, and tests assert that a catalog-"owned" class is still missing when the
+   factual inventory omits it.
+3. **Application-owned provider registry.** `APPROVED_PROVIDER_PATHS` lives in
+   `lib/objective/sourcing.ts`, not in the model path. It is **empty by design** — see the gate
+   below.
+
+**M2 acceptance is BLOCKED on the canonical scenario gate — not on code.**
+
+`DECISIONS_LOG.md` records the canonical demo as **OPEN until 18 September 2026, 12:00 SGT**, and
+explicitly rejects "treating the Opus invoice/Dial demo as already canonical". No canonical
+provider is recorded anywhere in the repo, and `ApprovedProviderPath` had never existed as an
+identifier before this work.
+
+Rather than invent a fake canonical provider to mark M2 complete, the registry ships empty. The
+consequence is deliberate and test-enforced (`the shipped provider registry is empty, so the
+current product cannot fabricate a BUY`): with no approved paths, a missing resource yields
+**BLOCKED**, and only full factual control yields **MAKE**. BUY is fully implemented and proven at
+the policy and seam level with injected fixtures, and will be exposed for real once the scenario
+lane names an actual approved provider.
+
+Acceptance items 1–10 and 13–17 are met. Items 11–12 (canonical scenario runs its real MAKE path;
+scenario exposes a genuine BUY with a named missing resource) require the selected scenario and are
+the only outstanding criteria.
+
+**M2 scope boundary held:** no signing, no wallet, no payment, no x402, no provider call, no
+receipt, no payment-lifecycle state. `ApprovedProviderPath` means only "the application knows an
+approved route exists". That is M3/M4 work.
+
+**Checks run (observed, not reported):**
+
+- `npx tsx --test tests/sourcing.test.ts`: **19/19 pass** (16 prepared + 3 added invariants);
+- `npx tsx --test tests/sourcingSeam.test.ts`: **14/14 pass** (new Level-2 seam file);
+- `npx tsx --test tests/ui.test.ts`: **13/13 pass** (5 pre-existing + 8 sourcing display);
+- affected M1 regression `npx tsx --test tests/sourcing.test.ts tests/sourcingSeam.test.ts tests/objective.test.ts tests/planner.test.ts tests/workforce.test.ts`: **81/81 pass**;
+- full suite `npx tsx --test tests/*.test.ts`: **118/118 pass**;
+- `npx tsc --noEmit`: clean; `npx tsc -p convex/tsconfig.json --noEmit`: clean;
+- validator coupling proven, not assumed: adding a field to the persisted `sourcingReason`
+  validator was observed to break the root typecheck, confirming the Convex shape and
+  `lib/objective/types.ts` are compiler-checked against each other. No hand-edited generated
+  files; `convex/_generated/dataModel.d.ts` derives types from `typeof schema`, so this schema-free
+  validator change needs no codegen regeneration.
+
+`worker.test.ts` lost only an unused `evaluateSourcing` import; the worker/run-lifecycle seams
+themselves were not changed, and both files still pass.
+
 ## 4. Planned / Not Yet Built
 
 Everything in this section is **not implemented** until repository evidence moves it into Section 3.
@@ -434,12 +529,12 @@ Everything in this section is **not implemented** until repository evidence move
 | Current `Objective` / `WorkItem` runtime + realtime read model | **Built (M1)** — `convex/objectives.ts`, `convex/objectiveValidators.ts`, `convex/objectiveArgs.ts`; public read model `getObjective`/`listObjectives`. | **New during OKX.** Reuses Convex patterns (lease/expiry fencing from inherited `convex/missions.ts`), not the procurement aggregate. |
 | `WorkContract` adaptation from `CoreWorkerContract` | **Built (M1)** — `lib/objective/contract.ts` (`createWorkContract`, `evaluateCompletion`). Inherited `lib/reliability/core.ts` untouched; evidence-only completion supported; `requiredVerifiedEffectKeys` kept for the future BUY path. | **Rebuilt / Adapted during OKX.** |
 | Objective → capability/resource planner | **Built (M1)** — `lib/objective/planner.ts`: fail-closed `validatePlannerProposal` + permission envelope derivation. | **New during OKX.** Model proposes; application validates. |
-| Factual company resource inventory | **Built (M1)** — `lib/objective/policy.ts` `CURRENT_RESOURCE_INVENTORY` / `currentResourceInventory()`; consumed by `evaluateSourcing`. | **New during OKX.** Catalog vocabulary is not factual inventory. |
+| Factual company resource inventory | **Built (M1), consumed by M2** — `lib/objective/policy.ts` `CURRENT_RESOURCE_INVENTORY` / `currentResourceInventory()`; consumed by the canonical sourcing policy through the `decideObjectiveSourcing` seam in `lib/objective/sourcing.ts`. | **New during OKX.** Catalog vocabulary is not factual inventory. |
 | Active internal worker execution | **Built (M1)** — `lib/worker/runtime.ts` (real Agent/Runner, envelope-only tool materialization, application-owned finalization), `lib/worker/port.ts`, `lib/worker/modelSelection.ts`; executed through `convex/objectives.ts` port. | **New/Rebuilt combination.** Agent/Runner pattern adapted from inherited `lib/agent/procurement.ts`; workforce kernel inherited. |
 | Role/capability policy for M1 proof | **Built (M1)** — `lib/objective/policy.ts` `RESEARCH_ROLE` (research analyst: ≥3 observations across company_record + public_web, structured result) + internal `COMPANY_RECORDS`. | **New during OKX.** |
 | Persisted MAKE evidence/result/activity | **Built (M1)** — `evidence` / `objectiveEvents` tables with provenance (sourceClass, url/recordRef, observedAt, recordedBy, runId); result stored on the objective record. | Inherits evidence/event principles; current implementation is new/adapted. |
 | Current Objective product surface | **Built (M1)** — `app/ObjectiveWorkspace.tsx` as the app entry point (`app/page.tsx`); YOU ASKED / SOMEBODY'S PLAN / WHY MAKE? / THAT GUY / EVIDENCE / RESULT. Reuses Wordmark/LivePill/pill/timeline patterns and `./somebody` components. | Reuses visual language; new current-product information architecture. |
-| Deterministic Make-vs-Buy policy | **Partially built (M1)** — MAKE/BLOCKED implemented (`evaluateSourcing`); BUY is a deliberate M1 non-goal. | **New during OKX.** `MAKE` / `BUY` / `BLOCKED`. |
+| Deterministic Make-vs-Buy policy | **Built (M2)** — `lib/sourcing/` is the single canonical authority (`evaluateSourcingPolicy`): all required resources factually controlled → MAKE; missing + every missing resource has an approved provider path → BUY; missing + any lacking an approved path → BLOCKED. Adapted into the Objective layer by the rule-free seam `decideObjectiveSourcing` (`lib/objective/sourcing.ts`). The M1 MAKE/BLOCKED rule in `planner.ts` was deleted rather than left beside it. `ApprovedProviderPath` means an approved acquisition route only — no payment, wallet, provider call or receipt (M3/M4). | **New during OKX.** Kernel prepared on `prep/m2-sourcing-policy` (`3de805ec564bf85bfd4ac398eab2c207f526aee1`), integrated on `feat/m2-make-buy-policy`. |
 | OKX AI provider integration | **Not built** | **New during OKX.** Provider not yet selected. |
 | x402 buyer flow | **Not built** | **New during OKX.** No 402/pay/retry code yet. |
 | X Layer payment/settlement path | **Not built** | **New during OKX.** Testnet first. |
@@ -475,10 +570,11 @@ As of the 17 September M1 implementation (branch `qoder/general-session-ao10w4`)
 - UI/brand visual language (`app/somebody/**`, mascot/wordmark/pill CSS tokens);
 - reference pattern (not imported by runtime): `lib/agent/procurement.ts`.
 
-**Working and built/adapted during OKX (M1, R1-remediated — see §3.5):**
+**Working and built/adapted during OKX (M1, R1-remediated — see §3.5; M2 sourcing — see §3.7):**
 
 - fresh current-product Convex schema + objective runtime (`convex/schema.ts`, `convex/objectives.ts`, `convex/objective{Validators,Args}.ts`) with run lease/expiry fencing;
-- objective spine: fail-closed planner validation, factual inventory sourcing (MAKE/BLOCKED), WorkContract, application-owned completion (`lib/objective/{types,planner,contract,policy,runGuards}.ts`);
+- objective spine: fail-closed planner validation, factual inventory, WorkContract, application-owned completion (`lib/objective/{types,planner,contract,policy,runGuards}.ts`);
+- **M2:** single canonical Make-vs-Buy policy in `lib/sourcing/` (MAKE / BUY / BLOCKED), consumed through the rule-free Objective seam `decideObjectiveSourcing` (`lib/objective/sourcing.ts`); decision, reason code, named missing resources and approved provider paths are persisted and presented (`convex/objectiveValidators.ts`, `app/ObjectiveWorkspace.tsx`);
 - Active MAKE runtime: deliberate model selection, envelope-only tool materialization, real `@openai/agents` Agent/Runner execution, bounded untrusted-content observation surface (`lib/worker/{modelSelection,port,runtime}.ts`);
 - Node-resident executor + application-owned evidence port (`convex/objectiveRunner.ts`, `"use node"`);
 - Objective workspace UI as the app entry point (`app/ObjectiveWorkspace.tsx`, `app/page.tsx`, acceptance truthfulness in `app/resultStatus.ts`);
@@ -487,11 +583,14 @@ As of the 17 September M1 implementation (branch `qoder/general-session-ao10w4`)
   `tests/worker.test.ts` 13, `tests/workforce.test.ts` 11, `tests/ui.test.ts` 5 — **77/77 pass**;
   `npx tsc --noEmit` and `npx tsc -p convex/tsconfig.json --noEmit` both clean; `npx next build` compiles.
   The earlier "32/32 (16 objective / 9 workforce / 7 worker)" line described the pre-R1 baseline and was stale.
+- **M2** focused tests (observed at `266b3db` + docs commit): `tests/sourcing.test.ts` 19,
+  `tests/sourcingSeam.test.ts` 14, `tests/ui.test.ts` 13, plus the M1 files above —
+  full suite `npx tsx --test tests/*.test.ts` **118/118 pass**; root and `convex` typechecks both clean.
 
 **Documented but not yet implemented:**
 
-- BUY path: OKX/x402/X Layer buyer rail;
-- selected external provider;
+- BUY *execution*: calling an approved provider, and the OKX/x402/X Layer buyer rail (M3). The BUY **decision** and its persisted provider-path metadata are built (§3.7);
+- selected external provider / non-empty `APPROVED_PROVIDER_PATHS` — blocked on the canonical demo gate, deliberately not invented (§3.7);
 - final MAKE+BUY E2E.
 
 Closed in §3.6 (previously listed here as documented-but-not-implemented): live fresh

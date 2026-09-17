@@ -184,7 +184,7 @@ Reuse useful runtime patterns, not stale deployment/data baggage.
 
 Old procurement code may remain temporarily for provenance/reference, but **keeping the old procurement demo operational is not an M1 acceptance criterion**.
 
-## M1 — current immediate milestone
+## M1 — accepted (requirements record)
 
 **M1 is one milestone: Objective spine + active MAKE + first current-product surface.**
 
@@ -336,3 +336,21 @@ negative proof (duplicate public-source identity correctly refused) were both ob
 against the live backend and confirmed in the Objective workspace UI. Exact objective
 IDs, evidence identities and the full method: `BUILD_DELTA.md` §3.6 and
 `docs/work/ACTIVE_TASK.md`.
+
+**M2 — implementation ready, acceptance blocked on the canonical demo gate.** There is now exactly
+one deterministic sourcing authority: `lib/sourcing/policy.ts::evaluateSourcingPolicy`, reached from
+the Objective layer through a rule-free adapter (`lib/objective/sourcing.ts`). Factual company
+inventory alone decides what is controlled — catalog vocabulary does not, and the model may propose
+resource needs but can neither choose MAKE/BUY/BLOCKED nor approve a provider path. All required
+resources controlled → MAKE; something missing with an approved provider path for *every* missing
+resource → BUY; anything missing without one → BLOCKED. A missing worker is never by itself a reason
+to buy. The decision, its reason code, the named missing resources and any approved provider path
+are persisted on the objective plan and shown in the Objective workspace.
+
+`ApprovedProviderPath` means only that the application knows an approved route exists for acquiring
+a resource. Nothing is paid, signed, called or receipted — that is M3/M4.
+
+The provider registry **ships empty on purpose**: no canonical demo scenario or provider has been
+selected yet (gate: 18 Sep, 12:00 SGT), and inventing one would produce a fake BUY. Until a real
+approved path is named, missing resources correctly yield BLOCKED. Evidence, SHAs and the remaining
+gate: `BUILD_DELTA.md` §3.7.
