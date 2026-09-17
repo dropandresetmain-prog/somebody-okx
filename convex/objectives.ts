@@ -391,6 +391,7 @@ export const startRun = internalMutation({
       ...record,
       state: "executing",
       activity: `Run ${runId} started with ${selection.model}.`,
+      workItems: [workItem],
       run: workItem.runs[workItem.runs.length - 1],
       updatedAt: now,
     };
