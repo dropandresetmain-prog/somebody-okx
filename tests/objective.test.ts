@@ -9,12 +9,18 @@ import {
   resolveWorker,
   validatePlannerProposal,
 } from "../lib/workforce";
+import {
+  normalizePublicUrl,
+  sourceIdentity,
+} from "../lib/objective/contract";
 import type {
   ActivityResult,
   CompanyResourceInventory,
+  EvidenceOrigin,
   EvidenceRecord,
   PlannerProposal,
   SourceClass,
+  SourceProof,
 } from "../lib/workforce";
 
 const now = 1800000000000;
@@ -46,18 +52,39 @@ function fullInventory() {
   ]);
 }
 
+// Helper to compute sourceId from sourceClass/url/recordRef
+function computeSourceId(
+  sourceClass: SourceClass,
+  url?: string,
+  recordRef?: string,
+): string {
+  return sourceIdentity({ sourceClass, url, recordRef });
+}
+
 function evidence(
-  overrides: Partial<EvidenceRecord> = {},
+  overrides: Partial<EvidenceRecord> & {
+    origin?: EvidenceOrigin;
+    sourceId?: string;
+  } = {},
 ): EvidenceRecord {
+  const sourceClass = overrides.sourceClass ?? "public_web";
+  const url = overrides.url ?? "https://example.com";
+  const recordRef = overrides.recordRef;
+  // Auto-derive origin and sourceId from overrides if not explicitly provided
+  const origin = overrides.origin ?? "application_observation";
+  const sourceId =
+    overrides.sourceId ?? computeSourceId(sourceClass, url, recordRef);
   return {
     id: "ev1",
-    sourceClass: "public_web",
+    sourceClass,
     label: "Target homepage",
     text: "The target serves small businesses.",
-    url: "https://example.com",
+    url,
     observedAt: now,
     recordedBy: "worker_test",
     runId: "run1",
+    origin,
+    sourceId,
     ...overrides,
   };
 }
@@ -74,6 +101,11 @@ function result(overrides: Partial<ActivityResult> = {}): ActivityResult {
   };
 }
 
+const defaultSourceProofs: SourceProof[] = [
+  { sourceClass: "company_record", minDistinctSources: 1 },
+  { sourceClass: "public_web", minDistinctSources: 2 },
+];
+
 function contract() {
   return createWorkContract({
     assignment: "Evaluate Acme as a partnership target.",
@@ -82,10 +114,78 @@ function contract() {
       "company_records_lookup",
       "public_information_research",
     ]),
-    requiredSourceClasses: ["company_record", "public_web"],
-    minObservations: 3,
+    sourceProofs: defaultSourceProofs,
   });
 }
+
+// ── Source identity + URL normalization ──────────────────────────────────────
+
+test("normalizePublicUrl lowercases scheme+host, strips www, drops fragment, strips trailing slash", () => {
+  // Trailing slash stripped
+  assert.equal(
+    normalizePublicUrl("https://example.com/"),
+    "https://example.com",
+  );
+  // http vs https normalize to same host (different scheme kept)
+  assert.equal(
+    normalizePublicUrl("HTTPS://Example.COM/page"),
+    "https://example.com/page",
+  );
+  // www. stripped
+  assert.equal(
+    normalizePublicUrl("https://www.example.com/page"),
+    "https://example.com/page",
+  );
+  // Fragment dropped
+  assert.equal(
+    normalizePublicUrl("https://example.com/page#section"),
+    "https://example.com/page",
+  );
+  // Query kept
+  assert.equal(
+    normalizePublicUrl("https://example.com/page?q=1"),
+    "https://example.com/page?q=1",
+  );
+  // Trivial variants all normalize to one identity
+  assert.equal(
+    normalizePublicUrl("https://example.com"),
+    normalizePublicUrl("https://example.com/"),
+  );
+  assert.equal(
+    normalizePublicUrl("https://example.com/page"),
+    normalizePublicUrl("https://www.example.com/page#frag"),
+  );
+  // Unparseable -> ""
+  assert.equal(normalizePublicUrl("not a url"), "");
+  assert.equal(normalizePublicUrl(""), "");
+});
+
+test("sourceIdentity returns stable identity for company_record and public_web, or empty for missing", () => {
+  assert.equal(
+    sourceIdentity({ sourceClass: "company_record", recordRef: "company/profile" }),
+    "record:company/profile",
+  );
+  assert.equal(
+    sourceIdentity({ sourceClass: "company_record", recordRef: "  company/profile  " }),
+    "record:company/profile",
+  );
+  assert.equal(
+    sourceIdentity({ sourceClass: "company_record" }),
+    "",
+  );
+  assert.equal(
+    sourceIdentity({ sourceClass: "public_web", url: "https://example.com/page" }),
+    "url:https://example.com/page",
+  );
+  assert.equal(
+    sourceIdentity({ sourceClass: "public_web", url: "https://www.example.com/page/" }),
+    "url:https://example.com/page",
+  );
+  assert.equal(
+    sourceIdentity({ sourceClass: "public_web" }),
+    "",
+  );
+});
 
 // ── Planner / application boundary ──────────────────────────────────────────
 
@@ -210,7 +310,7 @@ test("a missing required resource does not silently pass as MAKE", () => {
 
 // ── WorkContract ────────────────────────────────────────────────────────────
 
-test("the work contract states an explicit assignment boundary", () => {
+test("the work contract states an explicit assignment boundary and derives requiredSourceClasses + minObservations from sourceProofs", () => {
   const c = contract();
   assert.equal(c.assignment, "Evaluate Acme as a partnership target.");
   assert.equal(c.idempotencyScope, "objective-test:workitem-1");
@@ -222,6 +322,10 @@ test("the work contract states an explicit assignment boundary", () => {
     "read_public_web",
     "record_finding",
   ]);
+  // Derived from sourceProofs
+  assert.deepEqual(c.requiredSourceClasses.sort(), ["company_record", "public_web"]);
+  assert.equal(c.minObservations, 3);
+  assert.deepEqual(c.sourceProofs, defaultSourceProofs);
 });
 
 test("evidence-only internal work completes when required proof exists", () => {
@@ -234,8 +338,9 @@ test("evidence-only internal work completes when required proof exists", () => {
         sourceClass: "company_record",
         label: "Internal criteria",
         recordRef: "partnerships/evaluation-criteria",
+        url: undefined,
       }),
-      evidence({ id: "ev-web1" }),
+      evidence({ id: "ev-web1", url: "https://example.com" }),
       evidence({
         id: "ev-web2",
         label: "Target pricing page",
@@ -257,13 +362,16 @@ test("no-effect internal work cannot complete with missing observations", () => 
         id: "ev-int",
         sourceClass: "company_record",
         recordRef: "company/profile",
+        url: undefined,
       }),
-      evidence({ id: "ev-web1" }),
+      evidence({ id: "ev-web1", url: "https://example.com" }),
     ],
     result: result(),
   });
   assert.equal(onlyTwo.complete, false);
-  assert.ok(onlyTwo.unmet.some((line) => /Only 2 of 3 required observations/.test(line)));
+  assert.ok(
+    onlyTwo.unmet.some((line) => /public_web: found 1 distinct source\(s\), required 2/.test(line)),
+  );
 
   const missingPublic = evaluateCompletion({
     contract: c,
@@ -272,15 +380,16 @@ test("no-effect internal work cannot complete with missing observations", () => 
         id: "ev-int",
         sourceClass: "company_record",
         recordRef: "company/profile",
+        url: undefined,
       }),
-      evidence({ id: "ev-int2", sourceClass: "company_record" }),
-      evidence({ id: "ev-int3", sourceClass: "company_record" }),
+      evidence({ id: "ev-int2", sourceClass: "company_record", recordRef: "company/other", url: undefined }),
+      evidence({ id: "ev-int3", sourceClass: "company_record", recordRef: "company/third", url: undefined }),
     ],
     result: result(),
   });
   assert.equal(missingPublic.complete, false);
   assert.ok(
-    missingPublic.unmet.some((line) => /No observation recorded from public_web/.test(line)),
+    missingPublic.unmet.some((line) => /public_web: found 0 distinct source\(s\), required 2/.test(line)),
   );
 });
 
@@ -291,9 +400,10 @@ test("incomplete work cannot claim completion via a partial result", () => {
       id: "ev-int",
       sourceClass: "company_record",
       recordRef: "company/profile",
+      url: undefined,
     }),
-    evidence({ id: "ev-web1" }),
-    evidence({ id: "ev-web2" }),
+    evidence({ id: "ev-web1", url: "https://example.com" }),
+    evidence({ id: "ev-web2", url: "https://example.com/pricing" }),
   ];
   const noResult = evaluateCompletion({
     contract: c,
@@ -326,8 +436,7 @@ test("unauthorized external effects are rejected by the contract boundary", () =
           ...createWorkerSpec(["public_information_research"]),
           allowedToolPermissions: ["authorize_external_spend"],
         },
-        requiredSourceClasses: ["public_web"],
-        minObservations: 1,
+        sourceProofs: [{ sourceClass: "public_web", minDistinctSources: 1 }],
       }),
     /cannot bind external spend authority/,
   );
@@ -339,18 +448,9 @@ test("unauthorized external effects are rejected by the contract boundary", () =
     () =>
       createWorkContract({
         ...contractInput(),
-        requiredSourceClasses: [],
+        sourceProofs: [],
       }),
-    /required source class/,
-  );
-  assert.throws(
-    () =>
-      createWorkContract({
-        ...contractInput(),
-        minObservations: 1,
-        requiredSourceClasses: ["public_web", "company_record"] as SourceClass[],
-      }),
-    /must cover every required source class/,
+    /at least one source proof/,
   );
 });
 
@@ -359,10 +459,186 @@ function contractInput() {
     assignment: "Evaluate Acme.",
     idempotencyScope: "obj:wi",
     worker: createWorkerSpec(["public_information_research"]),
-    requiredSourceClasses: ["public_web"] as SourceClass[],
-    minObservations: 2,
+    sourceProofs: [{ sourceClass: "public_web", minDistinctSources: 2 }] as SourceProof[],
   };
 }
+
+// ── Blocker A: model_note evidence NEVER counts toward proof ────────────────
+
+test("Blocker A: a model_note row (even with valid sourceClass + url) does NOT complete a run", () => {
+  const c = contract();
+  // All evidence is model_note — looks complete by old rules, but must fail
+  const allNotes = evaluateCompletion({
+    contract: c,
+    evidence: [
+      evidence({
+        id: "note-1",
+        sourceClass: "company_record",
+        recordRef: "company/profile",
+        url: undefined,
+        origin: "model_note",
+        sourceId: "note:ev-1",
+      }),
+      evidence({
+        id: "note-2",
+        sourceClass: "public_web",
+        url: "https://example.com",
+        origin: "model_note",
+        sourceId: "note:ev-2",
+      }),
+      evidence({
+        id: "note-3",
+        sourceClass: "public_web",
+        url: "https://example.com/pricing",
+        origin: "model_note",
+        sourceId: "note:ev-3",
+      }),
+    ],
+    result: result(),
+  });
+  assert.equal(allNotes.complete, false);
+  assert.ok(
+    allNotes.unmet.some((line) => /company_record: found 0 distinct source\(s\), required 1/.test(line)),
+  );
+  assert.ok(
+    allNotes.unmet.some((line) => /public_web: found 0 distinct source\(s\), required 2/.test(line)),
+  );
+});
+
+test("Blocker A: a note referencing another row still cannot mint proof", () => {
+  const c = contract();
+  // One real observation + notes that reference it — notes still don't count
+  const mixed = evaluateCompletion({
+    contract: c,
+    evidence: [
+      evidence({
+        id: "ev-real",
+        sourceClass: "company_record",
+        recordRef: "company/profile",
+        url: undefined,
+        origin: "application_observation",
+      }),
+      // Note referencing the real row — must NOT count
+      evidence({
+        id: "note-ref",
+        sourceClass: "company_record",
+        recordRef: "company/profile",
+        url: undefined,
+        origin: "model_note",
+        sourceId: "note:ev-real",
+      }),
+      // Another note pretending to be public_web
+      evidence({
+        id: "note-web",
+        sourceClass: "public_web",
+        url: "https://example.com",
+        origin: "model_note",
+        sourceId: "note:ev-web",
+      }),
+    ],
+    result: result(),
+  });
+  assert.equal(mixed.complete, false);
+  // company_record has 1 real observation (passes), but public_web has 0 real
+  assert.ok(
+    mixed.unmet.some((line) => /public_web: found 0 distinct source\(s\), required 2/.test(line)),
+  );
+});
+
+// ── Blocker B: two distinct public sources are enforced ─────────────────────
+
+test("Blocker B: the SAME public URL twice does NOT satisfy the two-distinct-public-source requirement", () => {
+  const c = contract();
+  const sameUrlTwice = evaluateCompletion({
+    contract: c,
+    evidence: [
+      evidence({
+        id: "ev-int",
+        sourceClass: "company_record",
+        recordRef: "company/profile",
+        url: undefined,
+      }),
+      evidence({ id: "ev-web1", url: "https://example.com/page" }),
+      evidence({ id: "ev-web2", url: "https://example.com/page" }),
+    ],
+    result: result(),
+  });
+  assert.equal(sameUrlTwice.complete, false);
+  assert.ok(
+    sameUrlTwice.unmet.some((line) => /public_web: found 1 distinct source\(s\), required 2/.test(line)),
+  );
+});
+
+test("Blocker B: trivial URL variants (trailing slash, http vs https scheme, fragment, www) normalize to one identity and do NOT satisfy 2 distinct", () => {
+  const c = contract();
+  const variants = evaluateCompletion({
+    contract: c,
+    evidence: [
+      evidence({
+        id: "ev-int",
+        sourceClass: "company_record",
+        recordRef: "company/profile",
+        url: undefined,
+      }),
+      // These all normalize to the same URL identity
+      evidence({ id: "ev-web1", url: "https://example.com/page" }),
+      evidence({ id: "ev-web2", url: "https://example.com/page/" }),
+      evidence({ id: "ev-web3", url: "https://www.example.com/page#section" }),
+    ],
+    result: result(),
+  });
+  assert.equal(variants.complete, false);
+  assert.ok(
+    variants.unmet.some((line) => /public_web: found 1 distinct source\(s\), required 2/.test(line)),
+  );
+});
+
+test("Blocker B: 2 company records + 1 distinct public URL FAILS (needs 2 distinct public)", () => {
+  const c = contract();
+  const check = evaluateCompletion({
+    contract: c,
+    evidence: [
+      evidence({
+        id: "ev-int1",
+        sourceClass: "company_record",
+        recordRef: "company/profile",
+        url: undefined,
+      }),
+      evidence({
+        id: "ev-int2",
+        sourceClass: "company_record",
+        recordRef: "partnerships/evaluation-criteria",
+        url: undefined,
+      }),
+      evidence({ id: "ev-web1", url: "https://example.com" }),
+    ],
+    result: result(),
+  });
+  assert.equal(check.complete, false);
+  assert.ok(
+    check.unmet.some((line) => /public_web: found 1 distinct source\(s\), required 2/.test(line)),
+  );
+});
+
+test("Blocker B: valid mix — 1 company record + 2 distinct public URLs + full structured result PASSES", () => {
+  const c = contract();
+  const check = evaluateCompletion({
+    contract: c,
+    evidence: [
+      evidence({
+        id: "ev-int",
+        sourceClass: "company_record",
+        recordRef: "company/profile",
+        url: undefined,
+      }),
+      evidence({ id: "ev-web1", url: "https://example.com" }),
+      evidence({ id: "ev-web2", url: "https://other-site.com/about" }),
+    ],
+    result: result(),
+  });
+  assert.equal(check.complete, true);
+  assert.equal(check.unmet.length, 0);
+});
 
 // ── Worker resolution ───────────────────────────────────────────────────────
 
