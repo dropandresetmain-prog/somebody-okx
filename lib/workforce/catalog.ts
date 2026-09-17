@@ -90,6 +90,16 @@ export const TOOL_PERMISSIONS: readonly ToolPermissionDefinition[] = [
       "Commit company funds to an external provider. Reserved for a future BUY path; no capability grants it.",
     externalAuthority: true,
   },
+  {
+    id: "request_resource",
+    description: "Propose a missing resource the application should acquire.",
+    externalAuthority: false,
+  },
+  {
+    id: "update_company_artifact",
+    description: "Apply a bounded versioned change to a controlled company artifact.",
+    externalAuthority: false,
+  },
 ] as const;
 // A capability's allowedToolPermissions is the single source of truth for grants.
 export const CONTROLLED_CAPABILITIES: readonly CapabilityDefinition[] = [
@@ -124,6 +134,27 @@ export const CONTROLLED_CAPABILITIES: readonly CapabilityDefinition[] = [
     allowedToolPermissions: ["draft_document", "record_finding"],
     responsibility:
       "Draft the requested artifact from supplied material only, and leave it for review rather than sending or publishing it.",
+  },
+  {
+    key: "growth_launch_operations",
+    name: "Growth launch operations",
+    description: "Research and update controlled company artifacts for growth objectives.",
+    requiredResources: [
+      "llm_reasoning",
+      "public_web",
+      "company_records",
+      "company_tools",
+      "ordinary_compute",
+    ],
+    allowedToolPermissions: [
+      "read_company_record",
+      "read_public_web",
+      "record_finding",
+      "update_company_artifact",
+      "request_resource",
+    ],
+    responsibility:
+      "Research public sources and internal records as needed, update the controlled company artifact with a versioned change, and request any missing resources the application must acquire. Do not invoke providers, authorize spend, or make arbitrary external calls.",
   },
 ] as const;
 const resourceByClass = new Map(

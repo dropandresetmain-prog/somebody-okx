@@ -76,6 +76,8 @@ export function toolNamesForContract(
       case "read_company_record":
       case "read_public_web":
       case "record_finding":
+      case "request_resource":
+      case "update_company_artifact":
       case "submit_result":
       case "request_completion":
         materialized.push(permission);
@@ -262,6 +264,40 @@ export async function runWorker(
               observedAt: Date.now(),
             } satisfies ModelNoteInput,
             ...(basedOnEvidenceId ? { basedOnEvidenceId } : {}),
+          }),
+      });
+    if (permission === "request_resource")
+      return tool({
+        name: "request_resource",
+        description:
+          "Propose a missing resource the application should acquire. The application validates and persists the proposal; the worker cannot mark a resource fulfilled or choose a provider.",
+        parameters: z.object({
+          resourceClass: z.string().min(1).max(120),
+          purpose: z.string().min(1).max(500),
+          reasonOwnedInsufficient: z.string().min(1).max(500),
+        }),
+        execute: ({ resourceClass, purpose, reasonOwnedInsufficient }) =>
+          act({
+            type: "request_resource",
+            resourceClass,
+            purpose,
+            reasonOwnedInsufficient,
+          }),
+      });
+    if (permission === "update_company_artifact")
+      return tool({
+        name: "update_company_artifact",
+        description:
+          "Apply a bounded versioned change to a controlled company artifact. The application persists the new version and provenance.",
+        parameters: z.object({
+          content: z.string().min(1).max(8000),
+          changeNote: z.string().min(1).max(500),
+        }),
+        execute: ({ content, changeNote }) =>
+          act({
+            type: "update_company_artifact",
+            content,
+            changeNote,
           }),
       });
     // The workflow verbs are inherent to the bounded assignment, not
