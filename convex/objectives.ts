@@ -1,16 +1,31 @@
 // Fresh current-product Convex runtime for the M1 Objective spine.
-// Persists the whole objective aggregate (plan, work item, worker resolution,
-// WorkContract, run state, model selection) plus evidence and activity in
-// their own tables. Legacy procurement/mission modules are not referenced.
+// Persists the objective aggregate (plan, work item, worker resolution,
+// WorkContract, run state, model selection) plus evidence and activity in their
+// own tables. Legacy procurement/mission modules are not referenced.
+//
+// R1 fixes reflected here:
+//  - planning is server-side; the client sends only an objective key;
+//  - the durable planning mutation re-runs the pure deterministic validation
+//    itself, so it never trusts an action's or the client's word;
+//  - evidence carries an application-set origin and a re-derived stable source
+//    identity, and proof counts DISTINCT identities per source class;
+//  - run writes and finalization are fenced by run identity, status AND lease;
+//  - the read model exposes application acceptance so the UI cannot present a
+//    merely-submitted result as an accepted one;
+//  - model execution lives in the "use node" objectiveRunner module, so no
+//    query or mutation is defined in a Node-only file.
 
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
-import { internalAction, internalMutation, internalQuery, mutation, query } from "./_generated/server";
-import type { ActionCtx, MutationCtx, QueryCtx } from "./_generated/server";
 import {
-  activityEvent,
-  objectiveRecord,
-} from "./objectiveValidators";
+  action,
+  internalMutation,
+  internalQuery,
+  mutation,
+  query,
+} from "./_generated/server";
+import type { MutationCtx, QueryCtx } from "./_generated/server";
+import { activityEvent, objectiveRecord } from "./objectiveValidators";
 import {
   vEvidenceData,
   vFindingInput,
@@ -24,25 +39,29 @@ import {
   evaluateSourcing,
   resolveWorker,
   validatePlannerProposal,
-  CURRENT_RESOURCE_INVENTORY,
-  RESEARCH_ROLE,
-  companyRecord,
 } from "../lib/workforce";
+import { CURRENT_RESOURCE_INVENTORY, RESEARCH_ROLE } from "../lib/objective/policy";
+import { sourceIdentity } from "../lib/objective/contract";
+import { toolPermissionsForCapabilities } from "../lib/workforce/permissions";
+import {
+  M1_ROLE_REQUIREMENTS,
+  assertRoleRequirementsSatisfied,
+} from "../lib/objective/planner";
+import {
+  LEASE_MS,
+  decideFinalization,
+  fenceRunWrite,
+} from "../lib/objective/runGuards";
+import { providerConfiguration } from "../lib/worker/modelSelection";
 import type {
   ActivityEvent,
   ActivityResult,
   EvidenceRecord,
-  FindingInput,
   ObjectiveRecord,
-  SourceClass,
-  WorkContract,
+  PlannerProposal,
+  ValidatedPlan,
   WorkerSpec,
 } from "../lib/workforce";
-import { runWorker } from "../lib/worker/runtime";
-import { providerConfiguration } from "../lib/worker/modelSelection";
-import { fetchPublicHtml, htmlToExtractableText } from "../lib/web/fetchPublicHtml";
-
-const LEASE_MS = 300_000; // inherited mission lease window
 
 type ObjectiveRow = { _id: Id<"objectives">; key: string; data: ObjectiveRecord };
 
@@ -106,19 +125,47 @@ async function listEvents(
   return rows.map((row) => row.data).sort((a, b) => a.at - b.at);
 }
 
-// ── Public entry: submit an objective ────────────────────────────────────────
+// Proof is computed from the ACTIVE run's durable evidence, so progress left
+// behind by a superseded run cannot be credited to a newer one.
+function evidenceForRun(evidence: EvidenceRecord[], runId: string) {
+  return evidence.filter((item) => item.runId === runId);
+}
 
-// The M1 planner proposal: bounded capability/resource needs for this
-// objective. The UI/planner produces this; validatePlannerProposal decides.
-export const planObjectivePublic = mutation({
-  args: {
-    objectiveKey: v.string(),
-    proposal: vPlannerProposal,
-  },
-  returns: v.object({ decision: v.string() }),
-  handler: async (ctx, args): Promise<{ decision: string }> =>
-    ctx.runMutation(internal.objectives.planObjective, args),
-});
+// The single write gate for anything a worker does. Uses the same pure fence
+// the lifecycle tests prove, so deployment behavior and test behavior agree.
+function assertActiveRun(record: ObjectiveRecord, runId: string, now: number) {
+  const fence = fenceRunWrite({ run: record.run, runId, now });
+  if (!fence.ok) throw new Error(fence.reason);
+}
+
+// Deterministic planning validation, authoritative because it runs inside the
+// mutation that writes the plan. The model proposal is only ever an input.
+function validatePlanningInput(proposal: PlannerProposal): {
+  validated: ValidatedPlan;
+  grantedPermissions: string[];
+} {
+  const validated = validatePlannerProposal(proposal);
+  const grantedPermissions: string[] = toolPermissionsForCapabilities(
+    validated.capabilityKeys,
+  );
+  // Belt and braces: the catalog grants no external authority, and a plan that
+  // somehow carried one must never reach a run.
+  for (const permission of grantedPermissions) {
+    if (permission === "authorize_external_spend")
+      throw new Error(`Plan cannot carry external spend authority`);
+  }
+  const roleCheck = assertRoleRequirementsSatisfied({
+    grantedPermissions,
+    role: M1_ROLE_REQUIREMENTS.RESEARCH_ROLE,
+  });
+  if (!roleCheck.ok)
+    throw new Error(
+      `RESEARCH_ROLE cannot be satisfied by this plan: missing ${roleCheck.missing.join(", ")}`,
+    );
+  return { validated, grantedPermissions };
+}
+
+// ── Public entry: submit an objective ────────────────────────────────────────
 
 export const submitObjective = mutation({
   args: { request: vObjectiveRequest },
@@ -130,7 +177,6 @@ export const submitObjective = mutation({
     if (request.length > 2000)
       throw new Error("Objective is not bounded (max 2000 characters)");
     const now = Date.now();
-    // Bounded, collision-free key from the request content + time.
     const key = `obj_${now}_${Math.random().toString(36).slice(2, 8)}`;
     const record: ObjectiveRecord = {
       key,
@@ -150,7 +196,36 @@ export const submitObjective = mutation({
   },
 });
 
-// ── Planning: validate proposal, evaluate sourcing, bind worker + contract ──
+// ── Server-side planning (R1 Blocker D) ──────────────────────────────────────
+
+// The client sends ONLY the objective key. The proposal comes from one bounded
+// server-side model call and is non-authoritative until the mutation below
+// re-validates it. The client can no longer choose capabilities, resources or
+// tool requirements.
+export const planObjectiveFromModel = action({
+  args: { objectiveKey: v.string() },
+  returns: v.object({ decision: v.string() }),
+  handler: async (ctx, args): Promise<{ decision: string }> => {
+    const row = await ctx.runQuery(internal.objectives.getObjectiveInternal, {
+      objectiveKey: args.objectiveKey,
+    });
+    const record = (row as ObjectiveRow).data;
+    if (record.state !== "received")
+      throw new Error(
+        `Objective ${args.objectiveKey} is ${record.state}, expected received`,
+      );
+    const proposal = await ctx.runAction(
+      internal.objectiveRunner.proposePlan,
+      { request: record.request },
+    );
+    return ctx.runMutation(internal.objectives.planObjective, {
+      objectiveKey: args.objectiveKey,
+      proposal: proposal as PlannerProposal,
+    });
+  },
+});
+
+// ── Planning: validate, source, bind worker + contract ───────────────────────
 
 export const planObjective = internalMutation({
   args: {
@@ -165,11 +240,13 @@ export const planObjective = internalMutation({
       throw new Error(
         `Objective ${args.objectiveKey} is ${record.state}, expected received`,
       );
-
     const now = Date.now();
 
-    // 1. Fail-closed planner validation (model proposes, application disposes).
-    const validated = validatePlannerProposal({
+    // 1. Fail-closed capability/resource validation + role satisfiability.
+    //    An unknown capability, unknown resource class, smuggled permission,
+    //    or a capability set that cannot obtain both required evidence classes
+    //    throws here — before any work item, contract or run exists.
+    const { validated } = validatePlanningInput({
       capabilityKeys: args.proposal.capabilityKeys,
       responsibility: args.proposal.responsibility,
       requiredResourceClasses: args.proposal.requiredResourceClasses,
@@ -202,7 +279,7 @@ export const planObjective = internalMutation({
         plan,
         updatedAt: now,
       };
-      await ctx.db.patch(row._id, { data: updated as never });
+      await ctx.db.patch(row._id, { data: updated });
       await appendEvent(
         ctx.db,
         args.objectiveKey,
@@ -219,14 +296,15 @@ export const planObjective = internalMutation({
       inventory: [], // fresh deployment: no persistent inventory yet → create
     });
 
-    // 4. Bind the WorkContract from the validated plan + role policy.
+    // 4. Bind the WorkContract from the validated plan + role policy. The
+    //    contract carries DISTINCT-source proof requirements, so proof is a
+    //    property of the assignment rather than a count of persisted rows.
     const assignment = `Evaluate whether the target described in "${record.request}" is a suitable partnership/business target using the company's internal criteria and current public information.`;
     const contract = createWorkContract({
       assignment,
       idempotencyScope: `${args.objectiveKey}:wi-1`,
       worker: resolution.worker as WorkerSpec,
-      requiredSourceClasses: [...RESEARCH_ROLE.requiredSourceClasses] as SourceClass[],
-      minObservations: RESEARCH_ROLE.minObservations,
+      sourceProofs: RESEARCH_ROLE.sourceProofs.map((proof) => ({ ...proof })),
     });
 
     const workItemId = `${args.objectiveKey}:wi-1`;
@@ -250,7 +328,7 @@ export const planObjective = internalMutation({
       run: null,
       updatedAt: now,
     };
-    await ctx.db.patch(row._id, { data: updated as never });
+    await ctx.db.patch(row._id, { data: updated });
     await appendEvent(
       ctx.db,
       args.objectiveKey,
@@ -266,7 +344,11 @@ export const planObjective = internalMutation({
 
 export const startRun = internalMutation({
   args: { objectiveKey: v.string() },
-  returns: v.object({ runId: v.string(), model: v.string(), modelSelectionReason: v.string() }),
+  returns: v.object({
+    runId: v.string(),
+    model: v.string(),
+    modelSelectionReason: v.string(),
+  }),
   handler: async (ctx, args) => {
     const row = await loadObjective(ctx.db, args.objectiveKey);
     const record = row.data;
@@ -284,7 +366,8 @@ export const startRun = internalMutation({
         `Run ${record.run.id} still holds the lease until ${new Date(record.run.leaseUntil).toISOString()}`,
       );
 
-    // Deliberate model selection is persisted with the run.
+    // Deliberate model selection is persisted with the run, and fails closed
+    // unless live AI is explicitly enabled with a selected tool-capable model.
     const selection = providerConfiguration(process.env);
     const now = Date.now();
     const runId = `run_${now}_${Math.random().toString(36).slice(2, 8)}`;
@@ -311,7 +394,7 @@ export const startRun = internalMutation({
       run: workItem.runs[workItem.runs.length - 1],
       updatedAt: now,
     };
-    await ctx.db.patch(row._id, { data: updated as never });
+    await ctx.db.patch(row._id, { data: updated });
     await appendEvent(
       ctx.db,
       args.objectiveKey,
@@ -319,9 +402,9 @@ export const startRun = internalMutation({
       `Run started: model ${selection.model} (${selection.modelSelectionReason})`,
       now,
     );
-    // Schedule the live worker execution plus the lease-expiry fence, exactly
-    // as the inherited mission runtime did for its procurement runs.
-    await ctx.scheduler.runAfter(0, internal.objectives.executeRun, {
+    // Execution happens in the Node runtime with an abort budget strictly
+    // inside the lease; the expiry fence is the scheduled backstop.
+    await ctx.scheduler.runAfter(0, internal.objectiveRunner.executeWorker, {
       objectiveKey: args.objectiveKey,
       runId,
     });
@@ -329,7 +412,11 @@ export const startRun = internalMutation({
       objectiveKey: args.objectiveKey,
       runId,
     });
-    return { runId, model: selection.model, modelSelectionReason: selection.modelSelectionReason };
+    return {
+      runId,
+      model: selection.model,
+      modelSelectionReason: selection.modelSelectionReason,
+    };
   },
 });
 
@@ -379,52 +466,99 @@ export const expireRun = internalMutation({
       run,
       updatedAt: now,
     };
-    await ctx.db.patch(row._id, { data: updated as never });
-    await appendEvent(
-      ctx.db,
-      args.objectiveKey,
-      "system",
-      run.summary,
-      now,
-    );
+    await ctx.db.patch(row._id, { data: updated });
+    await appendEvent(ctx.db, args.objectiveKey, "system", run.summary, now);
     return null;
   },
 });
 
-// Internal: record a structured finding as evidence (tool-mediated).
+// ── Durable worker writes (all fenced) ───────────────────────────────────────
+
+// Persist one observation or note. `origin` and `sourceId` are NOT taken on
+// trust: source identity is re-derived here from the source fields, and an
+// asserted application observation whose identity does not match is rejected.
+// This is what makes fabricated proof impossible at the persistence boundary.
 export const recordFinding = internalMutation({
   args: {
     objectiveKey: v.string(),
     runId: v.string(),
     finding: vFindingInput,
+    // Sibling argument rather than part of the finding: it is a reference the
+    // application validates, not content the model asserts.
+    basedOnEvidenceId: v.optional(v.string()),
   },
   returns: v.object({ evidenceId: v.string() }),
   handler: async (ctx, args) => {
+    const now = Date.now();
     const row = await loadObjective(ctx.db, args.objectiveKey);
+    assertActiveRun(row.data, args.runId, now);
     const record = row.data;
-    assertActiveRun(record, args.runId);
-    const evidenceId = `ev_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+    const derived = sourceIdentity({
+      sourceClass: args.finding.sourceClass,
+      ...(args.finding.url ? { url: args.finding.url } : {}),
+      ...(args.finding.recordRef ? { recordRef: args.finding.recordRef } : {}),
+    });
+    const runEvidence = evidenceForRun(
+      await listEvidence(ctx.db, args.objectiveKey),
+      args.runId,
+    );
+    if (args.finding.origin === "application_observation") {
+      if (!derived)
+        throw new Error(
+          "An application observation must carry a resolvable source identity (recordRef or url)",
+        );
+      if (derived !== args.finding.sourceId)
+        throw new Error(
+          `Source identity mismatch: asserted ${args.finding.sourceId}, derived ${derived}`,
+        );
+    } else {
+      if (!args.finding.sourceId.startsWith("note:"))
+        // A note may carry any label, but its identity must stay in the note
+        // namespace so it can never collide with a real source identity.
+        throw new Error(
+          "A model note must use a note-namespaced source identity",
+        );
+      // A note may annotate a real observation, but only one this run actually
+      // fetched. Re-deriving nothing here: the citation must already exist.
+      if (args.basedOnEvidenceId) {
+        const cited = runEvidence.find(
+          (item) =>
+            item.id === args.basedOnEvidenceId &&
+            item.origin === "application_observation",
+        );
+        if (!cited)
+          throw new Error(
+            `record_finding: ${args.basedOnEvidenceId} is not an application observation in this run`,
+          );
+      }
+    }
+
+    const evidenceId = `ev_${now}_${Math.random().toString(36).slice(2, 8)}`;
     const evidence: EvidenceRecord = {
       ...args.finding,
       id: evidenceId,
-      recordedBy: record.run!.model
-        ? record.workItems[0].workerKey
-        : record.workItems[0].workerKey,
+      recordedBy: record.workItems[0].workerKey,
       runId: args.runId,
+      ...(args.basedOnEvidenceId
+        ? { basedOnEvidenceId: args.basedOnEvidenceId }
+        : {}),
     };
     await recordEvidenceRow(ctx.db, args.objectiveKey, evidence);
     await appendEvent(
       ctx.db,
       args.objectiveKey,
       "evidence",
-      `Finding recorded from ${args.finding.sourceClass}: ${args.finding.label}`,
-      Date.now(),
+      evidence.origin === "application_observation"
+        ? `Observation recorded from ${evidence.sourceClass}: ${evidence.label}`
+        : `Note recorded (analysis, not proof): ${evidence.label}`,
+      now,
     );
     return { evidenceId };
   },
 });
 
-// Internal: store the structured result (tool-mediated).
+// Store the structured result. Submitting it is NOT acceptance.
 export const submitResult = internalMutation({
   args: {
     objectiveKey: v.string(),
@@ -439,44 +573,46 @@ export const submitResult = internalMutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
+    const now = Date.now();
     const row = await loadObjective(ctx.db, args.objectiveKey);
-    assertActiveRun(row.data, args.runId);
-    const result: ActivityResult = { ...args.result, completedAt: Date.now() };
-    const data: ObjectiveRecord = {
-      ...row.data,
-      result,
-      updatedAt: Date.now(),
-    };
-    await ctx.db.patch(row._id, { data: data as never });
+    assertActiveRun(row.data, args.runId, now);
+    const result: ActivityResult = { ...args.result, completedAt: now };
+    const data: ObjectiveRecord = { ...row.data, result, updatedAt: now };
+    await ctx.db.patch(row._id, { data });
     await appendEvent(
       ctx.db,
       args.objectiveKey,
       "result",
-      "Structured result submitted.",
-      Date.now(),
+      "Structured result submitted (awaiting application proof check).",
+      now,
     );
     return null;
   },
 });
 
-function assertActiveRun(record: ObjectiveRecord, runId: string) {
-  if (!record.run || record.run.id !== runId || record.run.status !== "running")
-    throw new Error(`Run ${runId} is not the active run for this objective`);
-}
-
-// Internal read port for the worker: observable state + required sources.
+// Internal read port for the worker: observable state plus the durable observed
+// text, so the worker's result can be based on what it actually read. Bounding
+// for the model's context window happens in the runtime, not here.
 export const readWorkerObservation = internalQuery({
-  args: { objectiveKey: v.string() },
+  args: { objectiveKey: v.string(), runId: v.string() },
   returns: v.object({
     assignment: v.string(),
     responsibility: v.string(),
     requiredSourceClasses: v.array(v.string()),
     minObservations: v.number(),
+    sourceProofs: v.array(
+      v.object({
+        sourceClass: v.string(),
+        minDistinctSources: v.number(),
+      }),
+    ),
     recordedFindings: v.array(
       v.object({
         id: v.string(),
         sourceClass: v.string(),
         label: v.string(),
+        origin: v.string(),
+        text: v.string(),
         url: v.optional(v.string()),
         recordRef: v.optional(v.string()),
       }),
@@ -487,7 +623,10 @@ export const readWorkerObservation = internalQuery({
     const row = await loadObjective(ctx.db, args.objectiveKey);
     const record = row.data;
     const workItem = record.workItems[0];
-    const evidence = await listEvidence(ctx.db, args.objectiveKey);
+    const evidence = evidenceForRun(
+      await listEvidence(ctx.db, args.objectiveKey),
+      args.runId,
+    );
     const check = evaluateCompletion({
       contract: workItem.contract,
       evidence,
@@ -498,10 +637,16 @@ export const readWorkerObservation = internalQuery({
       responsibility: workItem.contract.assignment,
       requiredSourceClasses: [...workItem.contract.requiredSourceClasses],
       minObservations: workItem.contract.minObservations,
+      sourceProofs: workItem.contract.sourceProofs.map((proof) => ({
+        sourceClass: proof.sourceClass,
+        minDistinctSources: proof.minDistinctSources,
+      })),
       recordedFindings: evidence.map((item) => ({
         id: item.id,
         sourceClass: item.sourceClass,
         label: item.label,
+        origin: item.origin,
+        text: item.text,
         ...(item.url ? { url: item.url } : {}),
         ...(item.recordRef ? { recordRef: item.recordRef } : {}),
       })),
@@ -512,9 +657,10 @@ export const readWorkerObservation = internalQuery({
 
 // ── Application-owned completion ─────────────────────────────────────────────
 
-// Called after the runner returns (or on failure): the application re-checks
-// the proof from persisted evidence and decides completion. The model's claim
-// is never sufficient.
+// R1 Blocker E: only the live, lease-holding run may finalize. A replaced,
+// expired or already-finalized run is a deterministic no-op reporting the
+// durable state it found, so a late writer can neither turn a partial failure
+// into success nor finalize twice.
 export const finishRun = internalMutation({
   args: {
     objectiveKey: v.string(),
@@ -527,11 +673,31 @@ export const finishRun = internalMutation({
     unmet: v.array(v.string()),
   }),
   handler: async (ctx, args) => {
+    const now = Date.now();
     const row = await loadObjective(ctx.db, args.objectiveKey);
     const record = row.data;
-    if (!record.run || record.run.id !== args.runId)
-      throw new Error(`Run ${args.runId} is not the active run`);
-    const now = Date.now();
+
+    const decision = decideFinalization({
+      run: record.run,
+      runId: args.runId,
+      state: record.state,
+      now,
+    });
+    if (decision.kind === "no-op") {
+      const all = await listEvidence(ctx.db, args.objectiveKey);
+      const unmet =
+        record.state === "completed"
+          ? []
+          : record.workItems[0] && record.result
+            ? evaluateCompletion({
+                contract: record.workItems[0].contract,
+                evidence: evidenceForRun(all, args.runId),
+                result: record.result,
+              }).unmet
+            : ["Run was superseded before it could complete"];
+      return { completed: decision.completed, unmet };
+    }
+
     const workItem = { ...record.workItems[0] };
     const runs = [...workItem.runs];
     const runIndex = runs.findIndex((candidate) => candidate.id === args.runId);
@@ -551,7 +717,7 @@ export const finishRun = internalMutation({
         run,
         updatedAt: now,
       };
-      await ctx.db.patch(row._id, { data: updated as never });
+      await ctx.db.patch(row._id, { data: updated });
       await appendEvent(
         ctx.db,
         args.objectiveKey,
@@ -559,11 +725,14 @@ export const finishRun = internalMutation({
         `Run failed: ${args.failureReason ?? "unknown"}`,
         now,
       );
-      return { completed: false, unmet: [] };
+      return { completed: false, unmet: [run.summary] };
     }
 
-    // Application-owned completion from persisted proof.
-    const evidence = await listEvidence(ctx.db, args.objectiveKey);
+    // Application-owned completion, from this run's persisted proof only.
+    const evidence = evidenceForRun(
+      await listEvidence(ctx.db, args.objectiveKey),
+      args.runId,
+    );
     const check = evaluateCompletion({
       contract: workItem.contract,
       evidence,
@@ -586,7 +755,7 @@ export const finishRun = internalMutation({
       run,
       updatedAt: now,
     };
-    await ctx.db.patch(row._id, { data: updated as never });
+    await ctx.db.patch(row._id, { data: updated });
     await appendEvent(
       ctx.db,
       args.objectiveKey,
@@ -600,133 +769,6 @@ export const finishRun = internalMutation({
   },
 });
 
-// ── Live worker execution (scheduled action) ────────────────────────────────
-
-// The port the runtime talks through; every command lands in Convex as a
-// mutation, so all observations/results are application-persisted truth.
-function makeConvexPort(ctx: ActionCtx, objectiveKey: string, runId: string) {
-  return {
-    async read() {
-      return ctx.runQuery(internal.objectives.readWorkerObservation, {
-        objectiveKey,
-      });
-    },
-    async act(command: {
-      type: string;
-      finding?: FindingInput;
-      source?: string;
-      label?: string;
-      url?: string;
-      recordRef?: string;
-      result?: unknown;
-    }) {
-      switch (command.type) {
-        case "record_observation": {
-          // Application adapter resolves the observation: company record or
-          // bounded public fetch. Untrusted public content is truncated.
-          let text: string;
-          let label = command.label ?? "Observation";
-          if (command.source === "company_record") {
-            const record = companyRecord(command.recordRef ?? "");
-            if (!record)
-              throw new Error(`Unknown company record: ${command.recordRef}`);
-            text = record.text;
-            label = record.label;
-          } else {
-            const page = await fetchPublicHtml(command.url ?? "");
-            text = htmlToExtractableText(page.html).slice(0, 4000);
-          }
-          const finding: FindingInput = {
-            sourceClass: (command.source === "company_record"
-              ? "company_record"
-              : "public_web") as SourceClass,
-            label,
-            text,
-            ...(command.url ? { url: command.url } : {}),
-            ...(command.recordRef ? { recordRef: command.recordRef } : {}),
-            observedAt: Date.now(),
-          };
-          await ctx.runMutation(internal.objectives.recordFinding, {
-            objectiveKey,
-            runId,
-            finding,
-          });
-          return `Observation recorded: ${label}`;
-        }
-        case "record_finding": {
-          // Model-recorded finding: bounded text, persisted as-is.
-          const finding = command.finding;
-          if (!finding) throw new Error("record_finding requires a finding");
-          await ctx.runMutation(internal.objectives.recordFinding, {
-            objectiveKey,
-            runId,
-            finding,
-          });
-          return `Finding recorded: ${finding.label}`;
-        }
-        case "submit_result": {
-          await ctx.runMutation(internal.objectives.submitResult, {
-            objectiveKey,
-            runId,
-            result: command.result as {
-              summary: string;
-              fit: string;
-              risks: string[];
-              unknowns: string[];
-              recommendedNextAction: string;
-            },
-          });
-          return "Structured result stored; completion still requires application proof";
-        }
-        case "request_completion": {
-          const observation = await ctx.runQuery(
-            internal.objectives.readWorkerObservation,
-            { objectiveKey },
-          );
-          if (observation.unmetCompletionRequirements.length > 0)
-            throw new Error(
-              `Completion refused: ${observation.unmetCompletionRequirements.join("; ")}`,
-            );
-          return "Application proof requirements met; the run finalizes on return";
-        }
-        default:
-          throw new Error(`Unknown worker command: ${command.type}`);
-        }
-    },
-  };
-}
-
-// Scheduled live execution of the assigned worker. Fails closed without
-// deliberate model selection (AI_MODEL + LIVE_AI_ENABLED + API key).
-export const executeRun = internalAction({
-  args: { objectiveKey: v.string(), runId: v.string() },
-  returns: v.object({
-    completed: v.boolean(),
-    unmet: v.array(v.string()),
-  }),
-  handler: async (ctx, args): Promise<{ completed: boolean; unmet: string[] }> => {
-    const row = await ctx.runQuery(internal.objectives.getObjectiveInternal, {
-      objectiveKey: args.objectiveKey,
-    });
-    const contract: WorkContract = row.data.workItems[0].contract;
-    const port = makeConvexPort(ctx, args.objectiveKey, args.runId);
-
-    let failureReason: string | undefined;
-    try {
-      await runWorker(port, contract, { env: process.env });
-    } catch (error) {
-      // Safe provider-error categorization: operational text only.
-      const message = error instanceof Error ? error.message : "Worker run failed";
-      failureReason = message.slice(0, 500);
-    }
-    return ctx.runMutation(internal.objectives.finishRun, {
-      objectiveKey: args.objectiveKey,
-      runId: args.runId,
-      ...(failureReason ? { failed: true, failureReason } : {}),
-    });
-  },
-});
-
 // Internal read of the raw record for actions.
 export const getObjectiveInternal = internalQuery({
   args: { objectiveKey: v.string() },
@@ -736,30 +778,54 @@ export const getObjectiveInternal = internalQuery({
 
 // ── Public read model (UI) ──────────────────────────────────────────────────
 
+// `completion` is derived from durable proof by application code, never from a
+// model claim, so the UI can state truthfully whether a result was accepted.
 export const getObjective = query({
   args: { objectiveKey: v.string() },
-  returns: v.union(
-    v.object({
-      record: v.any(),
-      evidence: v.array(vEvidenceData),
-      events: v.array(activityEvent),
+  returns: v.object({
+    record: v.union(objectiveRecord, v.null()),
+    evidence: v.array(vEvidenceData),
+    events: v.array(activityEvent),
+    completion: v.object({
+      accepted: v.boolean(),
+      unmet: v.array(v.string()),
     }),
-    v.null(),
-  ),
+  }),
   handler: async (ctx, args) => {
     const row = await ctx.db
       .query("objectives")
       .withIndex("by_key", (q) => q.eq("key", args.objectiveKey))
       .unique();
-    if (!row) return null;
+    if (!row)
+      return {
+        record: null,
+        evidence: [],
+        events: [],
+        completion: { accepted: false, unmet: ["Objective not found"] },
+      };
     const [evidence, events] = await Promise.all([
       listEvidence(ctx.db, args.objectiveKey),
       listEvents(ctx.db, args.objectiveKey),
     ]);
+    const record = (row as ObjectiveRow).data;
+    // Accepted is a durable application decision, not a submission side effect.
+    const accepted = record.state === "completed";
+    const unmet = accepted
+      ? []
+      : record.workItems[0]
+        ? evaluateCompletion({
+            contract: record.workItems[0].contract,
+            evidence: record.run
+              ? evidenceForRun(evidence, record.run.id)
+              : evidence,
+            result: record.result,
+          }).unmet
+        : ["No work item has been planned yet"];
     return {
-      record: row.data,
+      record,
       evidence: evidence.map(({ id, ...data }) => data),
       events,
+      completion: { accepted, unmet },
     };
   },
 });
@@ -777,12 +843,15 @@ export const listObjectives = query({
   handler: async (ctx) => {
     const rows = await ctx.db.query("objectives").collect();
     return rows
-      .map((row) => ({
-        key: row.key,
-        request: row.data.request,
-        state: row.data.state,
-        updatedAt: row.data.updatedAt,
-      }))
+      .map((row) => {
+        const data = (row as { key: string; data: ObjectiveRecord }).data;
+        return {
+          key: row.key,
+          request: data.request,
+          state: data.state,
+          updatedAt: data.updatedAt,
+        };
+      })
       .sort((a, b) => b.updatedAt - a.updatedAt)
       .slice(0, 20);
   },

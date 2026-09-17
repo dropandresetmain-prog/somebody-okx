@@ -42,6 +42,14 @@ export const resultRequirements = v.object({
   recommendedNextAction: v.boolean(),
 });
 
+export const sourceProof = v.object({
+  sourceClass: v.union(
+    v.literal("company_record"),
+    v.literal("public_web"),
+  ),
+  minDistinctSources: v.number(),
+});
+
 export const workContract = v.object({
   assignment: v.string(),
   idempotencyScope: v.string(),
@@ -55,6 +63,9 @@ export const workContract = v.object({
     v.union(v.literal("company_record"), v.literal("public_web")),
   ),
   minObservations: v.number(),
+  // Per-class DISTINCT source requirements. Proof counts distinct source
+  // identities from application observations, never raw persisted rows.
+  sourceProofs: v.array(sourceProof),
   requiredVerifiedEffectKeys: v.array(v.string()),
   // Authority snapshot for gated actions. Always null in M1 MAKE work.
   approvalVersion: v.union(v.number(), v.null()),

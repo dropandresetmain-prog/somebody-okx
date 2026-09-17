@@ -14,9 +14,11 @@ import type {
   FunctionReference,
 } from "convex/server";
 import type * as objectives from "../objectives.js";
+import type * as objectiveRunner from "../objectiveRunner.js";
 
 declare const fullApi: ApiFromModules<{
   objectives: typeof objectives;
+  objectiveRunner: typeof objectiveRunner;
 }>;
 
 export declare const api: FilterApi<

@@ -136,6 +136,10 @@ export type EvidenceRecord = FindingInput & {
   id: string;
   recordedBy: string;
   runId: string;
+  // For a model note: the application observation it annotates. Set only after
+  // the runtime proves that observation exists in the same active run, so a
+  // note can describe real content without ever becoming proof itself.
+  basedOnEvidenceId?: string;
 };
 
 // ── WorkContract ─────────────────────────────────────────────────────────────
