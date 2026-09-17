@@ -13,6 +13,18 @@ Deliver one reliable 2–4 minute end-to-end demo proving:
 
 `dropandresetmain-prog/somebody-okx`
 
+## Canonical execution plan
+
+Read `MASTER_PLAN.md` first.
+
+Key dates:
+
+- canonical demo gate: **18 Sep 2026, 12:00 SGT**;
+- hard feature freeze: **23 Sep 2026, 18:00 SGT**;
+- 24 Sep: debugging/hardening only;
+- 25 Sep: video/submission only;
+- internal submission target: **25 Sep, 22:00 SGT**.
+
 ## Source baselines
 
 - Somebody: `dropandresetmain-prog/somebody-ai@709a169a1a4f71b8dc2d7427438ff514999fb07e`
@@ -22,146 +34,235 @@ Deliver one reliable 2–4 minute end-to-end demo proving:
 
 ## Canonical operating documents
 
-- `BUILD_DELTA.md` — canonical hackathon provenance/evidence ledger. Inherited vs built 17–25 Sep 2026. Update at every milestone.
+- `MASTER_PLAN.md` — locked milestone sequence, product surface, cuts and freeze.
+- `BUILD_DELTA.md` — hackathon provenance/evidence ledger.
+- `PRODUCT_SPEC.md` — locked product scope.
+- `ARCHITECTURE.md` — technical boundaries.
+- `DECISIONS_LOG.md` — decision history.
 - `docs/agents/AGENT_MODEL_SELECTION.md` — default model/harness/effort and subagent routing.
-- `docs/agents/MODEL_ARSENAL.md` — deeper model reference behind that routing.
+- `docs/agents/MODEL_ARSENAL.md` — deeper model reference.
 
-Architecture, integration decisions, wallet/signing/payment work, security-sensitive code and final verification stay with the primary model. Bounded independent low-risk work may be delegated per the imported guidance.
+Architecture, integration decisions, wallet/signing/payment work, security-sensitive code and final verification stay with the primary model.
 
 ## Locked constraints
 
-- Somebody remains the product/brand.
-- One Person Company is the vision, not a separate product.
+- Somebody remains the product/brand and accountable manager.
 - MAKE and BUY must both be real in the final demo.
 - Missing worker != missing capability.
+- MAKE requires real bounded worker execution, not only a WorkerSpec.
 - Do not buy generic cognition merely because another agent sells it.
 - BUY must be justified by an externally controlled scarce resource or materially impractical internal reproduction.
+- Models may propose capabilities/resources; application policy validates and decides sourcing.
 - External payment/result must be verified; submission is not completion.
-- Prefer testnet/sandbox for development when supported.
+- Prefer testnet/sandbox for payment development when supported.
 - Never silently spend real funds or expose wallet credentials/private keys.
 - One external provider on the critical path.
 - One canonical demo only.
+- Build the Company Mission product surface incrementally from M1.
 - Do not generalize into an autonomous-company platform.
+
+## Provenance vocabulary
+
+Use four categories:
+
+- **Inherited** — working pre-OKX capability;
+- **Pre-existing R&D** — prior concepts/prototypes outside Somebody;
+- **Rebuilt / Adapted during OKX** — prior idea newly reimplemented inside Somebody-OKX after discarding unsuitable architecture;
+- **New during OKX** — capability neither prior project had in working product form.
+
+`BUILD_DELTA.md` remains the evidence ledger. Planned work cannot be called built before repo evidence passes.
 
 ## Current checkpoint
 
-### Completed
+### M0 — Foundation and provenance — COMPLETE
 
-- [x] Product/customer thesis locked.
-- [x] OKX project thesis locked.
-- [x] Make-vs-Buy rule locked.
-- [x] Web3/OKX role bounded to external machine commerce.
-- [x] Pre-build Opus planning artifacts ingested.
-- [x] Source-repo reuse audit distilled into SSOT.
-- [x] X Layer / Onchain OS test environment verified from official docs.
-- [x] First canonical documentation pass created in final repo.
-- [x] Transfer working Somebody baseline into this repo — `a47cc93`; 113/115 shared files byte-identical to `somebody-ai@709a169`.
-- [x] Verify transferred baseline with relevant existing checks — 17 Sep 2026 at `093d247`: `npm test` 78/78 pass, `npm run typecheck` clean, `npm run typecheck:convex` clean.
-- [x] Build-provenance ledger created (`BUILD_DELTA.md`).
-- [x] Model/subagent selection guidance imported into `docs/agents/`.
-- [x] OKX sandbox/test strategy recorded in `README.md`.
-- [x] Transfer/rewrite minimal workforce primitives from Army — Transfer Pass B, see below.
+Completed:
 
-### Not yet complete
+- [x] product/customer thesis locked;
+- [x] OKX project thesis locked;
+- [x] Make-vs-Buy rule locked;
+- [x] Web3/OKX role bounded to external machine commerce;
+- [x] pre-build planning/reuse audit ingested;
+- [x] X Layer / Onchain OS test environment verified from official docs;
+- [x] canonical SSOT established;
+- [x] inherited Somebody baseline transferred and verified;
+- [x] `BUILD_DELTA.md` created;
+- [x] model/subagent selection guidance imported;
+- [x] minimal workforce kernel rebuilt from Army-inspired R&D.
 
-- [ ] Choose canonical business objective/demo.
-- [ ] Choose and validate canonical BUY provider.
-- [ ] Prove OKX testnet buyer/payment path against official Mock Merchant.
-- [ ] Implement demo-specific MAKE path.
-- [ ] Implement demo-specific BUY path.
-- [ ] Integrate, harden and record.
+Baseline evidence:
 
-## Immediate next action
+- transfer commit: `a47cc93`;
+- baseline verification at `093d247`: 78/78 inherited tests, clean root + Convex typechecks;
+- workforce implementation checkpoint: `dfae75af9326a8e719033948ede8b2b481b423bd`;
+- current pre-plan HEAD: `85b3ef9c9feff7cd165de70cabe195b2edff4f07`;
+- workforce evidence: focused 11/11, cumulative 89/89, root typecheck clean.
 
-### Transfer Pass A — Somebody baseline — **COMPLETE**
+### Canonical demo selection — PARALLEL / OPEN
 
-Bring the working Somebody application from the exact audited source SHA into this repo, without redesign.
+Hard deadline: **18 Sep, 12:00 SGT**.
 
-Acceptance evidence, all satisfied 17 September 2026:
+The demo-selection lane is running in parallel with M1. It must produce:
 
-1. transferred files match intended source provenance — 113/115 shared blobs byte-identical to `somebody-ai@709a169`; only `README.md`/`ARCHITECTURE.md` intentionally replaced by OKX SSOT, originals preserved under `docs/legacy/somebody-ai/`;
-2. no secrets/local env files are transferred — only `.env.example` (variable names only) is tracked; all `.env*` gitignored;
-3. install succeeds — `npm ci`, 140 packages;
-4. existing relevant test suite passes — `npm test`, 78/78;
-5. root + Convex typechecks pass — `npm run typecheck` and `npm run typecheck:convex`, both clean;
-6. repo clearly distinguishes inherited baseline from OKX-specific work — `BUILD_DELTA.md`.
+- canonical founder objective;
+- MAKE path;
+- genuinely scarce BUY path;
+- actual provider;
+- scarcity justification;
+- reliability/environment evidence;
+- fallback.
 
-No redesign occurred during transfer.
+Do not block M1 on the exact scenario; M1 is scenario-independent.
 
-### Transfer Pass B — minimal workforce kernel — **COMPLETE**
+## Immediate next milestone
 
-The first genuinely new OKX-period capability. Army source inspected at `army-of-interns@677166db591465fb6d201fb12db7cfe038557a92`; primitives rewritten rather than imported. Full provenance and the port/rewrite/reject split are in `BUILD_DELTA.md` §3.2.
+# M1 — Company Mission spine + active MAKE
 
-Delivered in `lib/workforce/` (`types.ts`, `catalog.ts`, `permissions.ts`, `workers.ts`, `index.ts`) with `tests/workforce.test.ts`:
+Target: **17–18 Sep**
 
-- scenario-independent controlled capability definitions with required resource classes;
-- unknown capability keys fail closed;
-- deny-by-default capability → tool permissions, including no external-spend authority for MAKE workers;
-- minimal internal worker specs, free of Army's personality/rank/hierarchy baggage;
-- reuse-or-create resolution.
+Objective:
 
-No Convex schema change, no persistence, no Army runtime, and no existing file modified.
+> Turn the existing workforce kernel into a real execution capability and render it through the first Company Mission surface.
 
-Checkpoint SHA: `dfae75af9326a8e719033948ede8b2b481b423bd`.
+### M1-A — Inspect inherited blockers first
 
-Evidence, 17 September 2026:
+Before new persisted Company Mission writes:
 
-1. focused tests — `npx tsx --test tests/workforce.test.ts`, **11/11 pass**;
-2. full existing unit suite — `npm test`, **89/89 pass** (78 inherited + 11 new, no baseline regression);
-3. root typecheck — `npm run typecheck`, **clean**;
-4. Convex typecheck deliberately not run — no Convex-facing file or type was touched.
+- inspect `acrobatic-swan-765` usage and current Convex deployment assumptions;
+- inspect `HEALTH_PROBE_WRITES_ENABLED` and confirm why it gates writes;
+- decide the smallest safe configuration change needed for Company Mission development;
+- do not perform broad config cleanup.
 
-### Reassess the canonical demo and BUY provider — **NEXT**
+Classify findings: Act Now / Investigate Now / Park for Later / Ignore / Accept Risk.
 
-The minimum scenario-independent MAKE foundation now exists, so the blocking question is no longer workforce shape. It is which scenario and which external provider the demo will rest on.
+### M1-B — Company Mission spine
 
-Do **not** extend the workforce kernel further until a canonical demo is accepted; further workforce work without a scenario risks building unused ontology.
+Build a sibling path beside procurement; do not refactor procurement into a universal engine.
 
-Next action:
+Represent only what is currently needed:
 
-- revisit the canonical demo candidates against the gate below;
-- validate whether a real OKX AI provider supplies a genuinely scarce resource for the chosen scenario;
-- only then decide what the kernel needs next (execution, persistence, planner).
+- objective;
+- capability plan;
+- resource requirements;
+- workers;
+- sourcing decision;
+- work results/evidence;
+- external effects placeholder/boundary where required;
+- mission events/status;
+- final outcome slot.
 
-## Canonical demo gate
+### M1-C — Objective → capability planner contract
 
-Demo decision remains OPEN.
+Model proposes controlled capability keys, bounded responsibility and resource requirements.
 
-Current research candidate: supplier invoice / changed payment details with an external independent voice/attestation provider.
+Application validates:
 
-Do not build scenario-specific UI/schema until this or another candidate is explicitly accepted.
+- capability exists;
+- resource classes are recognized;
+- requested permissions stay inside the capability envelope;
+- invalid proposals fail closed.
 
-A candidate must answer:
+No spend authority in planner output.
 
-1. What founder objective matters?
-2. What real capability follows MAKE?
-3. What scarce resource forces BUY?
-4. Why is internal LLM/web/tooling not a reasonable substitute?
-5. Which currently available OKX AI provider supplies it?
-6. Can it be demonstrated reliably within 2–4 minutes?
-7. Can its payment/result path be developed safely, preferably on testnet or with a bounded explicit mainnet approval?
+### M1-D — Company resource inventory
+
+Introduce the explicit factual inventory needed by later MAKE/BUY policy.
+
+Start with scenario-independent owned classes already represented by the workforce kernel; do not create a giant ontology.
+
+### M1-E — Active internal agent spawning
+
+Core requirement:
+
+`WorkerSpec → model selection → bounded agent instantiation → allowed tools → execution → result/evidence`
+
+Use imported model-selection guidance.
+
+The spawned worker must actually execute; UI-only worker creation is not sufficient.
+
+Persistent cross-mission workforce is not required. Mission-local creation/reuse is acceptable.
+
+### M1-F — First Company Mission product surface
+
+Render the actual mission state from the start.
+
+Minimum visible information:
+
+- founder objective;
+- capabilities;
+- MAKE reasoning;
+- worker creation/reuse;
+- worker status;
+- worker result.
+
+Product surface may label the internal worker **That Guy**. Engineering types remain neutral.
+
+Do not build giant graphs, permanent org charts or agent-chat theater.
+
+## M1 acceptance criteria
+
+PASS only when one bounded objective can:
+
+1. enter Company Mission;
+2. produce an application-validated capability plan;
+3. resolve an internal worker through the workforce kernel;
+4. select an execution model deliberately;
+5. instantiate a bounded real agent;
+6. expose only allowed tools;
+7. execute useful internal work;
+8. return/persist result/evidence;
+9. render meaningful Company Mission state;
+10. leave inherited procurement behavior intact.
+
+Use focused changed-behavior tests first. Escalate only to affected seams and cumulative checks justified by the changes.
+
+## M1 non-goals
+
+Do not yet implement:
+
+- final canonical scenario-specific worker catalogue;
+- full Make-vs-Buy policy;
+- marketplace discovery/ranking;
+- OKX payment code;
+- real provider adapter;
+- wallet/signing integration;
+- cross-mission persistent workforce;
+- multiple simultaneous workers unless M1 genuinely requires them;
+- visual polish/animation.
+
+## Next milestones after M1
+
+- **M2 (18–19 Sep):** canonical scenario MAKE path + deterministic Make-vs-Buy policy.
+- **M3 (19–20 Sep):** generic safe OKX buyer rail on X Layer Testnet / Mock Merchant.
+- **M4 (20–21 Sep):** selected real provider + full backend E2E.
+- **M5 (21–22 Sep):** product-surface/story hardening + first complete backup video.
+- **M6 (23 Sep):** release candidate + promotion gate.
 
 ## Evidence discipline
 
 - Check items only after evidence passes.
-- Run focused checks after each transfer/change.
-- Do not automatically run broad/full suites except baseline/promotion checkpoints where they answer a real uncertainty.
-- Never claim a live OKX call, payment, confirmation, deployment or persistence without observing it.
-- Keep mock/testnet/mainnet visibly distinguishable.
+- Run focused tests before broader checks.
+- Never claim live OKX call/payment/confirmation/deployment/persistence without observing it.
+- Keep mock/testnet/mainnet visibly distinct.
+- Update `BUILD_DELTA.md` at each accepted milestone with exact SHA and evidence.
 
 ## Cut order if schedule slips
 
 1. marketplace discovery/ranking;
-2. multiple internal workers;
-3. dynamic worker reuse;
-4. visual polish/animation;
-5. LLM flexibility in decomposition (controlled demo capabilities are acceptable).
+2. second provider;
+3. cross-mission persistent worker reuse;
+4. multiple internal workers;
+5. broad capability ontology;
+6. fancy worker visualization;
+7. UI animation;
+8. flexible arbitrary decomposition.
 
 Do NOT cut:
 
-- real MAKE execution;
+- active MAKE execution;
 - justified BUY decision;
 - actual OKX integration;
 - spend/payment safety;
 - external result verification;
-- final synthesis into a founder-facing outcome.
+- final synthesis;
+- understandable working demo.
