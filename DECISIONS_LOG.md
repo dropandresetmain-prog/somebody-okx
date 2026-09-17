@@ -79,7 +79,7 @@ Engineering terminology remains `InternalWorker` / `ExternalProvider`. The playf
 
 ## 17 September 2026 — Build provenance vocabulary
 
-**Decision:** `BUILD_DELTA.md` distinguishes four categories:
+**Decision:** provenance reporting uses four categories:
 
 - **Inherited** — working pre-OKX capability;
 - **Pre-existing R&D** — prior concepts/prototypes outside Somebody;
@@ -87,6 +87,8 @@ Engineering terminology remains `InternalWorker` / `ExternalProvider`. The playf
 - **New during OKX** — capability neither prior project had in working product form.
 
 Rebuilt/adapted implementation created during 17–25 September is legitimate OKX-period engineering even when the original concept predates the hackathon. The source inspiration must still be disclosed.
+
+`BUILD_DELTA.md` remains the canonical evidence ledger. Existing historical rows do not need cosmetic rewriting; all new milestone entries must use this four-category vocabulary where classification matters.
 
 ## 17 September 2026 — Web3 positioning
 
