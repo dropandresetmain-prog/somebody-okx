@@ -1,0 +1,64 @@
+// The M1 role/capability policy: research/analysis worker assembling an
+// evidence-backed business evaluation from internal company criteria plus
+// current public information. This is the smallest specialization that proves
+// active MAKE; it owns what observations matter, what sources are required
+// and what proof completes the work. The generic runtime stays role-free.
+
+import type { ResultRequirements, SourceClass } from "./types";
+
+export const RESEARCH_ROLE = {
+  title: "Research analyst",
+  requiredSourceClasses: ["company_record", "public_web"] as SourceClass[],
+  // At least one internal criteria/context read plus at least two public
+  // source observations, so the proof spans two distinct resource classes and
+  // more than a single model response.
+  minObservations: 3,
+  resultRequirements: {
+    summary: true,
+    fit: true,
+    risks: true,
+    unknowns: true,
+    recommendedNextAction: true,
+  } satisfies ResultRequirements,
+  responsibility:
+    "Evaluate the assigned target using the company's internal criteria and current public information. Observe sources through tools, record findings with provenance, reconcile fit, risks and unknowns, and produce a structured recommendation. Never assert what the sources do not support.",
+} as const;
+
+// Internal company context the worker reads through the company_records
+// permission. Controlled development data, clearly identified as such.
+export type CompanyRecord = {
+  ref: string;
+  label: string;
+  text: string;
+};
+
+export const COMPANY_RECORDS: CompanyRecord[] = [
+  {
+    ref: "partnerships/evaluation-criteria",
+    label: "Partnership evaluation criteria",
+    text: `Partnership evaluation criteria (internal):
+1. Relevance: the target must serve SME / one-person-company buyers with a product the company can resell, refer or integrate.
+2. Reliability: publicly verifiable operating history of at least 12 months, or a credible parent organisation.
+3. Reachability: an identified business contact channel (public business email or partner form).
+4. Risk posture: no unresolved public fraud/sanction signals; clear terms of service.
+5. Economics: free tier, referral or partner programme preferred over paid-only access.`,
+  },
+  {
+    ref: "company/profile",
+    label: "Company profile",
+    text: `Company profile (internal): the company builds Somebody, an AI manager for one-person companies and lean SMEs. It evaluates partnership targets that extend what a one-person company can do. It has no procurement or legal department; partnerships must be self-serve.`,
+  },
+];
+
+export function companyRecord(ref: string): CompanyRecord | undefined {
+  return COMPANY_RECORDS.find((record) => record.ref === ref);
+}
+
+// Structured finding the worker records through the record_finding permission.
+export type RecordedFinding = {
+  sourceClass: SourceClass;
+  label: string;
+  text: string;
+  url?: string;
+  recordRef?: string;
+};

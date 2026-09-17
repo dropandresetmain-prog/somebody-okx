@@ -1,5 +1,8 @@
-// Minimal internal-workforce kernel for the MAKE path.
-// Adapted from the pre-OKX Army of Interns workforce R&D (see BUILD_DELTA.md §2).
+// Minimal internal-workforce kernel for the MAKE path, plus the current
+// Objective spine modules (planner validation, factual inventory sourcing,
+// WorkContract adapted from the inherited CoreWorkerContract).
+// Workforce kernel adapted from pre-OKX Army of Interns R&D (BUILD_DELTA.md §2).
+
 export {
   CONTROLLED_CAPABILITIES,
   RESOURCE_CLASSES,
@@ -20,6 +23,11 @@ export {
   toolPermissionsForCapabilities,
 } from "./permissions";
 export { createWorkerSpec, resolveWorker } from "./workers";
+export { evaluateSourcing, isKnownResourceClass, validatePlannerProposal } from "../objective/planner";
+export {
+  createWorkContract,
+  evaluateCompletion,
+} from "../objective/contract";
 export type {
   CapabilityDefinition,
   CapabilityKey,
@@ -31,3 +39,25 @@ export type {
   WorkerResolution,
   WorkerSpec,
 } from "./types";
+export type {
+  ActivityResult,
+  ActivityEvent,
+  CapabilityPlan,
+  CompanyResourceInventory,
+  EvidenceRecord,
+  FindingInput,
+  ObjectiveRecord,
+  ObjectiveRow,
+  ObjectiveState,
+  PlannerProposal,
+  ResultRequirements,
+  SourcingDecision,
+  SourcingReason,
+  SourceClass,
+  ValidatedPlan,
+  WorkContract,
+  WorkItem,
+  WorkItemState,
+  WorkerRun,
+  WorkerRunStatus,
+} from "../objective/types";
