@@ -324,3 +324,38 @@ test("a missing worker never produces BUY: resources in control keep the decisio
   });
   assert.equal(decision.decision, "MAKE");
 });
+
+// ── The model cannot approve a provider path ────────────────────────────────
+
+test("provider-path approval has exactly one source: the application registry", async () => {
+  const { readFileSync } = await import("node:fs");
+  const spine = readFileSync("convex/objectives.ts", "utf8");
+
+  // The Convex spine calls the seam without supplying paths, so the decision
+  // can only ever use the application-owned registry. A model-authored
+  // approvedProviderPaths argument cannot reach the policy.
+  const calls = spine.match(/decideObjectiveSourcing\(\{[\s\S]*?\}\)/g) ?? [];
+  assert.ok(calls.length > 0, "the Convex spine no longer calls decideObjectiveSourcing");
+  for (const call of calls)
+    assert.ok(
+      !/approvedProviderPaths/.test(call),
+      `spine passes provider paths into the seam: ${call}`,
+    );
+
+  // And the planner argument vocabulary carries no decision or provider field.
+  const args = readFileSync("convex/objectiveArgs.ts", "utf8");
+  const proposalShape =
+    args.match(/export const vPlannerProposal = v\.object\(\{[\s\S]*?\}\);/);
+  assert.ok(proposalShape, "vPlannerProposal not found");
+  for (const forbidden of [
+    "decision",
+    "approvedProviderPaths",
+    "provider",
+    "makeOrBuy",
+    "pathId",
+  ])
+    assert.ok(
+      !new RegExp(`\\b${forbidden}\\b\\s*:`).test(proposalShape[0]),
+      `the model may submit '${forbidden}' in a planner proposal`,
+    );
+});

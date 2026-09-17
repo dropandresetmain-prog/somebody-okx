@@ -532,3 +532,47 @@ test("identity sync: every legal ResourceClass is a valid identity AND none is i
     }
   }
 });
+
+// ─── Fail-closed under direct injection ─────────────────────────────────────
+//
+// The Objective seam hands evaluateSourcingPolicy() resource classes derived
+// from the controlled capability catalog, bypassing validateModelProposal().
+// The kernel must therefore stay fail-closed on its own: an unrecognized
+// identity must never be able to produce MAKE.
+
+test("an unrecognized identity injected directly into validatedNeeds cannot yield MAKE", () => {
+  const needs = {
+    // Cast past the type: this simulates tampered/legacy persisted data.
+    requiredResourceClasses: ["llm_reasoning", "satellite_uplink"] as unknown as [
+      import("@/lib/workforce/types").ResourceClass,
+    ],
+    rejectedUnknownClasses: [] as const,
+  };
+
+  // Even with the recognized half fully controlled, the unknown identity is
+  // treated as missing -> BLOCKED, never MAKE.
+  const result = evaluateSourcingPolicy({
+    validatedNeeds: needs,
+    factualInventory: { controlledResourceClasses: ["llm_reasoning"] },
+  });
+  assert.equal(result.outcome, "authorizing");
+  if (result.outcome === "authorizing") {
+    assert.notEqual(result.decision, "MAKE");
+    assert.equal(result.decision, "BLOCKED");
+    assert.deepEqual([...result.missingResourceClasses], [
+      "satellite_uplink",
+    ]);
+  }
+
+  // A provider path cannot rescue an unknown identity into MAKE either.
+  const withPath = evaluateSourcingPolicy({
+    validatedNeeds: needs,
+    factualInventory: { controlledResourceClasses: ["llm_reasoning"] },
+    approvedProviderPaths: [
+      { forResourceClass: "satellite_uplink" as never, pathId: "rogue" },
+    ],
+  });
+  assert.equal(withPath.outcome, "authorizing");
+  if (withPath.outcome === "authorizing")
+    assert.notEqual(withPath.decision, "MAKE");
+});
