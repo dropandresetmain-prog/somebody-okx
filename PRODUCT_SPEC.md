@@ -33,11 +33,13 @@ Somebody owns business outcomes and assembles the capabilities needed to deliver
 
 The customer-facing product should stay simple. Users should not need to understand the internal workforce architecture, marketplace mechanics or payment protocol.
 
+The locked delivery plan is in `MASTER_PLAN.md`.
+
 ## 4. OKX Dev Day thesis
 
-The hackathon adds one new organizational primitive:
+The hackathon adds one organizational primitive:
 
-> **Somebody can determine whether a required capability should be MADE internally or BOUGHT externally.**
+> **Somebody can determine whether a required capability should be MADE internally or BOUGHT externally, then assemble both into one completed outcome.**
 
 This matters to a One Person Company because it cannot pre-hire, pre-subscribe to or pre-integrate every capability it might someday need.
 
@@ -54,7 +56,13 @@ Examples of owned resources:
 - ordinary application compute;
 - reusable company tools.
 
-A missing pre-existing worker is **not** a capability gap. Somebody may create a bounded internal worker for the task.
+A missing pre-existing worker is **not** a capability gap. Somebody may create or reuse a bounded internal worker for the task.
+
+The MAKE path is not satisfied by merely producing a worker specification. For the canonical demo, Somebody must be able to turn a validated worker spec into an actual bounded executing agent:
+
+`WorkerSpec → model selection → agent instantiation → allowed tools → execution → result/evidence`
+
+Model routing should follow `docs/agents/AGENT_MODEL_SELECTION.md` and `docs/agents/MODEL_ARSENAL.md`, while architecture/security/payment/final verification remain with the primary model.
 
 ### BUY path
 
@@ -75,26 +83,54 @@ Strong BUY reasons include:
 
 > **Never buy generic cognition merely because another agent wrapped an LLM. Buy scarce capability.**
 
-The application should own the Make-vs-Buy policy. Models may propose capabilities and resource needs, but they must not be allowed to spend merely because they decide outsourcing sounds useful.
+The application owns the Make-vs-Buy policy. Models may propose capabilities and resource needs, but they must not be allowed to decide spend authority or bypass sourcing policy.
 
-## 5. Role of OKX AI / X Layer
+## 5. Product language
+
+The product/demo surface may use:
+
+- **That Guy** — an internal worker dynamically created or reused by Somebody;
+- **Somebody Else** — an external provider used when the company lacks a required scarce capability.
+
+These are presentation labels only. Engineering terminology remains `InternalWorker` and `ExternalProvider`.
+
+The purpose is to make the distinction instantly understandable without turning the product into an org-chart toy.
+
+## 6. Role of OKX AI / X Layer
 
 Somebody is not a Web3-first product.
 
-OKX AI provides the external agent/service marketplace. X Layer / Onchain OS provide machine-native identity/payment infrastructure at the cross-company boundary.
+OKX AI provides the external agent/service marketplace. X Layer / Onchain OS provide machine-native payment infrastructure at the cross-company boundary.
 
 The useful product effect is reduced commercial integration friction: Somebody can potentially acquire a capability from a provider it did not previously have a bilateral billing/API-key relationship with.
 
 This does **not** remove authorization requirements for private user resources such as Gmail, QuickBooks or WhatsApp.
 
-## 6. Hackathon acceptance shape
+## 7. Company Mission surface
+
+The engine is core, but the demo surface is part of the product, not an afterthought.
+
+The Company Mission surface should progressively show:
+
+1. founder objective;
+2. capabilities Somebody identified;
+3. WHY each capability is MAKE or BUY;
+4. internal worker creation/reuse and current status;
+5. external provider, scarce missing resource and price;
+6. spend approval/payment state;
+7. result verification;
+8. Somebody's unified final outcome.
+
+Avoid giant graphs, permanent org charts, agent-chat transcripts, token counters and Web3-first wallet UX.
+
+## 8. Hackathon acceptance shape
 
 The final demo must show one coherent business objective with both paths:
 
 1. natural-language founder objective;
 2. required capability identification;
 3. at least one genuine MAKE decision;
-4. bounded internal worker execution;
+4. real bounded internal worker execution;
 5. at least one genuine BUY decision based on a scarce external resource;
 6. explicit spend/budget control;
 7. real OKX AI / payment integration;
@@ -104,9 +140,9 @@ The final demo must show one coherent business objective with both paths:
 
 The demo should be understandable in 2–4 minutes.
 
-## 7. Canonical demo status
+## 9. Canonical demo status
 
-**OPEN.**
+**OPEN until the Master Plan demo gate: 18 September 2026, 12:00 SGT.**
 
 No scenario is canonical until accepted by the user and technically validated.
 
@@ -114,15 +150,15 @@ Current researched lead from the pre-build planning work:
 
 - supplier invoice / changed payment-details verification using an external independent voice/attestation provider.
 
-This is a **candidate only**, not a product decision. Its value depends on whether the provider truly supplies an external capability worth buying and whether the OKX payment/provider path is reliable enough for the demo.
+This is a **candidate only**, not a product decision. Other candidates may replace it without changing the baseline architecture.
 
-Other candidates may replace it without changing the baseline architecture.
+After the decision gate, broad scenario ideation stops unless a material technical/provider failure forces a reopen.
 
-## 8. Hard non-goals
+## 10. Hard non-goals
 
 Do not scope the hackathon as a general autonomous-company platform.
 
-Out of scope unless a canonical demo proves they are essential:
+Out of scope unless a canonical demo proves them essential:
 
 - arbitrary organization hierarchies;
 - worker personalities, ranks or promotions;
@@ -137,7 +173,7 @@ Out of scope unless a canonical demo proves they are essential:
 - replacing Convex/application state with blockchain;
 - rewriting working Somebody systems for architectural neatness.
 
-## 9. Build principle
+## 11. Build principle
 
 > **One founder objective → one dynamically assembled capability plan → MAKE + BUY → verified outcome.**
 
