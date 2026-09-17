@@ -113,9 +113,11 @@ function LivePill({ record }: { record: ObjectiveRecord }) {
       ? ["Done and verified", "verified"]
       : record.state === "failed"
         ? ["Needs attention", "ineligible"]
-        : record.state === "received"
-          ? ["Waiting on you", "decision"]
-          : [live ? "Somebody is working" : "Somebody is on it", "somebody"];
+        : record.state === "waiting_for_resource"
+          ? ["Waiting on a resource", "decision"]
+          : record.state === "received"
+            ? ["Waiting on you", "decision"]
+            : [live ? "Somebody is working" : "Somebody is on it", "somebody"];
   return (
     <span className={`live-pill tone-${tone}`}>
       <i className={live ? "live-dot" : "still-dot"} />
