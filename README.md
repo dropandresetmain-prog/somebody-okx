@@ -2,151 +2,266 @@
 
 **Somebody is the AI manager for the One Person Company.**
 
-The long-term vision is simple: one person should be able to operate with the functional reach of a much larger company. The user delegates an outcome to Somebody; Somebody determines what capabilities are required and assembles the resources needed to deliver it.
+One person should be able to operate with the functional reach of a much larger company. The founder gives Somebody an outcome; Somebody figures out what capabilities/resources are required, assembles the work, and remains accountable for the verified result.
 
-For OKX Dev Day 2026, the project focuses on one missing primitive:
+For OKX Dev Day 2026, the project proves one new management/economic primitive:
 
 > **Somebody decides what to MAKE internally and what to BUY externally, then completes the business objective using both.**
 
-The locked execution plan is in **[`MASTER_PLAN.md`](MASTER_PLAN.md)**.
+## Agent / contributor start here
+
+Before implementation, read in this order:
+
+1. **[`MASTER_PLAN.md`](MASTER_PLAN.md)** — locked milestone sequence, deadlines, cuts and acceptance shape.
+2. **[`ARCHITECTURE.md`](ARCHITECTURE.md)** — current architecture, inherited Somebody runtime boundaries and fresh OKX data-plane decision.
+3. **[`PRODUCT_SPEC.md`](PRODUCT_SPEC.md)** — product/hackathon scope.
+4. **[`DECISIONS_LOG.md`](DECISIONS_LOG.md)** — settled and superseded decisions.
+5. **[`REUSE_AUDIT.md`](REUSE_AUDIT.md)** — exactly what is inherited, adapted or rejected from Somebody/Army.
+6. **[`BUILD_DELTA.md`](BUILD_DELTA.md)** — canonical hackathon provenance/evidence ledger.
+7. **[`docs/work/ACTIVE_TASK.md`](docs/work/ACTIVE_TASK.md)** — current checkpoint and immediate next action.
+
+For engineering work, also follow the repository/project coding instructions and the risk-based test hierarchy. Do not implement from stale chat plans when canonical docs or current code disagree.
 
 ## Locked thesis
 
 ### Customer
+
 One-person companies, founder-led businesses and lean SMEs where important work exceeds available specialist headcount.
 
-### Problem
-Small teams do not lack work. They lack ownership, capacity and access to some capabilities or resources.
-
 ### Product
+
 Somebody owns the outcome. The user should not need to manually select agents, tools, freelancers or vendors.
 
-### OKX project
-The hackathon proves two paths:
+### MAKE
 
-- **MAKE** — dynamically create or reuse internal AI capacity using resources the company already controls.
-- **BUY** — acquire a genuinely scarce external capability through OKX AI when the company does not possess the required underlying resource.
+MAKE when the required resources are already controlled by the company, for example:
 
-The Make-vs-Buy decision is the center of the project.
+- generic model reasoning;
+- public web/search;
+- company records;
+- authenticated company tools;
+- ordinary compute;
+- reusable internal tools.
 
-A missing worker is not a missing capability. If the company owns the required resources, Somebody should be able to create or reuse a bounded internal worker and execute the task.
+A missing worker is **not** a missing capability. Somebody may create or reuse bounded internal capacity.
 
-## Product language
+### BUY
 
-The demo surface may use two simple labels:
+BUY only when execution requires a genuinely externally controlled scarce resource, such as:
 
-- **That Guy** — an internal worker created or reused by Somebody for a bounded task.
-- **Somebody Else** — an external provider hired when the company lacks a genuinely scarce required resource.
-
-Engineering terminology remains `InternalWorker` and `ExternalProvider`.
-
-Possible product line:
-
-> **Somebody builds what your company can do — and finds Somebody Else for what it can't.**
-
-## Make vs Buy rule
-
-**MAKE by default** when the work can be performed with company-owned resources such as generic model reasoning, public web information, company data, existing authenticated company tools or ordinary compute. The absence of a pre-existing agent is not a reason to buy; Somebody can create internal capacity.
-
-**BUY** only when the capability depends on something controlled externally, such as proprietary/licensed data, privileged access, independently controlled real-world action, third-party attestation, specialist infrastructure, scarce compute or another resource that would be materially impractical to reproduce internally.
+- proprietary/licensed data;
+- privileged access;
+- independent attestation;
+- physical presence or real-world action;
+- specialist infrastructure/compute;
+- external identity/reputation/authority;
+- something materially impractical to reproduce internally.
 
 Guiding principle:
 
 > **Do not buy generic cognition merely because somebody wrapped an LLM. Buy scarce capability.**
 
-## Web3 boundary
+## Product language
 
-Somebody is not a Web3 product. Internal state, orchestration and company tooling remain normal software.
+The demo may call:
 
-OKX / X Layer are relevant at the cross-company machine-commerce boundary: invoking an external provider, understanding the price, authorizing spend, settling payment and retaining a verifiable receipt without establishing a traditional billing/API-key relationship with every provider.
+- **That Guy** — an internal worker Somebody creates or reuses;
+- **Somebody Else** — an external provider Somebody uses when the company lacks a required scarce resource.
 
-## Hackathon shape
+Engineering concepts use neutral names such as `Objective`, `WorkItem`, `WorkerSpec`, `WorkContract`, `InternalWorker`, `ExternalProvider`, `Evidence`, `Effect` and `Outcome`.
 
-The canonical business scenario is **not yet selected**.
+Do not preserve old internal nouns merely because they existed in the previous procurement demo.
 
-Whichever scenario is chosen must prove one coherent end-to-end flow:
+## Architecture in one page
 
-1. Founder gives Somebody a business objective.
-2. Somebody identifies required capabilities.
-3. At least one capability follows a real **MAKE** path.
-4. Somebody creates or reuses an internal worker and that worker actually executes.
-5. At least one genuinely scarce capability follows a real **BUY** path through OKX AI.
-6. Spend is bounded and explicitly authorized where required.
-7. The external payment/result is verified rather than assumed successful.
-8. Somebody combines internal and external work into one useful business outcome.
+Somebody-OKX combines two legitimate sources of prior work at the correct boundary.
 
-One workflow. One external provider on the critical path. One reliable demo.
+### Inherited from Somebody
 
-## Product surface
+Source: `dropandresetmain-prog/somebody-ai@709a169a1a4f71b8dc2d7427438ff514999fb07e`.
 
-The engine is core, but the demo surface is built alongside it rather than bolted on at the end.
-
-The Company Mission surface should progressively show:
-
-`objective → capabilities → MAKE/BUY reasons → internal worker(s) → external provider → approval/payment/verification → Somebody outcome`
-
-The UI should make the management logic obvious without turning into a giant graph, permanent org chart, agent-chat viewer or wallet dashboard.
-
-## Build provenance
-
-This repository is the authoritative implementation and submission repository for OKX Dev Day.
-
-Somebody × OKX builds on two projects created before OKX Dev Day:
-
-- **Somebody** (`dropandresetmain-prog/somebody-ai` @ `709a169`) — the existing AI-manager product and reliability/runtime foundation.
-- **Army of Interns** (`dropandresetmain-prog/army-of-interns` @ `677166d`) — separate workforce R&D that never shipped inside Somebody.
-
-**The OKX Dev Day submission is judged on the new work built during 17–25 September 2026.**
-
-The project uses four provenance categories:
-
-- **Inherited** — working pre-OKX capability;
-- **Pre-existing R&D** — prior concepts/prototypes outside Somebody;
-- **Rebuilt / Adapted during OKX** — a prior idea reimplemented inside Somebody-OKX after discarding broken/demo-specific architecture;
-- **New during OKX** — capability neither prior project had in working product form.
-
-### Before OKX
-
-Inherited from Somebody: the Next.js/React/Convex product shell and Mission Control operator UI, a controlled procurement mission lifecycle, reliability primitives, persisted effects, idempotency, evidence/provenance, verification-before-completion, an `@openai/agents` runtime, and live integrations for Gmail, Sheets, Calendar, Drive, public-web sourcing, Unipile and QuickBooks Online Sandbox — with 78 passing tests and clean typechecks.
-
-Army separately contained R&D around controlled capability vocabulary, capability validation, worker creation/reuse and deny-by-default permission envelopes.
-
-### During OKX Dev Day
-
-**Built so far:** the canonical SSOT and provenance docs, audited transfer/verification of the inherited Somebody baseline, imported model-selection guidance, sandbox-first payment strategy, and the first genuine OKX-period product capability: a rewritten scenario-independent workforce kernel in `lib/workforce/` with controlled capabilities, resource requirements, fail-closed validation, deny-by-default tool permissions, minimal worker specs and reuse-or-create resolution.
-
-**Not yet built:** active internal agent spawning, Company Mission runtime, objective→capability planning, company resource inventory, deterministic Make-vs-Buy policy, OKX AI buyer integration, x402/X Layer payment lifecycle, real external-provider verification and the final canonical demo.
-
-See **[`BUILD_DELTA.md`](BUILD_DELTA.md)** for the complete evidence record.
-
-## Development and testing environment
-
-Grounded in official OKX documentation. No payment code exists yet; this is the rail it will be developed against.
-
-### X Layer Testnet
-
-- chain ID: `1952`
-- CAIP-2 / network form: `eip155:1952`
-- faucet **test OKB** available for gas
-- faucet **test USD₮0** available for payment testing
-
-### Official x402 test flow
-
-The official Onchain OS buyer documentation provides a **Mock Merchant on X Layer Testnet**, so the complete buyer lifecycle can be tested without real funds:
+Pre-OKX Somebody already proved a worker/reliability architecture through procurement:
 
 ```text
-request → 402 Payment Required → authorize/sign → pay → retry → receive resource/receipt
+role-specific policy
+      |
+      v
+generic worker contract / reliability core
+      |
+      v
+bounded Agent/Runner runtime
+      |
+      v
+evidence + authorized effects
+      |
+      v
+external read-back / verification
 ```
 
-> **This is our default development rail for payment integration.**
+Important inherited patterns:
 
-### Marketplace-provider caveat
+- `CoreWorkerContract` and controlled transitions;
+- role-specific state compiling into a generic reliability contract;
+- model proposes, application authorizes;
+- bounded read/act tools;
+- deliberate Agent/Runner model/provider configuration;
+- durable runs, leases and stale-run fencing;
+- evidence/provenance;
+- stable effects and idempotent retries;
+- persisted human authority for gated actions;
+- execution is not verification;
+- application proof decides completion;
+- realtime state/event patterns;
+- Somebody/Mission-Control visual language.
 
-**The payment rails have a testnet. The OKX AI marketplace does not have a mirrored sandbox.**
+Procurement was the first demonstrated role, **not** the universal product model.
 
-Individual marketplace providers may support testnet, be mainnet-only, expose free/unpaid test endpoints, or have their own environment constraints. The selected BUY provider must therefore be individually verified before live use.
+### Rebuilt from Army R&D
 
-**Mainnet expenditure must remain bounded and explicitly approved.** Never silently spend real funds, and keep testnet and mainnet behavior visibly distinct.
+Source: `dropandresetmain-prog/army-of-interns@677166db591465fb6d201fb12db7cfe038557a92`.
+
+Army contributed pre-existing R&D ideas around controlled capabilities, deny-by-default tool envelopes, worker construction and worker reuse.
+
+Those ideas were rewritten during OKX into the pure `lib/workforce/` kernel. Army schema/runtime, ranks, personalities, org hierarchy, Telegram/Twilio and demo state machines are not carried forward.
+
+### Current OKX architecture
+
+```text
+Founder objective
+      |
+      v
+   Somebody
+      |
+      v
+Capability planner
+      |
+      v
+validated capabilities/resources
+      |
+      v
+Resource evaluation
+   /             \
+MAKE              BUY
+ |                 |
+WorkerSpec          approved provider path
+ |                  |
+WorkContract        spend authority
+ |                  |
+bounded worker      x402 / X Layer
+runtime             |
+ |                  ExternalProvider
+ |                  |
+evidence -----------+ result/receipt
+        |
+        v
+    verification
+        |
+        v
+      Outcome
+```
+
+`WorkerSpec` answers **what can this worker do?**  
+`WorkContract` answers **what is this worker authorized/required to do for this assignment, and what proof counts as complete?**
+
+The inherited `CoreWorkerContract` is the starting point for `WorkContract`, but its current completion rule is effect-centric and may be adapted during OKX for evidence-only internal work.
+
+## Fresh OKX data plane
+
+**Somebody-OKX uses a fresh Convex project/deployment and fresh operational state.**
+
+The old `acrobatic-swan-765` deployment belonged to the previous Somebody hackathon environment.
+
+Do not migrate or preserve by default:
+
+- old Convex rows;
+- `healthProbes`;
+- `HEALTH_PROBE_WRITES_ENABLED`;
+- procurement fixtures/demo state;
+- old deployment pins;
+- old provider bindings.
+
+Reuse useful runtime patterns, not stale deployment/data baggage.
+
+Old procurement code may remain temporarily for provenance/reference, but **keeping the old procurement demo operational is not an M1 acceptance criterion**.
+
+## M1 — current immediate milestone
+
+**M1 is one milestone: Objective spine + active MAKE + first current-product surface.**
+
+Target: 17–18 Sep.
+
+M1 must prove:
+
+`objective → validated capability/resource plan → create/reuse InternalWorker → WorkContract → bounded real agent → tool-mediated work → persisted evidence/result → application-owned completion → visible current-product state`
+
+Requirements:
+
+- fresh OKX Convex project/data plane;
+- current `Objective` / `WorkItem` persistence/read model;
+- factual company resource inventory;
+- model proposes capability/resource needs; application validates;
+- reuse/create worker through `lib/workforce/`;
+- deliberate execution-model selection;
+- only WorkerSpec/WorkContract-allowed tools are materialized;
+- actual `@openai/agents` Agent/Runner execution;
+- multiple meaningful tool-mediated observations/actions appropriate to the role, ideally across at least two distinct sources/resource classes;
+- persisted evidence/result/activity;
+- real UI state from the new backend.
+
+A one-shot “LLM writes a document” proof does **not** satisfy M1.
+
+No BUY required yet.
+
+## Canonical demo gate
+
+**18 September 2026, 12:00 SGT.**
+
+The final business scenario remains open until this gate. The researched supplier-invoice / changed-payment-details / independent-attestation flow is only a candidate until accepted and technically validated.
+
+After the gate, broad scenario ideation stops unless a material provider/technical failure forces a reopen.
+
+## Final hackathon acceptance shape
+
+The canonical demo must show one coherent flow:
+
+1. founder gives Somebody a business objective;
+2. Somebody identifies required capabilities/resources;
+3. at least one capability follows a real MAKE path;
+4. Somebody creates/reuses an internal worker and it actually executes;
+5. at least one genuinely scarce capability follows a real BUY path;
+6. spend is bounded and explicitly authorized where required;
+7. OKX/payment/provider execution is real for the selected environment;
+8. ambiguous submission/payment state is reconciled rather than blindly retried;
+9. external payment/result is verified rather than assumed successful;
+10. Somebody synthesizes one useful founder-facing outcome.
+
+One workflow. One external provider on the critical path. One reliable 2–4 minute demo.
+
+## Web3 boundary
+
+Somebody is not a Web3-first product. Internal state, orchestration and company tooling remain normal software.
+
+OKX / X Layer are relevant at the cross-company machine-commerce boundary: invoking an external provider, understanding the price, authorizing spend, settling payment and retaining a verifiable receipt/result.
+
+### Payment development rail
+
+Current documented development target:
+
+- X Layer Testnet;
+- chain ID `1952` / `eip155:1952`;
+- faucet test OKB for gas;
+- test USD₮0;
+- official x402 Mock Merchant.
+
+Prove:
+
+`request → 402 → inspect terms → authorize/sign → pay → retry → resource/receipt`
+
+before considering mainnet provider execution.
+
+Never silently spend real funds. Wallet credentials/private keys must not enter logs or ordinary application state.
+
+Third-party OKX.AI provider environment/network support must be verified individually.
 
 Official references:
 
@@ -154,35 +269,39 @@ Official references:
 - https://web3.okx.com/onchainos/dev-docs/payments/payment-use-buyer
 - https://web3.okx.com/onchainos/dev-docs/payments/service-seller-sdk
 
-## Timeline and freeze
+## Provenance
 
-- **M1 (17–18 Sep):** Company Mission spine + active MAKE + first product surface.
-- **Demo gate (18 Sep, 12:00 SGT):** canonical scenario selection closes broad ideation.
-- **M2 (18–19 Sep):** canonical MAKE path + Make-vs-Buy policy.
-- **M3 (19–20 Sep):** safe generic OKX buyer rail on X Layer Testnet.
-- **M4 (20–21 Sep):** real selected BUY provider + full backend E2E.
-- **M5 (21–22 Sep):** product-surface/story hardening + first backup demo video.
+The OKX Dev Day build period is **17–25 September 2026**.
+
+Use four categories:
+
+- **Inherited** — working pre-OKX capability;
+- **Pre-existing R&D** — prior concepts/prototypes outside Somebody;
+- **Rebuilt / Adapted during OKX** — prior idea/inherited primitive changed or reimplemented during the build for the current product;
+- **New during OKX** — capability neither prior project had in working product form.
+
+Current verified state:
+
+- inherited Somebody baseline transferred and verified: **78/78 inherited tests**, root + Convex typechecks clean at the baseline checkpoint;
+- rebuilt workforce kernel: **11/11 focused tests**, **89/89 cumulative** at its checkpoint, root typecheck clean;
+- active dynamic worker execution, fresh Objective runtime, Make-vs-Buy, OKX buyer rail and final E2E are **not yet built**.
+
+See [`BUILD_DELTA.md`](BUILD_DELTA.md) for exact evidence and provenance.
+
+## Timeline
+
+- **M0:** foundation/provenance — complete.
+- **M1 (17–18 Sep):** Objective spine + active MAKE + first current-product surface.
+- **Demo gate (18 Sep, 12:00 SGT):** canonical scenario lock.
+- **M2 (18–19 Sep):** canonical MAKE + deterministic Make-vs-Buy.
+- **M3 (19–20 Sep):** safe OKX buyer rail on X Layer Testnet.
+- **M4 (20–21 Sep):** selected real BUY provider + full backend E2E.
+- **M5 (21–22 Sep):** surface/story hardening + first backup video.
 - **M6 (23 Sep):** release candidate.
 - **23 Sep, 18:00 SGT:** hard feature freeze.
 - **24 Sep:** debugging/hardening only.
-- **25 Sep:** video + submission only; internal target 22:00 SGT.
-
-## Repository SSOT
-
-Read these before implementation:
-
-- `MASTER_PLAN.md` — locked build sequence, scope cuts, freeze and demo/product-surface strategy.
-- `PRODUCT_SPEC.md` — locked product and hackathon scope.
-- `ARCHITECTURE.md` — target boundaries and reuse strategy.
-- `DECISIONS_LOG.md` — settled decisions and superseded ideas.
-- `REUSE_AUDIT.md` — audited source-project reuse findings.
-- `BUILD_DELTA.md` — canonical hackathon provenance/evidence ledger.
-- `docs/work/ACTIVE_TASK.md` — current checkpoint, next action and evidence state.
-- `docs/agents/AGENT_MODEL_SELECTION.md` — default model/harness/subagent routing guidance.
-- `docs/agents/MODEL_ARSENAL.md` — deeper model reference behind that routing.
+- **25 Sep:** video/submission only; internal target 22:00 SGT.
 
 ## Current status
 
-**17 September 2026:** M0 is complete. The inherited Somebody baseline is verified in this repo, and the first rebuilt OKX-period workforce kernel is implemented and tested (11 focused workforce tests; 89/89 cumulative tests; root typecheck clean).
-
-Next milestone: **M1 — Company Mission spine + active internal agent spawning + first product surface.** Canonical demo selection remains open until the 18 Sep decision gate.
+**17 September 2026:** M0 is complete. Architecture/reuse docs have been reconciled against the actual pre-OKX Somebody runtime. M1 is next.
