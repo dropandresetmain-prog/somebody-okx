@@ -542,6 +542,124 @@ field metadata plus the read-path inspection above. Do not reuse `isValue` as a 
 `worker.test.ts` lost only an unused `evaluateSourcing` import; the worker/run-lifecycle seams
 themselves were not changed, and both files still pass.
 
+### 3.8 Overnight run — repeated resource sourcing, buyer rail to READY_TO_SIGN, provider adapters
+
+Provenance: **New during OKX** (overnight sprint, integration branch
+`qoder/general-session-fk5qjv`). Frozen cross-lane contracts:
+`docs/work/M2_SHARED_CONTRACT.md`. Audit: `docs/work/INVARIANT_REVIEW.md`.
+
+Base: `feat/m2-make-buy-policy@4a827e8` reconciled with `origin/main@60a1bd4`
+(merge `72321ed`, CHECKPOINT A0; main's canonical docs preserved, M2 branch's
+BUILD_DELTA implementation evidence preserved — verified by empty diff of
+BUILD_DELTA.md against the feature branch).
+
+**Generic M2 domain primitives (Lane A, `c8cc432`, 13/13 focused tests).**
+`lib/objective/resourceNeed.ts`: `ResourceNeed` (stable id, objective/work-item
+link, resource class, bounded purpose, status, provenance, sha256 dedupe key)
+and `SourcingDecisionRecord` (one need ↔ one canonical kernel invocation;
+multiple per objective). `computeNeedDedupeKey`/`dedupeResourceNeeds` make
+equivalent duplicate worker requests idempotent. `transitionNeedStatus` allows
+only legal forward transitions. No provider choice is inherent in a need.
+
+**CompanyArtifact + bounded growth capability (Lane C, `b672e97`, artifact 8/8,
+worker/workforce regression 24/24).** `lib/objective/artifact.ts`: generic owned
+mutable company state with monotonic versioning, append-only history,
+provenance run id, no-op rejection and length bounds; `hasArtifactChanged`
+backs the growth completion rule (an actual artifact change is required — not
+advice). `growth_launch_operations` capability added append-only with
+`request_resource` and `update_company_artifact` tools materialized in
+`lib/worker/runtime.ts`; `authorize_external_spend` still materializes no tool
+and the growth capability does not grant it (verified by PRIMARY probe). The
+canonical launch page/message is seeded DATA only (`lib/objective/seedData.ts`).
+
+**Market discovery + assessment (Lane B, `44a9c73`, 14/14).**
+`lib/market/discovery.ts` defines the replaceable need-driven `MarketDiscovery`
+interface; `registryData.ts` is the application-owned verified service registry
+DATA mapping stable service ids → resource classes (Newsliquid twitter search →
+`proprietary_data`; xbird X API → `privileged_access`; FlyBeacon generic growth
+→ `llm_reasoning`/`public_web`/`company_records`; FlyBeacon X Narrative Pulse →
+`proprietary_data` fallback). `assessment.ts` is pure generic judgment
+(redundant / incompatible / untrusted / eligible) with deterministic selection
+(lowest price, then offering id). **Discovery finding:** no supported official
+OKX programmatic discovery primitive could be confirmed in this environment
+(`docs/work/M2_DISCOVERY_FINDINGS.md`); per the locked fallback rule the
+synchronized snapshot (`snapshotData.ts`) is the primary path behind the same
+interface. No private API or OKX.AI HTML scraping.
+
+**Repeated-sourcing orchestration seam (PRIMARY, `16a3b15`).**
+`lib/objective/orchestration.ts::sourceResourceNeed` composes, once per bounded
+need: dedupe → need-driven discovery → registry validation → generic candidate
+assessment → deterministic selection → application-owned resource-specific
+approved path → the unchanged canonical kernel → decision record → need status
+(BUY ⇒ `buy_pending`). Scenario-independent; provider identity emerges.
+
+**Canonical M2 acceptance evidence (PRIMARY, `16a3b15`, 8/8 in
+`tests/canonicalM2.test.ts`).** Deterministic offline proof of the §16 chain:
+real internal MAKE mutates the owned launch artifact (version 1 → 2, with
+provenance) → privileged-social-intelligence `ResourceNeed` → discovery →
+redundant generic growth offering rejected (`reject_redundant` against owned
+classes; `reject_incompatible` against the intelligence need) → scarce
+exact-resource offering selected (`newsliquid_twitter_search`, lowest eligible
+price) → deterministic BUY persisted with `missing_with_approved_path` → need
+`buy_pending` (objective waits). Repeat proven with a second independent need
+(external social execution → `xbird_twitter_x_api` BUY, distinct decision id)
+and with duplicate-request dedupe. The resumed-MAKE leg uses a clearly labelled
+SIMULATED external-result fixture (seam testing only — not presented as a real
+provider transaction). **Status: M2 IMPLEMENTATION COMPLETE — LIVE ACCEPTANCE
+PENDING** (no Convex deployment or model credentials exist in this
+environment; nothing was faked).
+
+**BUY is not failure (PRIMARY, `f2ddc73`).** `ObjectiveState`/`WorkItemState`
+and their Convex validators gain `waiting_for_resource` (append-only; M1 rows
+unaffected). `objectiveStateForSourcing` is the single pure rule: MAKE →
+executing, BUY → waiting_for_resource, BLOCKED → failed. `planObjective` no
+longer fails an objective on BUY. Completion remains blocked while a required
+resource is unresolved (existing `requiredVerifiedEffectKeys` + the waiting
+state).
+
+**M3 buyer rail to READY_TO_SIGN (Lane M3, `b05e117`, 72/72).** Consumed
+`prep/m3-okx-readiness` (pure lifecycle kernel + verified live probe evidence)
+without restarting research. Added: `challenge.ts` (fail-closed 402 body
+parsing — terms in JSON body, `maxAmountRequired` field, `exact`/`aggr_deferred`
+schemes — and `bindTermsToApproval` verifying network/asset/payTo/amount
+against explicit approval bounds; nothing hardcoded), `purchase.ts` (independent
+purchase records, per-purchase idempotency keys, first purchase can never
+authorize the second), `buyerRail.ts` (prepare → READY_TO_SIGN stop;
+`executeSignedPayment` requires explicit approval + injected `Signer`;
+`planRetry` refuses from submitted/uncertain/reconciliation_required and
+prevents double-pay; injected `SettlementReader`/`PaidRequestSender`
+abstractions; `FakeSigner` with no real secret). Tests cover every §22
+invariant including testnet/mainnet fail-closed separation and
+secrets-never-serialized. **Status: M3 IMPLEMENTATION READY — LIVE TESTNET
+SIGN/PAY ACCEPTANCE PENDING.** No signing, submission or spend occurred.
+PRIMARY reconstructed `lib/payment/types.ts` after it was lost to a
+shared-worktree concurrent-checkout collision (see ledger incident note).
+
+**M4 provider adapters (isolated lane, collected by PRIMARY at `16a3b15`,
+11/11).** `lib/providers/types.ts` (generic `ProviderAdapter` /
+`ExternalResourceResult` contracts, scenario-free), `newsliquid.ts` (normalizes
+purchased social evidence into generic evidence shape; no hardcoded marketing
+conclusion — payload reflects actual fixture input), `xbird.ts` (publish
+receipt normalization + pure `planReadbackVerification` for independent
+read-back; BYOA `authToken`/`ct0` stay local and are provably excluded from
+persisted results; remote vs local MCP mode documented), `registry.ts`
+(adapter lookup). All fixture-driven; no paid call, no credentials, no publish.
+**Status: M4 PROVIDER ADAPTERS READY — LIVE PROVIDER EXECUTION PENDING.**
+
+**Read model / UI prep (PRIMARY, `281a8a9`, 8/8 in `tests/readModel.test.ts`).**
+`app/readModel.ts` pure selectors render persisted generic state: multiple
+needs, per-decision candidate assessments including the rejected offering,
+multiple purchase/payment states (awaiting-signing distinguished from
+submitted/settled/verified), artifact version history, waiting flag, unresolved
+required-resource flag. Component logic branches only on generic unions;
+provider names render as verbatim data. Status pill surfaces
+`waiting_for_resource`.
+
+**Checks actually run at final integration `a0f9379`:** full suite
+`npx tsx --test tests/*.test.ts` → 255/255 pass; `npx tsc --noEmit` → clean;
+`npx tsc -p convex/tsconfig.json --noEmit` → clean; `npx next build` → success.
+Scenario-coupling audit and invariant review: `docs/work/INVARIANT_REVIEW.md`.
+
 ## 4. Planned / Not Yet Built
 
 Everything in this section is **not implemented** until repository evidence moves it into Section 3.

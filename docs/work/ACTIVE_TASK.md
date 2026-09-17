@@ -9,6 +9,24 @@ Integration branch: `qoder/general-session-fk5qjv`
 Base / CHECKPOINT A0 (M2 branch reconciled with origin/main): `72321ed8e78c8b366a46df5fe56ddb2e81ef5386`
 Frozen contracts: `docs/work/M2_SHARED_CONTRACT.md` @ `d61bfcf1083f80c8737b4058930f352f82bc00dc`
 CHECKPOINT 1 (lanes A+B+C+M3 integrated, 228/228 tests, root+convex tsc clean): `9ed74856b6fd52c6000e392a33cdc60b293b21f8`
+CHECKPOINT 2 (orchestration seam + canonical M2 dry-engine proof + M4 adapters, 244/244): `16a3b159b58496029137548c085c69454bbde130`
+CHECKPOINT 3 (BUY≠failure waiting_for_resource lifecycle, 247/247): `f2ddc7363a1d8f286116219fd95b3e0cd6b44666`
+CHECKPOINT 4 (generic read-model/UI prep, 255/255): `281a8a9b6ea1a29a5bb6196ffdd08c603029b0f7`
+CHECKPOINT 5 (scenario-coupling audit + invariant review + next build pass): `a0f93793a734a7e8f8d918fdce9f22ebe9129915`
+
+FINAL OVERNIGHT STATUS:
+- M2 IMPLEMENTATION COMPLETE — LIVE ACCEPTANCE PENDING (no Convex deployment/model creds in this environment; canonical chain proven deterministically offline in tests/canonicalM2.test.ts).
+- M3 IMPLEMENTATION READY — LIVE TESTNET SIGN/PAY ACCEPTANCE PENDING (rail stops at READY_TO_SIGN; nothing signed/submitted/spent).
+- M4 PROVIDER ADAPTERS READY — LIVE PROVIDER EXECUTION PENDING (fixture-driven; no paid calls).
+- UI/read-model prep complete for multi-step mission states.
+- Full evidence: BUILD_DELTA.md §3.8; audit: docs/work/INVARIANT_REVIEW.md.
+- Full suite 255/255; root+convex typecheck clean; next build clean.
+
+Morning founder actions (smallest path to acceptance):
+1. `npx convex dev` on a fresh deployment + set LIVE_AI_ENABLED/AI_MODEL/provider key → run the canonical objective live → M2 live acceptance.
+2. At READY_TO_SIGN: provide an explicit testnet wallet + approval bounds in a supervised session → sign Mock Merchant challenge on X Layer Testnet (eip155:1952) → M3 live acceptance → then R2 review.
+3. Supervised Newsliquid testnet purchase + xbird publish with demo X creds → M4 live → R3 review.
+4. Optional: confirm an official OKX discovery CLI/library exists and swap it behind MarketDiscovery.
 
 Lane branches (all pushed, remote==local verified by PRIMARY):
 - Lane A resource-need: `lane/a-resource-need` @ `c8cc432` (13/13) — ResourceNeed + SourcingDecisionRecord primitives.
