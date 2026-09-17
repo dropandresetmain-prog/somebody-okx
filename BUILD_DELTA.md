@@ -285,6 +285,38 @@ This pass records, but does not yet implement:
 - evidence-only MAKE completion adaptation;
 - current-product surface replacing old Company-Mission framing.
 
+### 3.5 R1 foundation-review remediation (blockers A–F)
+
+**Classification: Rebuilt / Adapted during OKX.** All of it modifies M1 code built
+earlier in this same milestone; none of it is inherited capability, and none of it
+is claimed as a new product capability beyond what M1 already claimed.
+
+Branch `fix/r1-m1-acceptance`, created from candidate tip `e06eb6f` and merged with
+authoritative `main` (`1894649`). Integrated in lane order A → B → C → Convex spine
+→ D, one cherry-pick per lane plus the primary's own seams, pushed after each lane.
+
+| SHA | Lane | What it closes |
+|---|---|---|
+| `6a73133` | primary | `docs/work/R1_SHARED_CONTRACT.md` — binding cross-lane seam so four agents could not diverge on shapes |
+| `3b93bf2` | primary | Blocker E — `lib/objective/runGuards.ts` (pure lease fencing: `EXECUTION_TIMEOUT_MS 270s < LEASE_MS 300s`, `fenceRunWrite`, `isRunActive`, `decideFinalization`) + `tests/runLifecycle.test.ts` (11) |
+| `d93a203` | A | Blockers A + B — `EvidenceOrigin`, `SourceProof`, `normalizePublicUrl`/`sourceIdentity`, `evaluateCompletion` counts **distinct application-observed source identities** per class; `RESEARCH_ROLE` requires 1 company record + 2 distinct public sources |
+| `64c7e2c` | B | Blocker D (pure half) — `assertRoleRequirementsSatisfied` + `planObjectiveWithModel` injected-model seam; additive, `tests/planner.test.ts` (15) |
+| `d162eb6` | C | Blocker C — read tools return the bounded observed content wrapped as unmistakable untrusted data (1200-char cap, ≤6 recent findings), `record_finding` demoted to an explicit NOTE, `tests/worker.test.ts` (13) |
+| `0e2883b` | primary | A/B/D/E on the application side — `convex/objectiveRunner.ts` (`"use node"`: `proposePlan` bounded structured planning call, `executeWorker` under an abort budget inside the lease, port that resolves and persists observations), run-scoped evidence, re-derived `sourceIdentity`, server-side `planObjectiveFromModel`, idempotent `finishRun`, `completion:{accepted,unmet}` read model, all seven `as never` codegen casts removed by real types |
+| `45d4286` | primary | A's type-level half at the worker seam — `ModelNoteInput = Omit<FindingInput,"origin"\|"sourceId">` so the runtime physically cannot hand over proof fields; dead origin-minting helpers deleted; test twin aligned to the merged contract |
+| `282f2a6`/`5e0f542` | D | Blocker F + cleanup — `app/resultStatus.ts` `resolveResultDisplay` wired into `ResultSection`; hard-coded client proposal literal deleted in favour of the server planning action; nine dead `package.json` scripts pointing at the removed `scripts/` directory deleted |
+
+Honest limits of this work:
+
+- **No live deployment proof.** Every claim above is static: types, unit tests and a
+  production build. The blocker fixes change behaviour that only a fresh Convex
+  deployment plus a real model call can confirm, and that boundary is recorded in
+  §5 and in `docs/work/ACTIVE_TASK.md`. Nothing here is claimed as observed against
+  a live backend.
+- **`convex/_generated/` is still a hand-maintained stand-in**, extended only to list
+  the new `objectiveRunner` module. It must be replaced by real `npx convex dev`
+  codegen, not deepened by hand.
+
 ## 4. Planned / Not Yet Built
 
 Everything in this section is **not implemented** until repository evidence moves it into Section 3.
@@ -336,13 +368,18 @@ As of the 17 September M1 implementation (branch `qoder/general-session-ao10w4`)
 - UI/brand visual language (`app/somebody/**`, mascot/wordmark/pill CSS tokens);
 - reference pattern (not imported by runtime): `lib/agent/procurement.ts`.
 
-**Working and built/adapted during OKX (M1):**
+**Working and built/adapted during OKX (M1, R1-remediated — see §3.5):**
 
 - fresh current-product Convex schema + objective runtime (`convex/schema.ts`, `convex/objectives.ts`, `convex/objective{Validators,Args}.ts`) with run lease/expiry fencing;
-- objective spine: fail-closed planner validation, factual inventory sourcing (MAKE/BLOCKED), WorkContract, application-owned completion (`lib/objective/{types,planner,contract,policy}.ts`);
-- Active MAKE runtime: deliberate model selection, envelope-only tool materialization, real `@openai/agents` Agent/Runner execution, workflow verbs (`lib/worker/{modelSelection,port,runtime}.ts`);
-- Objective workspace UI as the app entry point (`app/ObjectiveWorkspace.tsx`, `app/page.tsx`);
-- focused Level-1 tests: `tests/objective.test.ts` (16), `tests/workforce.test.ts` (9), `tests/worker.test.ts` (7) — 32/32 passing at commit under review.
+- objective spine: fail-closed planner validation, factual inventory sourcing (MAKE/BLOCKED), WorkContract, application-owned completion (`lib/objective/{types,planner,contract,policy,runGuards}.ts`);
+- Active MAKE runtime: deliberate model selection, envelope-only tool materialization, real `@openai/agents` Agent/Runner execution, bounded untrusted-content observation surface (`lib/worker/{modelSelection,port,runtime}.ts`);
+- Node-resident executor + application-owned evidence port (`convex/objectiveRunner.ts`, `"use node"`);
+- Objective workspace UI as the app entry point (`app/ObjectiveWorkspace.tsx`, `app/page.tsx`, acceptance truthfulness in `app/resultStatus.ts`);
+- focused Level-1 tests (corrected breakdown, observed on `fix/r1-m1-acceptance` at `5e0f542`):
+  `tests/objective.test.ts` 22, `tests/planner.test.ts` 15, `tests/runLifecycle.test.ts` 11,
+  `tests/worker.test.ts` 13, `tests/workforce.test.ts` 11, `tests/ui.test.ts` 5 — **77/77 pass**;
+  `npx tsc --noEmit` and `npx tsc -p convex/tsconfig.json --noEmit` both clean; `npx next build` compiles.
+  The earlier "32/32 (16 objective / 9 workforce / 7 worker)" line described the pre-R1 baseline and was stale.
 
 **Documented but not yet implemented:**
 

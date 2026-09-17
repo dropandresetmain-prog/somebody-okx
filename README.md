@@ -204,7 +204,7 @@ Requirements:
 - deliberate execution-model selection;
 - only WorkerSpec/WorkContract-allowed tools are materialized;
 - actual `@openai/agents` Agent/Runner execution;
-- multiple meaningful tool-mediated observations/actions appropriate to the role, ideally across at least two distinct sources/resource classes;
+- multiple meaningful tool-mediated observations/actions appropriate to the role, **enforced**: one distinct company record plus two distinct public web sources, counted as distinct application-observed source identities (R1 blocker B);
 - persisted evidence/result/activity;
 - real UI state from the new backend.
 
@@ -316,6 +316,20 @@ deliberate model selection + envelope-derived tools + real `@openai/agents` Runn
 (`app/ObjectiveWorkspace.tsx`: YOU ASKED / SOMEBODY'S PLAN / WHY MAKE? / THAT GUY / EVIDENCE /
 RESULT) reusing the Mission Control visual language. Legacy procurement/unipile/google/qbo
 runtime modules were removed from the active surface (provenance retained in git history);
-`.env.example` carries only current-product variables. Remaining M1 item: point the app at a
-fresh Convex deployment (`npx convex dev` requires deployment authentication; codegen output is
-currently a hand-maintained stand-in in `convex/_generated/`) and run one live Development smoke.
+`.env.example` carries only current-product variables.
+
+**R1 foundation review — blockers A–F closed on `fix/r1-m1-acceptance` (static evidence
+only):** evidence origin is owned by the application, so a model-authored note can never
+become proof; completion now requires *distinct* application-observed sources (one company
+record plus two distinct public URLs); the worker sees the bounded content it actually read,
+marked untrusted; planning happens server-side through one bounded model call that fails
+closed when the approved capabilities cannot satisfy the role; run finalization is
+lease-fenced and idempotent; and the UI renders "Accepted" only when the application
+accepted. SHAs and honest limits: `BUILD_DELTA.md` §3.5.
+
+Remaining M1 item, unchanged and now the only one: point the app at a **fresh** Convex
+deployment and run the single bounded live smoke. `npx convex dev` needs deployment
+authentication this build environment does not have (`No CONVEX_DEPLOYMENT set`, and
+`api.convex.dev` is unreachable), so `convex/_generated/` is still a hand-maintained
+stand-in awaiting real codegen. Exact founder action: `docs/work/ACTIVE_TASK.md`.
+`acrobatic-swan-765` is not a substitute and must not be used.

@@ -123,6 +123,43 @@ Test evidence (observed at the docs-update commit):
 - focused tests `npx tsx --test tests/objective.test.ts tests/workforce.test.ts tests/worker.test.ts`: **32/32 pass** (16 planner/sourcing/contract/resolution, 9 workforce kernel, 7 worker runtime incl. real-Runner scripted-model proof);
 - `npx next build`: compiles, static prerender OK.
 
+(Stale as of the R1 pass below: the suite is now six files / 77 tests. See the R1
+checkpoint for the corrected breakdown.)
+
+### R1 — foundation-review blockers (A–F) — CLOSED STATICALLY, LIVE PROOF PENDING
+
+Branch `fix/r1-m1-acceptance`, from candidate tip `e06eb6f` merged with authoritative
+`main` (`1894649`). Integration order A → B → C → Convex spine → D, branch pushed after
+each integrated lane. SHA-by-SHA record and provenance: `BUILD_DELTA.md` §3.5.
+
+| Blocker | State | Evidence |
+|---|---|---|
+| A — fabricated evidence could count as proof | closed | `EvidenceOrigin` + application-owned `sourceId`; `ModelNoteInput` omits both fields so the runtime cannot assert them; `recordFinding` re-derives identity and rejects caller-claimed origin (`d93a203`, `0e2883b`, `45d4286`); `tests/objective.test.ts`, `tests/worker.test.ts` "notes-only run cannot complete" |
+| B — two distinct public sources + ≥1 company record not enforced | closed | `sourceProofs` + `normalizePublicUrl`/`sourceIdentity`; distinct-identity counts per class; proof is run-scoped (`d93a203`, `0e2883b`); URL-variant and duplicate-URL tests |
+| C — worker could not see observed content | closed | read tools return bounded (1200-char) observed text wrapped in `<untrusted_content>`; ≤6 recent findings; port also bounds text so durable full text cannot leak (`d162eb6`, `0e2883b`); `tests/worker.test.ts` content/marker/truncation tests |
+| D — client hard-coded plan; capability/role disconnected | closed | server-side `planObjectiveFromModel` action → one bounded structured model call → deterministic validation → `assertRoleRequirementsSatisfied`; fails closed if approved capabilities cannot obtain both evidence classes; client proposal literal deleted (`64c7e2c`, `0e2883b`, `282f2a6`); `tests/planner.test.ts` |
+| E — run finalization / lease fencing | closed | pure `lib/objective/runGuards.ts` (`EXECUTION_TIMEOUT_MS` 270 s `<` `LEASE_MS` 300 s), `fenceRunWrite`, idempotent `decideFinalization`, abort budget inside the lease (`3b93bf2`, `0e2883b`); `tests/runLifecycle.test.ts` 11 cases incl. double-finalize and partial-failure-cannot-become-success |
+| F — UI claimed acceptance it did not have | closed | `resolveResultDisplay(completion, hasResult)` drives `ResultSection`; read model returns durable `completion:{accepted,unmet}` (`282f2a6`); `tests/ui.test.ts` |
+| Cleanup — dead scripts | closed | nine scripts pointing at the deleted `scripts/` directory removed; eight survive, each resolving to an installed binary; **no** new live-smoke command added (see below) |
+
+Corrected checks, observed at `5e0f542`:
+
+- `tests/objective.test.ts` 22, `tests/planner.test.ts` 15, `tests/runLifecycle.test.ts` 11,
+  `tests/worker.test.ts` 13, `tests/workforce.test.ts` 11, `tests/ui.test.ts` 5 — **77/77 pass**;
+- root `npx tsc --noEmit`: clean; `npx tsc -p convex/tsconfig.json --noEmit`: clean;
+- zero `as never` casts remain anywhere in `convex/`, `lib/`, `app/`;
+- `npx next build`: compiles, static prerender OK.
+
+**This is not M1 acceptance.** Acceptance criteria 1, 3, 10 and 12 hinge on a real
+deployment and a real model call; they are still verified only by focused tests. The one
+bounded live smoke and one cheap negative proof have not been run.
+
+On the "at most ONE current M1 live-smoke command" rule: no script was added. Every
+candidate entry point needs a Convex deployment plus a provider key to run, so a script
+would be a dangling command — the same defect the cleanup removed. The live smoke is
+therefore driven through the real product surface (submit one objective in the Objective
+workspace) once the founder action below completes.
+
 ### M0 — Foundation and provenance — COMPLETE
 
 Completed:
@@ -291,15 +328,18 @@ PASS only when one bounded objective can:
 
 No BUY required yet.
 
-### M1 deployment blocker — founder action required (recorded 17 Sep 2026)
+### M1 deployment blocker — founder action required (recorded 17 Sep 2026, boundary re-verified during R1)
 
 Creating the fresh Somebody-OKX Convex deployment requires Convex platform
 authentication that is not available in the build sandbox. The following exact
-command was attempted and failed as shown (no deployment was created, no success
+commands were attempted and failed as shown (no deployment was created, no success
 is claimed):
 
 ```
 $ npx convex dev
+✖ No CONVEX_DEPLOYMENT set, run `npx convex dev` to configure a Convex project
+
+$ npx convex codegen --typecheck=disable
 ✖ No CONVEX_DEPLOYMENT set, run `npx convex dev` to configure a Convex project
 
 $ CONVEX_DEPLOYMENT=dev:<name> npx convex env list
@@ -308,21 +348,58 @@ $ CONVEX_DEPLOYMENT=dev:<name> npx convex env list
   Authenticate with `npx convex dev`
 ```
 
-Minimum founder action:
+R1 re-verification of the boundary (so the founder action is not guesswork):
 
-1. In an authenticated environment run `npx convex dev` inside the repo to create
-   (or select) the fresh Somebody-OKX deployment and authenticate. This regenerates
-   `convex/_generated/` (currently a hand-maintained stand-in) and writes
-   `CONVEX_DEPLOYMENT` / `.env.local` (`NEXT_PUBLIC_CONVEX_URL`).
-2. On the Convex dashboard (Settings → Environment Variables) set `LIVE_AI_ENABLED=true`,
-   `AI_PROVIDER`, `AI_MODEL` (a tool-capable model), and the matching provider API key
-   (`OPENROUTER_API_KEY` or `OPENAI_API_KEY`).
-3. Run the app locally (`npm run dev`) and submit one objective through the Objective
-   workspace to execute the live Development smoke.
+- `~/.config/convex` and `~/.convex*` do not exist — no credential store to reuse;
+- `https://dash.convex.dev` is unreachable from this sandbox (no HTTP response);
+- no `CONVEX_DEPLOYMENT` / `OPENAI_API_KEY` / `OPENROUTER_API_KEY` in the environment;
+- `npx convex deployment list` is **not** a valid subcommand — `deployment` supports
+  `select`, `create`, `token`, `usage`, `usage-limits`. Use `create`, not `list`;
+- there is no standalone `npx convex login` command in this CLI version either —
+  authentication is initiated by `npx convex dev` (which opens a browser);
+- there is no local Convex runtime fallback here: no Docker daemon is available, so
+  `npx convex dev --local` cannot substitute for the authenticated cloud path.
+
+Minimum founder action (one authenticated machine with a browser; commands verified
+against the installed CLI's own help output):
+
+1. Create and select the fresh dev deployment — never reuse `acrobatic-swan-765`:
+   `npx convex dev --team <team-slug> --project somebody-okx --dev-deployment somebody-okx-m1`
+   (interactive alternative: plain `npx convex dev`, accept the create-project prompt,
+   and complete the browser login it starts). This writes `CONVEX_DEPLOYMENT` and
+   `.env.local` (`NEXT_PUBLIC_CONVEX_URL`) and regenerates `convex/_generated/`,
+   replacing the hand-maintained stand-in.
+   Equivalent explicit form: `npx convex deployment create dev/somebody-okx-m1 --type dev --select`.
+2. Push functions and confirm codegen replaced the stand-in, then re-check types:
+   `npx convex dev --once` (or `npm run convex:codegen`), followed by
+   `npm run typecheck && npm run typecheck:convex`.
+3. Set the deployment env vars so scheduled runs can reach the provider:
+   `npx convex env set LIVE_AI_ENABLED true`, `AI_PROVIDER`, `AI_MODEL` (a tool-capable
+   model), and the matching `OPENAI_API_KEY` or `OPENROUTER_API_KEY`. Keys go to the
+   deployment environment, never into git or logs.
+4. Run the single bounded live smoke and one cheap negative proof (see below) against
+   that deployment — `npm run dev` and submit one objective in the Objective workspace.
+5. Record the observed evidence in `BUILD_DELTA.md` §5 with the deployment name, and
+   delete the stand-in caveat from §3.5 / §5 / README once real codegen is committed.
 
 Until that smoke runs, criteria 1, 3, 10 and 12 are verified by focused tests and
 typechecks but **not** by a live deployment; this is recorded honestly in
-`BUILD_DELTA.md` §5.
+`BUILD_DELTA.md` §5 and in the R1 checkpoint above.
+
+#### The two live proofs to run once authenticated (not run yet)
+
+1. **Bounded live smoke (exactly one):** fresh deployment + real model, submit one
+   objective in the Objective workspace → server planning chooses the role-satisfying
+   capability set → MAKE decision → `startRun` → worker calls `read_company_record`
+   once and `read_public_web` twice on **distinct** URLs and sees the bounded content →
+   `submit_result` → the application verifies distinct application-observed proof →
+   `finishRun` → durable state shows `completed` → the UI shows **Accepted** from the
+   read model, not from a client-side guess. Capture the deployment name, objective key,
+   evidence ids and `sourceId`s; no secrets.
+2. **Cheap negative proof (one):** a run whose public observations are the same URL
+   twice (or a notes-only run) must end **not accepted**, with the unmet distinct-source
+   reason visible in durable state and in the UI. This is the check that the blocker
+   fixes hold against a live model rather than only against an injected scripted one.
 
 ## M1 test/evidence hierarchy
 
