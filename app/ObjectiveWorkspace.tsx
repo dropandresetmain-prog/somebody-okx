@@ -23,8 +23,62 @@ import { Icon } from "./somebody/Icon";
 import { Mascot } from "./somebody/Mascot";
 import { cleanError, formatClock, type Tone } from "./somebody/presentation";
 import { resolveResultDisplay, type CompletionField } from "./resultStatus";
+import type { SourcingReason } from "@/lib/objective/types";
 
 type NoticeState = { kind: "ok" | "error"; text: string } | null;
+
+// Pure presentation helper: maps the PERSISTED sourcing shape to plan-section
+// copy. It never re-decides MAKE/BUY/BLOCKED and never invents a field — a
+// missing sourcing field renders as null. The decision and reason text always
+// come from plan.sourcing (decided by lib/sourcing, adapted in
+// lib/objective/sourcing.ts); this only labels what is already stored.
+// Extracted for testability without React (see tests/ui.test.ts).
+export function describeSourcing(sourcing: SourcingReason): {
+  title: string;
+  tone: Tone;
+  whyLabel: string;
+  missingLine: string | null;
+  approvedLine: string | null;
+  noApprovedLine: string | null;
+} {
+  const missingLine =
+    sourcing.missing.length > 0
+      ? `Missing resources: ${sourcing.missing.join(", ")}`
+      : null;
+  if (sourcing.decision === "MAKE") {
+    return {
+      title: "Make it in-house",
+      tone: "viable",
+      whyLabel: "WHY MAKE?",
+      missingLine: null,
+      approvedLine: null,
+      noApprovedLine: null,
+    };
+  }
+  if (sourcing.decision === "BUY") {
+    return {
+      title: "Buy",
+      tone: "decision",
+      whyLabel: "WHY BUY?",
+      missingLine,
+      approvedLine:
+        sourcing.approvedProviderPaths.length > 0
+          ? `Approved external path: ${sourcing.approvedProviderPaths
+              .map((path) => `${path.pathId} (${path.forResourceClass})`)
+              .join(", ")}`
+          : null,
+      noApprovedLine: null,
+    };
+  }
+  return {
+    title: "Blocked",
+    tone: "ineligible",
+    whyLabel: "WHY BLOCKED?",
+    missingLine,
+    approvedLine: null,
+    noApprovedLine: "No approved external path is currently available.",
+  };
+}
 
 // ── Shared bits (reused visual language) ────────────────────────────────────
 
@@ -185,22 +239,26 @@ function ObjectiveComposer({
 function PlanSection({ record }: { record: ObjectiveRecord }) {
   const plan = record.plan;
   if (!plan) return null;
-  const make = plan.sourcing.decision === "MAKE";
+  // Display only: every string below comes from the persisted sourcing truth.
+  const sourcing = describeSourcing(plan.sourcing);
   return (
     <section className="section" id="plan">
       <SectionHead
         kicker="Somebody's plan"
-        title={make ? "Make it in-house" : plan.sourcing.decision === "BLOCKED" ? "Blocked" : "Buy"}
-        aside={
-          <StatusPill tone={make ? "viable" : "ineligible"}>
-            {plan.sourcing.decision}
-          </StatusPill>
-        }
+        title={sourcing.title}
+        aside={<StatusPill tone={sourcing.tone}>{plan.sourcing.decision}</StatusPill>}
       />
       <div className="plan-grid">
         <div className="plan-card">
-          <h3>WHY MAKE?</h3>
+          <h3>{sourcing.whyLabel}</h3>
           <p>{plan.sourcing.reason}</p>
+          {sourcing.missingLine && <p className="muted">{sourcing.missingLine}</p>}
+          {sourcing.approvedLine && (
+            <p className="muted">{sourcing.approvedLine}</p>
+          )}
+          {sourcing.noApprovedLine && (
+            <p className="muted">{sourcing.noApprovedLine}</p>
+          )}
           <p className="muted">
             Capabilities: {plan.validated.capabilityKeys.join(", ")}
           </p>
