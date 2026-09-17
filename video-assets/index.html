@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <title>Somebody — Video Scenes</title>
+    <link rel="preload" as="image" href="./assets/somebody-neutral.webp" />
+    <link rel="preload" as="image" href="./assets/somebody-working.webp" />
+    <link rel="preload" as="image" href="./assets/somebody-done-verified.webp" />
+    <link rel="stylesheet" href="./styles.css" />
+    <script src="./scene.js" defer></script>
+  </head>
+  <body>
+    <div class="viewport" aria-label="Somebody demo video scene">
+      <main class="stage" id="stage" data-scene="opening">
+        <section class="scene scene-opening" aria-label="Opening hook">
+          <div class="opening-copy">
+            <p class="eyebrow intro-eyebrow">Every small company has one.</p>
+            <h1 class="intro-heading">
+              A mysterious employee<br />called <em>somebody.</em>
+            </h1>
+
+            <div class="request-stack" aria-hidden="true">
+              <div class="request request-one">Can somebody get quotes?</div>
+              <div class="request request-two">Can somebody chase this?</div>
+              <div class="request request-three">
+                Can somebody figure out whether this can arrive by Thursday?
+              </div>
+            </div>
+
+            <div class="opening-payoff">
+              <p>Usually, that somebody is</p>
+              <strong>you.</strong>
+            </div>
+
+            <div class="brand-reveal">
+              <span>So we built</span>
+              <strong>Somebody</strong>
+            </div>
+          </div>
+
+          <div class="opening-mascot-wrap" aria-hidden="true">
+            <div class="mascot-halo"></div>
+            <img
+              class="mascot opening-mascot"
+              src="./assets/somebody-neutral.webp"
+              alt=""
+              draggable="false"
+            />
+          </div>
+        </section>
+
+        <section class="scene scene-working" aria-label="Working transition">
+          <div class="working-lockup">
+            <img
+              class="mascot working-mascot"
+              src="./assets/somebody-working.webp"
+              alt=""
+              draggable="false"
+            />
+            <p class="working-copy">Somebody is on it.</p>
+          </div>
+        </section>
+
+        <section class="scene scene-closing" aria-label="Closing card">
+          <div class="closing-lockup">
+            <div class="closing-mascot-wrap" aria-hidden="true">
+              <div class="mascot-halo closing-halo"></div>
+              <img
+                class="mascot closing-mascot"
+                src="./assets/somebody-done-verified.webp"
+                alt=""
+                draggable="false"
+              />
+            </div>
+            <div class="closing-copy">
+              <h1>Somebody</h1>
+              <div class="closing-rule"></div>
+              <p>Somebody has to do it. <span>Now Somebody can.</span></p>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>

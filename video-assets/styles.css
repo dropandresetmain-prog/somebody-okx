@@ -1,0 +1,508 @@
+:root {
+  --paper: #f5f2eb;
+  --paper-deep: #e7e0d4;
+  --surface: rgba(255, 255, 255, 0.82);
+  --ink: #22231f;
+  --ink-soft: #66655e;
+  --line: rgba(34, 35, 31, 0.12);
+  --shadow: 0 28px 80px rgba(42, 37, 29, 0.09);
+  --stage-width: 1920px;
+  --stage-height: 1080px;
+  font-family:
+    Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: var(--ink);
+  background: #ded8cd;
+  text-rendering: geometricPrecision;
+  font-synthesis: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+body {
+  background: #ded8cd;
+}
+
+.viewport {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.stage {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: var(--stage-width);
+  height: var(--stage-height);
+  overflow: hidden;
+  transform: translate(-50%, -50%) scale(var(--stage-scale, 1));
+  transform-origin: center center;
+  background: var(--paper);
+  isolation: isolate;
+}
+
+.stage::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.12)),
+    var(--paper);
+}
+
+.stage::after {
+  content: "";
+  position: absolute;
+  inset: 44px;
+  z-index: 20;
+  border: 1px solid rgba(34, 35, 31, 0.045);
+  border-radius: 40px;
+  pointer-events: none;
+}
+
+.scene {
+  position: absolute;
+  inset: 0;
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.stage[data-scene="opening"] .scene-opening,
+.stage[data-scene="working"] .scene-working,
+.stage[data-scene="closing"] .scene-closing {
+  visibility: visible;
+  opacity: 1;
+}
+
+.eyebrow {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 27px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+
+.mascot {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.mascot-halo {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 680px;
+  height: 680px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(255, 255, 255, 0.54);
+  box-shadow: 0 0 0 1px rgba(34, 35, 31, 0.035);
+}
+
+/* Opening — approximately 9.5 seconds before the final hold. */
+.scene-opening {
+  padding: 126px 132px 112px 148px;
+}
+
+.opening-copy {
+  position: relative;
+  z-index: 3;
+  width: 1090px;
+  height: 100%;
+}
+
+.intro-eyebrow,
+.intro-heading,
+.request-stack,
+.opening-payoff,
+.brand-reveal,
+.opening-mascot-wrap {
+  opacity: 0;
+}
+
+.intro-heading {
+  margin: 20px 0 0;
+  max-width: 1010px;
+  font-size: 88px;
+  line-height: 0.98;
+  font-weight: 720;
+  letter-spacing: -0.062em;
+}
+
+.intro-heading em {
+  font-style: normal;
+  font-weight: 790;
+}
+
+.request-stack {
+  position: absolute;
+  left: 0;
+  bottom: 36px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 930px;
+}
+
+.request {
+  align-self: flex-start;
+  padding: 18px 24px 20px;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: var(--surface);
+  box-shadow: 0 14px 38px rgba(42, 37, 29, 0.055);
+  color: #3a3a35;
+  font-size: 29px;
+  font-weight: 570;
+  letter-spacing: -0.035em;
+  opacity: 0;
+  transform: translateY(10px);
+  backdrop-filter: blur(10px);
+}
+
+.request-two {
+  margin-left: 54px;
+}
+
+.request-three {
+  max-width: 900px;
+  margin-left: 106px;
+}
+
+.opening-mascot-wrap {
+  position: absolute;
+  right: 96px;
+  top: 154px;
+  z-index: 2;
+  width: 650px;
+  height: 760px;
+}
+
+.opening-mascot {
+  position: relative;
+  z-index: 1;
+  filter: drop-shadow(0 28px 38px rgba(45, 39, 31, 0.10));
+}
+
+.opening-payoff,
+.brand-reveal {
+  position: absolute;
+  left: 0;
+  top: 250px;
+  width: 1000px;
+}
+
+.opening-payoff p {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 45px;
+  font-weight: 620;
+  letter-spacing: -0.045em;
+}
+
+.opening-payoff strong {
+  display: block;
+  margin-top: 2px;
+  font-size: 128px;
+  line-height: 0.95;
+  font-weight: 790;
+  letter-spacing: -0.075em;
+}
+
+.brand-reveal span {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--ink-soft);
+  font-size: 31px;
+  font-weight: 620;
+  letter-spacing: -0.035em;
+}
+
+.brand-reveal strong {
+  display: block;
+  font-size: 132px;
+  line-height: 0.92;
+  font-weight: 790;
+  letter-spacing: -0.078em;
+}
+
+.is-playing[data-scene="opening"] .intro-eyebrow {
+  animation: intro-in 0.62s cubic-bezier(0.2, 0.78, 0.25, 1) 0.18s forwards,
+    intro-out 0.55s ease 5.72s forwards;
+}
+
+.is-playing[data-scene="opening"] .intro-heading {
+  animation: intro-in 0.72s cubic-bezier(0.2, 0.78, 0.25, 1) 0.34s forwards,
+    intro-out 0.55s ease 5.72s forwards;
+}
+
+.is-playing[data-scene="opening"] .request-stack {
+  animation: stack-in 0.01s linear 1.48s forwards, intro-out 0.48s ease 5.72s forwards;
+}
+
+.is-playing[data-scene="opening"] .request-one {
+  animation: request-in 0.48s cubic-bezier(0.2, 0.75, 0.25, 1) 1.58s forwards;
+}
+
+.is-playing[data-scene="opening"] .request-two {
+  animation: request-in 0.48s cubic-bezier(0.2, 0.75, 0.25, 1) 2.62s forwards;
+}
+
+.is-playing[data-scene="opening"] .request-three {
+  animation: request-in 0.5s cubic-bezier(0.2, 0.75, 0.25, 1) 3.72s forwards;
+}
+
+.is-playing[data-scene="opening"] .opening-mascot-wrap {
+  animation: mascot-in 0.88s cubic-bezier(0.2, 0.78, 0.25, 1) 0.26s forwards;
+}
+
+.is-playing[data-scene="opening"] .opening-payoff {
+  animation: payoff-in 0.62s cubic-bezier(0.2, 0.78, 0.25, 1) 6.02s forwards,
+    intro-out 0.48s ease 7.42s forwards;
+}
+
+.is-playing[data-scene="opening"] .brand-reveal {
+  animation: payoff-in 0.68s cubic-bezier(0.2, 0.78, 0.25, 1) 7.72s forwards;
+}
+
+/* Optional visual breathing room — approximately 1.8 seconds. */
+.scene-working {
+  display: grid;
+  place-items: center;
+}
+
+.working-lockup {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transform: translateY(-14px);
+}
+
+.working-mascot {
+  width: 520px;
+  height: 550px;
+  opacity: 0;
+  filter: drop-shadow(0 28px 42px rgba(45, 39, 31, 0.10));
+}
+
+.working-copy {
+  margin: 28px 0 0;
+  color: var(--ink-soft);
+  font-size: 34px;
+  font-weight: 650;
+  letter-spacing: -0.04em;
+  opacity: 0;
+}
+
+.is-playing[data-scene="working"] .working-mascot {
+  animation: working-in 0.54s cubic-bezier(0.2, 0.78, 0.25, 1) 0.08s forwards;
+}
+
+.is-playing[data-scene="working"] .working-copy {
+  animation: intro-in 0.42s ease 0.36s forwards;
+}
+
+/* Closing — approximately 4 seconds with a clean final hold. */
+.scene-closing {
+  display: grid;
+  place-items: center;
+  padding: 96px 140px;
+}
+
+.closing-lockup {
+  display: grid;
+  grid-template-columns: 630px 1fr;
+  align-items: center;
+  gap: 96px;
+  width: 1500px;
+}
+
+.closing-mascot-wrap {
+  position: relative;
+  width: 610px;
+  height: 700px;
+  opacity: 0;
+}
+
+.closing-halo {
+  width: 610px;
+  height: 610px;
+}
+
+.closing-mascot {
+  position: relative;
+  z-index: 1;
+  filter: drop-shadow(0 30px 42px rgba(45, 39, 31, 0.11));
+}
+
+.closing-copy {
+  padding-top: 12px;
+}
+
+.closing-copy h1,
+.closing-rule,
+.closing-copy p {
+  opacity: 0;
+}
+
+.closing-copy h1 {
+  margin: 0;
+  font-size: 128px;
+  line-height: 0.92;
+  font-weight: 790;
+  letter-spacing: -0.078em;
+}
+
+.closing-rule {
+  width: 126px;
+  height: 3px;
+  margin: 42px 0 38px;
+  border-radius: 999px;
+  background: rgba(34, 35, 31, 0.20);
+  transform-origin: left center;
+}
+
+.closing-copy p {
+  margin: 0;
+  max-width: 720px;
+  color: var(--ink-soft);
+  font-size: 47px;
+  line-height: 1.15;
+  font-weight: 570;
+  letter-spacing: -0.048em;
+}
+
+.closing-copy p span {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.is-playing[data-scene="closing"] .closing-mascot-wrap {
+  animation: mascot-in 0.75s cubic-bezier(0.2, 0.78, 0.25, 1) 0.14s forwards;
+}
+
+.is-playing[data-scene="closing"] .closing-copy h1 {
+  animation: intro-in 0.62s cubic-bezier(0.2, 0.78, 0.25, 1) 0.38s forwards;
+}
+
+.is-playing[data-scene="closing"] .closing-rule {
+  animation: rule-in 0.52s ease 0.78s forwards;
+}
+
+.is-playing[data-scene="closing"] .closing-copy p {
+  animation: intro-in 0.62s ease 0.9s forwards;
+}
+
+@keyframes intro-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes intro-out {
+  to {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+
+@keyframes stack-in {
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes request-in {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes mascot-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.988);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes payoff-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes working-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes rule-in {
+  from {
+    opacity: 0;
+    transform: scaleX(0.2);
+  }
+  to {
+    opacity: 1;
+    transform: scaleX(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scene-opening .intro-eyebrow,
+  .scene-opening .intro-heading,
+  .scene-opening .request-stack,
+  .scene-opening .opening-payoff {
+    display: none;
+  }
+
+  .scene-opening .opening-mascot-wrap,
+  .scene-opening .brand-reveal,
+  .working-mascot,
+  .working-copy,
+  .closing-mascot-wrap,
+  .closing-copy h1,
+  .closing-rule,
+  .closing-copy p {
+    opacity: 1 !important;
+    animation: none !important;
+    transform: none !important;
+  }
+}

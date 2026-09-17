@@ -1,0 +1,44 @@
+{
+  "name": "trust-issues",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --hostname 127.0.0.1",
+    "build": "next build",
+    "start": "next start --hostname 127.0.0.1",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test tests/*.test.ts",
+    "prove:web-sourcing": "tsx scripts/prove-web-sourcing.ts",
+    "typecheck:convex": "tsc -p convex/tsconfig.json --noEmit",
+    "dev:configure": "tsx scripts/configure-development.ts",
+    "dev:smoke": "tsx scripts/smoke-development.ts",
+    "dev:smoke:live": "tsx scripts/smoke-development.ts --live",
+    "dev:fixture": "tsx scripts/smoke-development.ts --showcase",
+    "qbo:oauth": "tsx scripts/qbo-oauth-bootstrap.ts",
+    "qbo:prove": "tsx scripts/prove-quickbooks-po.ts",
+    "convex:dev": "convex dev",
+    "convex:codegen": "convex codegen",
+    "prove:google": "tsx --env-file=.env.local scripts/prove-google-workspace.ts",
+    "google:oauth": "tsx --env-file=.env.local scripts/google-oauth-bootstrap.ts"
+  },
+  "dependencies": {
+    "@openai/agents": "^0.18.0",
+    "convex": "^1.45.0",
+    "googleapis": "^159.0.0",
+    "next": "^16.3.5",
+    "openai": "^7.15.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "zod": "^4.6.4"
+  },
+  "devDependencies": {
+    "@types/node": "^24",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "tsx": "^4.23.13",
+    "typescript": "^7.0.2"
+  },
+  "engines": {
+    "node": ">=22.6.0"
+  }
+}
