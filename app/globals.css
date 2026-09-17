@@ -2104,3 +2104,149 @@ td.is-changed {
     align-items: stretch;
   }
 }
+
+/* ── Objective workspace (current product entry point) ────────────────────── */
+
+.objective-intro {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  max-width: 760px;
+  margin: clamp(32px, 8vh, 96px) auto 28px;
+}
+.objective-intro h1 {
+  margin: 0;
+  font-family: var(--font-display-stack);
+  font-size: clamp(32px, 5vw, 52px);
+  font-weight: 650;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+}
+.objective-intro .mascot {
+  margin-bottom: 8px;
+}
+.objective-intro + .composer,
+.objective-intro ~ .composer {
+  max-width: 760px;
+  margin: 0 auto 20px;
+}
+.page > .notice {
+  max-width: 760px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.plan-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+}
+.plan-card,
+.worker-card,
+.result-card {
+  padding: 18px 20px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+.plan-card h3 {
+  margin: 0 0 8px;
+  color: var(--ink-3);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+.plan-card p {
+  margin: 0 0 8px;
+  font-size: 15px;
+}
+.plan-card p:last-child {
+  margin-bottom: 0;
+}
+
+.worker-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+}
+.worker-facts {
+  min-width: 0;
+}
+.worker-facts p {
+  margin: 0 0 6px;
+}
+.worker-facts p:last-child {
+  margin-bottom: 0;
+}
+
+.evidence-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.evidence-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+.evidence-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.evidence-item blockquote {
+  margin: 0;
+  padding-left: 12px;
+  border-left: 3px solid var(--line-strong);
+  color: var(--ink-2);
+  font-size: 14px;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.evidence-item a,
+.evidence-item code {
+  color: var(--somebody-ink);
+  font-size: 13px;
+  word-break: break-all;
+}
+
+.result-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.result-summary {
+  margin: 0;
+  font-family: var(--font-display-stack);
+  font-size: 19px;
+  font-weight: 550;
+  letter-spacing: -0.01em;
+}
+.result-row .kicker {
+  display: block;
+  margin-bottom: 4px;
+}
+.result-row p,
+.result-row ul {
+  margin: 0;
+}
+.result-row ul {
+  padding-left: 18px;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+  min-width: 0;
+}

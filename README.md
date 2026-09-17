@@ -304,4 +304,18 @@ See [`BUILD_DELTA.md`](BUILD_DELTA.md) for exact evidence and provenance.
 
 ## Current status
 
-**17 September 2026:** M0 is complete. Architecture/reuse docs have been reconciled against the actual pre-OKX Somebody runtime. M1 is next.
+**17 September 2026:** M0 is complete. Architecture/reuse docs have been reconciled against the actual pre-OKX Somebody runtime.
+
+**M1 built on branch `qoder/general-session-ao10w4`:** fresh current-product data plane
+(`convex/schema.ts`: `objectives`, `objectiveEvents`, `evidence` only), objective spine with
+fail-closed planner validation and factual MAKE/BLOCKED sourcing
+(`lib/objective/`), worker resolution + WorkContract over the inherited workforce kernel,
+deliberate model selection + envelope-derived tools + real `@openai/agents` Runner execution
+(`lib/worker/`), the Convex objective runtime with run leases/expiry fencing
+(`convex/objectives.ts`), and the current product entry point — the Objective workspace
+(`app/ObjectiveWorkspace.tsx`: YOU ASKED / SOMEBODY'S PLAN / WHY MAKE? / THAT GUY / EVIDENCE /
+RESULT) reusing the Mission Control visual language. Legacy procurement/unipile/google/qbo
+runtime modules were removed from the active surface (provenance retained in git history);
+`.env.example` carries only current-product variables. Remaining M1 item: point the app at a
+fresh Convex deployment (`npx convex dev` requires deployment authentication; codegen output is
+currently a hand-maintained stand-in in `convex/_generated/`) and run one live Development smoke.
