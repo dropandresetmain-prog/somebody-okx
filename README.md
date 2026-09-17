@@ -327,9 +327,12 @@ closed when the approved capabilities cannot satisfy the role; run finalization 
 lease-fenced and idempotent; and the UI renders "Accepted" only when the application
 accepted. SHAs and honest limits: `BUILD_DELTA.md` §3.5.
 
-Remaining M1 item, unchanged and now the only one: point the app at a **fresh** Convex
-deployment and run the single bounded live smoke. `npx convex dev` needs deployment
-authentication this build environment does not have (`No CONVEX_DEPLOYMENT set`, and
-`api.convex.dev` is unreachable), so `convex/_generated/` is still a hand-maintained
-stand-in awaiting real codegen. Exact founder action: `docs/work/ACTIVE_TASK.md`.
-`acrobatic-swan-765` is not a substitute and must not be used.
+**M1 is accepted.** The app is live on the fresh `clean-tapir-151` Convex deployment
+(`dropandreset-main/somebody-okx`) with real `npx convex dev` codegen — the
+hand-maintained `convex/_generated/` stand-in is retired. `acrobatic-swan-765` was not
+used. A positive live proof (Cloudflare partnership objective, real
+`openai/gpt-5.6-terra` model via OpenRouter, application-accepted) and a deterministic
+negative proof (duplicate public-source identity correctly refused) were both observed
+against the live backend and confirmed in the Objective workspace UI. Exact objective
+IDs, evidence identities and the full method: `BUILD_DELTA.md` §3.6 and
+`docs/work/ACTIVE_TASK.md`.

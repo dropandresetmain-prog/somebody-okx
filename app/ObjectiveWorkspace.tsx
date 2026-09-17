@@ -13,6 +13,7 @@ import {
   Component,
   type FormEvent,
   type ReactNode,
+  useEffect,
   useState,
 } from "react";
 import { useAction, useMutation, useQuery } from "convex/react";
@@ -450,6 +451,13 @@ function ObjectiveWorkspace() {
   const [activeKey, setActiveKey] = useState<string | undefined>(undefined);
   const [pending, setPending] = useState<string | null>(null);
   const [notice, setNotice] = useState<NoticeState>(null);
+
+  // Read-only deep link: ?objective=<key> reopens an already-persisted
+  // objective (e.g. for verification) without granting any new authority.
+  useEffect(() => {
+    const key = new URLSearchParams(window.location.search).get("objective");
+    if (key) setActiveKey(key);
+  }, []);
 
   const view = useQuery(api.objectives.getObjective,
     activeKey ? { objectiveKey: activeKey } : "skip",

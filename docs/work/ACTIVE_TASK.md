@@ -92,7 +92,7 @@ Use four categories:
 
 ## Current checkpoint
 
-### M1 — Objective spine + active MAKE — IMPLEMENTED (pending fresh-deployment smoke)
+### M1 — Objective spine + active MAKE — ACCEPTED (see "M1 ACCEPTED" section below)
 
 Branch `qoder/general-session-ao10w4`, checkpoints pushed:
 
@@ -150,15 +150,53 @@ Corrected checks, observed at `5e0f542`:
 - zero `as never` casts remain anywhere in `convex/`, `lib/`, `app/`;
 - `npx next build`: compiles, static prerender OK.
 
-**This is not M1 acceptance.** Acceptance criteria 1, 3, 10 and 12 hinge on a real
-deployment and a real model call; they are still verified only by focused tests. The one
-bounded live smoke and one cheap negative proof have not been run.
+**M1 acceptance is now closed — see the "M1 ACCEPTED" section below.** Acceptance
+criteria 1, 3, 10 and 12, which hinge on a real deployment and a real model call, are
+now verified by a live positive proof and a live deterministic negative proof against
+`clean-tapir-151`, in addition to the focused tests below.
 
-On the "at most ONE current M1 live-smoke command" rule: no script was added. Every
-candidate entry point needs a Convex deployment plus a provider key to run, so a script
-would be a dangling command — the same defect the cleanup removed. The live smoke is
-therefore driven through the real product surface (submit one objective in the Objective
-workspace) once the founder action below completes.
+On the "at most ONE current M1 live-smoke command" rule: no script was added to the
+repo. Every candidate entry point needs a Convex deployment plus a provider key to run,
+so a script would be a dangling command — the same defect the cleanup removed. The live
+smoke was driven through the real product surface (submit one objective in the
+Objective workspace / the equivalent `submitObjective` → `planObjectiveFromModel` →
+`startRunPublic` call sequence) exactly as documented below.
+
+### M1 ACCEPTED — live positive + deterministic negative proof (fix/r1-m1-acceptance)
+
+Deployment: `clean-tapir-151` (`dropandreset-main/somebody-okx`). `acrobatic-swan-765`
+was not used. `convex/_generated/` is real `npx convex dev` codegen; the hand-maintained
+stand-in is retired. Provider: `openrouter`, model `openai/gpt-5.6-terra`.
+
+**Positive proof** — objective `obj_1789659986103_l9gomb` (Cloudflare partnership
+evaluation), run `run_1789660001886_c92t0u`: MAKE plan → worker created → company-record
+observation (`record:partnerships/evaluation-criteria`) → two distinct public-web
+observations (`url:https://www.cloudflare.com/plans/free/`,
+`url:https://www.cloudflare.com/partners/`) → structured result →
+`completion.accepted = true`, `unmet = []`. UI at `?objective=obj_1789659986103_l9gomb`
+renders MAKE rationale, worker, all evidence and **RESULT → Accepted**.
+
+**Deterministic negative proof** — objective `obj_1789661449740_36j0y3` (Stripe,
+planned MAKE the same way), run `run_1789661601739_4xravw`: internal mutations
+(`recordFinding` ×3, `submitResult`, `finishRun`) invoked directly against
+`clean-tapir-151` using signatures pulled live via `npx convex function-spec`, recording
+one company-record observation and the same public source identity
+(`url:https://stripe.com/partners`) twice. `finishRun` returned `completed: false,
+unmet: ["public_web: found 1 distinct source(s), required 2"]`; re-checked ~8s later,
+unchanged. UI at `?objective=obj_1789661449740_36j0y3` renders THAT GUY → failed,
+**RESULT → Not accepted**, unmet reason shown verbatim. Full method, race handling and
+honest caveats: `BUILD_DELTA.md` §3.6.
+
+**UI verification:** the workspace had no way to reopen a specific persisted objective
+by key (only local React state set on submit), so a minimal read-only
+`?objective=<key>` deep link was added to `app/ObjectiveWorkspace.tsx` — no new
+mutation, no authority change. `run.toolCalls` is dead instrumentation (written once as
+`0`, never incremented) but the one UI reference is guarded on `> 0`, so it never
+renders a false claim; classified non-blocking (`BUILD_DELTA.md` §3.6).
+
+**Checks:** focused suite 77/77 pass (`tests/{objective,planner,runLifecycle,worker,
+workforce,ui}.test.ts`); root `npx tsc --noEmit` clean; `npx tsc -p
+convex/tsconfig.json --noEmit` clean.
 
 ### M0 — Foundation and provenance — COMPLETE
 
@@ -309,7 +347,7 @@ Minimum visible information:
 
 Reuse Somebody/Mission-Control visual direction where useful. Do not build a procurement dashboard, giant graph, permanent org chart or agent-chat theater.
 
-## M1 acceptance criteria
+## M1 acceptance criteria — PASS (see "M1 ACCEPTED" above)
 
 PASS only when one bounded objective can:
 
@@ -328,7 +366,11 @@ PASS only when one bounded objective can:
 
 No BUY required yet.
 
-### M1 deployment blocker — founder action required (recorded 17 Sep 2026, boundary re-verified during R1)
+### M1 deployment blocker — RESOLVED (was: founder action required, recorded 17 Sep 2026)
+
+The founder authenticated `npx convex dev` against `clean-tapir-151` and set the
+deployment env vars; see "M1 ACCEPTED" above and `BUILD_DELTA.md` §3.6 for the live
+proof this unblocked. The original blocker record is kept below for provenance.
 
 Creating the fresh Somebody-OKX Convex deployment requires Convex platform
 authentication that is not available in the build sandbox. The following exact
@@ -386,7 +428,7 @@ Until that smoke runs, criteria 1, 3, 10 and 12 are verified by focused tests an
 typechecks but **not** by a live deployment; this is recorded honestly in
 `BUILD_DELTA.md` §5 and in the R1 checkpoint above.
 
-#### The two live proofs to run once authenticated (not run yet)
+#### The two live proofs — RUN, see "M1 ACCEPTED" above and `BUILD_DELTA.md` §3.6
 
 1. **Bounded live smoke (exactly one):** fresh deployment + real model, submit one
    objective in the Objective workspace → server planning chooses the role-satisfying

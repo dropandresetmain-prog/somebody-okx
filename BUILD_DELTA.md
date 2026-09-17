@@ -306,16 +306,123 @@ authoritative `main` (`1894649`). Integrated in lane order A → B → C → Con
 | `45d4286` | primary | A's type-level half at the worker seam — `ModelNoteInput = Omit<FindingInput,"origin"\|"sourceId">` so the runtime physically cannot hand over proof fields; dead origin-minting helpers deleted; test twin aligned to the merged contract |
 | `282f2a6`/`5e0f542` | D | Blocker F + cleanup — `app/resultStatus.ts` `resolveResultDisplay` wired into `ResultSection`; hard-coded client proposal literal deleted in favour of the server planning action; nine dead `package.json` scripts pointing at the removed `scripts/` directory deleted |
 
-Honest limits of this work:
+Honest limits of this work, as they stood before §3.6:
 
-- **No live deployment proof.** Every claim above is static: types, unit tests and a
+- **No live deployment proof.** Every claim above was static: types, unit tests and a
   production build. The blocker fixes change behaviour that only a fresh Convex
-  deployment plus a real model call can confirm, and that boundary is recorded in
-  §5 and in `docs/work/ACTIVE_TASK.md`. Nothing here is claimed as observed against
-  a live backend.
-- **`convex/_generated/` is still a hand-maintained stand-in**, extended only to list
-  the new `objectiveRunner` module. It must be replaced by real `npx convex dev`
-  codegen, not deepened by hand.
+  deployment plus a real model call can confirm.
+- **`convex/_generated/` was still a hand-maintained stand-in**, extended only to list
+  the new `objectiveRunner` module.
+
+Both limits are closed in §3.6 below.
+
+### 3.6 Live M1 acceptance on `clean-tapir-151` (positive + deterministic negative proof)
+
+**Classification: Rebuilt / Adapted during OKX** (proof of behaviour already implemented
+in §3.5; no new product capability). Branch `fix/r1-m1-acceptance`, checkpoint SHAs
+`ae490db` (planner provider compatibility) through the final documentation commit on
+this branch.
+
+**Deployment identity (no secrets):**
+
+- Convex project: `dropandreset-main/somebody-okx`;
+- dev deployment: `clean-tapir-151` (`https://clean-tapir-151.convex.cloud`);
+- `acrobatic-swan-765` was not used;
+- `convex/_generated/` is real `npx convex dev` codegen against this deployment —
+  the hand-maintained stand-in caveat is retired;
+- deployment env: `LIVE_AI_ENABLED=true`, `AI_PROVIDER=openrouter`,
+  `AI_MODEL=openai/gpt-5.6-terra`, `OPENROUTER_API_KEY` set (value not recorded here).
+
+**Positive live proof (real model, real public fetches, application-accepted):**
+
+- objective: `obj_1789659986103_l9gomb` — "Evaluate whether Cloudflare is a suitable
+  partnership and business target using our internal criteria and current public
+  information.";
+- sourcing: `MAKE` (company controls every required resource class);
+- worker: `worker_company_records_lookup-public_information_research` (Research
+  analyst, created);
+- run: `run_1789660001886_c92t0u`, model `openai/gpt-5.6-terra` via OpenRouter;
+- evidence (3 application observations, all `origin: application_observation`):
+  `record:partnerships/evaluation-criteria`,
+  `url:https://www.cloudflare.com/plans/free/`,
+  `url:https://www.cloudflare.com/partners/`;
+- structured result persisted; `finishRun` → `completion.accepted = true`, `unmet = []`;
+  run status `stopped`, objective state `completed`;
+- event order observed: objective received → MAKE plan → run started → company-record
+  observation → two distinct public-web observations → structured result → application
+  acceptance.
+
+**Deterministic negative proof (application-owned completion refuses duplicate identity):**
+
+- objective: `obj_1789661449740_36j0y3` — "Evaluate whether Stripe is a suitable
+  partnership and business target using our internal criteria and current public
+  information."; planned server-side to `MAKE` the same way as the positive run;
+- run: `run_1789661601739_4xravw`, started via the real `startRun`/`startRunPublic`
+  path (so the live scheduled worker was concurrently active on the same run — see
+  method note below);
+- method: exact current function signatures were pulled live from the deployment with
+  `npx convex function-spec` (not guessed), then the internal mutations
+  `objectives:recordFinding` (×3), `objectives:submitResult` and `objectives:finishRun`
+  were invoked directly against `clean-tapir-151` — one application-observed company
+  record (`record:partnerships/evaluation-criteria`), and the same public source
+  identity (`url:https://stripe.com/partners`) recorded twice, plus a complete
+  structured result. Direct-invocation instead of Dashboard point-and-click was used
+  deliberately: `startRun` schedules the live worker in the same tick, so winning the
+  race to finalize before the live worker could independently reach two distinct real
+  public sources required fast, scripted calls (~11s end to end) rather than manual
+  UI clicks. No public mutation was added and no authority boundary was changed —
+  every call used the existing internal-mutation surface, invoked with real deployment
+  credentials, the same privileged path the Dashboard Functions panel itself uses;
+- observed refusal: `finishRun` returned `{ completed: false, unmet:
+  ["public_web: found 1 distinct source(s), required 2"] }`; `getObjective.completion
+  = { accepted: false, unmet: [...] }`; run status `stopped`, objective state `failed`;
+- race outcome, checked directly: the concurrently-scheduled live worker did land one
+  real `company_record` observation (same `recordRef`, so no new distinct identity)
+  and one real `public_web` fetch — of the identical URL (`https://stripe.com/partners`)
+  already used for the manual duplicate, so it added no new distinct identity either.
+  The objective was re-queried ~8s after `finishRun` returned and evidence/event counts
+  were unchanged, confirming the refusal is durable and the run is terminal (fenced
+  against further writes by `assertActiveRun`/`fenceRunWrite`).
+
+**UI proof:**
+
+- the app has no existing way to reopen a specific persisted objective by key (the
+  workspace only tracks `activeKey` in local React state, set on submit). A minimal,
+  read-only `?objective=<key>` deep link was added to `app/ObjectiveWorkspace.tsx`
+  (a `useEffect` reading `window.location.search` once on mount) so a specific durable
+  record can be reopened for verification. This adds no mutation, no new authority and
+  no server-side surface — it only seeds which existing objective the page queries;
+- with the local app running against `clean-tapir-151` via the existing `.env.local`,
+  `?objective=obj_1789659986103_l9gomb` renders: YOU ASKED (the Cloudflare objective),
+  SOMEBODY'S PLAN → MAKE with the "company controls every required resource class"
+  rationale, THAT GUY → Research analyst, completed, "Application accepted completion",
+  EVIDENCE → all 3 rows, RESULT → **Accepted**;
+- `?objective=obj_1789661449740_36j0y3` renders the same structure with THAT GUY →
+  failed, RESULT → **Not accepted**, "The application has not accepted this result.",
+  UNMET REQUIREMENTS → `public_web: found 1 distinct source(s), required 2`. The UI
+  never claims Accepted for this run;
+- `run.toolCalls` finding: the field is written once as `0` at `startRun` and never
+  incremented anywhere in `convex/objectives.ts` or `convex/objectiveRunner.ts`, so it
+  reads `0` even on runs with real tool-mediated evidence. The only UI reference
+  (`app/ObjectiveWorkspace.tsx`, `{run.toolCalls > 0 && ...}`) is guarded on `> 0`, so
+  it silently never renders rather than asserting a false "0 tool calls" claim — it
+  does not contradict the accepted/not-accepted state or the evidence list, which are
+  both driven by durable application data. Classified non-blocking (Park for Later):
+  the counter is dead instrumentation, not a truthfulness defect in a material UI
+  surface. Not fixed in this pass to avoid touching runtime code beyond what M1
+  acceptance requires.
+
+**Checks run at this checkpoint:**
+
+- focused suite `npx tsx --test tests/objective.test.ts tests/planner.test.ts
+  tests/runLifecycle.test.ts tests/worker.test.ts tests/workforce.test.ts
+  tests/ui.test.ts`: **77/77 pass** (unchanged from §3.5; re-run after the UI deep-link
+  edit);
+- `npx tsc --noEmit`: clean; `npx tsc -p convex/tsconfig.json --noEmit`: clean;
+- `npx convex function-spec` against `clean-tapir-151`: live signatures matched the
+  repository source exactly (no stale-argument guessing);
+- live `npx convex dev --once`-equivalent state: deployment already current (functions
+  pushed at earlier checkpoints); no redeploy was needed for this pass.
 
 ## 4. Planned / Not Yet Built
 
@@ -323,7 +430,7 @@ Everything in this section is **not implemented** until repository evidence move
 
 | Planned item | Status | Provenance expectation / notes |
 |---|---|---|
-| Fresh Somebody-OKX Convex project/data plane | **Partially built (M1)**: fresh schema + runtime live in repo (`convex/schema.ts`, `convex/objectives.ts`); deployment creation blocked in build sandbox (no Convex access token). `convex/_generated/` is a hand-maintained stand-in until `npx convex dev` runs. | **New during OKX.** No migration from `acrobatic-swan-765`. |
+| Fresh Somebody-OKX Convex project/data plane | **Built and live (M1, §3.6)**: `clean-tapir-151`, real `npx convex dev` codegen, positive and negative live proof observed. | **New during OKX.** No migration from `acrobatic-swan-765`. |
 | Current `Objective` / `WorkItem` runtime + realtime read model | **Built (M1)** — `convex/objectives.ts`, `convex/objectiveValidators.ts`, `convex/objectiveArgs.ts`; public read model `getObjective`/`listObjectives`. | **New during OKX.** Reuses Convex patterns (lease/expiry fencing from inherited `convex/missions.ts`), not the procurement aggregate. |
 | `WorkContract` adaptation from `CoreWorkerContract` | **Built (M1)** — `lib/objective/contract.ts` (`createWorkContract`, `evaluateCompletion`). Inherited `lib/reliability/core.ts` untouched; evidence-only completion supported; `requiredVerifiedEffectKeys` kept for the future BUY path. | **Rebuilt / Adapted during OKX.** |
 | Objective → capability/resource planner | **Built (M1)** — `lib/objective/planner.ts`: fail-closed `validatePlannerProposal` + permission envelope derivation. | **New during OKX.** Model proposes; application validates. |
@@ -383,11 +490,14 @@ As of the 17 September M1 implementation (branch `qoder/general-session-ao10w4`)
 
 **Documented but not yet implemented:**
 
-- live fresh Convex deployment (blocked: deployment creation requires Convex authentication unavailable in the build sandbox; `convex/_generated/` is a hand-maintained stand-in until `npx convex dev` runs — exact blocked command and founder action recorded in `docs/work/ACTIVE_TASK.md`);
-- live Development smoke of the full objective flow against the fresh deployment;
 - BUY path: OKX/x402/X Layer buyer rail;
 - selected external provider;
 - final MAKE+BUY E2E.
+
+Closed in §3.6 (previously listed here as documented-but-not-implemented): live fresh
+Convex deployment (`clean-tapir-151`, real codegen), live Development smoke of the full
+objective flow (positive proof `obj_1789659986103_l9gomb`), and the deterministic
+negative proof (`obj_1789661449740_36j0y3`).
 
 No OKX payment, wallet or marketplace capability should be claimed before code and observed evidence exist.
 
