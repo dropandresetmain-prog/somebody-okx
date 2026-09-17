@@ -15,12 +15,13 @@ import {
   type ReactNode,
   useState,
 } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { ActivityEvent, ObjectiveRecord } from "@/lib/workforce";
 import { Icon } from "./somebody/Icon";
 import { Mascot } from "./somebody/Mascot";
 import { cleanError, formatClock, type Tone } from "./somebody/presentation";
+import { resolveResultDisplay, type CompletionField } from "./resultStatus";
 
 type NoticeState = { kind: "ok" | "error"; text: string } | null;
 
@@ -326,12 +327,59 @@ function EvidenceSection({
 
 // ── RESULT ──────────────────────────────────────────────────────────────────
 
-function ResultSection({ record }: { record: ObjectiveRecord }) {
-  const result = record.result;
-  if (!result) return null;
+function ResultSection({
+  record,
+  completion,
+}: {
+  record: ObjectiveRecord;
+  completion: CompletionField;
+}) {
+  const displayState = resolveResultDisplay(completion, Boolean(record.result));
+
+  if (displayState.kind === "no_result") return null;
+
+  if (displayState.kind === "not_accepted") {
+    return (
+      <section className="section" id="result">
+        <SectionHead
+          kicker="Result"
+          title="The evaluation"
+          aside={
+            <StatusPill tone="ineligible">
+              Not accepted
+            </StatusPill>
+          }
+        />
+        <div className="result-card">
+          <p className="result-summary muted">
+            The application has not accepted this result.
+          </p>
+          <div className="result-row">
+            <span className="kicker">Unmet requirements</span>
+            <ul>
+              {displayState.unmet.map((reason, index) => (
+                <li key={index}>{reason}</li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  // accepted
+  const result = record.result!;
   return (
     <section className="section" id="result">
-      <SectionHead kicker="Result" title="The evaluation" />
+      <SectionHead
+        kicker="Result"
+        title="The evaluation"
+        aside={
+          <StatusPill tone="verified">
+            Accepted
+          </StatusPill>
+        }
+      />
       <div className="result-card">
         <p className="result-summary">{result.summary}</p>
         <div className="result-row">
@@ -417,12 +465,13 @@ function ObjectiveWorkspace() {
           observedAt: number;
         }[];
         events: ActivityEvent[];
+        completion: CompletionField;
       }
     | null
     | undefined;
 
   const submitObjective = useMutation(api.objectives.submitObjective);
-  const planObjective = useMutation(api.objectives.planObjectivePublic);
+  const requestServerPlan = useAction(api.objectives.planObjectiveFromModel);
   const startRun = useMutation(api.objectives.startRunPublic);
 
   const record = view?.record ?? null;
@@ -434,18 +483,13 @@ function ObjectiveWorkspace() {
     try {
       const { key } = await submitObjective({ request });
       setActiveKey(key);
-      // M1 planner: the bounded research proposal for this spine. The
-      // application re-validates it fail-closed; the model proposes, the
-      // application disposes.
-      await planObjective({
-        objectiveKey: key,
-        proposal: {
-          capabilityKeys: ["company_records_lookup", "public_information_research"],
-          responsibility:
-            "Evaluate the target with internal criteria and current public information; record sourced observations and a structured recommendation.",
-          requiredResourceClasses: ["company_records", "public_web", "llm_reasoning", "ordinary_compute", "company_tools"],
-        },
-      });
+      // Blocker D: the client must NOT author the plan. The server decides
+      // capabilities, resources, and responsibility from the objective model.
+      // Expected Convex action: api.objectives.planObjectiveFromModel
+      //   args: { objectiveKey: string }
+      //   returns: { decision: string }
+      // This is an action (not a mutation) because it makes an external model call.
+      await requestServerPlan({ objectiveKey: key });
       await startRun({ objectiveKey: key });
       setNotice({ kind: "ok", text: "Objective accepted. Somebody is on it." });
     } catch (error) {
@@ -531,7 +575,7 @@ function ObjectiveWorkspace() {
             {record && <PlanSection record={record} />}
             {record && <WorkerSection record={record} />}
             {view && <EvidenceSection evidence={view.evidence} />}
-            {record && <ResultSection record={record} />}
+            {record && <ResultSection record={record} completion={view.completion} />}
           </div>
           {view && <ActivityLog events={view.events} />}
         </div>
