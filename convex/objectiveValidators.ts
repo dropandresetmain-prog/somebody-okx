@@ -47,13 +47,17 @@ export const workContract = v.object({
   idempotencyScope: v.string(),
   workerKey: v.string(),
   capabilityKeys: v.array(vCapabilityKey),
-  allowedToolPermissions: v.array(vToolPermissionId),
+  // Tool permissions materialized for this assignment (deny-by-default subset).
+  // Stored as strings: the application derives and validates the envelope
+  // fail-closed before persisting.
+  allowedToolPermissions: v.array(v.string()),
   requiredSourceClasses: v.array(
     v.union(v.literal("company_record"), v.literal("public_web")),
   ),
   minObservations: v.number(),
   requiredVerifiedEffectKeys: v.array(v.string()),
-  approvalVersion: nullableString,
+  // Authority snapshot for gated actions. Always null in M1 MAKE work.
+  approvalVersion: v.union(v.number(), v.null()),
   resultRequirements,
 });
 

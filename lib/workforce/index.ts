@@ -28,6 +28,14 @@ export {
   createWorkContract,
   evaluateCompletion,
 } from "../objective/contract";
+export {
+  COMPANY_RECORDS,
+  COMPANY_RECORD_KEYS,
+  CURRENT_RESOURCE_INVENTORY,
+  RESEARCH_ROLE,
+  companyRecord,
+  currentResourceInventory,
+} from "../objective/policy";
 export type {
   CapabilityDefinition,
   CapabilityKey,

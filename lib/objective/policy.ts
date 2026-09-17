@@ -5,6 +5,7 @@
 // and what proof completes the work. The generic runtime stays role-free.
 
 import type { ResultRequirements, SourceClass } from "./types";
+import type { ResourceClass } from "../workforce/types";
 
 export const RESEARCH_ROLE = {
   title: "Research analyst",
@@ -52,6 +53,29 @@ export const COMPANY_RECORDS: CompanyRecord[] = [
 
 export function companyRecord(ref: string): CompanyRecord | undefined {
   return COMPANY_RECORDS.find((record) => record.ref === ref);
+}
+
+export const COMPANY_RECORD_KEYS = COMPANY_RECORDS.map((record) => record.ref);
+
+// Factual inventory of resource classes the company currently controls for
+// internal MAKE work. Catalog membership is not ownership; this is the
+// application's observed truth about NOW.
+export const CURRENT_RESOURCE_INVENTORY: ResourceClass[] = [
+  "llm_reasoning",
+  "public_web",
+  "company_records",
+  "company_tools",
+  "ordinary_compute",
+];
+
+export function currentResourceInventory(observedAt: number): {
+  availableResourceClasses: ResourceClass[];
+  observedAt: number;
+} {
+  return {
+    availableResourceClasses: [...CURRENT_RESOURCE_INVENTORY],
+    observedAt,
+  };
 }
 
 // Structured finding the worker records through the record_finding permission.
