@@ -110,6 +110,10 @@ export type ObjectiveRecord = {
 // sources, and evidence stays provable rather than model-claimed.
 export type SourceClass = "company_record" | "public_web";
 
+// Evidence origin distinguishes application-fetched content from model-authored
+// notes. Only application_observation may satisfy proof (Blocker A).
+export type EvidenceOrigin = "application_observation" | "model_note";
+
 export type EvidenceSource = {
   sourceClass: SourceClass;
   label: string;
@@ -124,6 +128,8 @@ export type FindingInput = {
   url?: string;
   recordRef?: string;
   observedAt: number;
+  origin: EvidenceOrigin;
+  sourceId: string;
 };
 
 export type EvidenceRecord = FindingInput & {
@@ -133,6 +139,12 @@ export type EvidenceRecord = FindingInput & {
 };
 
 // ── WorkContract ─────────────────────────────────────────────────────────────
+
+// Per-class distinct source proof requirement (Blocker B).
+export type SourceProof = {
+  sourceClass: SourceClass;
+  minDistinctSources: number;
+};
 
 // The assignment-specific authority + proof boundary. Adapted from the
 // inherited CoreWorkerContract so evidence-only internal work can complete
@@ -152,6 +164,8 @@ export type WorkContract = {
   requiredSourceClasses: SourceClass[];
   // Minimum distinct observations overall.
   minObservations: number;
+  // Per-class distinct source proof requirements (Blocker B).
+  sourceProofs: SourceProof[];
   // Optional externally verified effect keys (none in M1: zero spend/BUY).
   requiredVerifiedEffectKeys: string[];
   // Authority snapshot for gated actions. Always null in M1 MAKE work.

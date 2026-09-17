@@ -4,8 +4,8 @@
 // active MAKE; it owns what observations matter, what sources are required
 // and what proof completes the work. The generic runtime stays role-free.
 
-import type { ResultRequirements, SourceClass } from "./types";
-import type { ResourceClass } from "../workforce/types";
+import type { ResultRequirements, SourceClass, SourceProof } from "./types";
+import type { ResourceClass, ToolPermissionId } from "../workforce/types";
 
 export const RESEARCH_ROLE = {
   title: "Research analyst",
@@ -14,6 +14,17 @@ export const RESEARCH_ROLE = {
   // source observations, so the proof spans two distinct resource classes and
   // more than a single model response.
   minObservations: 3,
+  // Per-class distinct source proof requirements (Blocker B).
+  sourceProofs: [
+    { sourceClass: "company_record", minDistinctSources: 1 },
+    { sourceClass: "public_web", minDistinctSources: 2 },
+  ] as SourceProof[],
+  // Required tool permissions for this role (Blocker D — Agent B consumes).
+  requiredToolPermissions: [
+    "read_company_record",
+    "read_public_web",
+    "record_finding",
+  ] as ToolPermissionId[],
   resultRequirements: {
     summary: true,
     fit: true,

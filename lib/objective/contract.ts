@@ -8,16 +8,63 @@
 import type {
   ActivityResult,
   EvidenceRecord,
+  SourceClass,
+  SourceProof,
   WorkContract,
   WorkerSpec,
 } from "./types";
+
+// Normalize a public URL to a stable identity: lowercase scheme+host, strip
+// www. prefix, drop fragment, strip trailing slash, keep query. Returns "" for
+// unparseable URLs. Pure function, no network, no dependencies.
+export function normalizePublicUrl(url: string): string {
+  if (!url) return "";
+  try {
+    const parsed = new URL(url);
+    // Lowercase scheme and host
+    parsed.protocol = parsed.protocol.toLowerCase();
+    parsed.hostname = parsed.hostname.toLowerCase();
+    // Strip www. prefix
+    if (parsed.hostname.startsWith("www.")) {
+      parsed.hostname = parsed.hostname.slice(4);
+    }
+    // Drop fragment
+    parsed.hash = "";
+    // Reconstruct without fragment
+    let normalized = parsed.toString();
+    // Strip trailing slash
+    if (normalized.endsWith("/")) {
+      normalized = normalized.slice(0, -1);
+    }
+    return normalized;
+  } catch {
+    return "";
+  }
+}
+
+// Compute stable source identity for proof counting. Returns "" for missing
+// identity, which must never satisfy proof.
+export function sourceIdentity(input: {
+  sourceClass: SourceClass;
+  url?: string;
+  recordRef?: string;
+}): string {
+  if (input.sourceClass === "company_record") {
+    const ref = input.recordRef?.trim();
+    return ref ? `record:${ref}` : "";
+  }
+  if (input.sourceClass === "public_web") {
+    const normalized = normalizePublicUrl(input.url ?? "");
+    return normalized ? `url:${normalized}` : "";
+  }
+  return "";
+}
 
 export function createWorkContract(input: {
   assignment: string;
   idempotencyScope: string;
   worker: WorkerSpec;
-  requiredSourceClasses: WorkContract["requiredSourceClasses"];
-  minObservations: number;
+  sourceProofs: SourceProof[];
   resultRequirements?: Partial<WorkContract["resultRequirements"]>;
 }): WorkContract {
   const assignment = input.assignment.trim();
@@ -33,20 +80,27 @@ export function createWorkContract(input: {
     input.worker.allowedToolPermissions.includes("authorize_external_spend")
   )
     throw new Error("WorkContract cannot bind external spend authority");
-  if (!input.requiredSourceClasses.length)
-    throw new Error("A work contract requires at least one required source class");
-  if (input.minObservations < input.requiredSourceClasses.length)
-    throw new Error(
-      "minObservations must cover every required source class",
-    );
+  if (!input.sourceProofs.length)
+    throw new Error("A work contract requires at least one source proof");
+  
+  // Derive requiredSourceClasses and minObservations from sourceProofs
+  const requiredSourceClasses = Array.from(
+    new Set(input.sourceProofs.map((proof) => proof.sourceClass))
+  );
+  const minObservations = input.sourceProofs.reduce(
+    (sum, proof) => sum + proof.minDistinctSources,
+    0
+  );
+  
   return {
     assignment,
     idempotencyScope: input.idempotencyScope,
     workerKey: input.worker.workerKey,
     capabilityKeys: input.worker.capabilityKeys,
     allowedToolPermissions: [...input.worker.allowedToolPermissions],
-    requiredSourceClasses: input.requiredSourceClasses,
-    minObservations: input.minObservations,
+    requiredSourceClasses,
+    minObservations,
+    sourceProofs: [...input.sourceProofs],
     requiredVerifiedEffectKeys: [],
     approvalVersion: null,
     resultRequirements: {
@@ -69,6 +123,9 @@ export type CompletionCheck = {
 // never sufficient: proof comes from persisted evidence and the structured
 // result. Effects, when a contract ever requires them, stay governed by the
 // inherited attempted → unverified → verified lifecycle.
+//
+// Blocker A fix: only application_observation evidence counts toward proof.
+// Blocker B fix: count distinct sourceId values per sourceClass, not raw rows.
 export function evaluateCompletion(input: {
   contract: WorkContract;
   evidence: EvidenceRecord[];
@@ -78,14 +135,26 @@ export function evaluateCompletion(input: {
   const unmet: string[] = [];
   const { contract, evidence, result } = input;
 
-  for (const sourceClass of contract.requiredSourceClasses)
-    if (!evidence.some((item) => item.sourceClass === sourceClass))
-      unmet.push(`No observation recorded from ${sourceClass}`);
+  // Filter to application observations only (Blocker A)
+  const applicationObservations = evidence.filter(
+    (item) => item.origin === "application_observation"
+  );
 
-  if (evidence.length < contract.minObservations)
-    unmet.push(
-      `Only ${evidence.length} of ${contract.minObservations} required observations recorded`,
-    );
+  // Check each source proof requirement (Blocker B)
+  for (const proof of contract.sourceProofs) {
+    const distinctSourceIds = new Set<string>();
+    for (const item of applicationObservations) {
+      if (item.sourceClass === proof.sourceClass && item.sourceId) {
+        distinctSourceIds.add(item.sourceId);
+      }
+    }
+    const count = distinctSourceIds.size;
+    if (count < proof.minDistinctSources) {
+      unmet.push(
+        `${proof.sourceClass}: found ${count} distinct source(s), required ${proof.minDistinctSources}`
+      );
+    }
+  }
 
   if (contract.resultRequirements.summary && !result?.summary?.trim())
     unmet.push("Structured result missing a summary");
