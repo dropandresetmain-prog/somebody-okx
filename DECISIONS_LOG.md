@@ -1,259 +1,214 @@
 # Somebody × OKX — Decisions Log
 
-Status: canonical decision history
+Status: **canonical decision history**
+
+This log records settled product/architecture decisions and explicit supersessions. Current code/runtime/schema remain implementation truth; newer accepted decisions supersede older planning assumptions.
 
 ## 17 September 2026 — Repository authority
 
 **Decision:** `dropandresetmain-prog/somebody-okx` is the authoritative implementation and submission repository for OKX Dev Day 2026.
 
-`somebody-ai` and `army-of-interns` are source/reference repositories only. Earlier `wip-personal/somebody-okx/` planning documents are research inputs, not SSOT.
+`somebody-ai` and `army-of-interns` are source/reference repositories only.
 
 ## 17 September 2026 — Product vision
 
-**Decision:** Somebody's long-term vision is the AI manager for the One Person Company: one person operating with the functional reach of a much larger company.
+**Decision:** Somebody is the AI manager for the One Person Company: one person operating with the functional reach of a much larger company.
 
-The customer-facing product remains outcome-oriented rather than agent-oriented.
+The founder gives Somebody an outcome, not an agent specification.
 
 ## 17 September 2026 — Hackathon thesis
 
-**Decision:** the OKX project centers on dynamic capability sourcing:
+**Decision:** the OKX project centers on dynamic capability/resource sourcing.
 
-> Determine what should be MADE internally and what should be BOUGHT externally, then complete the founder's objective using both.
+> **Somebody builds the company it needs, then buys what that company cannot make.**
 
-Both paths must appear in the canonical demo.
+MAKE when required resources are already controlled by the company. BUY only when execution requires a genuinely externally controlled scarce resource.
 
-## 17 September 2026 — Make vs Buy rule
-
-**Decision:** the absence of an existing agent is not a reason to buy.
-
-MAKE when the capability can reasonably be constructed from resources the company already controls.
-
-BUY when the capability depends on a genuinely externally controlled scarce resource or when reproducing it internally would be materially impractical.
-
-**Guiding principle:** do not buy generic cognition merely because it is packaged by another agent.
-
-## 17 September 2026 — Workforce strategy
-
-**Decision:** do not preserve “Army of Interns” as a required product/module/brand.
-
-Use Army only as pre-existing R&D. The useful concepts have already been rewritten into a minimal `lib/workforce/` kernel inside Somebody-OKX.
-
-Army-specific keyword analysis, duplicated permission sources, ranks, personalities, org hierarchy, Telegram/Twilio coupling and demo runtime are not carried forward.
+The absence of an existing agent is not a reason to BUY.
 
 ## 17 September 2026 — Active internal agent spawning
 
 **Decision:** MAKE is not complete when Somebody merely creates a `WorkerSpec`.
 
-The product must support:
+Required path:
 
-`WorkerSpec → WorkContract → model selection → bounded agent instantiation → allowed tools → execution → evidence/result`
+`WorkerSpec → WorkContract → model selection → bounded Agent/Runner → allowed tools → execution → evidence/result`
 
-This is core hackathon scope, not stretch.
-
-The M1 proof must involve nontrivial tool-mediated work; a single free-form model completion does not satisfy active MAKE.
-
-Model/harness guidance may inform execution model choice, while architecture, security-sensitive work, wallet/signing/payment and final verification remain primary-model responsibilities.
+Application/domain policy, not model prose, decides completion.
 
 ## 17 September 2026 — Inherited Somebody architecture
 
-**Decision:** pre-OKX Somebody is more than a procurement demo to cannibalize for utilities. Its worker/reliability architecture is a deliberate inheritance.
+**Decision:** preserve the useful generic worker/reliability architecture from pre-OKX Somebody, not the old procurement data model.
 
-The reusable architecture is:
+Reusable pattern:
 
-`role-specific policy → generic worker contract/reliability core → bounded Agent/Runner runtime → evidence/effects → external verification`
+`role-specific policy → generic work/reliability contract → bounded runtime → evidence/effects → verification`
 
-Key inherited patterns include:
+Keep model-proposes/application-authorizes, run leases/fencing, evidence provenance, explicit effect lifecycle, idempotency/reconciliation and verification-before-completion.
 
-- `CoreWorkerContract` and controlled transitions;
-- role/domain state compiling into the generic contract;
-- model proposes, application authorizes;
-- bounded read/act agent ports;
-- deliberate model/provider selection;
-- durable runs, leases and stale-run fencing;
-- evidence/provenance;
-- persisted approval for gated effects;
-- stable effect identity/idempotency;
-- execution separated from verification;
-- application-owned completion.
-
-Procurement is the first role-specific implementation of that architecture, not the universal product model.
+Procurement is one prior role implementation, not the universal product architecture.
 
 ## 17 September 2026 — WorkerSpec and WorkContract are separate
 
-**Decision:** do not overload a worker definition with assignment authority/completion semantics.
+**Decision:** `WorkerSpec` describes reusable bounded worker capability. `WorkContract` describes assignment-specific authority, evidence/effects and completion requirements.
 
-- `WorkerSpec` describes what an internal worker can do: capabilities, required resources, tool envelope and bounded responsibility.
-- `WorkContract` describes what that worker is allowed and required to do for one assignment: objective, idempotency scope, authority/effects where applicable, required evidence/outputs and completion requirements.
+Do not overload one object with both concerns.
 
-The inherited `CoreWorkerContract` is the starting architecture for `WorkContract`.
+## 17 September 2026 — Fresh OKX data plane
 
-Its current effect-centric completion rule may be adapted during OKX so legitimate evidence-only MAKE work can complete without inventing an external effect.
+**Decision:** Somebody-OKX uses a fresh Convex deployment and fresh operational state. No migration from `acrobatic-swan-765` is required.
 
-## 17 September 2026 — Fresh OKX Convex data plane
+Old health probes, old procurement fixtures and old provider bindings are not current-product dependencies.
 
-**Decision:** Somebody-OKX will use a fresh Convex project/deployment and fresh operational state.
+## 17 September 2026 — Current project language
 
-There is no migration requirement from `acrobatic-swan-765`, which belongs to the previous Somebody hackathon environment.
+**Decision:** use neutral engineering concepts such as `Objective`, `WorkItem`, `WorkerSpec`, `WorkContract`, `InternalWorker`, `ExternalProvider`, `Evidence`, `Effect`, `Outcome` and `ActivityEvent`.
 
-Do not inherit old data, `healthProbes`, `HEALTH_PROBE_WRITES_ENABLED`, old deployment pins or old demo fixtures merely for continuity.
-
-Useful Convex/runtime patterns may be reused. Deployment-specific state and guards must justify themselves against the current product.
-
-## 17 September 2026 — Old procurement compatibility is not an M1 gate
-
-**Decision:** M1 does not need to keep the inherited procurement demo operational.
-
-Old procurement code may remain temporarily for provenance/reference/reuse, but the new operational schema and current product path should not be distorted to preserve the old hackathon runtime.
-
-This does not authorize careless deletion of useful inherited primitives. It removes backwards compatibility as a product requirement.
-
-## 17 September 2026 — Current-project domain language
-
-**Decision:** do not preserve the noun `Mission` merely because procurement used it.
-
-Current engineering concepts should use product-relevant neutral language such as:
-
-- `Objective`;
-- `CapabilityPlan`;
-- `WorkItem`;
-- `WorkerSpec`;
-- `WorkContract`;
-- `InternalWorker`;
-- `ExternalProvider`;
-- `Evidence`;
-- `Effect`;
-- `Outcome`;
-- `ActivityEvent`.
-
-The exact storage schema can remain minimal and evolve only with demonstrated need.
+Product/demo labels may use **That Guy** for internal workers and **Somebody Else** for external providers.
 
 ## 17 September 2026 — Role/capability policy remains specialized
 
-**Decision:** do not build a generic workflow DSL.
-
-Each bounded role/capability may own the smallest domain policy needed to interpret evidence, expose legal actions and determine domain-specific completion.
-
-The generic runtime should not contain procurement, research or future-role semantics.
+**Decision:** do not build a generic workflow DSL. Each bounded role/capability owns only the domain policy needed to expose legal actions and decide completion.
 
 ## 17 September 2026 — Product surface
 
-**Decision:** the current product surface is developed incrementally from M1, not added after the engine is complete.
+**Decision:** build the current Objective Workspace incrementally. Show objective, capability/resource decisions, meaningful work/evidence, provider/spend/verification and final outcome without exposing giant graphs, agent chat logs or Web3-first wallet UI.
 
-Reuse useful Mission Control visual direction and small primitives — Somebody identity, calm operator state, activity/evidence/approval/verification patterns — but do not expand the large procurement-shaped `MissionControl.tsx` into a universal UI.
+## 17 September 2026 — Provenance vocabulary
 
-The surface should show objective, capabilities/resources, MAKE/BUY reasons, internal worker status/result/evidence, external provider and price, approval/payment/verification, and Somebody's unified outcome.
+**Decision:** use:
 
-Avoid giant graphs, permanent org charts, raw agent-chat logs and Web3-first wallet UX.
-
-## 17 September 2026 — Product language
-
-**Decision:** the demo/product surface may use:
-
-- **That Guy** for an internal worker created or reused by Somebody;
-- **Somebody Else** for an external provider used when the company lacks a required scarce capability.
-
-Engineering terminology remains neutral. The playful labels do not enter core architecture types.
-
-## 17 September 2026 — Build provenance vocabulary
-
-**Decision:** provenance reporting uses four categories:
-
-- **Inherited** — working pre-OKX capability;
+- **Inherited** — working capability before the OKX build;
 - **Pre-existing R&D** — prior concepts/prototypes outside Somebody;
-- **Rebuilt / Adapted during OKX** — a prior idea or inherited primitive changed/reimplemented inside Somebody-OKX for the current product;
-- **New during OKX** — capability neither prior project had in working product form.
+- **Rebuilt / Adapted during OKX** — prior idea or inherited primitive materially adapted during the build;
+- **New during OKX** — capability not previously present in working form.
 
-Rebuilt/adapted implementation created during 17–25 September is legitimate OKX-period engineering even when the original concept predates the hackathon. Source inspiration must still be disclosed.
-
-`BUILD_DELTA.md` remains the canonical evidence ledger.
+`BUILD_DELTA.md` is the canonical provenance/evidence ledger.
 
 ## 17 September 2026 — Web3 positioning
 
-**Decision:** Somebody is not a Web3-first product.
+**Decision:** Somebody is not Web3-first. OKX AI / X Layer sit at the cross-company machine-commerce boundary; internal orchestration remains normal software.
 
-OKX AI / X Layer are used at the cross-company machine-commerce boundary. “Web3 infrastructure for non-Web3 users” is a supporting marketing angle, not the primary product thesis.
+## 17 September 2026 — Initial canonical-demo gate
 
-## 17 September 2026 — Canonical demo
+**Historical decision:** canonical scenario was held OPEN until 18 September 2026, 12:00 SGT. Invoice/Dial and CertiK-style flows were candidates only.
 
-**Decision:** OPEN until **18 September 2026, 12:00 SGT**.
+**Superseded by the 18 September canonical demo decision below.**
 
-The supplier-invoice / changed-bank-details / Dial scenario is a researched candidate only.
+## 17 September 2026 — Test/development rail
 
-After the decision gate, broad scenario ideation stops unless material technical/provider failure requires a reopen.
+**Decision:** X Layer Testnet and the official Mock Merchant are the preferred first payment-development environment.
 
-## 17 September 2026 — Scope boundary
+Third-party OKX.AI provider network/payment support remains provider-specific. Never infer successful payment or settlement from submission alone.
 
-**Decision:** one reliable 2–4 minute end-to-end demo outranks breadth.
+## 17 September 2026 — Review gates
 
-Critical shape:
+**Decision:** reviews are risk-boundary gates, not per-milestone ceremony.
 
-`objective → capabilities/resources → MAKE → BUY → verify → synthesize → outcome`
+Sequence:
 
-Not required on critical path:
+`M1 → R1 → M2 → M3 → R2 → M4 → R3 → M5 → M6 → G1`
 
-- generic autonomous-company architecture;
-- generic workflow DSL;
-- broad marketplace discovery;
-- multi-vendor competition;
-- A2A negotiations;
-- worker social chatter;
-- org-chart theater;
-- multiple polished workflows.
+R1 is static architecture/authority review. R2, R3 and G1 require executable coding-agent evidence.
 
-## 17 September 2026 — Test environment
+## 18 September 2026 — Canonical demo APPROVED
 
-**Decision:** X Layer Testnet plus the official Mock Merchant is the preferred initial OKX payment development environment.
+**Decision:** canonical founder objective is a bounded version of:
 
-Official docs support X Layer Testnet (`eip155:1952`), faucet test OKB/test USD₮0 and an official Mock Merchant for the full x402 buyer lifecycle without real funds.
+> **“Our launch isn’t working. Fix it and relaunch today.”**
 
-Marketplace-provider environment support remains provider-specific. Mainnet expenditure stays bounded and explicitly approved.
+This supersedes the invoice/Dial candidate, CertiK partnership-diligence candidate and broad scenario exploration.
 
-## 17 September 2026 — Master Plan and release freeze
+Do not reopen broad scenario ideation unless provider or technical feasibility exposes a serious blocker.
 
-**Decision:** `MASTER_PLAN.md` is the canonical execution plan.
+The founder may provide a small believable spend limit. Do not use fake large spend amounts for drama.
 
-Milestones:
+## 18 September 2026 — Sourcing is repeated and resource-level
 
-- M0 foundation/provenance — complete;
-- M1 Objective spine + active MAKE + first current-product surface;
-- M2 canonical MAKE + Make-vs-Buy policy;
-- M3 safe generic OKX buyer rail on testnet;
-- M4 selected provider + full backend E2E;
-- M5 surface/story hardening + first backup video;
-- M6 release candidate.
+**Decision:** the objective itself is not globally labelled MAKE or BUY.
 
-M1 is **one milestone**. Internal implementation checkpoints must not be promoted into new project milestone numbers.
+A single mission may contain multiple bounded sourcing decisions as resource gaps emerge during execution.
 
-**Hard feature freeze: 23 September 2026, 18:00 SGT.**
+Canonical demo shape:
 
-24 September is debugging/hardening only. 25 September is video/submission only, with an internal submission target of 22:00 SGT.
+`MAKE → market discovery → REJECT/MAKE → BUY #1 → MAKE reacts → BUY #2 → ACT/VERIFY → outcome`
 
-## 17 September 2026 — Build provenance ledger
+Hackathon scope is one meaningful MAKE path, maximum two justified real purchases, one visible rejected external option where useful, and one final founder outcome.
 
-**Decision:** `BUILD_DELTA.md` is the canonical hackathon provenance/evidence ledger.
+The existing pure `lib/sourcing` `MAKE / BUY / BLOCKED` kernel remains the canonical deterministic policy and should be reused per bounded resource need rather than rewritten.
 
-Completed work requires repository evidence and observed verification. Planned work remains under Planned / Not Yet Built until proven.
+Models may propose resource needs. Application state decides ownership, provider approval, sourcing and spend authority.
 
-Transferring inherited code during the build period does not convert inherited capability into hackathon work.
+## 18 September 2026 — Marketplace is a resource market, not an agent directory
 
-## 17 September 2026 — Model/subagent operating guidance
+**Decision:** Somebody shops for externally controlled resources its own workers cannot make, not generic cognition packaged as agents.
 
-**Decision:** `docs/agents/MODEL_ARSENAL.md` and `docs/agents/AGENT_MODEL_SELECTION.md` are imported operating guidance from `dropandresetmain-prog/resume-copilot@78d1477`.
+Relevant BUY resource classes include proprietary/privileged data, external execution/distribution interfaces, specialist infrastructure, physical capacity, human presence and independent authority/attestation.
 
-They guide engineering task routing. They are **not automatically a product runtime-routing algorithm** for dynamically spawned workers.
+## 18 September 2026 — Marketplace discovery
 
-Product worker model selection should be deliberate and bounded to current needs. Architecture, integration decisions, wallet/signing/payment work, security-sensitive code and final verification stay with the primary model.
+**Decision:** marketplace discovery is part of the canonical product flow, but a generalized marketplace search/indexing platform is out of scope.
+
+Implementation order:
+
+1. use a supported official discovery/search primitive if one is available and appropriate;
+2. otherwise use a small application-owned synchronized snapshot of the relevant current OKX.AI offerings behind a replaceable discovery interface;
+3. do not scrape undocumented/private APIs.
+
+Provider invocation/payment must remain real even if discovery uses the synchronized snapshot.
+
+## 18 September 2026 — Canonical provider set
+
+**Decision:** current canonical provider candidates are:
+
+**Rejected external option — FlyBeacon or equivalent generic growth service.** Reject when it substantially reproduces reasoning, public research, planning or copy work the internal growth worker can already perform.
+
+**BUY #1 — Newsliquid.** Target resource: proprietary/privileged social intelligence. The purchased evidence must materially affect subsequent internal work.
+
+**BUY #2 — xbird.** Target resource: external social execution infrastructure / privileged execution interface. The founder/company retains control of the underlying X account and intent; the purchase is the machine execution interface, not an X identity.
+
+Exact endpoint, current price, payment environment, credentials, result schema and independent verification must be checked immediately before integration.
+
+If either primary provider fails the feasibility gate, substitute the nearest reliable provider of the **same resource type** without reopening broad scenario ideation.
+
+## 18 September 2026 — Canonical mission behavior
+
+**Decision:** the internal growth/launch worker must do real work on controlled company state, ideally landing-page/campaign messaging.
+
+BUY #1 must not itself solve the objective. External social evidence must flow back into MAKE so the internal worker changes positioning/message/segment/artifact.
+
+BUY #2 performs the external relaunch action. Completion requires read-back/verification of that effect.
+
+Do not promise downstream business outcomes such as “100 customers acquired” unless they actually happen. The demo completes when the relaunch work itself is verified.
+
+## 18 September 2026 — Five-day scope boundary
+
+**Decision:** one reliable canonical mission outranks infrastructure breadth.
+
+Explicitly out of scope:
+
+- universal marketplace indexing;
+- auctions or generic provider ranking/reputation;
+- automated negotiations;
+- generalized A2A escrow unless strictly forced by a provider;
+- generalized internal-vs-external cost optimization;
+- three or more providers;
+- workflow DSL;
+- permanent giant org chart;
+- second polished scenario;
+- arbitrary-prompt support;
+- broad company-OS architecture.
 
 ## Superseded / rejected ideas
 
-- Renaming Somebody to “One Man Army / OMA AI” — rejected; keep Somebody.
-- Making the product primarily an agent marketplace — rejected.
-- Buying another generic LLM/research wrapper merely because a worker does not exist — rejected.
-- Previous public-web-heavy market-research canonical demo — rejected as too easy to reproduce internally.
-- Treating the Opus invoice/Dial demo as already canonical — corrected; candidate only.
-- Making `somebody-ai` the final OKX repo — corrected; final repo is `somebody-okx`.
-- Treating MAKE as only a worker-spec/planning exercise — superseded; active internal execution is required.
-- Delaying product-surface work until after the engine — superseded; surface starts in M1.
-- **“Build a Company Mission path beside procurement” as the architectural requirement — superseded.** Build the current Objective/WorkItem path on a fresh OKX data plane while inheriting the useful generic worker/reliability architecture.
-- Preserving `acrobatic-swan-765` or old health-probe machinery for M1 continuity — rejected.
-- Requiring inherited procurement behavior to remain operational as M1 acceptance — rejected.
+- Renaming Somebody to “One Man Army / OMA AI” — rejected.
+- Making Somebody primarily an agent marketplace — rejected.
+- Buying generic cognition merely because another agent wraps an LLM — rejected.
+- Public-web-heavy market research as the canonical demo — rejected as too internally reproducible.
+- Supplier invoice / Dial as canonical — superseded by the failing-launch scenario.
+- CertiK partnership diligence as canonical — superseded by the failing-launch scenario.
+- Treating MAKE as only a worker-spec/planning exercise — superseded; active execution is required.
+- One global objective-level MAKE/BUY verdict — superseded by repeated resource-level sourcing decisions.
+- “One external provider on the critical path” — superseded; the canonical mission may use up to two justified BUYs of different resource types.
+- Broad marketplace discovery being entirely out of scope — refined; bounded discovery is required, generalized indexing is not.
+- Preserving the old procurement deployment/runtime for continuity — rejected.
