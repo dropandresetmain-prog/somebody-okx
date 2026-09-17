@@ -102,7 +102,7 @@ Delivered in `lib/workforce/` (`types.ts`, `catalog.ts`, `permissions.ts`, `work
 
 No Convex schema change, no persistence, no Army runtime, and no existing file modified.
 
-Checkpoint SHA: this commit.
+Checkpoint SHA: `dfae75af9326a8e719033948ede8b2b481b423bd`.
 
 Evidence, 17 September 2026:
 
