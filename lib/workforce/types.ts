@@ -22,7 +22,9 @@ export type ToolPermissionId =
   | "read_company_record"
   | "draft_document"
   | "record_finding"
-  | "authorize_external_spend";
+  | "authorize_external_spend"
+  | "request_resource"
+  | "update_company_artifact";
 export type ToolPermissionDefinition = {
   id: ToolPermissionId;
   description: string;
@@ -32,7 +34,8 @@ export type ToolPermissionDefinition = {
 export type CapabilityKey =
   | "public_information_research"
   | "company_records_lookup"
-  | "document_drafting";
+  | "document_drafting"
+  | "growth_launch_operations";
 export type CapabilityDefinition = {
   key: CapabilityKey;
   name: string;

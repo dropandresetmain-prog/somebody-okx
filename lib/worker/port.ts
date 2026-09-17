@@ -25,7 +25,18 @@ export type WorkerCommand =
       recordRef?: string;
     }
   | { type: "submit_result"; result: WorkerResultInput }
-  | { type: "request_completion" };
+  | { type: "request_completion" }
+  | {
+      type: "request_resource";
+      resourceClass: string;
+      purpose: string;
+      reasonOwnedInsufficient: string;
+    }
+  | {
+      type: "update_company_artifact";
+      content: string;
+      changeNote: string;
+    };
 
 // The structured evaluation the role policy requires.
 export type WorkerResultInput = {
