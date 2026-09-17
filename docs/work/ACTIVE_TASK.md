@@ -60,10 +60,10 @@ Architecture, integration decisions, wallet/signing/payment work, security-sensi
 - [x] Build-provenance ledger created (`BUILD_DELTA.md`).
 - [x] Model/subagent selection guidance imported into `docs/agents/`.
 - [x] OKX sandbox/test strategy recorded in `README.md`.
+- [x] Transfer/rewrite minimal workforce primitives from Army — Transfer Pass B, see below.
 
 ### Not yet complete
 
-- [ ] Transfer/rewrite minimal workforce primitives from Army.
 - [ ] Choose canonical business objective/demo.
 - [ ] Choose and validate canonical BUY provider.
 - [ ] Prove OKX testnet buyer/payment path against official Mock Merchant.
@@ -88,14 +88,40 @@ Acceptance evidence, all satisfied 17 September 2026:
 
 No redesign occurred during transfer.
 
-### Transfer Pass B — minimal workforce primitives — **NEXT**
+### Transfer Pass B — minimal workforce kernel — **COMPLETE**
 
-Pass A is healthy, so this is the current next action:
+The first genuinely new OKX-period capability. Army source inspected at `army-of-interns@677166db591465fb6d201fb12db7cfe038557a92`; primitives rewritten rather than imported. Full provenance and the port/rewrite/reject split are in `BUILD_DELTA.md` §3.2.
 
-- inspect the Army source files identified in `REUSE_AUDIT.md`;
-- transfer or rewrite only controlled capability validation + deny-by-default tool permissions + minimal worker shape;
-- add focused tests for those primitives;
-- do not import Army runtime/schema/UI wholesale.
+Delivered in `lib/workforce/` (`types.ts`, `catalog.ts`, `permissions.ts`, `workers.ts`, `index.ts`) with `tests/workforce.test.ts`:
+
+- scenario-independent controlled capability definitions with required resource classes;
+- unknown capability keys fail closed;
+- deny-by-default capability → tool permissions, including no external-spend authority for MAKE workers;
+- minimal internal worker specs, free of Army's personality/rank/hierarchy baggage;
+- reuse-or-create resolution.
+
+No Convex schema change, no persistence, no Army runtime, and no existing file modified.
+
+Checkpoint SHA: this commit.
+
+Evidence, 17 September 2026:
+
+1. focused tests — `npx tsx --test tests/workforce.test.ts`, **11/11 pass**;
+2. full existing unit suite — `npm test`, **89/89 pass** (78 inherited + 11 new, no baseline regression);
+3. root typecheck — `npm run typecheck`, **clean**;
+4. Convex typecheck deliberately not run — no Convex-facing file or type was touched.
+
+### Reassess the canonical demo and BUY provider — **NEXT**
+
+The minimum scenario-independent MAKE foundation now exists, so the blocking question is no longer workforce shape. It is which scenario and which external provider the demo will rest on.
+
+Do **not** extend the workforce kernel further until a canonical demo is accepted; further workforce work without a scenario risks building unused ontology.
+
+Next action:
+
+- revisit the canonical demo candidates against the gate below;
+- validate whether a real OKX AI provider supplies a genuinely scarce resource for the chosen scenario;
+- only then decide what the kernel needs next (execution, persistence, planner).
 
 ## Canonical demo gate
 

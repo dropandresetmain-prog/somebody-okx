@@ -148,7 +148,9 @@ The baseline also contains no workforce, capability-vocabulary, worker, assignme
 
 > ### **Pre-existing R&D / source material available before OKX Dev Day.**
 >
-> **This is NOT part of the existing Somebody product.** None of the items below shipped inside Somebody, and none of them are present in `somebody-okx` at the time of writing. This section exists to disclose available prior source material honestly — not to claim inherited product capability.
+> **This is NOT part of the existing Somebody product.** None of the items below ever shipped inside Somebody. This section exists to disclose available prior source material honestly — not to claim inherited product capability.
+>
+> Since [§3.2](#32-first-built-capability--minimal-workforce-kernel) a **small subset of these ideas** has been adapted into `somebody-okx` as new code. The Army *implementation* below is still not present; what was built is a rewritten minimal kernel. Read §3.2 for the exact port/rewrite/reject split.
 
 - Source repository: `dropandresetmain-prog/army-of-interns`
 - Pre-OKX SHA: `677166db591465fb6d201fb12db7cfe038557a92`
@@ -178,7 +180,7 @@ Only pieces materially relevant to the OKX **MAKE** path are inventoried. Army-s
 
 **This is the hackathon delta.** Only work with repository evidence appears here.
 
-**Current state of the build period: SSOT documentation, source audit and baseline transfer + verification.** No OKX-specific product capability has been built yet. Nothing in this section should be read as a working Make-vs-Buy, workforce, wallet or payment feature.
+**Current state of the build period: SSOT documentation, source audit, baseline transfer + verification, and the first built capability — a minimal internal-workforce kernel.** Nothing in this section should be read as a working Make-vs-Buy, marketplace, wallet or payment feature; none of those exist.
 
 ### 3.1 Completed
 
@@ -193,15 +195,88 @@ Only pieces materially relevant to the OKX **MAKE** path are inventoried. Army-s
 | Pre-build research ingested | Complete (docs) | `c4267fe` | `docs/research/PREBUILD_RESEARCH_INGEST.md` | Manual review | Accepted | Provider-scarcity research and official OKX testnet findings. |
 | **Somebody baseline transfer** | Complete — **transfer only, no new capability** | `d10a73a` (gate), `a47cc93` (transfer), `093d247` (gate removed) | 115 files from `somebody-ai@709a169` | Blob-hash comparison vs source SHA | **113/115 shared files byte-identical**; only `README.md` / `ARCHITECTURE.md` intentionally replaced | Provides the inherited runtime the OKX work will build on. Capability remains inherited (Section 1). |
 | **Inherited baseline verified in this repo** | Complete — verification evidence | Run at `093d247`, 17 Sep 2026 | `tests/` (9 files), root + Convex typecheck | `npm ci`; `npm test`; `npm run typecheck`; `npm run typecheck:convex` | **78/78 tests pass. Root typecheck clean. Convex typecheck clean.** Install: 140 packages | Confirms the transferred foundation actually works here, so later OKX failures are attributable to new work. |
-| Build provenance ledger | Complete (docs) | this commit | `BUILD_DELTA.md`, `README.md` | Source paths and SHAs verified against GitHub; link check | Accepted | The artifact that makes the 17–25 Sep delta legible to judges. |
-| Model-selection guidance imported | Complete (docs) | this commit | `docs/agents/MODEL_ARSENAL.md`, `docs/agents/AGENT_MODEL_SELECTION.md` | Source SHA verified as current authoritative `main` | Accepted | Operating discipline: keeps wallet/payment/security/architecture work with the primary model. |
-| OKX sandbox/test strategy recorded | Complete (docs) | this commit | `README.md`, `ARCHITECTURE.md`, `DECISIONS_LOG.md` | Grounded in official OKX documentation | Accepted | Establishes a no-real-funds development rail before any payment code exists. |
+| Build provenance ledger | Complete (docs) | `f9333ad` | `BUILD_DELTA.md`, `README.md` | Source paths and SHAs verified against GitHub; link check | Accepted | The artifact that makes the 17–25 Sep delta legible to judges. |
+| Model-selection guidance imported | Complete (docs) | `f9333ad` | `docs/agents/MODEL_ARSENAL.md`, `docs/agents/AGENT_MODEL_SELECTION.md` | Source SHA verified as current authoritative `main` | Accepted | Operating discipline: keeps wallet/payment/security/architecture work with the primary model. |
+| OKX sandbox/test strategy recorded | Complete (docs) | `f9333ad` | `README.md`, `ARCHITECTURE.md`, `DECISIONS_LOG.md` | Grounded in official OKX documentation | Accepted | Establishes a no-real-funds development rail before any payment code exists. |
+| **Minimal workforce kernel (MAKE foundation)** | **Built — first OKX-period product capability** | this commit | `lib/workforce/` (5 new files), `tests/workforce.test.ts` | `npx tsx --test tests/workforce.test.ts`; `npm test`; `npm run typecheck` | **Focused 11/11 pass. Full suite 89/89 pass (78 inherited + 11 new). Root typecheck clean.** | Scenario-independent foundation the MAKE path and the later Make-vs-Buy policy are built on. |
 
-### 3.2 Honest summary of the delta so far
+### 3.2 First built capability — minimal workforce kernel
 
-As of this checkpoint the OKX Dev Day contribution is: **a locked product/architecture SSOT, an audited and byte-verified transfer of the inherited Somebody baseline, proof that the inherited baseline passes its own checks inside this repository, imported model-routing discipline, and a documented sandbox-first payment development strategy.**
+This is the **first genuinely new capability created during the OKX build period**, as opposed to documentation or transfer activity. Its provenance needs stating precisely.
 
-No OKX integration, workforce, policy or payment code exists yet.
+#### Provenance
+
+- Workforce ideas **existed before OKX Dev Day**, in `dropandresetmain-prog/army-of-interns` (see [§2](#2-before-okx--workforce-rd-baseline-army-of-interns)). That is pre-existing R&D.
+- Those ideas were **never part of the Somebody product**. The inherited Somebody baseline ([§1](#1-before-okx--somebody-baseline)) contains no workforce, capability or worker code of any kind.
+- What is **built** here is a new, rewritten, minimal kernel inside `somebody-okx`, informed by that R&D.
+
+**This is not a claim that Army's workforce system was built during OKX Dev Day.** Army's system is larger, scenario-specific and remains outside this repository.
+
+#### Source inspiration inspected
+
+Read directly at `army-of-interns@677166db591465fb6d201fb12db7cfe038557a92`:
+
+- `src/core/workforce/capabilityCatalog.ts`
+- `src/core/workforce/capabilityAnalysis.ts`
+- `src/core/workforce/permissionMapping.ts`
+- `src/core/workforce/workerSpecFactory.ts`
+- `src/core/workforce/workforceMatcher.ts`
+- `src/core/workforce/workforce.test.ts`
+- `src/core/workforce/index.ts`
+- `src/agents/permissions.ts`
+
+#### Ported vs rewritten vs rejected
+
+| Army primitive | Decision | Reason |
+|---|---|---|
+| Controlled capability vocabulary | **Rewritten** | The *principle* — application owns the vocabulary, models may only propose — is kept. Army's six demo capabilities (`maintenance_triage`, `vendor_sourcing`, …) are scenario-specific and were not carried over. |
+| Capability → tool permission mapping | **Rewritten, single-table** | Army stores grants twice (`defaultToolPermissionIds` plus `grantedByCapabilityKeys`) and the two tables can silently disagree. The rewrite makes the capability the single source of truth and adds `assertCatalogIntegrity()`. |
+| Permission envelope enforcement | **Ported in concept** | `enforcePermissionEnvelope` keeps Army's deny-by-default filtering of self-granted permissions. Rewritten against the new types. |
+| Worker matching / reuse | **Ported in concept** | Capability-coverage matching with a smallest-envelope tiebreak, rewritten without worker status/orchestration semantics. |
+| Worker spec factory | **Rewritten and stripped** | Army's `WorkerSpec` carries `employmentType`, `rank`, `personality`, `communicationStyle` and manager links. None were carried over. |
+| Capability *analysis* (`analyzeRequiredCapabilities`) | **Rejected** | Keyword-signal matching (`leak`, `toilet`, `hvac`) is scenario-coupled, and capability selection is a planner concern, not a kernel concern. |
+| `implies` capability chains | **Rejected** | Unnecessary ontology for the current scope. |
+| Work intake, assignments, kernel plan events | **Rejected** | Orchestration and work-queue concerns, explicitly out of scope. |
+| `convex/workforce.ts` and Army schema glue | **Rejected** | Army-specific runtime coupling. No persistence was added; the kernel is pure and testable without Convex. |
+| `src/agents/permissions.ts` (manager/rank tools) | **Rejected** | Depends on rank and org hierarchy. |
+
+#### New files
+
+| File | Purpose |
+|---|---|
+| `lib/workforce/types.ts` | Resource classes, tool permission IDs, capability keys, `WorkerSpec`, `WorkerResolution`. |
+| `lib/workforce/catalog.ts` | Controlled vocabulary: 11 resource classes (5 owned / 6 externally controlled), 5 tool permissions, 3 scenario-independent capabilities, plus validation and `assertCatalogIntegrity()`. |
+| `lib/workforce/permissions.ts` | Deny-by-default capability → tool mapping and envelope enforcement. |
+| `lib/workforce/workers.ts` | `createWorkerSpec` and `resolveWorker` (reuse-or-create). |
+| `lib/workforce/index.ts` | Public seam for the kernel. |
+| `tests/workforce.test.ts` | 11 focused tests. |
+
+No existing file was modified. The inherited procurement flow, Convex schema and agent runtime are untouched.
+
+#### Behavior built
+
+- **Controlled capability definitions** — stable key, name, description, required resource classes, allowed tools and an execution responsibility.
+- **Fail-closed validation** — unknown capability keys throw wherever they could reach a worker; `validateCapabilityKeys` splits model proposals into accepted/rejected.
+- **Resource vocabulary** — owned classes (`llm_reasoning`, `public_web`, `company_records`, `company_tools`, `ordinary_compute`) and externally controlled classes (`proprietary_data`, `privileged_access`, `specialist_compute`, `human_voice_contact`, `physical_presence`, `attestation`) as vocabulary for the later policy. Requirements are emitted deterministically (deduplicated, sorted, order-independent).
+- **Deny-by-default tools** — a worker holds a tool only because a capability grants it. Unknown tools are denied; a worker cannot widen its own envelope; reuse re-derives permissions so a tampered inventory worker is narrowed, never widened.
+- **Minimal worker spec** — deterministic key, capability keys, allowed tools, required resources, responsibility. No personality, rank, promotion, avatar, hierarchy, employment metadata or messaging identity.
+- **Reuse-or-create** — `resolveWorker` reuses the narrowest compatible existing worker, or constructs a new minimal spec. This is the "a missing worker is not a missing capability" mechanic.
+- **No BUY leakage** — `authorize_external_spend` exists as *known* vocabulary flagged `externalAuthority`, and is granted by **no** capability. It is denied to every MAKE worker, and `assertCatalogIntegrity()` fails the catalog if any capability ever tries to grant it. No BUY, marketplace, wallet or payment behavior was implemented.
+
+#### Verification evidence
+
+| Check | Command | Result |
+|---|---|---|
+| Focused workforce tests | `npx tsx --test tests/workforce.test.ts` | **11/11 pass** |
+| Full existing unit suite | `npm test` | **89/89 pass** (78 inherited baseline + 11 new) |
+| Root typecheck | `npm run typecheck` | **Clean** |
+| Convex typecheck | Not run | Deliberate — no Convex-facing file or type was touched. |
+
+### 3.3 Honest summary of the delta so far
+
+As of this checkpoint the OKX Dev Day contribution is: **a locked product/architecture SSOT, an audited and byte-verified transfer of the inherited Somebody baseline, proof that the inherited baseline passes its own checks inside this repository, imported model-routing discipline, a documented sandbox-first payment development strategy, and one built capability — a minimal, scenario-independent internal-workforce kernel with deny-by-default tool permissions.**
+
+No OKX integration, Make-vs-Buy policy, marketplace or payment code exists yet.
 
 ---
 
@@ -212,15 +287,15 @@ No OKX integration, workforce, policy or payment code exists yet.
 | Planned item | Status | Notes |
 |---|---|---|
 | Transferred Somebody runtime adapted for OKX use | **Not built** | The baseline is transferred and verified, but *no OKX-specific adaptation* of it exists. |
-| Dynamic workforce (MAKE path) | **Not built** | No capability vocabulary, validation, worker, permission-envelope or assignment code exists in `somebody-okx`. Army primitives have not been imported or rewritten. |
-| Make-vs-Buy policy implementation | **Not built** | The rule is specified in `PRODUCT_SPEC.md` and `ARCHITECTURE.md`. There is no `MAKE` / `BUY` / `BLOCKED` policy code. |
+| Dynamic workforce (MAKE path) | **Partially built** | The kernel exists and is tested (§3.2): capability vocabulary, fail-closed validation, deny-by-default tool permissions, minimal worker specs and reuse-or-create. **Not built:** worker execution, persistence, assignments or any planner that selects capabilities from a founder objective. |
+| Make-vs-Buy policy implementation | **Not built** | The rule is specified in `PRODUCT_SPEC.md` and `ARCHITECTURE.md`. There is no `MAKE` / `BUY` / `BLOCKED` policy code. The kernel's resource-ownership vocabulary is the intended input to it. |
 | OKX AI marketplace integration | **Not built** | No provider selected, no adapter, no client. |
 | Agentic Wallet integration | **Not built** | No wallet, key handling or signing code. Zero wallet references in product code. |
 | x402 payments | **Not built** | No x402 client, no `402` handling, no authorize/sign/pay/retry loop. |
 | X Layer settlement | **Not built** | No chain client, no RPC configuration, no settlement or receipt code. |
 | External-provider verification | **Not built** | The inherited `verifyReceipt` / `assertComplete` primitives exist and are the intended foundation, but no external-provider verification path is implemented. |
 | Canonical demo selection | **Not decided** | Remains OPEN per `DECISIONS_LOG.md`. The supplier-invoice / independent-attestation scenario is a research candidate only. |
-| Company resource inventory | **Not built** | Required for MAKE decisions; not started. |
+| Company resource inventory | **Not built** | The kernel classifies *resource classes* as owned or externally controlled, but there is no inventory of what this company actually holds. |
 | Objective / capability planner | **Not built** | Not started. |
 | Spend authorization and budget controls | **Not built** | Approval primitives are inherited; OKX spend policy is not built. |
 | Final canonical demo | **Not built** | Not recorded, not rehearsed, not selected. |

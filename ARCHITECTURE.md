@@ -142,6 +142,8 @@ For MAKE:
 
 Hackathon scope does not require a generalized organization engine.
 
+**Implemented seam:** `lib/workforce/` holds the kernel — controlled capability definitions with resource requirements, fail-closed validation, deny-by-default tool permissions, minimal worker specs and reuse-or-create. It is pure, Convex-free and scenario-independent; execution, persistence and the planner above it are not built. See `BUILD_DELTA.md` §3.2.
+
 ### External procurement path
 
 For BUY:
@@ -221,7 +223,7 @@ Model, harness and effort selection for implementation work follows `docs/agents
 Initial gates:
 
 1. transferred Somebody baseline still passes its existing relevant tests/typechecks — **satisfied 17 September 2026: 78/78 tests, clean root and Convex typechecks; evidence in `BUILD_DELTA.md` §3**;
-2. transferred workforce primitives have focused tests around capability validation/tool permissions;
+2. transferred workforce primitives have focused tests around capability validation/tool permissions — **satisfied 17 September 2026: 11 focused tests in `tests/workforce.test.ts`, full suite 89/89, root typecheck clean; evidence in `BUILD_DELTA.md` §3.2**;
 3. OKX testnet payment path works against official Mock Merchant before provider-specific live spending;
 4. canonical external provider passes one bounded end-to-end validation before UI polish;
 5. one full no-cut demo flow works before stretch features.
