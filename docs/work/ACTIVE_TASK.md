@@ -92,6 +92,37 @@ Use four categories:
 
 ## Current checkpoint
 
+### M1 — Objective spine + active MAKE — IMPLEMENTED (pending fresh-deployment smoke)
+
+Branch `qoder/general-session-ao10w4`, checkpoints pushed:
+
+- Checkpoint 1 (Objective/Work spine): `7b41ea6`;
+- Checkpoint 2 (Active MAKE runtime): `cb271cf`;
+- Checkpoint 3 (Convex objective runtime): `1700864`;
+- Checkpoint 4 (Objective workspace UI + env cleanup): `26bcf15`;
+- docs update: see `git log` on the branch for the docs commit SHA.
+
+Built and verified:
+
+- [x] fresh current-product Convex schema (`objectives`, `objectiveEvents`, `evidence` only) — `convex/schema.ts`;
+- [x] fail-closed planner validation (unknown capability keys / resource classes / permission smuggling fail closed; permission envelope derived by application code) — `lib/objective/planner.ts`;
+- [x] factual company resource inventory + MAKE/BLOCKED sourcing — `lib/objective/policy.ts` + `evaluateSourcing`;
+- [x] worker resolution through `lib/workforce/` (`resolveWorker`), WorkerSpec-derived `workerKey`;
+- [x] assignment-specific WorkContract (`createWorkContract`), spend-binding rejected, evidence-only completion (`evaluateCompletion`); inherited `lib/reliability/core.ts` untouched;
+- [x] deliberate model selection, fail-closed live provider gate — `lib/worker/modelSelection.ts`;
+- [x] envelope-only tool materialization + real Agent/Runner execution with application-owned finalization — `lib/worker/runtime.ts`; `authorize_external_spend` never materializes (test-enforced);
+- [x] Convex objective runtime: submit → plan → run start (lease + expiry fence + scheduler) → tool-mediated evidence/result recording → `finishRun` application-owned completion — `convex/objectives.ts`;
+- [x] Objective workspace as app entry point (YOU ASKED / SOMEBODY'S PLAN / WHY MAKE? / THAT GUY / EVIDENCE / RESULT) reusing Mission Control visual language — `app/ObjectiveWorkspace.tsx`;
+- [x] env cleanup: `.env.example` reduced to current-product variables; no `acrobatic-swan-765`, `DEVELOPMENT_ACCESS_TOKEN` or `HEALTH_PROBE_WRITES_ENABLED` references in active runtime;
+- [x] legacy runtime modules removed from the active surface (provenance in git history; see `BUILD_DELTA.md` §4.1).
+
+Test evidence (observed at the docs-update commit):
+
+- root `npx tsc --noEmit`: clean;
+- `convex` `npx tsc --noEmit`: clean;
+- focused tests `npx tsx --test tests/objective.test.ts tests/workforce.test.ts tests/worker.test.ts`: **32/32 pass** (16 planner/sourcing/contract/resolution, 9 workforce kernel, 7 worker runtime incl. real-Runner scripted-model proof);
+- `npx next build`: compiles, static prerender OK.
+
 ### M0 — Foundation and provenance — COMPLETE
 
 Completed:
@@ -259,6 +290,39 @@ PASS only when one bounded objective can:
 12. render meaningful real state in the current product surface.
 
 No BUY required yet.
+
+### M1 deployment blocker — founder action required (recorded 17 Sep 2026)
+
+Creating the fresh Somebody-OKX Convex deployment requires Convex platform
+authentication that is not available in the build sandbox. The following exact
+command was attempted and failed as shown (no deployment was created, no success
+is claimed):
+
+```
+$ npx convex dev
+✖ No CONVEX_DEPLOYMENT set, run `npx convex dev` to configure a Convex project
+
+$ CONVEX_DEPLOYMENT=dev:<name> npx convex env list
+✖ Error fetching GET https://api.convex.dev/api/deployment/<name>/team_and_project
+  401 Unauthorized: MissingAccessToken: An access token is required for this command.
+  Authenticate with `npx convex dev`
+```
+
+Minimum founder action:
+
+1. In an authenticated environment run `npx convex dev` inside the repo to create
+   (or select) the fresh Somebody-OKX deployment and authenticate. This regenerates
+   `convex/_generated/` (currently a hand-maintained stand-in) and writes
+   `CONVEX_DEPLOYMENT` / `.env.local` (`NEXT_PUBLIC_CONVEX_URL`).
+2. On the Convex dashboard (Settings → Environment Variables) set `LIVE_AI_ENABLED=true`,
+   `AI_PROVIDER`, `AI_MODEL` (a tool-capable model), and the matching provider API key
+   (`OPENROUTER_API_KEY` or `OPENAI_API_KEY`).
+3. Run the app locally (`npm run dev`) and submit one objective through the Objective
+   workspace to execute the live Development smoke.
+
+Until that smoke runs, criteria 1, 3, 10 and 12 are verified by focused tests and
+typechecks but **not** by a live deployment; this is recorded honestly in
+`BUILD_DELTA.md` §5.
 
 ## M1 test/evidence hierarchy
 

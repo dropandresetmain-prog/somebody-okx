@@ -291,52 +291,64 @@ Everything in this section is **not implemented** until repository evidence move
 
 | Planned item | Status | Provenance expectation / notes |
 |---|---|---|
-| Fresh Somebody-OKX Convex project/data plane | **Not built** | **New during OKX.** No migration from `acrobatic-swan-765`. |
-| Current `Objective` / `WorkItem` runtime + realtime read model | **Not built** | **New during OKX.** Reuses Convex patterns, not procurement aggregate. |
-| `WorkContract` adaptation from `CoreWorkerContract` | **Not built** | **Rebuilt / Adapted during OKX.** Must support assignment authority/completion beyond external effects. |
-| Objective → capability/resource planner | **Not built** | **New during OKX** as working Somebody capability. Model proposes; application validates. |
-| Factual company resource inventory | **Not built** | **New during OKX.** Catalog vocabulary is not factual inventory. |
-| Active internal worker execution | **Not built** | **New/Rebuilt combination.** Workforce kernel exists; real Agent/Runner spawn path does not. |
-| Role/capability policy for M1 proof | **Not built** | **New during OKX** unless directly adapted from an inherited role helper. Must be nontrivial, tool-mediated. |
-| Persisted MAKE evidence/result/activity | **Not built** | Inherits evidence/event principles; current implementation is new/adapted. |
-| Current Objective product surface | **Not built** | Reuses visual language; new current-product information architecture. |
-| Deterministic Make-vs-Buy policy | **Not built** | **New during OKX.** `MAKE` / `BUY` / `BLOCKED`. |
+| Fresh Somebody-OKX Convex project/data plane | **Partially built (M1)**: fresh schema + runtime live in repo (`convex/schema.ts`, `convex/objectives.ts`); deployment creation blocked in build sandbox (no Convex access token). `convex/_generated/` is a hand-maintained stand-in until `npx convex dev` runs. | **New during OKX.** No migration from `acrobatic-swan-765`. |
+| Current `Objective` / `WorkItem` runtime + realtime read model | **Built (M1)** — `convex/objectives.ts`, `convex/objectiveValidators.ts`, `convex/objectiveArgs.ts`; public read model `getObjective`/`listObjectives`. | **New during OKX.** Reuses Convex patterns (lease/expiry fencing from inherited `convex/missions.ts`), not the procurement aggregate. |
+| `WorkContract` adaptation from `CoreWorkerContract` | **Built (M1)** — `lib/objective/contract.ts` (`createWorkContract`, `evaluateCompletion`). Inherited `lib/reliability/core.ts` untouched; evidence-only completion supported; `requiredVerifiedEffectKeys` kept for the future BUY path. | **Rebuilt / Adapted during OKX.** |
+| Objective → capability/resource planner | **Built (M1)** — `lib/objective/planner.ts`: fail-closed `validatePlannerProposal` + permission envelope derivation. | **New during OKX.** Model proposes; application validates. |
+| Factual company resource inventory | **Built (M1)** — `lib/objective/policy.ts` `CURRENT_RESOURCE_INVENTORY` / `currentResourceInventory()`; consumed by `evaluateSourcing`. | **New during OKX.** Catalog vocabulary is not factual inventory. |
+| Active internal worker execution | **Built (M1)** — `lib/worker/runtime.ts` (real Agent/Runner, envelope-only tool materialization, application-owned finalization), `lib/worker/port.ts`, `lib/worker/modelSelection.ts`; executed through `convex/objectives.ts` port. | **New/Rebuilt combination.** Agent/Runner pattern adapted from inherited `lib/agent/procurement.ts`; workforce kernel inherited. |
+| Role/capability policy for M1 proof | **Built (M1)** — `lib/objective/policy.ts` `RESEARCH_ROLE` (research analyst: ≥3 observations across company_record + public_web, structured result) + internal `COMPANY_RECORDS`. | **New during OKX.** |
+| Persisted MAKE evidence/result/activity | **Built (M1)** — `evidence` / `objectiveEvents` tables with provenance (sourceClass, url/recordRef, observedAt, recordedBy, runId); result stored on the objective record. | Inherits evidence/event principles; current implementation is new/adapted. |
+| Current Objective product surface | **Built (M1)** — `app/ObjectiveWorkspace.tsx` as the app entry point (`app/page.tsx`); YOU ASKED / SOMEBODY'S PLAN / WHY MAKE? / THAT GUY / EVIDENCE / RESULT. Reuses Wordmark/LivePill/pill/timeline patterns and `./somebody` components. | Reuses visual language; new current-product information architecture. |
+| Deterministic Make-vs-Buy policy | **Partially built (M1)** — MAKE/BLOCKED implemented (`evaluateSourcing`); BUY is a deliberate M1 non-goal. | **New during OKX.** `MAKE` / `BUY` / `BLOCKED`. |
 | OKX AI provider integration | **Not built** | **New during OKX.** Provider not yet selected. |
 | x402 buyer flow | **Not built** | **New during OKX.** No 402/pay/retry code yet. |
 | X Layer payment/settlement path | **Not built** | **New during OKX.** Testnet first. |
-| Spend authorization/reconciliation | **Not built** | Adapts inherited approval/idempotency/verification principles to financial execution. |
+| Spend authorization/reconciliation | **Not built** — M1 enforces the negative invariant: `authorize_external_spend` is granted by no capability, never materializes as a tool, and a contract binding it is rejected. | Adapts inherited approval/idempotency/verification principles to financial execution. |
 | Selected real external-provider adapter | **Not built** | **New during OKX** unless it reuses a narrowly relevant inherited client. |
-| External result verification | **Not built** | Adapts inherited verify-before-complete principles. |
+| External result verification | **Not built** — the inherited attempted → unverified → verified lifecycle is retained in the reliability core for the BUY path; M1 work is evidence-only. | Adapts inherited verify-before-complete principles. |
 | Final objective synthesis | **Not built** | **New during OKX** as combined MAKE+BUY product behavior. |
 | Canonical demo | **Not selected/built** | Demo selection gate: 18 Sep 2026, 12:00 SGT. |
 
+### 4.1 M1 removals (legacy runtime decommissioned from the active surface)
+
+Removed by `git rm` during M1 (provenance fully preserved in git history; these are dormant-by-removal,
+not deleted-from-history):
+
+- Convex legacy runtime: `convex/{missions,validators,agent,effectAdapter,gateway,googleWorkspace,unipile,unipileStore,health,environment,http}.ts` — removed because they required the old schema (healthProbes/missions tables) and the old deployment gate (`assertDevelopment`, `acrobatic-swan-765`, `HEALTH_PROBE_WRITES_ENABLED`);
+- legacy UI: `app/{MissionControl,HealthStatus,conversation,useSpeechToText}.{ts,tsx}`, `app/api/mission/route.ts`;
+- legacy scripts/tests: procurement/unipile/google/qbo smoke + probe scripts and their tests.
+
+Retained from inheritance and still active: `lib/reliability/core.ts`, `lib/workforce/**`, inherited pure
+`lib/web` helpers (`fetchPublicHtml`, `htmlToExtractableText`), `lib/agent/procurement.ts` as the
+reference pattern (no longer imported by runtime code), `app/somebody/**` visual components, brand assets.
+
 ## 5. Current truthful state
 
-As of the 17 September architecture reconciliation:
+As of the 17 September M1 implementation (branch `qoder/general-session-ao10w4`):
 
-**Working and inherited:**
+**Working and inherited (still active in the repo):**
 
-- Somebody app/runtime foundation;
-- reliability core and worker-runtime patterns;
-- old procurement role implementation;
-- old provider integrations;
-- old UI/brand assets.
+- Somebody app/runtime foundation (`app/` shell, layout, global styles, brand assets);
+- reliability core and worker-runtime patterns (`lib/reliability/core.ts` — unmodified);
+- workforce kernel (`lib/workforce/**` — catalog, permissions, worker resolution; extended with objective-spine re-exports);
+- inherited pure web helpers (`lib/web/fetchPublicHtml.ts`);
+- UI/brand visual language (`app/somebody/**`, mascot/wordmark/pill CSS tokens);
+- reference pattern (not imported by runtime): `lib/agent/procurement.ts`.
 
-**Working and built/adapted during OKX:**
+**Working and built/adapted during OKX (M1):**
 
-- minimal scenario-independent workforce kernel.
+- fresh current-product Convex schema + objective runtime (`convex/schema.ts`, `convex/objectives.ts`, `convex/objective{Validators,Args}.ts`) with run lease/expiry fencing;
+- objective spine: fail-closed planner validation, factual inventory sourcing (MAKE/BLOCKED), WorkContract, application-owned completion (`lib/objective/{types,planner,contract,policy}.ts`);
+- Active MAKE runtime: deliberate model selection, envelope-only tool materialization, real `@openai/agents` Agent/Runner execution, workflow verbs (`lib/worker/{modelSelection,port,runtime}.ts`);
+- Objective workspace UI as the app entry point (`app/ObjectiveWorkspace.tsx`, `app/page.tsx`);
+- focused Level-1 tests: `tests/objective.test.ts` (16), `tests/workforce.test.ts` (9), `tests/worker.test.ts` (7) — 32/32 passing at commit under review.
 
 **Documented but not yet implemented:**
 
-- fresh OKX data plane;
-- Objective/WorkItem operational spine;
-- WorkContract evolution;
-- objective/capability planner;
-- factual resource inventory;
-- active dynamic internal worker spawning;
-- nontrivial M1 MAKE proof;
-- Make-vs-Buy policy;
-- OKX/x402/X Layer buyer rail;
+- live fresh Convex deployment (blocked: deployment creation requires Convex authentication unavailable in the build sandbox; `convex/_generated/` is a hand-maintained stand-in until `npx convex dev` runs — exact blocked command and founder action recorded in `docs/work/ACTIVE_TASK.md`);
+- live Development smoke of the full objective flow against the fresh deployment;
+- BUY path: OKX/x402/X Layer buyer rail;
 - selected external provider;
 - final MAKE+BUY E2E.
 
