@@ -1,474 +1,349 @@
 # Somebody × OKX — Architecture
 
-Status: **canonical architecture boundaries; implementation details may evolve**  
-Date: **17 September 2026**
+Status: **canonical architecture boundaries — revised for approved launch demo**  
+Date: **18 September 2026**
 
 ## 1. Architectural goal
 
 Build the smallest reliable system that proves:
 
-> **Somebody can assemble internal capability when it should MAKE and acquire external capability when it should BUY.**
+> **Somebody can assemble internal capability from company-owned resources, discover external resources when gaps emerge, buy only what the company cannot make, resume work with the purchased result, and verify the final outcome.**
 
-The architecture should extend the strongest parts of pre-OKX Somebody rather than either discarding them or turning the old procurement demo into a universal workflow engine.
+The architecture extends the strongest pre-OKX Somebody runtime patterns without turning the old procurement demo or the OKX marketplace into a universal workflow engine.
 
-The locked milestone sequence and release freeze live in `MASTER_PLAN.md`.
-
-## 2. Architectural inheritance from Somebody
+## 2. Inheritance from Somebody
 
 Source: `dropandresetmain-prog/somebody-ai@709a169a1a4f71b8dc2d7427438ff514999fb07e`.
 
-The old Somebody implementation already contained a useful separation between **role-specific work policy** and a more generic **worker reliability/runtime layer**.
+Preserve these architectural patterns:
 
-Its procurement implementation can be summarized as:
+- role/capability-specific policy above a generic reliability/runtime layer;
+- model proposes, application authorizes;
+- bounded Agent/Runner execution;
+- `WorkerSpec` separate from assignment-specific `WorkContract`;
+- durable runs, leases and stale-run fencing;
+- evidence/provenance;
+- stable effect identity and idempotency;
+- explicit attempted/submitted/verified semantics;
+- persisted approval for gated effects;
+- reconciliation before retry after ambiguous state;
+- application-owned completion.
 
-```text
-Procurement Agent
-      |
-      v
-Procurement domain / policy
-      |
-      | contract(m)
-      v
-CoreWorkerContract
-      |
-      v
-worker reliability/runtime
-      |
-      v
-provider/effect adapters
-      |
-      v
-external evidence + read-back
-```
-
-The important inheritance is the architecture, not the old procurement data model.
-
-### 2.1 Generic reliability contract
-
-`lib/reliability/core.ts` is intentionally free of quote/vendor semantics. It provides:
-
-- controlled workflow transitions;
-- a `CoreWorkerContract` carrying objective, idempotency scope, authorized effect keys, required verified effects and approval version;
-- effect authorization against persisted authority;
-- receipt/read-back verification;
-- completion gating based on externally verified effects.
-
-This file is directly inherited into `somebody-okx` as the starting reliability core.
-
-### 2.2 Role-specific policy compiles into the generic contract
-
-In old Somebody, `lib/procurement/domain.ts` owned procurement truth and exposed `contract(m): CoreWorkerContract`.
-
-That is the architectural seam to preserve:
-
-> **A role/capability policy owns domain truth and translates the current assignment into a generic work contract.**
-
-Procurement was the first role-specific implementation. It is not the universal product model.
-
-### 2.3 Agent/application authority split
-
-Old Somebody followed:
-
-```text
-model proposes
-→ application policy decides whether the action is legal
-→ external evidence determines whether it worked
-```
-
-The model could choose among bounded tools, but application code owned transitions, identity, approval, deterministic policy, idempotency and completion.
-
-This boundary remains canonical for Somebody-OKX.
-
-### 2.4 Reusable runtime patterns
-
-The following pre-OKX patterns are useful architectural inheritance:
-
-- `@openai/agents` Agent/Runner execution;
-- explicit model/provider selection rather than an implicit model;
-- bounded Zod tool schemas;
-- read/act ports rather than direct model access to the database;
-- serial/bounded tool execution where appropriate;
-- durable run records;
-- run leases and stale-run fencing;
-- safe provider-error persistence;
-- tool-progress requirement before calling an autonomous run successful;
-- realtime state and append-only-ish activity/event history;
-- evidence/provenance preservation;
-- stable effect identity and idempotent retry/reconciliation;
-- explicit `attempted → unverified → verified` external-effect semantics;
-- persisted human authority for gated actions;
-- execution separated from verification;
-- completion decided by application proof, not a model claim.
-
-### 2.5 What is NOT architectural inheritance
-
-The following existed in old Somebody but are not automatically part of Somebody-OKX:
-
-- the `acrobatic-swan-765` Convex deployment;
-- any old Convex rows or production/demo data;
-- `healthProbes` or `HEALTH_PROBE_WRITES_ENABLED`;
-- the procurement `Mission` aggregate and its vendor/quote/RFQ semantics;
-- procurement workflow states;
-- procurement fixtures;
-- QuickBooks, Unipile, Gmail, Google Workspace or public-web integrations unless the current OKX flow needs them;
-- the old localhost-only write gateway unless a current security need justifies an equivalent boundary;
-- the large procurement-shaped `MissionControl.tsx` implementation as the new application architecture.
-
-Old code may remain in the repository temporarily for provenance or reuse, but M1 does **not** require backward compatibility with the previous hackathon runtime.
+Do not inherit the old procurement `Mission` aggregate, old deployment/data, health probes or provider-specific integrations merely for continuity.
 
 ## 3. Fresh OKX data plane
 
-Somebody-OKX uses a **fresh Convex project/deployment and fresh operational data**.
+Somebody-OKX uses a fresh Convex project/deployment and fresh operational state.
 
-There is no data migration from `acrobatic-swan-765` and no requirement to preserve old health-probe or procurement tables in the new operational schema.
+The current accepted M1 runtime lives on the fresh project. Secrets remain outside Git and ordinary application state.
 
-The new data model should be designed around the current product only. Reuse Convex patterns where useful; do not inherit stale deployment-specific guards merely because they existed.
+M1 rows are valid historical/current operational records. M2+ schema evolution must remain backward compatible with them; new repeated-sourcing fields must not make accepted M1 rows unreadable.
 
-Secrets remain outside application state and Git.
+## 4. Canonical architecture
 
-## 4. Target architecture
+The old mental model of one objective-level split into MAKE or BUY is superseded.
+
+The mission is an orchestration loop:
 
 ```text
 Founder objective
-      |
-      v
-   Somebody
-      |
-      v
-Capability planner
-      |
-      v
-validated capability/resource needs
-      |
-      v
-Resource evaluation
-   /             \
-MAKE              BUY
- |                 |
- |                 |
-resolve/create      approved external path
-InternalWorker      |
- |                  spend authority
-WorkerSpec          |
- |                  x402 / X Layer / provider
-WorkContract        |
- |                  ExternalProvider
-role/capability     |
-policy              result + receipt
- |                  |
-bounded worker      verification
-runtime             |
- |                  |
-evidence/effects ---+
-        |
-        v
-     Somebody
-        |
-        v
- verified founder-facing outcome
+      ↓
+Somebody
+      ↓
+Capability / work planning
+      ↓
+Internal worker executes where possible
+      ↓
+New bounded resource need emerges
+      ↓
+Company resource inventory
+      ↓
+Market discovery
+      ↓
+Candidate assessment
+      ↓
+Canonical sourcing policy
+   ┌───────┼────────┐
+ MAKE     BUY     BLOCKED
+   │       │          │
+   │       ↓          └→ expose unresolved need
+   │   spend/payment
+   │       ↓
+   │   provider result/effect
+   │       ↓
+   │   verification
+   └───────┘
+      ↓
+Worker / Somebody resumes
+      ↓
+Another resource need may emerge
+      ↓
+repeat sourcing loop
+      ↓
+verified founder outcome
 ```
 
-Somebody remains accountable. Internal workers and external providers are execution resources, not separate product protagonists.
+The existing pure `lib/sourcing/policy.ts` remains the single deterministic MAKE/BUY/BLOCKED authority. It is invoked per bounded resource requirement, not once as a permanent label on the entire objective.
 
-## 5. Current-project domain language
+## 5. Current domain language
 
-Do not preserve old internal nouns simply because they existed in procurement.
+Use neutral engineering concepts:
 
-The current engineering model should use neutral product-relevant concepts such as:
+- **Objective** — founder outcome Somebody owns;
+- **CapabilityPlan** — validated capability/resource plan;
+- **WorkItem** — bounded unit of work;
+- **WorkerSpec** — reusable internal worker capability/tool/resource envelope;
+- **WorkContract** — assignment-specific authority and proof requirements;
+- **ResourceNeed** — bounded resource requirement discovered during planning/execution;
+- **SourcingDecisionRecord** — durable application-owned decision for one resource need;
+- **MarketCandidate** — current external offering considered for a need;
+- **ExternalProvider** — selected BUY-side provider;
+- **Evidence** — observed fact/result with provenance;
+- **Effect** — intended state-changing action with stable identity/lifecycle;
+- **Outcome** — Somebody's verified founder-facing synthesis;
+- **ActivityEvent** — durable operational history.
 
-- **Objective** — the founder outcome Somebody owns;
-- **CapabilityPlan** — the validated capabilities and resource needs required for that objective;
-- **WorkItem** — one bounded unit of work inside an objective;
-- **WorkerSpec** — what an internal worker is capable of doing and the maximum tool/resource envelope it may receive;
-- **WorkContract** — what one specific assignment authorizes and what proof is required for completion;
-- **InternalWorker** — a reusable or newly constructed MAKE worker;
-- **ExternalProvider** — a BUY-side provider;
-- **Evidence** — observed facts/results with provenance;
-- **Effect** — an intended state-changing action with stable identity and lifecycle;
-- **Outcome** — Somebody's verified synthesis for the founder;
-- **ActivityEvent** — durable user-facing operational history.
+The names `ResourceNeed` and `SourcingDecisionRecord` describe architecture, not a mandate for large new tables. Use the smallest persisted shape that cleanly supports repeated decisions.
 
-These names describe architecture. Product UI may use **That Guy** and **Somebody Else** where useful.
+Product UI may use **That Guy** and **Somebody Else**.
 
 ## 6. WorkerSpec vs WorkContract
 
-Do not overload one object with both capability identity and assignment authority.
+`WorkerSpec` answers: **what can this worker do?**
 
-### WorkerSpec
+`WorkContract` answers: **what is this worker allowed and required to do for this assignment, and what proof counts as complete?**
 
-`WorkerSpec` answers:
-
-> **What can this internal worker do?**
-
-It should contain only bounded, reusable worker properties such as:
-
-- worker identity/key;
-- controlled capability keys;
-- required resource classes;
-- allowed tool permissions;
-- bounded responsibility.
-
-The implemented `lib/workforce/` kernel already provides this foundation.
-
-### WorkContract
-
-`WorkContract` answers:
-
-> **What is this worker allowed and required to do for this specific assignment?**
-
-The exact implementation may evolve, but it must be able to express the assignment's:
-
-- objective/responsibility;
-- stable idempotency scope;
-- allowed effects or actions where applicable;
-- persisted approval/authority snapshot where applicable;
-- required outputs/evidence;
-- required verified effects where applicable;
-- completion requirements.
-
-The inherited `CoreWorkerContract` is the starting point for this concept, but it is effect-centric: its current `assertComplete()` requires at least one verified effect. That is correct for the old procurement demo but too narrow for evidence-only internal work.
-
-Adapting that inherited contract so legitimate MAKE work can complete from verified outputs/evidence **without inventing an external effect** is valid OKX-period engineering.
+Do not widen a worker's reusable capability envelope through an assignment. Do not let model-proposed resource needs grant tools, spend or provider authority.
 
 ## 7. Role / capability policy
 
-Each bounded role or capability may need domain-specific truth and completion rules.
+Each bounded role owns only the smallest domain policy needed to:
 
-Examples:
+1. interpret work-specific state/evidence;
+2. expose legal tools/actions;
+3. compile the assignment into a `WorkContract`;
+4. decide completion.
 
-- procurement knows quote completeness, ranking and supplier eligibility;
-- a research/analysis worker may know required source classes, claim/evidence structure and confidence/unknown handling;
-- a future coding worker may know repository/test evidence requirements.
+Do not build a workflow DSL.
 
-Do **not** build a generic workflow DSL.
+The canonical demo adds a bounded growth/launch role. It should use owned company context, current launch messaging/landing-page state, public web, model reasoning, ordinary compute and controlled company tools to perform real internal work.
 
-The role/capability policy should be the smallest code that:
+## 8. Planning and dynamic resource needs
 
-1. understands the work-specific state/evidence;
-2. exposes only legal commands/actions;
-3. translates the current assignment into its `WorkContract`;
-4. decides whether domain-specific completion requirements are satisfied.
+Initial planning may identify known capability/resource requirements, but it is not required to predict every external resource before work starts.
 
-The generic runtime should not contain procurement, research or other role semantics.
+During execution a bounded internal worker may propose that a new resource is needed. The application must validate:
 
-## 8. Objective / capability planner
+- resource identity is controlled vocabulary;
+- the request is relevant to the current bounded assignment;
+- the worker/model is not granting itself sourcing or spend authority;
+- duplicate/stale requests do not create duplicate economic work.
 
-Input: founder objective plus available company context.
-
-The model may propose:
-
-- controlled capability key;
-- bounded responsibility/task;
-- required resource classes.
-
-Application code validates:
-
-- capability exists;
-- resources are recognized;
-- proposal stays inside the controlled capability definition;
-- requested tool permissions cannot widen the capability envelope;
-- worker spec is valid.
-
-Unknown capability/resource proposals fail closed.
-
-The planner never grants spend authority.
+The model may say **what it needs**. Application code decides **whether the company owns it, whether a market path exists, whether BUY is allowed, and whether spend is authorized**.
 
 ## 9. Company resource inventory
 
-The company resource inventory is a factual runtime input: what the company actually controls now.
+The inventory is factual runtime truth: what the company actually controls now.
 
-Examples may include:
+Catalog membership is identity vocabulary, not ownership evidence.
 
-- generic model reasoning;
-- public web/search;
-- company records;
-- authenticated company tools;
-- ordinary compute.
+Examples of controlled resources may include:
 
-Do not infer ownership merely because a resource class exists in the catalog or because a worker already exists.
+- `llm_reasoning`;
+- `public_web`;
+- `company_records`;
+- `company_tools`;
+- `ordinary_compute`.
 
-This factual inventory becomes the input to Make-vs-Buy policy.
+A missing worker is not a missing resource. If required resources are controlled, Somebody should MAKE the worker/capability internally.
 
-## 10. Make-vs-Buy policy
+## 10. Repeated sourcing policy
 
-Pure application policy returns at minimum:
+For each validated bounded resource need, call the canonical pure sourcing policy:
 
-- `MAKE` — all required resources are currently controlled by the company;
-- `BUY` — at least one required resource is externally controlled and an approved acquisition path exists;
-- `BLOCKED` — an external resource is required but no approved acquisition path exists.
+- `MAKE` — all required resources are factually controlled;
+- `BUY` — at least one required resource is missing and every missing resource has an approved external provider path;
+- `BLOCKED` — at least one required resource is missing and no approved path exists for one or more missing resources.
 
-Models may propose needs. Application code decides sourcing.
+Provider approval is application-owned and resource-specific. A provider path approved for resource A cannot satisfy resource B.
 
-A missing pre-existing worker is not a reason to BUY.
+`ApprovedProviderPath` means only that an approved acquisition route exists. It does not mean payment, invocation, settlement or verification occurred.
 
-## 11. Internal workforce path
+The objective itself remains active across these decisions; a BUY need must not automatically fail the whole objective.
+
+## 11. Market discovery
+
+Marketplace discovery is required for the canonical demo, but generalized marketplace infrastructure is not.
+
+Define a narrow replaceable seam conceptually equivalent to:
+
+```ts
+interface MarketDiscovery {
+  findCandidates(need: ResourceNeed): Promise<MarketCandidate[]>;
+}
+```
+
+Implementation priority:
+
+1. supported official OKX/Onchain OS discovery primitive if available;
+2. otherwise a small application-owned synchronized snapshot of the relevant current OKX.AI offerings;
+3. never undocumented/private API scraping.
+
+The snapshot is discovery metadata only. Real provider invocation/payment must still use the provider's actual supported interface.
+
+Candidate assessment is not a general ranking engine. It only needs enough deterministic/application-owned reasoning to distinguish:
+
+- redundant external cognition that should be MADE internally;
+- an offering that supplies the exact missing external resource;
+- an offering that does not satisfy the need.
+
+## 12. Canonical provider/resource mapping
+
+### Rejected option — FlyBeacon or equivalent
+
+Represents generic growth analysis/planning/content services that substantially reproduce internal reasoning/research/planning. The canonical decision should be `REJECT / MAKE internally` when the company already controls the underlying resources.
+
+### BUY #1 — Newsliquid
+
+Resource class: **proprietary/privileged social intelligence**, represented by existing external resource vocabulary such as `proprietary_data` where appropriate.
+
+The result must be persisted as external evidence and materially affect subsequent internal work.
+
+### BUY #2 — xbird
+
+Resource class: **external social execution infrastructure / privileged execution interface**, represented by current external vocabulary such as `privileged_access` unless implementation evidence justifies a narrower new class.
+
+The company/founder owns the X account and intent. xbird supplies the paid execution interface. Sensitive account/session credentials must never enter ordinary Convex state or logs.
+
+Provider identities/endpoints/prices remain configuration/current-market facts, not hardcoded business logic.
+
+## 13. Internal MAKE path
 
 For MAKE:
 
-1. validate capability/resource requirements;
-2. reuse a compatible worker where useful or construct a minimal `WorkerSpec`;
-3. create a bounded `WorkContract` for this assignment;
-4. select an execution model deliberately;
-5. materialize only tools permitted by the WorkerSpec and WorkContract;
-6. instantiate a real bounded agent through the inherited Agent/Runner pattern;
-7. execute through application-owned read/act boundaries;
-8. persist evidence, outputs, relevant effects and activity;
-9. evaluate completion using application/domain policy;
-10. expose failure rather than fabricating success.
+1. validate capabilities/resources;
+2. create/reuse a bounded internal worker;
+3. bind a WorkContract;
+4. deliberately select model/provider;
+5. materialize only allowed tools;
+6. execute with real Agent/Runner;
+7. persist evidence/artifacts/effects;
+8. evaluate completion using application/domain policy.
 
-The canonical demo requires **active internal agent spawning**. A WorkerSpec alone is not enough.
+For the canonical launch demo, MAKE must change controlled launch state rather than merely returning advice. A minimal controlled launch artifact is sufficient; do not build a CMS.
 
-Persistent cross-objective workforce is not required for the hackathon.
+BUY evidence must be able to flow back into the same mission so MAKE can revise the artifact.
 
-## 12. Evidence and completion
+## 14. BUY / payment path
 
-Somebody should preserve the old reliability principle that truth is not whatever the model last said.
+For each BUY:
 
-Evidence should retain enough provenance to answer:
+1. bind the selected provider path to the exact resource need;
+2. request provider resource and receive live payment challenge/terms;
+3. apply bounded spend/approval policy;
+4. bind network, asset, amount, recipient and signing metadata from the actual challenge;
+5. sign/pay through the intended OKX rail;
+6. persist explicit payment state;
+7. reconcile ambiguous submission before retry;
+8. receive provider result/effect;
+9. independently verify settlement and result/effect;
+10. return verified evidence to the mission.
 
-- what was observed;
-- from which source/resource;
-- when it was observed;
-- which worker/run produced or normalized it;
-- whether newer evidence supersedes or conflicts with it where relevant.
-
-For internal evidence-only work, completion may be based on required outputs/evidence plus role policy.
-
-For state-changing external effects, completion remains stricter:
-
-```text
-intent
-→ authorized
-→ attempted/submitted
-→ provider receipt
-→ independent read-back/reconciliation
-→ verified
-```
-
-Submission/API success is never automatically completion.
-
-## 13. BUY / payment path
-
-For BUY:
-
-1. identify the missing externally controlled resource;
-2. identify an approved provider path;
-3. establish expected provider, price, network, recipient and terms;
-4. apply spend policy and persisted human authority where required;
-5. invoke the provider through the relevant OKX AI / Onchain OS flow;
-6. persist explicit payment/effect state;
-7. reconcile ambiguous submission before any retry;
-8. receive the external result;
-9. verify settlement and result;
-10. return verified evidence/result to Somebody.
-
-Provider-specific behavior stays behind the smallest practical adapter seam.
-
-Preserve explicit lifecycle states such as:
+Preserve lifecycle distinctions such as:
 
 `prepared → awaiting_approval → approved → payment_attempted → submitted → settled → result_received → verified`
 
-plus failed/reconciliation-required states.
+plus failure/reconciliation-required states.
 
-Requirements:
+The same generic buyer rail should be safe to invoke twice within one mission without conflating the two purchases.
 
-- no silent mainnet payment;
-- no duplicate payment on retry;
-- no blind repay after an ambiguous state;
-- quote/payment terms checked against approved terms;
-- wallet credentials/private keys never logged or persisted in ordinary application state;
-- testnet and mainnet behavior visibly distinct.
+## 15. Effect verification
 
-## 14. OKX / X Layer test environment
+External API success is not mission completion.
 
-X Layer Testnet (`eip155:1952`) plus the official Mock Merchant is the preferred first payment-development rail.
+For data purchases, verify that the paid result exists, has expected provider/provenance/shape and is bound to the intended resource need.
 
-Prove:
+For external publishing, completion requires read-back/reconciliation proving the relaunch effect occurred. A provider saying “success” is insufficient if independent read-back is available.
 
-`request → 402 → inspect terms → authorize/sign → pay → retry → resource/receipt`
+Canonical effect lifecycle remains:
 
-before any mainnet provider consideration.
+`intent → authorized → attempted/submitted → receipt → read-back/reconciliation → verified`
 
-Third-party OKX.AI providers are not automatically mirrored on testnet. Provider environment/network support must be verified individually.
+## 16. Canonical mission execution
 
-## 15. Product surface architecture
+Approved mission:
 
-Reuse the useful visual direction of old Mission Control, not its procurement-shaped information architecture.
+> **“Our launch isn’t working. Fix it and relaunch today.”**
 
-Useful inherited ideas include:
+Expected execution:
 
-- Somebody wordmark/mascot;
-- calm operator workspace;
-- clear current-state/status treatment;
-- activity/event history;
-- evidence presentation;
-- approval/authority treatment;
-- working/waiting/verified visual states.
+```text
+MAKE internal growth operator
+→ inspect company/launch state
+→ change initial controlled launch artifact
+→ identify need for privileged social intelligence
+→ discover market candidates
+→ reject redundant generic growth service
+→ BUY Newsliquid
+→ persist/verify external social evidence
+→ MAKE resumes and revises positioning/artifact
+→ identify need for external social execution interface
+→ BUY xbird
+→ publish relaunch
+→ read back / verify external effect
+→ final founder outcome
+```
 
-The current surface should progressively show:
+Maximum two real provider purchases.
+
+## 17. Product surface architecture
+
+The Objective Workspace should progressively expose:
 
 - founder objective;
-- capability decomposition;
-- MAKE/BUY reasons;
-- internal worker creation/reuse/status/result;
-- evidence and meaningful activity;
-- external provider, missing resource and price;
-- spend/payment/verification state;
-- Somebody's unified outcome.
+- internal worker and controlled artifact changes;
+- resource needs as they emerge;
+- market candidates;
+- why a generic external option was rejected;
+- BUY #1 provider/cost/payment/result;
+- MAKE reaction to bought evidence;
+- BUY #2 provider/cost/action/verification;
+- final verified outcome.
 
-Avoid giant graphs, permanent org charts, raw agent-chat logs, token counters and Web3-first wallet UX.
+Avoid giant graphs, permanent org charts, agent chat transcripts, raw wallet UI and universal marketplace surfaces.
 
-Do not expand the large inherited procurement `MissionControl.tsx` into the new universal surface. Extract/copy small useful primitives or build the new surface cleanly.
+## 18. Verification strategy
 
-## 16. M1 architectural target
+Use the repository test hierarchy.
 
-M1 remains **one milestone**: active MAKE plus the first real current-product surface.
+For M2 adaptation, focus on:
 
-M1 should prove the inherited runtime architecture can support a newly assembled internal worker, not merely reproduce a chat completion.
+- repeated resource-need persistence;
+- same pure sourcing kernel reused per need;
+- objective remains active across BUY decisions;
+- no self-approval/provider/spend widening;
+- market discovery snapshot/interface behavior;
+- redundant provider rejection;
+- real MAKE artifact mutation;
+- backward compatibility with accepted M1 rows.
 
-The proof must include:
+For M3/R2, focus on payment authority, duplicate prevention, ambiguous submission reconciliation and two sequential purchases.
 
-- fresh OKX Convex deployment/data plane;
-- founder objective;
-- model-proposed but application-validated capability/resource plan;
-- factual company resource inventory;
-- worker reuse/create through `lib/workforce/`;
-- deliberate model selection;
-- real bounded Agent/Runner instantiation;
-- permission-derived tools only;
-- nontrivial tool-mediated work;
-- persisted evidence/result/activity;
-- application-owned completion decision;
-- real UI state rendered from persisted current-product data.
+For M4/R3, focus on cross-seam failures: payment succeeds/result fails, paid intelligence cannot be verified, MAKE fails after BUY #1, duplicate publish, publish verification failure and crash/retry between economic steps.
 
-A worker that only returns one free-form model response does **not** satisfy M1. The acceptance proof should require multiple meaningful tool-mediated observations/actions appropriate to the selected M1 internal role, ideally across at least two distinct information sources or resource classes.
+Run broad promotion checks once on the exact release candidate at G1.
 
-M1 does not require BUY yet.
+## 19. Hard boundaries
 
-## 17. Verification strategy
+Do not build:
 
-Verification is risk-based and follows the repository test hierarchy.
+- universal marketplace indexing;
+- provider auctions/ranking/reputation platform;
+- general A2A negotiation/escrow unless strictly forced by a provider;
+- generalized cost optimizer;
+- three or more providers;
+- workflow DSL;
+- arbitrary-prompt company OS;
+- multiple polished scenarios.
 
-Current evidence:
-
-1. inherited Somebody baseline transferred and verified: 78/78 inherited tests, clean root + Convex typechecks;
-2. OKX workforce kernel: 11 focused tests, 89/89 cumulative at its checkpoint, root typecheck clean.
-
-Important: inherited baseline tests prove what the old system did; they are **not** a requirement that every old demo path remain operational after the new fresh OKX data plane is introduced.
-
-M1 should run:
-
-1. focused changed-behavior tests for planning, resource validation, worker construction, WorkContract/completion and bounded execution;
-2. direct affected seams such as Convex persistence/read model and Agent/Runner integration;
-3. one bounded live-development proof against the fresh OKX deployment when local tests pass;
-4. only broader regression/build/typecheck checks justified by the actual changed seams or required at the milestone checkpoint.
-
-Do not repeatedly blast the full inherited suite merely for reassurance.
-
-## 18. Canonical-demo independence
-
-The baseline architecture must not hard-code the current invoice/Dial research candidate.
-
-Do not build a generic marketplace framework either. Support one canonical provider cleanly after the demo-selection gate.
-
-The canonical scenario should be locked by **18 September 2026, 12:00 SGT**, after which broad scenario ideation stops unless a material provider/technical failure forces a reopen.
+The architecture should be only as general as necessary to prove the approved repeated-resource mission reliably.
