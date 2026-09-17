@@ -260,7 +260,6 @@ async function proposePlanWithOpenAI(input: {
   });
   const completion = await client.chat.completions.create({
     model: configuration.model,
-    temperature: 0,
     messages: [
       {
         role: "system",
@@ -305,14 +304,12 @@ async function proposePlanWithOpenAI(input: {
           properties: {
             capabilityKeys: {
               type: "array",
-              maxItems: 6,
-              items: { type: "string", maxLength: 80 },
+              items: { type: "string" },
             },
-            responsibility: { type: "string", minLength: 1, maxLength: 400 },
+            responsibility: { type: "string" },
             requiredResourceClasses: {
               type: "array",
-              maxItems: 8,
-              items: { type: "string", maxLength: 60 },
+              items: { type: "string" },
             },
           },
         },
