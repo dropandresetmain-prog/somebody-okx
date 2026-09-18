@@ -255,6 +255,10 @@ export type GroundedOption = {
     resourceClass: string | null;
     priceUsd: number | null;
     priceSource: FactProvenance;
+    // Application-set grounding verdicts the eligibility kernel must re-check
+    // (a model cannot flip these; they come from the registry lookup).
+    registryVerified: boolean;
+    compatibleResourceClass: boolean;
   } | null;
   facts: EconomicFacts;
   // Stage 1 result, computed by application code, never by the model.

@@ -266,7 +266,12 @@ export function parseManagerialRecommendation(
   if (alternative && !eligible.has(alternative)) alternative = null; // discard, do not fail the whole rec
 
   const rationale = text(candidate.rationale, LIMITS.rationale);
-  if (!rationale) errors.push("recommendation has no business rationale");
+  // An outage marker from the caller's safe-wrapper counts as "no rationale"
+  // (typed refusal downstream), so a failed model call can never select an
+  // option on an empty argument.
+  const outage = typeof candidate.error === "string" ? candidate.error : null;
+  if (!rationale && outage) errors.push(outage);
+  else if (!rationale) errors.push("recommendation has no business rationale");
 
   if (errors.length) return { ok: false, errors };
   return {

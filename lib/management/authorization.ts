@@ -20,7 +20,6 @@ import type {
   EligibilityInput,
   GroundedOption,
   ManagerialRecommendation,
-  Requirement,
   SatisfactionStrategy,
 } from "./types";
 
@@ -37,7 +36,6 @@ export type RecheckContext = {
   currentContractRevision: number;
   // Fresh from Convex at authorization time — never carried from graph state.
   optionsById: ReadonlyMap<string, GroundedOption>;
-  requirement: Requirement;
   eligibilityFor: (option: GroundedOption) => EligibilityInput;
   at: number;
   decisionId: string;

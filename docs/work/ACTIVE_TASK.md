@@ -97,19 +97,19 @@ Evidence:
 
 ### Checkpoint 2 — managerial decision protocol
 
-- [ ] semantic strategy proposal;
-- [ ] grounded candidate options;
-- [ ] internal/external/hybrid representation;
-- [ ] hard eligibility;
-- [ ] comparable economic facts + provenance/confidence;
-- [ ] LLM managerial recommendation contract;
-- [ ] deterministic authorization recheck;
-- [ ] remove automatic internal-availability ⇒ MAKE final choice.
+- [x] semantic strategy proposal;
+- [x] grounded candidate options;
+- [x] internal/external/hybrid representation;
+- [x] hard eligibility;
+- [x] comparable economic facts + provenance/confidence;
+- [x] LLM managerial recommendation contract;
+- [x] deterministic authorization recheck;
+- [x] remove automatic internal-availability ⇒ MAKE final choice. (kernel level: `runManagerialDecisionPass` grounds internal availability as an ELIGIBLE fact only; `evaluateOptionEligibility` no longer couples control⇒mandate; the M2 kernel remains untouched for historical rows. Runtime call-site replacement lands with CP3/CP4 wiring.)
 
 Evidence:
-- economic counterexamples;
-- redundant external wrapper does not automatically win;
-- hybrid option supported.
+- economic counterexamples; (`tests/managementDecision.test.ts` 13 pass: BUY authorized despite eligible internal; over-budget wrapper visible-but-ineligible with `budget_exceeded` recorded; within-budget wrapper beatable on comparable facts; unverified source never offered; null price ineligible; >authority ⇒ approval_required; external_disabled refusal; outage ⇒ typed refusal zero effects; stale revision refused; material ambiguity ⇒ approval_required.)
+- redundant external wrapper does not automatically win; (same suite — two explicit wrapper tests.)
+- hybrid option supported. (deterministic hybrid grounding, facts never undercut parts, HYBRID proofs = external result + artifact + observation.)
 
 ### Checkpoint 3 — persistent workforce
 
@@ -224,4 +224,4 @@ No scenario-specific orchestration.
 
 ## Current next action
 
-Verify branch/head and inspect current contracts/schema/runtime before implementation. Then start with the domain-truth checkpoint while preserving accepted M2 evidence.
+CP1+CP2 kernels committed and pushed (CP1 `27128d6`, CP2 pending SHA recorded below after push). Next: Checkpoint 3 — persistent workforce: Convex schema tables (workers/contracts/requirements/decisions/assignments/intents/wakeEvents/budgets), real worker inventory replacing the empty-inventory `resolveWorker({inventory: []})` call in `convex/objectives.ts:332`, reuse/create focused tests, capability/resource-request wiring through Somebody, objective-wide limits enforced.

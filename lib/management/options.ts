@@ -161,6 +161,8 @@ export function buildExternalOption(
       resourceClass: seed.resourceClass,
       priceUsd: seed.priceUsd,
       priceSource: seed.priceProvenance,
+      registryVerified: seed.registryVerified,
+      compatibleResourceClass: seed.compatibleResourceClass,
     },
     facts: seed.facts,
     eligibility: { eligible: false, reasons: ["unknown"], detail: "not yet evaluated" },
@@ -195,9 +197,12 @@ export function buildHybridOption(input: {
   };
 }
 
+// Shared live facts for eligibility. Per-option fields (kind, primitives, and
+// the offering verdicts) are derived from the option itself — a shared "external"
+// blob could otherwise leak one offering's verified state onto another.
 export type EligibilityFacts = Omit<
   EligibilityInput,
-  "requirementKey" | "contractRevision" | "kind" | "requiredPrimitives"
+  "requirementKey" | "contractRevision" | "kind" | "requiredPrimitives" | "external"
 >;
 
 export function eligibilityInputFor(
@@ -212,6 +217,14 @@ export function eligibilityInputFor(
     contractRevision: option.contractRevision,
     kind: option.kind,
     requiredPrimitives: primitives,
+    external: option.external
+      ? {
+          offeringId: option.external.offeringId,
+          registryVerified: option.external.registryVerified,
+          compatibleResourceClass: option.external.compatibleResourceClass,
+          priceUsd: option.external.priceUsd,
+        }
+      : null,
     ...facts,
   };
 }

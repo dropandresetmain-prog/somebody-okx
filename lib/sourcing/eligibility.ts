@@ -139,20 +139,23 @@ export function evaluateOptionEligibility(
 
     // 6. Financial bounds. Null price stays unknown, not zero: it cannot be
     //    checked against the cap, and an unknown-price external purchase is
-    //    not authorizable without a quote.
-    if (external && input.kind === "external") {
+    //    not authorizable without a quote. Applies to hybrids too — their
+    //    external half commits real money exactly like a BUY.
+    //    Only the objective's REMAINING BUDGET is a hard eligibility bound.
+    //    The founder's autonomous SPEND AUTHORITY is deliberately NOT checked
+    //    here: a price above it is still a real option the manager may
+    //    recommend — stage 4 routes it to approval_required rather than
+    //    hiding it from the decision.
+    if (external) {
       if (external.priceUsd === null) {
         reasons.add("provider_incompatible");
         detail.push("no current price quote for external option");
       } else {
-        const cap = minDefined(
-          input.budgetRemainingUsd,
-          input.spendAuthorityUsd === null ? undefined : input.spendAuthorityUsd,
-        );
-        if (cap !== undefined && external.priceUsd > cap) {
+        const cap = input.budgetRemainingUsd;
+        if (cap !== null && Number.isFinite(cap) && external.priceUsd > cap) {
           reasons.add("budget_exceeded");
           detail.push(
-            `price $${external.priceUsd} exceeds remaining authority $${cap}`,
+            `price $${external.priceUsd} exceeds remaining objective budget $${cap}`,
           );
         } else passed.push("financial_bounds");
       }
@@ -172,17 +175,6 @@ export function evaluateOptionEligibility(
       detail: detail.join("; "),
     };
   return { eligible: true, checksPassed: passed.sort() };
-}
-
-function minDefined(
-  a: number | null | undefined,
-  b: number | null | undefined,
-): number | undefined {
-  const values = [a, b].filter(
-    (value): value is number => typeof value === "number" && Number.isFinite(value),
-  );
-  if (!values.length) return undefined;
-  return Math.min(...values);
 }
 
 // Exact-class provider path helper preserved from the M2 discipline: a path
