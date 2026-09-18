@@ -1,9 +1,34 @@
 # ACTIVE TASK — Somebody × OKX Dev Day 2026
 
-Status: **ACTIVE — overnight run: M2 lanes integrated, PRIMARY wiring Convex lifecycle**  
-Updated: **17 September 2026 (overnight sprint)**
+Status: **ACTIVE — M2 ACCEPTED; stop before real payment / supervised M3**  
+Updated: **18 September 2026**
 
-## OVERNIGHT RUN LEDGER (authoritative for this run)
+## M2 ACCEPTED — live runtime proof (fix/m2-live-acceptance)
+
+Deployment: `clean-tapir-151` (`dropandreset-main/somebody-okx`). Provider: `openrouter` / `openai/gpt-5.6-terra`.
+
+**Live positive proof** — objective `obj_1789721537926_1a4a97`, run `run_1789721544165_y7d26u`:
+
+- founder objective → server planner → `growth_launch_operations` MAKE;
+- real Agent/Runner; company record `launch/context` + public web observation;
+- artifact `launch/page-message` v1→**v2** (`provenanceRunId` = run id);
+- `request_resource` → ResourceNeed `need_1789721567496_o2ez3v` (`proprietary_data`, provider-agnostic purpose);
+- OKX discovery adapter attempted live CLI (unavailable in Convex cloud Node) → **explicit snapshot fallback** with `fallbackReason=live_cli_unavailable_or_failed`;
+- candidates assessed; Newsliquid `newsliquid_twitter_search` selected BUY (`dec_1789721567496_9nypj6`);
+- need `buy_pending`; objective **`waiting_for_resource`**; **no payment/spend state**;
+- UI Mission section renders needs/candidates/waiting.
+
+**M1 compatibility:** accepted M1 objective `obj_1789659986103_l9gomb` still loads (`completed`, plan present).
+
+**Corrections in this pass:** official `onchainos` 4.6.1 discovery finding + adapter; M3 `PaymentExecutor` boundary (test scaffold ≠ production signing).
+
+**Gate (once):** focused M2/M1 tests pass; root + Convex `tsc` clean; `next build` clean.
+
+Accepted integration tip before promotion: see git SHA on `fix/m2-live-acceptance` / `main` after promotion.
+
+---
+
+## OVERNIGHT RUN LEDGER (superseded by M2 ACCEPTED above; kept for provenance)
 
 Integration branch: `qoder/general-session-fk5qjv`
 Base / CHECKPOINT A0 (M2 branch reconciled with origin/main): `72321ed8e78c8b366a46df5fe56ddb2e81ef5386`

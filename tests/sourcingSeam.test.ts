@@ -106,38 +106,36 @@ test("no duplicate sourcing authority survives: planner.ts declares no decision 
 });
 
 test("exactly one canonical sourcing policy is defined in the tree", async () => {
-  const { execFileSync } = await import("node:child_process");
-  // grep exits 1 when nothing matches, which is a valid (expected) outcome here.
-  const grep = (pattern: string, ...targets: string[]): string[] => {
-    try {
-      return execFileSync(
-        "grep",
-        ["-rn", "--include=*.ts", pattern, ...targets],
-        { encoding: "utf8" },
-      )
-        .trim()
-        .split("\n")
-        .filter(Boolean);
-    } catch (error) {
-      const status = (error as { status?: number }).status;
-      if (status === 1) return [];
-      throw error;
-    }
-  };
+  const { readdirSync, readFileSync, statSync } = await import("node:fs");
+  const { join } = await import("node:path");
 
-  const declarations = grep(
-    "export function evaluateSourcingPolicy",
-    "lib",
-    "convex",
-    "app",
+  function walkTs(dir: string, out: string[] = []): string[] {
+    for (const name of readdirSync(dir)) {
+      const full = join(dir, name);
+      const st = statSync(full);
+      if (st.isDirectory()) {
+        if (name === "node_modules" || name === "_generated") continue;
+        walkTs(full, out);
+      } else if (name.endsWith(".ts") || name.endsWith(".tsx")) {
+        out.push(full);
+      }
+    }
+    return out;
+  }
+
+  const files = ["lib", "convex", "app"].flatMap((root) => walkTs(root));
+  const declarations = files.filter((file) =>
+    /export function evaluateSourcingPolicy\b/.test(readFileSync(file, "utf8")),
   );
   // One definition, in the kernel.
   assert.equal(declarations.length, 1);
-  assert.match(declarations[0], /lib\/sourcing\/policy\.ts/);
+  assert.match(declarations[0].replace(/\\/g, "/"), /lib\/sourcing\/policy\.ts/);
 
   // And the removed M1 duplicate must not come back under any path.
   assert.deepEqual(
-    grep("export function evaluateSourcing\\b", "lib", "convex", "app"),
+    files.filter((file) =>
+      /export function evaluateSourcing\b/.test(readFileSync(file, "utf8")),
+    ),
     [],
     "a second evaluateSourcing() authority reappeared",
   );

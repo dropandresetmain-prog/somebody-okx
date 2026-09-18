@@ -609,6 +609,32 @@ provider transaction). **Status: M2 IMPLEMENTATION COMPLETE — LIVE ACCEPTANCE
 PENDING** (no Convex deployment or model credentials exist in this
 environment; nothing was faked).
 
+### 3.9 M2 ACCEPTED — live runtime + discovery/signing corrections (18 Sep 2026)
+
+Branch `fix/m2-live-acceptance` (base `2485442` / Qoder tip). Deployment
+`clean-tapir-151`.
+
+**Discovery correction.** Official CLI `onchainos 4.6.1` confirmed
+(`service-match` works unauthenticated; `search`/`service-list` need
+`onchainos wallet login`; `asp-match` requires `--job-id` in v4.6.1 — no
+`--task-desc`). Adapter: `lib/market/okxCliBridge.ts` + `okxDiscovery.ts` with
+explicit snapshot fallback provenance. Next bridge: `app/api/okx/discover`.
+
+**M3 signing boundary.** `PaymentExecutor` + `executeApprovedPayment`;
+`FakeSigner` / `TestScaffoldPaymentExecutor` marked test-only;
+`OfficialSigningPendingExecutor` refuses until supervised M3.
+
+**Live M2 proof** (real Agent/Runner on Convex):
+- objective `obj_1789721537926_1a4a97`, run `run_1789721544165_y7d26u`;
+- capability `growth_launch_operations`; artifact `launch/page-message` v2;
+- need `need_1789721567496_o2ez3v` → BUY `dec_1789721567496_9nypj6` →
+  `newsliquid_twitter_search`; discovery source snapshot with
+  `live_cli_unavailable_or_failed` provenance (CLI absent in Convex cloud);
+- objective `waiting_for_resource`; no payment;
+- M1 `obj_1789659986103_l9gomb` still loads.
+
+**Status: M2 ACCEPTED.** Stop before real signing/payment.
+
 **BUY is not failure (PRIMARY, `f2ddc73`).** `ObjectiveState`/`WorkItemState`
 and their Convex validators gain `waiting_for_resource` (append-only; M1 rows
 unaffected). `objectiveStateForSourcing` is the single pure rule: MAKE →
@@ -630,8 +656,10 @@ authorize the second), `buyerRail.ts` (prepare → READY_TO_SIGN stop;
 prevents double-pay; injected `SettlementReader`/`PaidRequestSender`
 abstractions; `FakeSigner` with no real secret). Tests cover every §22
 invariant including testnet/mainnet fail-closed separation and
-secrets-never-serialized. **Status: M3 IMPLEMENTATION READY — LIVE TESTNET
-SIGN/PAY ACCEPTANCE PENDING.** No signing, submission or spend occurred.
+secrets-never-serialized. **Status: PAYMENT POLICY / BUYER RAIL READY —
+OFFICIAL SIGNING EXECUTOR + LIVE TESTNET ACCEPTANCE PENDING** (boundary
+corrected 18 Sep 2026; simplified test signer is not production). No signing,
+submission or spend occurred.
 PRIMARY reconstructed `lib/payment/types.ts` after it was lost to a
 shared-worktree concurrent-checkout collision (see ledger incident note).
 
