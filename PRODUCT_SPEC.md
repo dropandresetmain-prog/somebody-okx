@@ -1,248 +1,200 @@
 # Somebody × OKX — Product Spec
 
-Status: **canonical product scope — launch scenario approved**  
-Date: **18 September 2026**
+Status: **CANONICAL PRODUCT BEHAVIOR — management protocol locked 19 September 2026**
 
 ## 1. Vision
 
 > **One person should be able to operate with the functional reach of a much larger company.**
 
-Somebody is the AI manager for that company. The founder gives Somebody an outcome; Somebody figures out what capabilities/resources are needed, assembles internal capacity, buys scarce external resources when necessary, and remains accountable for the verified result.
+Somebody is the accountable AI manager.
 
-Primary wedge: one-person companies, founder-led businesses and lean SMEs where important cross-functional work repeatedly falls back onto the founder/GM/operations lead.
+The founder says what outcome is wanted. Somebody decides what company capability is needed, assembles/reuses internal workers, compares internal/external ways to satisfy the work, acquires external capability when justified, and remains accountable for verified progress.
 
-## 2. Product thesis
+Product language:
 
-The user should not have to manually choose agents, SaaS tools, vendors or APIs.
+- **Somebody** — accountable manager.
+- **That Guy** — persistent internal worker.
+- **Somebody Else** — external provider/resource.
 
-Somebody should increasingly move the user from:
+## 2. Founder experience
 
-> “I need to find the person/tool/vendor who can do this.”
+The founder should not need to specify:
 
-To:
+- which agent to create;
+- which marketplace provider to call;
+- whether work should be made or bought;
+- which worker should resume after new evidence.
 
-> “Somebody, get this outcome done.”
+Somebody owns those decisions within granted authority.
 
-The hackathon proves the missing organizational/economic primitive:
+## 3. Success is explicit
 
-> **Somebody builds the company it needs, then buys what that company cannot make.**
+Somebody interprets the founder objective into an Outcome Contract.
 
-## 3. MAKE
+Outcome Contracts may contain multiple levels, including a minimum completion bar.
 
-MAKE when required resources are already controlled by the company.
-
-Examples:
-
-- generic model reasoning;
-- public web/search;
-- company documents/data;
-- authenticated company systems;
-- ordinary compute;
-- reusable internal tools.
-
-A missing pre-existing worker is not a capability gap. Somebody may create/reuse a bounded internal worker.
-
-MAKE must be active execution, not a worker specification or one free-form completion:
-
-`WorkerSpec → WorkContract → model selection → bounded Agent/Runner → allowed tools → execution → evidence/artifact/effect`
-
-## 4. BUY
-
-BUY when work depends on a genuinely externally controlled scarce resource.
-
-Strong reasons include:
-
-- proprietary/licensed data;
-- privileged platform-derived information;
-- external execution/distribution interfaces;
-- independent attestation/authority;
-- physical capacity/presence;
-- specialist infrastructure/compute;
-- resources materially impractical to reproduce within the bounded mission.
-
-Default rule:
-
-> **Never buy generic cognition merely because somebody wrapped another LLM. Buy scarce capability.**
-
-The model may propose resource needs. Application code owns factual inventory, provider approval, sourcing, spend policy and completion.
-
-## 5. Repeated resource sourcing
-
-The objective itself is not globally MAKE or BUY.
-
-One mission may contain repeated sourcing decisions as work progresses:
+Example:
 
 ```text
-MAKE
-→ discover a new resource need
-→ market discovery
-→ MAKE / BUY / BLOCKED
-→ execute
-→ new need may emerge
-→ repeat
-→ verify
-→ complete
+diagnosed
+→ revised
+→ relaunched + verified      [minimum bar]
+→ response measured          [pending]
+→ conversion improved        [later]
 ```
 
-For the hackathon, the canonical mission has one meaningful MAKE path and at most two justified real BUYs.
+The UI must not collapse “published” into “business performance improved”.
 
-The existing deterministic `lib/sourcing` policy remains the application authority for each bounded resource need.
+Supporting work may remain incomplete at completion, but must be stated clearly.
 
-## 6. Canonical founder scenario
+## 4. Requirements and strategies
 
-Approved founder objective:
+Somebody decomposes the Outcome Contract into required/supporting Requirements.
+
+For a Requirement it may consider:
+
+- MAKE;
+- BUY;
+- HYBRID;
+- WAIT;
+- ASK FOUNDER;
+- BLOCK / ESCALATE.
+
+A requirement may be satisfied by internal work, external acquisition, or a combination.
+
+## 5. MAKE / BUY economics
+
+Somebody should compare plausible internal and external options even when internal work is technically possible.
+
+Example:
+
+- internal: 500 compute-hours / ~$130 / ~11 hours;
+- external: $7 / 8 minutes / credible equal-or-better quality.
+
+BUY may be the better managerial recommendation.
+
+External services do not win merely because they are listed. Generic cognition can still lose when the internal option is adequate, cheap, fast, private and reusable.
+
+The product is not “buy only scarce resources”. It is “make or buy based on grounded objective economics and authority”.
+
+## 6. Internal workforce
+
+That Guys persist across assignments.
+
+Somebody prefers REUSE when an existing eligible worker fits, unless supported factors favor CREATE.
+
+That Guys have bounded coherent responsibilities, not one giant all-purpose employee and not one micro-agent per tiny action.
+
+Workers can request capabilities/resources back from Somebody.
+
+They cannot independently hire, buy, spend or declare the objective complete.
+
+## 7. Dynamic capability creation
+
+Somebody may define new semantic capabilities/tool contracts from governed primitives.
+
+This enables unrelated founder objectives without requiring every role name to be hardcoded.
+
+A model cannot create new real-world authority. New integrations/credentials/destructive permissions/payment rights require governed onboarding/authorization.
+
+## 8. Management loop
+
+Somebody maintains a coarse plan but authorizes only the next bounded action.
+
+Every meaningful result is new evidence and can change the plan.
+
+```text
+act
+→ observe
+→ reconsider
+→ act
+↺
+```
+
+Meaningful events wake Somebody. No state change means no pointless model loop.
+
+## 9. Canonical demo
+
+Founder objective:
 
 > **“Our launch isn’t working. Fix it and relaunch today.”**
 
-The exact wording and small believable spend limit may be refined for the demo.
+The expected story is emergent rather than hardcoded:
 
-This supersedes the earlier invoice/Dial, CertiK diligence and broader scenario candidates.
+- define operational success;
+- create/reuse internal growth capability;
+- perform real internal work;
+- discover an evidence/resource gap;
+- compare internal/external alternatives;
+- recommend and authorize an external acquisition when justified;
+- execute a real sandbox/testnet payment once M3 is integrated;
+- use the acquired result internally;
+- determine the next need;
+- perform/verify an external relaunch effect;
+- resolve the objective truthfully.
 
-The demo should complete the operational relaunch itself. Do not promise downstream results such as “100 customers acquired” unless they actually occur.
+FlyBeacon, Newsliquid and xbird are preferred current demo data/adapters only. They do not define state transitions.
 
-## 7. Canonical mission
+## 10. Hackathon Cutoff 2
 
-### Internal MAKE
+The founder should be able to try unrelated objectives without crashing the runtime.
 
-Somebody creates/reuses a bounded growth/launch worker from company-controlled resources.
+The system may produce:
 
-The worker must do real work on controlled company state. At minimum it should create/change a launch artifact such as landing-page headline/positioning/campaign copy.
+- useful work;
+- unsupported capability;
+- waiting;
+- approval required;
+- blocked;
+- escalated;
+- failed/recovery-required.
 
-### Marketplace discovery + rejected option
+It does not need expert-quality execution everywhere.
 
-When a new external resource need emerges, Somebody checks the current market.
-
-A generic growth/research/planning service should be visibly rejected when it substantially reproduces resources already controlled internally. **FlyBeacon** is the current illustrative live candidate.
-
-The purpose is strategic: Somebody is not an OKX shopping bot. It exercises resource/economic judgment.
-
-### BUY #1 — Newsliquid
-
-Target resource: **proprietary/privileged external social intelligence**.
-
-The company does not own the underlying platform-derived dataset/access. Purchased evidence must materially affect subsequent internal work: positioning, headline, message, target segment or equivalent launch artifact.
-
-BUY #1 does not solve the founder objective by itself.
-
-### MAKE reacts
-
-The internal growth worker resumes with verified external evidence and changes the controlled launch artifact accordingly.
-
-The demo should make this causal relationship visible:
-
-`BUY evidence → MAKE reacts`
-
-### BUY #2 — xbird
-
-Target resource: **external social execution infrastructure / privileged execution interface**.
-
-The company/founder retains control of the underlying X account and the intent to publish. xbird supplies the paid automation interface used for the bounded relaunch action.
-
-The external publish should be real when feasibility/environment permit and must be verified by read-back/reconciliation.
-
-## 8. Marketplace discovery
-
-The marketplace is a capability/resource market, not merely an agent directory.
-
-Marketplace discovery is part of the canonical flow, but a generalized marketplace platform is not hackathon scope.
-
-Preferred implementation:
-
-- use a supported official OKX discovery/search primitive if one exists and is suitable;
-- otherwise use a small application-owned synchronized snapshot of the few relevant current OKX.AI listings behind a replaceable discovery interface;
-- never scrape undocumented/private APIs.
-
-Provider invocation/payment remains real regardless of discovery implementation.
-
-## 9. Role of OKX AI / X Layer
-
-Somebody is not Web3-first.
-
-Somebody is the buyer-side executive/management layer. OKX AI is the emerging external machine-service/resource market. X Layer / Onchain OS provide machine-native payment infrastructure at the cross-company boundary.
-
-As OKX AI's supply side expands, the number of resources a one-person company can procure at runtime expands without changing Somebody's core architecture.
-
-This does not remove authorization requirements for private accounts/resources.
-
-## 10. Product language
-
-Product/demo labels may use:
-
-- **That Guy** — bounded internal worker Somebody creates/reuses;
-- **Somebody Else** — external provider supplying a genuinely missing resource.
-
-Engineering terms remain neutral: `Objective`, `WorkItem`, `WorkerSpec`, `WorkContract`, `ResourceNeed`, `ExternalProvider`, `Evidence`, `Effect`, `Outcome`.
+It must remain structurally safe.
 
 ## 11. Product surface
 
-The product surface should make the management/economic reasoning obvious without implementation clutter.
+Main UI should show:
 
-For the canonical demo it should progressively show:
+- founder objective;
+- success criteria / minimum completion bar;
+- current plan/state;
+- That Guy created/reused;
+- requirements;
+- options considered;
+- recommendation rationale;
+- approvals/payments/resources;
+- verified effects;
+- completed/pending outcome levels;
+- blockers;
+- supporting work not done.
 
-1. founder objective;
-2. internal growth capability/worker;
-3. controlled launch artifact and changes;
-4. resource need emerging;
-5. current marketplace candidates;
-6. why a redundant generic growth provider is rejected;
-7. Newsliquid BUY #1, price/payment/result;
-8. internal MAKE reaction to bought evidence;
-9. xbird BUY #2, price/action/verification;
-10. unified verified founder outcome.
+An optional deep trace/graph is appropriate for demo/debugging.
 
-Avoid giant graphs, permanent org charts, raw agent chat transcripts, token counters and Web3-first wallet UX.
+Do not make the default surface a raw LangGraph diagram, agent transcript or wallet console.
 
-## 12. Final hackathon acceptance shape
+## 12. OKX role
 
-One coherent mission must demonstrate:
+Somebody is the management layer.
 
-```text
-founder objective
-→ real MAKE worker
-→ controlled artifact change
-→ bounded market discovery
-→ rejected unnecessary BUY
-→ BUY #1 proprietary intelligence
-→ verified evidence
-→ MAKE reacts / artifact changes
-→ BUY #2 execution infrastructure
-→ real external action
-→ verification
-→ founder outcome
-```
+OKX/market providers are the external economic/resource layer.
 
-Maximum two real provider purchases.
+X Layer / payment rails make external machine services economically executable.
 
-Spend must be bounded. Payment/result state must distinguish submission from settlement/verification. Ambiguous states must reconcile before retry.
+Internal application truth remains ordinary software/Convex state.
 
-## 13. Current implementation state
+## 13. Hard boundaries for the hackathon
 
-M1 is accepted on `main@1e2c1a484713792cead51b85e1e1ae36d28b3e77` with live active MAKE, fresh Convex, application-owned completion and Objective Workspace.
-
-Prepared M2 implementation exists on `feat/m2-make-buy-policy@4a827e891af3dd7e61cf529482a7656ee23bcb34` with one canonical deterministic sourcing authority, factual inventory and persisted MAKE/BUY/BLOCKED truth.
-
-M2 must now adapt that verified policy from a single objective-level verdict to repeated resource-level decisions. Preserve the pure kernel; do not rewrite it wholesale.
-
-Prepared M3 payment-readiness/lifecycle work exists on `prep/m3-okx-readiness`; consume it rather than restarting payment research.
-
-## 14. Hard non-goals
-
-Out of scope:
+Do not build unnecessary breadth:
 
 - universal marketplace indexing;
-- broad vendor auctions/competition;
-- generalized provider reputation/ranking;
-- automated negotiation;
-- generic A2A escrow unless strictly forced by a provider;
-- generalized internal-vs-external cost optimization;
-- three or more real providers;
-- generic workflow DSL;
-- arbitrary organization hierarchies/personality/ranks;
-- worker social chatter;
-- multiple polished demo workflows;
-- broad autonomous company-OS architecture;
-- blockchain as a replacement for ordinary application state.
+- auctions/reputation platform;
+- generalized negotiation/escrow;
+- giant recursive org structures;
+- unbounded autonomous tool/code installation;
+- three-plus-provider spectacle;
+- second polished scenario;
+- blockchain as application database.
 
-## 15. Build principle
-
-> **One founder objective → company assembles internally → scarce resource gaps emerge → Somebody buys only those gaps → internal work continues → external effect is verified → one finished outcome.**
+Safe arbitrary-prompt handling **is** in scope. Universal competence is not.

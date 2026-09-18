@@ -1,289 +1,226 @@
-# ACTIVE TASK — Somebody × OKX Dev Day 2026
+# ACTIVE TASK — M4 Generic Somebody Management Engine
 
-Status: **ACTIVE — M2 ACCEPTED; stop before real payment / supervised M3**  
-Updated: **18 September 2026**
-
-## M2 ACCEPTED — live runtime proof (fix/m2-live-acceptance)
-
-Deployment: `clean-tapir-151` (`dropandreset-main/somebody-okx`). Provider: `openrouter` / `openai/gpt-5.6-terra`.
-
-**Live positive proof** — objective `obj_1789721537926_1a4a97`, run `run_1789721544165_y7d26u`:
-
-- founder objective → server planner → `growth_launch_operations` MAKE;
-- real Agent/Runner; company record `launch/context` + public web observation;
-- artifact `launch/page-message` v1→**v2** (`provenanceRunId` = run id);
-- `request_resource` → ResourceNeed `need_1789721567496_o2ez3v` (`proprietary_data`, provider-agnostic purpose);
-- OKX discovery adapter attempted live CLI (unavailable in Convex cloud Node) → **explicit snapshot fallback** with `fallbackReason=live_cli_unavailable_or_failed`;
-- candidates assessed; Newsliquid `newsliquid_twitter_search` selected BUY (`dec_1789721567496_9nypj6`);
-- need `buy_pending`; objective **`waiting_for_resource`**; **no payment/spend state**;
-- UI Mission section renders needs/candidates/waiting.
-
-**M1 compatibility:** accepted M1 objective `obj_1789659986103_l9gomb` still loads (`completed`, plan present).
-
-**Corrections in this pass:** official `onchainos` 4.6.1 discovery finding + adapter; M3 `PaymentExecutor` boundary (test scaffold ≠ production signing).
-
-**Gate (once):** focused M2/M1 tests pass; root + Convex `tsc` clean; `next build` clean.
-
-Accepted integration tip before promotion: see git SHA on `fix/m2-live-acceptance` / `main` after promotion.
-
----
-
-## OVERNIGHT RUN LEDGER (superseded by M2 ACCEPTED above; kept for provenance)
-
-Integration branch: `qoder/general-session-fk5qjv`
-Base / CHECKPOINT A0 (M2 branch reconciled with origin/main): `72321ed8e78c8b366a46df5fe56ddb2e81ef5386`
-Frozen contracts: `docs/work/M2_SHARED_CONTRACT.md` @ `d61bfcf1083f80c8737b4058930f352f82bc00dc`
-CHECKPOINT 1 (lanes A+B+C+M3 integrated, 228/228 tests, root+convex tsc clean): `9ed74856b6fd52c6000e392a33cdc60b293b21f8`
-CHECKPOINT 2 (orchestration seam + canonical M2 dry-engine proof + M4 adapters, 244/244): `16a3b159b58496029137548c085c69454bbde130`
-CHECKPOINT 3 (BUY≠failure waiting_for_resource lifecycle, 247/247): `f2ddc7363a1d8f286116219fd95b3e0cd6b44666`
-CHECKPOINT 4 (generic read-model/UI prep, 255/255): `281a8a9b6ea1a29a5bb6196ffdd08c603029b0f7`
-CHECKPOINT 5 (scenario-coupling audit + invariant review + next build pass): `a0f93793a734a7e8f8d918fdce9f22ebe9129915`
-
-FINAL OVERNIGHT STATUS:
-- M2 IMPLEMENTATION COMPLETE — LIVE ACCEPTANCE PENDING (no Convex deployment/model creds in this environment; canonical chain proven deterministically offline in tests/canonicalM2.test.ts).
-- M3 IMPLEMENTATION READY — LIVE TESTNET SIGN/PAY ACCEPTANCE PENDING (rail stops at READY_TO_SIGN; nothing signed/submitted/spent).
-- M4 PROVIDER ADAPTERS READY — LIVE PROVIDER EXECUTION PENDING (fixture-driven; no paid calls).
-- UI/read-model prep complete for multi-step mission states.
-- Full evidence: BUILD_DELTA.md §3.8; audit: docs/work/INVARIANT_REVIEW.md.
-- Full suite 255/255; root+convex typecheck clean; next build clean.
-
-Morning founder actions (smallest path to acceptance):
-1. `npx convex dev` on a fresh deployment + set LIVE_AI_ENABLED/AI_MODEL/provider key → run the canonical objective live → M2 live acceptance.
-2. At READY_TO_SIGN: provide an explicit testnet wallet + approval bounds in a supervised session → sign Mock Merchant challenge on X Layer Testnet (eip155:1952) → M3 live acceptance → then R2 review.
-3. Supervised Newsliquid testnet purchase + xbird publish with demo X creds → M4 live → R3 review.
-4. Optional: confirm an official OKX discovery CLI/library exists and swap it behind MarketDiscovery.
-
-Lane branches (all pushed, remote==local verified by PRIMARY):
-- Lane A resource-need: `lane/a-resource-need` @ `c8cc432` (13/13) — ResourceNeed + SourcingDecisionRecord primitives.
-- Lane B market-discovery: `lane/b-market-discovery` @ `44a9c73` (14/14) — discovery iface, verified registry DATA, candidate assessment. FINDING: no official OKX programmatic discovery primitive confirmed → snapshot is primary behind replaceable MarketDiscovery interface.
-- Lane C artifact/growth-worker: `lane/c-artifact-growth-worker` @ `b672e97` (artifact 8/8, worker/workforce regression 24/24) — CompanyArtifact + growth capability + request_resource/update_company_artifact tools. GAP: tests/growthWorker.test.ts not produced (behavior verified by PRIMARY throwaway probe).
-- Lane M3 buyer-rail: `lane/m3-buyer-rail` @ `b05e117` (72/72) — 402 dynamic binding, purchase records, retry/reconcile, READY_TO_SIGN, secret boundary. PRIMARY reconstructed lost lib/payment/types.ts (concurrent-checkout casualty) and fixed test fixtures.
-
-INCIDENT: all child agents shared ONE working tree → concurrent `git checkout` contaminated branches (Lane A commit landed on lane/m3, Lane B dup on lane/c, remote lane/m3 held mixed commit 8bd777d). PRIMARY stood children down, salvaged files to /tmp/salvage, reconstructed each lane in isolated worktrees, force-with-lease corrected lane/m3. No remote corruption on integration branch. LESSON: do not spawn multiple writer children into the shared tree; PRIMARY owns all git from now.
-
-Discovery finding (Lane B): no supported official OKX programmatic discovery API confirmed this pass; `agent asp-match/search/service-list` CLI surface not verifiable as a runtime dependency. Snapshot fallback is PRIMARY path; live CLI integration is founder-gated. Registry DATA holds FlyBeacon/Newsliquid/xbird service→ResourceClass mappings.
-
-Next PRIMARY actions (safe order §33): wire ResourceNeed/CompanyArtifact/purchase persistence into Convex schema + objectives.ts + objectiveRunner.ts; add `waiting_for_resource` lifecycle (BUY is not failure); seed canonical launch artifact DATA; wire discovery+assessment seam per need; then read-model/UI (Lane D), provider adapters (Lane M4), invariant review (Lane E). STOP at READY_TO_SIGN / any founder-auth boundary.
-
-Boundaries NOT crossed and will not be: no wallet/signing/tx-submit/spend, no founder X creds, no publish, no paid provider call, no mainnet.
-
----
-
+Status: **ACTIVE — one long-horizon M4 task**  
+Updated: **19 September 2026**  
+Repository: `dropandresetmain-prog/somebody-okx`
 
 ## Goal
 
-Deliver one reliable 2–4 minute canonical demo:
-
-> **“Our launch isn’t working. Fix it and relaunch today.”**
-
-Target execution:
-
-`MAKE growth worker → discover resource gap → reject redundant external cognition → BUY Newsliquid → MAKE reacts → BUY xbird → publish → verify → founder outcome`
-
-Maximum two real provider purchases.
-
-## Authoritative repo / accepted base
-
-Repository: `dropandresetmain-prog/somebody-okx`
-
-Accepted main / M1:
-
-`1e2c1a484713792cead51b85e1e1ae36d28b3e77`
-
-M1 is accepted. Do not rebuild it.
-
-## Read order
-
-1. `README.md`
-2. `MASTER_PLAN.md`
-3. `ARCHITECTURE.md`
-4. `PRODUCT_SPEC.md`
-5. `DECISIONS_LOG.md`
-6. `REUSE_AUDIT.md`
-7. `BUILD_DELTA.md`
-8. this file
-
-Current code/runtime/schema and newer accepted decisions outrank stale plans.
-
-## Locked constraints
-
-- Somebody remains the accountable manager/product.
-- Founder gives an objective, not an agent specification.
-- Missing worker != missing capability.
-- MAKE requires real bounded execution and controlled-state change.
-- Model may propose resource needs; application decides ownership/sourcing/provider/spend authority.
-- `lib/sourcing/policy.ts` remains the single deterministic MAKE/BUY/BLOCKED authority.
-- Sourcing is **repeated and resource-level**, not one permanent objective-level verdict.
-- Marketplace discovery is bounded; no universal marketplace engine.
-- If no supported official discovery API exists, use a small synchronized current-market snapshot behind a replaceable interface.
-- Real provider invocation/payment remains real.
-- Maximum two BUY transactions in the canonical mission.
-- No unnecessary A2A negotiation/escrow.
-- Submission/payment/provider success != verification/completion.
-- Ambiguous payment/effect state reconciles before retry.
-- Secrets/private keys/session credentials never enter ordinary Convex state/logs.
-- One canonical demo only.
-
-## Canonical providers / resource types
-
-### Rejected option
-
-**FlyBeacon** or equivalent generic growth service.
-
-Decision: `REJECT / MAKE internally` when it merely reproduces generic reasoning, public research, planning or copy work already available internally.
-
-### BUY #1
-
-**Newsliquid**.
-
-Resource: proprietary/privileged external X/social intelligence.
-
-Purchased evidence must materially change subsequent internal work.
-
-### BUY #2
-
-**xbird**.
-
-Resource: external social execution infrastructure / privileged execution interface.
-
-The founder/company owns the underlying X account and intent. xbird supplies the bounded paid automation interface.
-
-Provider endpoint/price/payment/credentials/result/verification remain current-market facts to validate immediately before implementation.
-
-## Completed checkpoints
-
-### M0 — COMPLETE
-
-Foundation, provenance and workforce kernel established.
-
-### M1 + R1 — ACCEPTED
-
-Accepted live on fresh Convex.
-
-Evidence includes:
-
-- Objective/WorkItem runtime;
-- model-proposed/application-authorized planning;
-- factual inventory;
-- dynamic internal worker;
-- `WorkerSpec → WorkContract`;
-- bounded real Agent/Runner;
-- application-owned evidence/completion;
-- lease/fencing;
-- positive live MAKE proof;
-- deterministic negative proof;
-- Objective Workspace.
-
-Exact evidence: `BUILD_DELTA.md` §3.6.
-
-### Generic M2 sourcing — IMPLEMENTED, REQUIRES ADAPTATION
-
-Branch:
-
-`feat/m2-make-buy-policy`
-
-Observed SHA:
-
-`4a827e891af3dd7e61cf529482a7656ee23bcb34`
-
-Verified there:
-
-- canonical pure `MAKE / BUY / BLOCKED` kernel;
-- factual inventory as ownership authority;
-- provider paths exact-resource-bound;
-- model cannot authorize provider/spend;
-- sourcing truth persisted/rendered;
-- M1 row compatibility;
-- reported 121/121 full suite, clean root/Convex typechecks and Next build.
-
-Do not discard this work.
-
-## Current task — adapt M2 to approved mission
-
-The existing M2 integration currently makes one sourcing decision for the whole plan and treats non-MAKE as terminal. That is incompatible with the approved mission.
-
-Adapt the architecture minimally so the same pure sourcing kernel can be invoked repeatedly for bounded resource needs.
-
-Required M2 work:
-
-- [ ] reconcile `feat/m2-make-buy-policy` with the new canonical SSOT docs;
-- [ ] add bounded growth/launch capability using only controlled resources;
-- [ ] add the smallest controlled launch artifact/state needed for real MAKE work;
-- [ ] internal growth worker changes that artifact — not merely advises;
-- [ ] persist a bounded `ResourceNeed` / sourcing-decision record that may occur multiple times in one objective;
-- [ ] stop treating BUY as automatic objective failure;
-- [ ] add bounded market-discovery seam;
-- [ ] use supported official OKX discovery primitive if verified, otherwise synchronized snapshot;
-- [ ] snapshot includes FlyBeacon, Newsliquid and xbird current metadata needed for the demo;
-- [ ] candidate assessment can reject redundant growth service and select exact-resource provider path;
-- [ ] Newsliquid path maps to the genuine external intelligence resource;
-- [ ] provider approval remains application-owned;
-- [ ] preserve M1 row/read compatibility;
-- [ ] update Objective Workspace only enough to show current resource need/candidates/decision;
-- [ ] focused sourcing/resource/discovery/MAKE tests;
-- [ ] relevant M1 regression only where seams changed;
-- [ ] root + Convex typechecks;
-- [ ] canonical M2 proof;
-- [ ] update `BUILD_DELTA.md` and this ledger;
-- [ ] commit + push exact files at meaningful checkpoints.
-
-## M2 acceptance
-
-Accept M2 when this is real and persisted:
-
-`canonical failing-launch objective → internal growth MAKE → controlled artifact changed → proprietary social-intelligence need → market candidates discovered → FlyBeacon-style redundant option rejected → Newsliquid selected as BUY`
-
-No provider payment is required in M2.
-
-The repeated-sourcing machinery should be capable of another later need, but do not fabricate BUY #2 before BUY #1 evidence has actually changed the mission.
-
-## M3 preparation already available
-
-Branch:
-
-`prep/m3-okx-readiness`
-
-Consume its verified payment-readiness research and pure lifecycle kernel. Do not restart payment research from zero.
-
-M3 builds one repeatable buyer rail safe for two sequential purchases in one mission, first proved against the official Mock Merchant / X Layer Testnet.
-
-Run **R2 coding-agent payment-safety review after the complete M3 rail exists**.
-
-## M4 target
-
-Complete backend canonical mission:
-
-`BUY Newsliquid → verify intelligence → MAKE reacts → new execution resource need → BUY xbird → publish → independent verification → final outcome`
-
-Maximum two real BUYs.
-
-Run **R3 coding-agent economic-integration review after M4**.
-
-## Remaining schedule
-
-- 18–19 Sep: M2 canonical adaptation/acceptance.
-- 19–20 Sep: M3 buyer rail; R2.
-- 20–21 Sep: M4 two-provider full backend; R3.
-- 21–22 Sep: M5 surface/story hardening + first backup demo video.
-- 23 Sep: M6 release candidate + G1 promotion gate; hard feature freeze 18:00 SGT.
-- 24 Sep: debugging/hardening only.
-- 25 Sep: video/submission only; internal target 22:00 SGT.
-
-## Findings to carry forward
-
-### Investigate Now
-
-- Confirm whether an official supported marketplace/service-search primitive is available. If not, use the synchronized snapshot fallback; do not scrape private APIs.
-- Validate exact Newsliquid endpoint/service, price, payment environment and response schema immediately before provider integration.
-- Validate xbird execution path, X credential/session handling, payment environment, publish endpoint and independent read-back before M4 lock.
-
-### Park for Later
-
-- `run.toolCalls` remains dead instrumentation from M1; not required for sourcing/payment correctness.
-- General provider ranking/reputation, generic marketplace indexing and general cost optimization are outside the hackathon.
-
-## Next action
-
-**Implement M2 adaptation from `feat/m2-make-buy-policy`, preserving the existing pure sourcing kernel and accepted M1 behavior.**
-
-Do not start M3 payment integration until M2 acceptance evidence passes.
+Implement the approved generic Somebody management engine on one M4 branch.
+
+Do **not** split this into M4A/M4B/etc. The checkpoints below are working-memory checkpoints only.
+
+Accepted base before this docs checkpoint:
+
+`main@1fa7962d9ef0d359951d14993834d1d419a5c980`
+
+## Architecture locked
+
+- LangGraph = Somebody orchestration/control loop.
+- Convex = authoritative company/business state.
+- `@openai/agents` = That Guy execution.
+- LangChain = not adopted.
+- M3 buyer rail remains separate financial authority and integrates later.
+- Somebody is a persistent managerial identity.
+- That Guy identities persist; runs are ephemeral.
+- Somebody alone staffs, authorizes acquisition and proposes Objective completion.
+
+## Management protocol locked
+
+```text
+Objective
+→ Outcome Contract
+→ Outcome Levels / minimum completion bar
+→ required/supporting Requirements
+→ MAKE / BUY / HYBRID / WAIT / ASK / BLOCK strategies
+→ grounded options
+→ LLM recommendation
+→ deterministic authorization
+→ execution
+→ verification
+→ Convex state update
+→ wake Somebody
+→ replan
+↺
+```
+
+## Approved product decisions
+
+1. Risk-based Outcome Contract autonomy; material ambiguity can require founder approval.
+2. Multiple Outcome Levels with a minimum completion bar.
+3. LLM proposes semantic Requirements; application maps/validates governed forms.
+4. Required + supporting Requirements; incomplete supporting work must be disclosed.
+5. MAKE / BUY / HYBRID / WAIT / ASK / BLOCK; investigation is bounded work.
+6. Consider both internal and external paths when feasible; discovery may be bounded.
+7. Prefer REUSE, allow supported CREATE reasons.
+8. That Guy breadth = smallest coherent bounded responsibility.
+9. Workers request capability/resource; Somebody resolves.
+10. Wake on meaningful state change; no idle polling loop.
+11. Maintain coarse plan; authorize next bounded action and replan.
+12. Risk/materiality governs autonomous investigation vs founder escalation.
+13. Somebody is a persistent managerial identity.
+14. Somebody proposes completion; deterministic evidence/contract gate accepts.
+15. Dynamically define semantic capabilities/tool contracts; real authority still requires governed executable primitives/integrations/credentials/authorization.
+16. Main UI shows high-level decisions; optional deeper trace/graph.
+
+## M3 dependency
+
+M3/R2 continues in its separate lane and currently has an external blocker.
+
+Do not restart payment research or invent a second payment implementation.
+
+Tonight M4 should implement the generic external acquisition/effect seam and may truthfully stop/wait at that boundary.
+
+When M3 is accepted, integrate its buyer-rail contract on this M4 branch and complete Cutoff 1. This remains M4, not a new milestone.
+
+## Working checkpoints
+
+### Checkpoint 0 — docs / branch truth
+
+- [x] lock architecture decision;
+- [x] lock management-protocol decisions;
+- [x] reconcile stale M2-era planning assumptions;
+- [ ] verify exact M4 branch/head before implementation.
+
+### Checkpoint 1 — domain truth
+
+- [ ] Outcome Contract / Outcome Level contracts;
+- [ ] minimum completion bar;
+- [ ] Requirement identity/revision/priority/lifecycle;
+- [ ] separate provider rejection from requirement resolution;
+- [ ] explicit Objective completion gate;
+- [ ] preserve M1/M2 historical row/evidence truth where required.
+
+Evidence:
+- focused changed-behavior tests only.
+
+### Checkpoint 2 — managerial decision protocol
+
+- [ ] semantic strategy proposal;
+- [ ] grounded candidate options;
+- [ ] internal/external/hybrid representation;
+- [ ] hard eligibility;
+- [ ] comparable economic facts + provenance/confidence;
+- [ ] LLM managerial recommendation contract;
+- [ ] deterministic authorization recheck;
+- [ ] remove automatic internal-availability ⇒ MAKE final choice.
+
+Evidence:
+- economic counterexamples;
+- redundant external wrapper does not automatically win;
+- hybrid option supported.
+
+### Checkpoint 3 — persistent workforce
+
+- [ ] persist Worker identity / lifecycle / reservation;
+- [ ] actual REUSE demonstrated;
+- [ ] supported CREATE reason path;
+- [ ] dynamic semantic CapabilitySpec/tool-contract definition;
+- [ ] no dynamic real-world authority invention;
+- [ ] capability/resource request returns through Somebody;
+- [ ] objective-wide worker/assignment limits.
+
+Evidence:
+- reuse/create focused tests;
+- unsupported capability blocks/escalates rather than throws.
+
+### Checkpoint 4 — LangGraph management loop
+
+- [ ] minimal graph state;
+- [ ] observe / manage / ground / authorize / dispatch / wait / verify / resolve loop;
+- [ ] consequential nodes reload Convex truth;
+- [ ] event-driven wake/resume;
+- [ ] quiescent waiting/approval/escalation states;
+- [ ] no scenario/provider state branches;
+- [ ] coarse plan + next bounded action.
+
+Evidence:
+- real Agent/Runner internal continuation across at least one wake/replan.
+
+### Checkpoint 5 — recovery / Cutoff 2
+
+- [ ] stable decision/assignment/effect identities;
+- [ ] duplicate wake-up harmless;
+- [ ] stale objective/run fenced;
+- [ ] finite decision/retry/time/cost/no-progress limits;
+- [ ] invalid model output bounded repair/failure;
+- [ ] weird unrelated prompts terminate/wait coherently;
+- [ ] no infinite worker spawning;
+- [ ] no false completion.
+
+Evidence:
+- targeted adversarial tests only.
+
+### Checkpoint 6 — external seam
+
+- [ ] AuthorizedExecutionIntent for external acquisition/effect;
+- [ ] provider/result/verification events feed back into Convex + wake Somebody;
+- [ ] no duplicate payment state machine;
+- [ ] boundary compatible with M3 concepts without claiming M3 success.
+
+Evidence:
+- mock/fixture seam only if M3 unavailable, labelled truthfully.
+
+### Checkpoint 7 — tonight completion
+
+- [ ] reconcile ledger against implementation;
+- [ ] targeted regression only where seams changed;
+- [ ] no production payment/provider claims;
+- [ ] checkpoint commit/push;
+- [ ] prepare exact SHA for R3 premium review.
+
+## R3 tomorrow morning
+
+Premium review target: the whole M4 management-engine candidate.
+
+Review:
+
+- LangGraph ↔ Convex state ownership;
+- economic decisions;
+- requirement/completion semantics;
+- staffing;
+- dynamic capability safety;
+- scenario coupling;
+- resume/recovery;
+- duplicate events;
+- false completion;
+- Cutoff 2 robustness.
+
+Classify every material finding:
+- Act Now
+- Investigate Now
+- Park for Later
+- Ignore / Accept Risk
+
+## M4 acceptance later when M3 ready
+
+Cutoff 1 requires one causal live trace including:
+
+- internal MAKE;
+- genuine external need;
+- economic recommendation;
+- deterministic authorization;
+- integrated sandbox/X Layer Testnet payment;
+- persisted/verified acquired result;
+- internal reaction;
+- external effect;
+- independent verification;
+- truthful objective resolution.
+
+No scenario-specific orchestration.
+
+## Critical constraints
+
+- Do not rewrite M1/M2 historical evidence.
+- Do not duplicate sourcing/authorization authorities.
+- Do not let LangGraph become business truth.
+- Do not let model output grant permission/spend/tool authority.
+- Do not equate submitted/settled/result/verified.
+- Do not rerun broad suites after every checkpoint.
+- Do not run mainnet or unsupervised live spend.
+- Do not widen scope into universal marketplace/org infrastructure.
+- Delegate bounded independent low-risk work aggressively; PRIMARY owns architecture, shared contracts, integration, financial boundaries and final verification.
+
+## Current next action
+
+Verify branch/head and inspect current contracts/schema/runtime before implementation. Then start with the domain-truth checkpoint while preserving accepted M2 evidence.

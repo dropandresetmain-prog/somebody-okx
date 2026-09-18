@@ -1,7 +1,7 @@
 # Somebody × OKX — Reuse Audit
 
 Status: **engineering source-of-truth for source-project reuse**  
-Date: **17 September 2026**
+Date: **17 September 2026; staffing triage superseded 19 September 2026**
 
 This document combines the pre-build Opus reuse audit with a direct follow-up read of the authoritative source repositories.
 
@@ -469,3 +469,24 @@ For new work:
 4. run broader promotion/release checks once on the exact release candidate.
 
 Do not repair or preserve unrelated legacy behavior merely to keep historical tests green.
+
+
+---
+
+## 11. 19 September 2026 supersession — persistent workforce
+
+The earlier §9 “Park for Later — persistent cross-objective workforce” classification is superseded for the current hackathon architecture.
+
+Persistent reusable That Guy identities are now **Act Now for M4** because genuine REUSE/CREATE behavior is part of the approved Somebody Management Protocol.
+
+This does not revive Army of Interns runtime choreography, personalities, ranks, org-chart UI or recursive worker spawning.
+
+Preserve the Army-derived concepts only:
+
+- persistent worker identity separate from assignment/run;
+- governed capability envelope;
+- application-authorized staffing;
+- worker capability/resource requests;
+- reusable verified assignment history.
+
+Somebody remains sole staffing authority in M4.

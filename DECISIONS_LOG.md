@@ -212,3 +212,90 @@ Explicitly out of scope:
 - “One external provider on the critical path” — superseded; the canonical mission may use up to two justified BUYs of different resource types.
 - Broad marketplace discovery being entirely out of scope — refined; bounded discovery is required, generalized indexing is not.
 - Preserving the old procurement deployment/runtime for continuity — rejected.
+
+
+---
+
+## 19 September 2026 — Somebody Management Protocol v1
+
+**Decision:** Somebody is a persistent accountable managerial identity operating an observe → decide → authorize → execute → verify → replan loop.
+
+This supersedes treating the current launch/research flow as the target orchestration architecture.
+
+### Outcome contracts
+
+- Risk-based autonomy: Somebody may define ordinary low-risk success criteria; material ambiguity may require founder clarification/approval.
+- Objectives may have multiple Outcome Levels.
+- One Outcome Level is the minimum completion bar.
+- Required Requirements gate completion.
+- Supporting Requirements may remain incomplete but must be disclosed clearly.
+- Worker/run completion is not Objective completion.
+- Somebody proposes Objective completion; deterministic application checks current contract/evidence.
+
+### Options and economics
+
+**Decision:** internal feasibility does not force MAKE.
+
+When internal and external paths are feasible, both classes may enter the option set. Discovery may remain bounded.
+
+Allowed strategies include MAKE, BUY, HYBRID, WAIT, ASK FOUNDER and BLOCK/ESCALATE. Investigation is bounded work.
+
+The LLM performs managerial recommendation over grounded eligible options. Deterministic application logic owns eligibility, authority, spend, provider identity, effect identity and completion proof.
+
+The earlier “BUY only scarce resources / globally reject generic cognition” rule is superseded as a universal economic rule. Scarcity remains a strong external advantage, not the only legitimate BUY reason.
+
+## 19 September 2026 — LangGraph adopted for M4 orchestration
+
+**Decision:** use LangGraph for Somebody's management/control loop.
+
+- Convex remains authoritative company/business state.
+- `@openai/agents` remains That Guy execution.
+- LangChain is not adopted.
+- LangGraph checkpoints contain continuation/execution-local state only.
+- Every consequential resumed action revalidates current Convex truth.
+- Payment/publication exactly-once semantics remain application-owned through stable identities and reconciliation.
+
+This is not a migration of M1/M2 business truth. It replaces/refactors the orchestration layer that M4 already needs to change.
+
+## 19 September 2026 — Persistent workforce / staffing authority
+
+**Decision:** That Guys are persistent reusable worker identities; runs are ephemeral.
+
+Prefer REUSE when an eligible worker fits, but allow CREATE for supported reasons such as availability, specialization, context, parallelism or cost.
+
+Worker breadth is the smallest coherent bounded responsibility.
+
+Workers may request capability/resource support. Only Somebody may create/reuse workers, authorize acquisition/spend or propose Objective completion.
+
+Worker-to-worker autonomous creation is not allowed in M4.
+
+## 19 September 2026 — Dynamic capability/tool-contract definition
+
+**Decision:** Somebody may dynamically define new semantic capabilities and tool contracts.
+
+This does not allow a model to conjure real-world authority. New executable primitives requiring an integration, credential, destructive permission, professional authority or payment right remain unavailable until governed application onboarding/authorization exists.
+
+Dynamic capability is allowed; dynamic authority is not.
+
+## 19 September 2026 — M4 / review / demo sequence
+
+**Decision:** M4 is one long-horizon task, not M4A–M4F.
+
+Internal checkpoints may exist only as implementation working memory in `docs/work/ACTIVE_TASK.md`.
+
+M3/R2 remains a separate payment lane and may integrate later because of an external blocker. M4 must build the generic buyer/effect seam without duplicating M3.
+
+Remaining sequence:
+
+`M4 long-horizon implementation → R3 premium review → finish M4 payment-backed acceptance when M3/R2 is ready → M5 surface/story → M6 RC → G1 → demo`
+
+Hackathon acceptance has two cutoffs:
+
+1. canonical causal end-to-end trace including integrated sandbox/X Layer Testnet payment once M3 is available;
+2. unrelated founder prompts remain structurally safe even when answer quality is weak.
+
+## 19 September 2026 — Product surface
+
+**Decision:** default UI shows high-level management truth; optional deeper graph/trace supports demo/debugging.
+
+Do not expose private chain-of-thought. The runtime decision/evidence record, not hidden reasoning, is the product trace.
