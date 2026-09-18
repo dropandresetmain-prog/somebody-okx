@@ -373,3 +373,191 @@ have left stale OS credential state.
 
 No `onchainos payment pay` command was executed in this audit.
 No new authorization exists.
+
+---
+
+## Facilitator capability probe — 19 Sep 2026 (read-only; blocked on credentials)
+
+Purpose: distinguish invalid Somebody/onchainos authorization from broken
+Mock Merchant / facilitator / Testnet payment configuration **without moving
+funds** and **without another Mock Merchant payment**.
+
+### Credential presence (names only; values never logged)
+
+Loaded from local `.env.local` into a process-local probe only:
+
+| Variable | Present |
+|----------|---------|
+| `OKX_API_KEY` | yes |
+| `OKX_API_SECRET` (alias for `OKX_SECRET_KEY`) | yes |
+| `OKX_API_PASSPHRASE` / `OKX_PASSPHRASE` | **no** |
+| `OKX_PROJECT_ID` | **no** |
+
+Official x402 auth requires `OK-ACCESS-KEY`, `OK-ACCESS-SIGN`,
+`OK-ACCESS-TIMESTAMP`, and `OK-ACCESS-PASSPHRASE`
+([api-http-onetime](https://web3.okx.com/onchainos/dev-docs/payments/api-http-onetime),
+[api-access-and-usage](https://web3.okx.com/onchainos/dev-docs/home/api-access-and-usage)).
+Some Onchain OS examples also send `OK-ACCESS-PROJECT`.
+
+**Phase 1 `GET /api/v6/pay/x402/supported` was not executed** because
+`OKX_API_PASSPHRASE` is missing. No auth headers, secrets, or API responses
+were captured.
+
+Founder action (do **not** paste values into chat): add these names to local
+process env or `.env.local`, then re-run the probe:
+
+1. `OKX_API_PASSPHRASE` — **required** for `/supported` and `/verify`
+2. `OKX_PROJECT_ID` — expected; probe will send `OK-ACCESS-PROJECT` when present
+
+Probe helper (gitignored secrets only; script itself is safe):  
+`node scripts/m3-facilitator-probe.mjs`
+
+### Phase 2 architecture (ready; not executed)
+
+Official CLI `onchainos 4.6.1` supports **sign-only** TEE path:
+
+`onchainos payment pay --payload <base64({x402Version,resource,accepts})> --selected-index 0 --yes`
+
+Help text: returns `{authorization_header, header_name, scheme, wallet}` and
+does **not** replay to a merchant (mutually exclusive with `--payment-id`).
+This is preferred over a capture merchant because settlement cannot occur.
+
+Local loopback is also reachable for `payment quote` (CLI attempted
+`http://127.0.0.1:…` and returned `endpoint_unreachable`, not a private-IP
+policy block). Capture-merchant remains a fallback only.
+
+**No TEE payment authorization was signed in this checkpoint.**
+**No Mock Merchant call. No `/verify`. No `/settle`.**
+
+### Docs cross-check (no live `/supported` yet)
+
+- `/supported` is documented as dynamically generated from facilitator/Apollo
+  gating; published examples show `eip155:196` only.
+- Seller SDK validates routes against cached `/supported` kinds
+  (`scheme@network`); unsupported pairs are rejected.
+- Buyer quickstart and Mock Merchant still advertise Testnet `eip155:1952`.
+- No documented alternate Testnet facilitator route outside `/supported` was
+  found; live confirmation still requires the authenticated `/supported` call.
+
+### Phase 1 live result — 19 Sep 2026 — **CASE B**
+
+`GET /api/v6/pay/x402/supported` succeeded (HTTP 200, business `code` 0).
+Credentials resolved from `.env.local` (`OKX_API_KEY`, `OKX_API_SECRET`,
+`OKX_PASSPHRASE`, `OKX_PROJECT_ID`). Auth headers and secrets were not logged.
+
+Safe summary:
+
+- `kindCount`: 9
+- networks: `eip155:1952`, `eip155:196`
+- schemes: `exact`, `aggr_deferred`, `upto`, `period`
+- **`exact + eip155:1952` PRESENT** (Case B)
+  - EIP-3009 variant: `extra: null`
+  - Permit2 variant: `extra.assetTransferMethod = "permit2"`
+- also on 1952: `aggr_deferred`, `upto` (permit2 + facilitatorAddress)
+- `exact + eip155:196` also present (mainnet; **not used** for payment)
+- `signers` keys observed: `eip155:196` only (no `eip155:1952` signer key)
+- `extensions`: `[]`
+
+Verdict: facilitator **claims** to support the rail the Mock Merchant advertises.
+Case A (upstream `/supported` contradiction) is **ruled out** for
+`exact + eip155:1952`.
+
+**Stopped before Phase 2.** No TEE authorization signed. No `/verify`. No
+`/settle`. No Mock Merchant payment.
+
+### Phase 2+3 — TEE capture → `/verify` — 19 Sep 2026
+
+Method: `onchainos payment pay --payload` (Agentic Wallet TEE sign-only).
+No Mock Merchant replay. No `/settle`. Raw `PAYMENT-SIGNATURE` never logged or
+committed.
+
+#### Primary — merchant wire shape (authoritative reproduction)
+
+Challenge `accepts[0]` matched live Mock Merchant exact terms:
+
+- `x402Version: 2`, `scheme: exact`, `network: eip155:1952`
+- `maxAmountRequired: "10000"` (not `amount`)
+- asset `0xcb8bf24c…`, payTo `0x3509655a…`, resource path as live
+- `extra: { name: "USDC_TEST", version: "1" }`
+
+TEE sign: **success** (EIP-3009 path; signature present; auth value `10000`).
+
+`POST /api/v6/pay/x402/verify` with **unmutated** `paymentRequirements = accepted`:
+
+| Field | Value |
+|-------|-------|
+| HTTP | 200 |
+| business code | 0 |
+| `isValid` | **false** |
+| `invalidReason` | `param_mismatch` |
+| `invalidMessage` | `accepted.amount is null` |
+| `payer` | `""` |
+
+**Primary authorization verification: `INVALID — param_mismatch`.**
+
+#### Secondary A/B — same economics, v2 `amount` field
+
+Identical terms except `amount: "10000"` instead of `maxAmountRequired`
+(quote-normalized / official v2 PaymentRequirements shape). Still TEE
+`--payload`; still no merchant; still no settle.
+
+| Field | Value |
+|-------|-------|
+| TEE sign | success |
+| `isValid` | **true** |
+| `invalidReason` | null |
+| `payer` | `0xd2dd2eb5…` (testnet wallet) |
+
+**A/B authorization verification: `VALID`.**
+
+#### Interpretation
+
+1. Facilitator **does** support `exact + eip155:1952` and can validate a
+   TEE-produced EIP-3009 authorization when `accepted.amount` is populated.
+2. Live Mock Merchant (and our primary reproduction) advertise x402 **v2** with
+   legacy **`maxAmountRequired`** and no `amount`. Official v2
+   PaymentRequirements require `amount`.
+3. CLI `--payload` assembly did not fill `accepted.amount` from
+   `maxAmountRequired` → facilitator rejects with `param_mismatch`.
+4. EIP-712 `extra.version: "1"` vs on-chain token version `"2"` did **not**
+   block `/verify` once `amount` was present (A/B VALID).
+5. Attempt D's opaque second HTTP 402 is **strongly explained** by the same
+   wire mismatch: merchant/facilitator verify fails on null `amount`, merchant
+   re-challenges with `accepts[]`, CLI maps that to `facilitator non-terminal`.
+
+#### Phase 4 — direct `/settle` plan (NOT executed)
+
+Preconditions now met for a **future** single settle test using an A/B-style
+payload (`amount` present, `/verify` would be valid):
+
+1. Fresh TEE `--payload` sign with `amount` (not merchant replay).
+2. Confirm `/verify` `isValid: true` on that exact payload.
+3. **Only after explicit founder approval:** `POST /api/v6/pay/x402/settle`
+   with the same body (Testnet only; no mainnet).
+4. Compare `errorReason` / tx identity vs Mock Merchant opaque 402.
+
+**Not run in this session.** No funds moved by settle.
+
+### Root-cause confidence (end of this investigation)
+
+| Claim | Level |
+|-------|-------|
+| `/supported` includes `exact + eip155:1952` | **Proven** |
+| TEE can sign Mock Merchant economic terms | **Proven** |
+| Merchant-shaped `maxAmountRequired` payload fails `/verify` (`accepted.amount is null`) | **Proven** |
+| Same terms with `amount` pass `/verify` | **Proven** |
+| Attempt D second 402 caused by this amount-field mismatch | **Strongly supported** |
+| Whether `pay --payment-id` normalizes amount before assemble | **Still unknown** (would need source or a non-settle inspect) |
+| Whether merchant passes `maxAmountRequired`-shaped `paymentRequirements` into facilitator even when buyer sends `amount` | **Still unknown** |
+| Domain version 1 vs 2 as settle blocker | **Weakened** for verify; settle untested |
+
+### Next action
+
+**File/escalate OKX defect** (Mock Merchant v2 challenge omits `amount`; CLI
+does not normalize `maxAmountRequired` → `accepted.amount` on `--payload`
+assemble). Optionally request founder approval for **one** direct Testnet
+`/settle` after a fresh VALID `/verify` to isolate merchant vs facilitator
+settlement.
+
+Do **not** retry Mock Merchant payment until OKX confirms the wire fix or we
+have an approved settle A/B.
