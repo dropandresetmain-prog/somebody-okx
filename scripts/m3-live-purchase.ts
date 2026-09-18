@@ -11,10 +11,15 @@
  */
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { transition } from "../lib/payment/lifecycle";
 import { decodePaymentRequiredHeader } from "../lib/payment/challenge";
-import { FilePaymentExecutionAuthority, PaymentExecutionAlreadyClaimedError } from "../lib/payment/executionAuthority";
+import {
+  FilePaymentExecutionAuthority,
+  PaymentExecutionAlreadyClaimedError,
+  resolvePaymentExecutionLedgerPath,
+} from "../lib/payment/executionAuthority";
 import { executeApprovedPayment } from "../lib/payment/buyerRail";
 import { createPurchase, recordPurchaseReceipt, recordPurchaseResult, updatePurchaseState, verifyPurchase } from "../lib/payment/purchase";
 import {
@@ -43,7 +48,8 @@ const PAYER = process.env.M3_BUYER_ADDRESS ?? "0xd2dd2eb5028a1afaa09c9d350b3378f
 const CONFIG = { allowedNetworks: [XLAYER_TESTNET_NETWORK], maxSpend: "10000" } as const;
 // One application-owned ledger for this M3 driver. It is intentionally not
 // selectable per invocation: changing a path must not restore spend authority.
-const PAYMENT_LEDGER_FILE = path.resolve(".m3-payment-execution-ledger.json");
+const APPLICATION_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const PAYMENT_LEDGER_FILE = resolvePaymentExecutionLedgerPath(APPLICATION_ROOT);
 
 async function fetchChallenge(merchantEndpoint: string): Promise<unknown> {
   const res = await fetch(merchantEndpoint, { redirect: "manual", signal: AbortSignal.timeout(20_000) });
@@ -204,6 +210,8 @@ async function execute(stateFile: string, evidenceFile: string) {
     state.purchaseId,
     txHash,
   );
+  const executionAttempt = executionAuthority.getAttempt(submission.executionAttemptId!);
+  if (!executionAttempt) throw new Error("Submitted payment attempt disappeared from durable authority");
   let verification: Awaited<ReturnType<typeof readAndVerifyXLayerSettlement>> | undefined;
   for (let i = 0; i < 12; i++) {
     verification = await readAndVerifyXLayerSettlement(rpc, {
@@ -212,6 +220,7 @@ async function execute(stateFile: string, evidenceFile: string) {
       purchaseId: state.purchaseId,
       executionAttemptId: submission.executionAttemptId!,
       executionBinding,
+      executionClaimedAt: executionAttempt.claimedAt,
       asset: execution.terms.asset,
       amount: execution.terms.maxAmountRequired,
       payTo: execution.terms.payTo,

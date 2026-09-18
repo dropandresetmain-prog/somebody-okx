@@ -14,6 +14,8 @@ import {
 export const XLAYER_TESTNET_NETWORK = "eip155:1952";
 export const XLAYER_TESTNET_CHAIN_ID_HEX = "0x7a0";
 export const XLAYER_TESTNET_PRIMARY_RPC = "https://testrpc.xlayer.tech/terigon";
+/** Small tolerance for local wall-clock vs chain block-clock skew. */
+export const XLAYER_SETTLEMENT_MAX_CLOCK_SKEW_SECONDS = 120;
 
 /** keccak256("Transfer(address,address,uint256)") */
 const ERC20_TRANSFER_TOPIC =
@@ -41,12 +43,20 @@ export type ExpectedExactSettlement = {
   purchaseId: string;
   executionAttemptId: string;
   executionBinding: SettlementExecutionBinding;
+  executionClaimedAt: number;
   network: string;
   transactionHash: string;
   asset: string;
   amount: string;
   payTo: string;
   payer: string;
+};
+
+export type XLayerSettlementProvenance = {
+  /** Block number used to fetch the timestamp; must equal the receipt block. */
+  blockNumber: string;
+  /** Timestamp returned by eth_getBlockByNumber for the receipt block. */
+  blockTimestamp: string;
 };
 
 function assertExecutionBinding(
@@ -111,6 +121,43 @@ function blockNumberFrom(receipt: TransactionReceipt): string | undefined {
   return typeof receipt.blockNumber === "string" ? receipt.blockNumber : undefined;
 }
 
+function chainTimestampFrom(value: unknown): bigint | null {
+  if (typeof value !== "string" || !/^(?:0x[0-9a-f]+|[0-9]+)$/i.test(value)) return null;
+  try {
+    return BigInt(value);
+  } catch {
+    return null;
+  }
+}
+
+function executionProvenanceMismatch(
+  expected: ExpectedExactSettlement,
+  receiptBlockNumber: string,
+  provenance: XLayerSettlementProvenance | null | undefined,
+): string | undefined {
+  if (!Number.isSafeInteger(expected.executionClaimedAt) || expected.executionClaimedAt < 0) {
+    return "execution claim timestamp is malformed";
+  }
+  const blockTimestamp = chainTimestampFrom(provenance?.blockTimestamp);
+  if (blockTimestamp === null) {
+    return "independent settlement block timestamp is missing or malformed";
+  }
+  if (
+    typeof provenance?.blockNumber !== "string"
+    || provenance.blockNumber.toLowerCase() !== receiptBlockNumber.toLowerCase()
+  ) {
+    return "independent settlement block identity is missing or does not match the receipt blockNumber";
+  }
+  const claimedAtSeconds = BigInt(Math.floor(expected.executionClaimedAt / 1000));
+  if (
+    blockTimestamp + BigInt(XLAYER_SETTLEMENT_MAX_CLOCK_SKEW_SECONDS)
+    < claimedAtSeconds
+  ) {
+    return "settlement block timestamp predates the current execution claim beyond clock-skew tolerance";
+  }
+  return undefined;
+}
+
 /**
  * Verify one already-fetched receipt against exact approved payment terms.
  *
@@ -119,10 +166,13 @@ function blockNumberFrom(receipt: TransactionReceipt): string | undefined {
  * - exact transaction hash;
  * - a Transfer log emitted by the approved token contract;
  * - payer, payTo and amount matching the approved payment.
+ * - an independently fetched block timestamp that is fresh relative to the
+ *   durable execution claim.
  */
 export function verifyExactXLayerReceipt(
   rawReceipt: unknown,
   expected: ExpectedExactSettlement,
+  provenance: XLayerSettlementProvenance | null,
 ): XLayerSettlementVerification {
   assertExecutionBinding(expected);
   if (expected.network !== XLAYER_TESTNET_NETWORK) {
@@ -180,6 +230,25 @@ export function verifyExactXLayerReceipt(
     };
   }
 
+  const blockNumber = blockNumberFrom(receipt);
+  if (!blockNumber) {
+    return {
+      state: "mismatch",
+      transactionHash: expectedHash,
+      reason: "successful receipt is missing blockNumber",
+    };
+  }
+
+  const provenanceMismatch = executionProvenanceMismatch(expected, blockNumber, provenance);
+  if (provenanceMismatch) {
+    return {
+      state: "mismatch",
+      transactionHash: expectedHash,
+      reason: provenanceMismatch,
+      blockNumber,
+    };
+  }
+
   if (!Array.isArray(receipt.logs)) {
     return {
       state: "mismatch",
@@ -201,14 +270,6 @@ export function verifyExactXLayerReceipt(
     const to = addressFromTopic(topics[2]);
     const amount = amountFromData(log.data);
     if (from === expectedPayer && to === expectedPayTo && amount === expectedAmount) {
-      const blockNumber = blockNumberFrom(receipt);
-      if (!blockNumber) {
-        return {
-          state: "mismatch",
-          transactionHash: expectedHash,
-          reason: "successful matching transfer is missing blockNumber",
-        };
-      }
       return {
         state: "settled",
         transactionHash: expectedHash,
@@ -269,28 +330,38 @@ export async function readAndVerifyXLayerSettlement(
   }
 
   const receipt = await rpc("eth_getTransactionReceipt", [expected.transactionHash]);
-  return verifyExactXLayerReceipt(receipt, expected);
+  if (receipt === null) return verifyExactXLayerReceipt(receipt, expected, null);
+
+  const receiptRecord = asRecord(receipt);
+  const blockNumber = receiptRecord && typeof receiptRecord.blockNumber === "string"
+    ? receiptRecord.blockNumber
+    : undefined;
+  if (!blockNumber) return verifyExactXLayerReceipt(receipt, expected, null);
+
+  const block = await rpc("eth_getBlockByNumber", [blockNumber, false]);
+  const blockRecord = asRecord(block);
+  const blockTimestamp = blockRecord?.timestamp;
+  return verifyExactXLayerReceipt(
+    receipt,
+    expected,
+    {
+      blockNumber,
+      blockTimestamp: typeof blockTimestamp === "string" ? blockTimestamp : "",
+    },
+  );
 }
 
 /**
  * Compatibility adapter for the existing SettlementReader seam.
- * Rich M3 reconciliation should prefer readAndVerifyXLayerSettlement so a
- * mismatch/revert is not flattened into a generic false.
+ * This seam cannot carry the durable claim timestamp or independently fetched
+ * block timestamp, so it must fail closed instead of flattening an unproven
+ * receipt into a generic boolean.
  */
 export class XLayerExactSettlementReader implements SettlementReader {
-  constructor(
-    private readonly rpc: JsonRpcTransport,
-    private readonly expected: Omit<ExpectedExactSettlement, "transactionHash" | "executionBinding"> & {
-      executionBinding: Omit<SettlementExecutionBinding, "transactionHash">;
-    },
-  ) {}
-
-  async readSettlement(transactionHash: string): Promise<{ settled: boolean }> {
-    const result = await readAndVerifyXLayerSettlement(this.rpc, {
-      ...this.expected,
-      transactionHash,
-      executionBinding: { ...this.expected.executionBinding, transactionHash },
-    });
-    return { settled: result.state === "settled" };
+  async readSettlement(_transactionHash: string): Promise<{ settled: boolean }> {
+    throw new Error(
+      "XLayerExactSettlementReader cannot establish current execution provenance; "
+      + "use readAndVerifyXLayerSettlement with the durable execution claim",
+    );
   }
 }

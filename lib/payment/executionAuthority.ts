@@ -85,6 +85,18 @@ type Ledger = {
   attempts: PaymentExecutionAttempt[];
 };
 
+/**
+ * Resolve the M3 ledger from an application-owned root, never from process.cwd().
+ * The caller must derive applicationRoot from the installed module/script
+ * location so a different launch directory cannot select a different authority.
+ */
+export function resolvePaymentExecutionLedgerPath(applicationRoot: string): string {
+  if (!path.isAbsolute(applicationRoot)) {
+    throw new Error("Payment execution ledger root must be an absolute application path");
+  }
+  return path.join(path.normalize(applicationRoot), ".m3-payment-execution-ledger.json");
+}
+
 function emptyLedger(): Ledger {
   return { version: 1, attempts: [] };
 }

@@ -7,6 +7,7 @@ import path from "node:path";
 import {
   readAndVerifyXLayerSettlement,
   verifyExactXLayerReceipt,
+  XLayerExactSettlementReader,
   XLAYER_TESTNET_CHAIN_ID_HEX,
 } from "../lib/payment/xlayerSettlement";
 import { FilePaymentExecutionAuthority } from "../lib/payment/executionAuthority";
@@ -43,6 +44,7 @@ function receipt(overrides: Record<string, unknown> = {}) {
 const expected = {
   purchaseId: "purchase-a",
   executionAttemptId: "attempt-a",
+  executionClaimedAt: 1_000_000,
   executionBinding: {
     purchaseId: "purchase-a",
     executionAttemptId: "attempt-a",
@@ -55,10 +57,11 @@ const expected = {
   payTo,
   payer,
 };
+const currentProvenance = { blockNumber: "0x123", blockTimestamp: "0x3e8" };
 
 describe("X Layer settlement readback", () => {
   it("accepts only a successful receipt with the exact approved ERC-20 transfer", () => {
-    assert.deepEqual(verifyExactXLayerReceipt(receipt(), expected), {
+    assert.deepEqual(verifyExactXLayerReceipt(receipt(), expected, currentProvenance), {
       state: "settled",
       transactionHash: txHash,
       blockNumber: "0x123",
@@ -74,7 +77,7 @@ describe("X Layer settlement readback", () => {
       executionBinding: expected.executionBinding,
     };
     assert.throws(
-      () => verifyExactXLayerReceipt(receipt(), purchaseB),
+      () => verifyExactXLayerReceipt(receipt(), purchaseB, currentProvenance),
       /not bound to this purchase execution/,
     );
   });
@@ -95,11 +98,11 @@ describe("X Layer settlement readback", () => {
   });
 
   it("distinguishes pending and reverted from settled", () => {
-    assert.deepEqual(verifyExactXLayerReceipt(null, expected), {
+    assert.deepEqual(verifyExactXLayerReceipt(null, expected, null), {
       state: "pending",
       transactionHash: txHash,
     });
-    assert.deepEqual(verifyExactXLayerReceipt(receipt({ status: "0x0" }), expected), {
+    assert.deepEqual(verifyExactXLayerReceipt(receipt({ status: "0x0" }), expected, null), {
       state: "reverted",
       transactionHash: txHash,
       blockNumber: "0x123",
@@ -114,7 +117,7 @@ describe("X Layer settlement readback", () => {
         data: uint256(9999n),
       }],
     });
-    const result = verifyExactXLayerReceipt(wrongAmount, expected);
+    const result = verifyExactXLayerReceipt(wrongAmount, expected, currentProvenance);
     assert.equal(result.state, "mismatch");
     if (result.state === "mismatch") {
       assert.match(result.reason, /approved token transfer/);
@@ -127,12 +130,13 @@ describe("X Layer settlement readback", () => {
       calls.push(method);
       if (method === "eth_chainId") return XLAYER_TESTNET_CHAIN_ID_HEX;
       if (method === "eth_getTransactionReceipt") return receipt();
+      if (method === "eth_getBlockByNumber") return { timestamp: currentProvenance.blockTimestamp };
       throw new Error("unexpected method");
     };
 
     const result = await readAndVerifyXLayerSettlement(rpc, expected);
     assert.equal(result.state, "settled");
-    assert.deepEqual(calls, ["eth_chainId", "eth_getTransactionReceipt"]);
+    assert.deepEqual(calls, ["eth_chainId", "eth_getTransactionReceipt", "eth_getBlockByNumber"]);
   });
 
   it("fails closed on a wrong RPC chain before trusting a receipt", async () => {
@@ -148,5 +152,28 @@ describe("X Layer settlement readback", () => {
       /Wrong RPC chain/,
     );
     assert.equal(receiptRead, false);
+  });
+
+  it("rejects a valid historical receipt with the same economics", () => {
+    const result = verifyExactXLayerReceipt(receipt(), expected, { blockNumber: "0x123", blockTimestamp: "0x1" });
+    assert.equal(result.state, "mismatch");
+    if (result.state === "mismatch") {
+      assert.match(result.reason, /predates the current execution claim/);
+    }
+  });
+
+  it("fails closed when settlement provenance is malformed", () => {
+    const result = verifyExactXLayerReceipt(receipt(), expected, { blockNumber: "0x123", blockTimestamp: "not-a-timestamp" });
+    assert.equal(result.state, "mismatch");
+    if (result.state === "mismatch") {
+      assert.match(result.reason, /block timestamp is missing or malformed/);
+    }
+  });
+
+  it("fails closed through the weak SettlementReader compatibility adapter", async () => {
+    await assert.rejects(
+      () => new XLayerExactSettlementReader().readSettlement(txHash),
+      /cannot establish current execution provenance/,
+    );
   });
 });
