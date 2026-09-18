@@ -93,7 +93,7 @@ When M3 is accepted, integrate its buyer-rail contract on this M4 branch and com
 
 Evidence:
 - focused changed-behavior tests only. (`tests/managementContract.test.ts` 12 pass, `tests/managementRequirements.test.ts` 18 pass via `npx tsx --test`; `npx tsc --noEmit` clean. Kernels: `lib/management/{types,contract,proposals,requirements,completion,authorization,capability,staffing,budget,options}.ts` + `lib/sourcing/eligibility.ts` — shared contract frozen at CP1.)
-- checkpoint commit: recorded below after push.
+- checkpoint commit: `27128d639829bdf83a03a6f633f2d1f47b6dc07b` (pushed to feat/m4-management-engine).
 
 ### Checkpoint 2 — managerial decision protocol
 
