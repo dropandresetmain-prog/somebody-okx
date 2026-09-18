@@ -169,6 +169,10 @@ export type Signer = {
  */
 export type SafeOfficialPaymentResponse = {
   ok: boolean | null;
+  /** Safe top-level CLI error text; never raw stderr or signing material. */
+  topLevelError?: unknown;
+  /** Process exit code for diagnostics. null means the process did not exit normally. */
+  exitCode?: number | null;
   data: {
     status?: unknown;
     txHash?: unknown;
