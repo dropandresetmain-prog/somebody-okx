@@ -248,8 +248,8 @@ export class OfficialSigningPendingExecutor implements PaymentExecutor {
  * Plan retry for a failed purchase.
  * 
  * Rules:
- * - Refuses to retry from submitted/uncertain/reconciliation_required (must reconcile first)
- * - Allows retry only from failed state
+ * - Refuses ambiguous/submitted states outright
+ * - A failed state is not itself retry authority; explicit reconciliation proof is required
  * - Prevents double-pay: same idempotencyKey + already submitted/settled → refuse
  * 
  * @param purchase - The purchase to retry
@@ -260,6 +260,7 @@ export class OfficialSigningPendingExecutor implements PaymentExecutor {
 export function planRetry(
   purchase: PurchaseRecord,
   existingPurchases: PurchaseRecord[],
+  reconciliationProof?: string,
 ): boolean {
   // Refuse to retry from ambiguous states
   if (
@@ -272,11 +273,16 @@ export function planRetry(
     );
   }
 
-  // Allow retry only from failed
+  // A local "failed" label is not proof that no payment landed. The caller
+  // must provide evidence from the reconciliation lane before a retry can even
+  // be planned.
   if (purchase.state !== "failed") {
     throw new Error(
-      `Can only retry purchase in failed state; current state is ${purchase.state}`,
+      `Can only retry a reconciled failed purchase; current state is ${purchase.state}`,
     );
+  }
+  if (!reconciliationProof?.trim()) {
+    throw new Error("Cannot retry failed purchase without reconciliation proof");
   }
 
   // Check for double-pay: same idempotencyKey + already submitted/settled
