@@ -18,6 +18,13 @@ export type PaymentExecutionStatus =
   | "settled"
   | "verified";
 
+export type PaymentAuthorizationIdentity = {
+  authorizationKind: "eip3009";
+  authorizationNonce: string;
+  authorizationValidAfter: string;
+  authorizationValidBefore: string;
+};
+
 export type PaymentExecutionAttempt = {
   attemptId: string;
   purchaseId: string;
@@ -26,6 +33,10 @@ export type PaymentExecutionAttempt = {
   status: PaymentExecutionStatus;
   transactionHash?: string;
   failureStage?: string;
+  authorizationKind?: PaymentAuthorizationIdentity["authorizationKind"];
+  authorizationNonce?: string;
+  authorizationValidAfter?: string;
+  authorizationValidBefore?: string;
   claimedAt: number;
   updatedAt: number;
 };
@@ -44,11 +55,13 @@ export type PaymentExecutionAuthority = {
     at?: number;
   }): PaymentExecutionAttempt;
   recordPreSubmissionFailure(attemptId: string, stage: string, at?: number): void;
+  recordAuthorization(attemptId: string, identity: PaymentAuthorizationIdentity, at?: number): void;
   recordAmbiguous(attemptId: string, at?: number): void;
   recordSubmitted(attemptId: string, transactionHash: string, at?: number): void;
   recordSettled(attemptId: string, at?: number): void;
   recordVerified(attemptId: string, at?: number): void;
   getAttempt(attemptId: string): PaymentExecutionAttempt | undefined;
+  getAuthorizationIdentity(attemptId: string): PaymentAuthorizationIdentity;
   getSettlementBinding(
     attemptId: string,
     purchaseId: string,
@@ -147,6 +160,21 @@ function normalizeTransactionHash(value: string): string {
   return normalized;
 }
 
+function normalizeAuthorizationNonce(value: string): string {
+  const normalized = value.toLowerCase();
+  if (!/^0x[0-9a-f]{64}$/.test(normalized)) {
+    throw new PaymentExecutionBindingError("EIP-3009 authorization nonce is not a bytes32 value");
+  }
+  return normalized;
+}
+
+function normalizeAuthorizationTime(value: string, field: string): string {
+  if (!/^(0|[1-9][0-9]*)$/.test(value)) {
+    throw new PaymentExecutionBindingError(`EIP-3009 ${field} is not an unsigned decimal integer`);
+  }
+  return BigInt(value).toString();
+}
+
 /** JSON-file implementation used by the M3 state-file application boundary. */
 export class FilePaymentExecutionAuthority implements PaymentExecutionAuthority {
   constructor(private readonly ledgerFile: string) {}
@@ -191,6 +219,36 @@ export class FilePaymentExecutionAuthority implements PaymentExecutionAuthority 
     }));
   }
 
+  recordAuthorization(attemptId: string, identity: PaymentAuthorizationIdentity, at = Date.now()): void {
+    const normalized: PaymentAuthorizationIdentity = {
+      authorizationKind: identity.authorizationKind,
+      authorizationNonce: normalizeAuthorizationNonce(identity.authorizationNonce),
+      authorizationValidAfter: normalizeAuthorizationTime(identity.authorizationValidAfter, "validAfter"),
+      authorizationValidBefore: normalizeAuthorizationTime(identity.authorizationValidBefore, "validBefore"),
+    };
+    if (normalized.authorizationKind !== "eip3009") {
+      throw new PaymentExecutionBindingError("Unsupported payment authorization kind");
+    }
+    this.update(attemptId, (attempt) => {
+      if (
+        attempt.authorizationNonce !== undefined
+        && (
+          attempt.authorizationKind !== normalized.authorizationKind
+          || attempt.authorizationNonce !== normalized.authorizationNonce
+          || attempt.authorizationValidAfter !== normalized.authorizationValidAfter
+          || attempt.authorizationValidBefore !== normalized.authorizationValidBefore
+        )
+      ) {
+        throw new PaymentExecutionBindingError("Execution attempt authorization identity cannot be replaced");
+      }
+      return {
+        ...attempt,
+        ...normalized,
+        updatedAt: at,
+      };
+    });
+  }
+
   recordAmbiguous(attemptId: string, at = Date.now()): void {
     this.update(attemptId, (attempt) => ({ ...attempt, status: "ambiguous", updatedAt: at }));
   }
@@ -221,6 +279,25 @@ export class FilePaymentExecutionAuthority implements PaymentExecutionAuthority 
   getAttempt(attemptId: string): PaymentExecutionAttempt | undefined {
     const attempt = readLedger(this.ledgerFile).attempts.find((candidate) => candidate.attemptId === attemptId);
     return attempt ? cloneAttempt(attempt) : undefined;
+  }
+
+  getAuthorizationIdentity(attemptId: string): PaymentAuthorizationIdentity {
+    const attempt = this.getAttempt(attemptId);
+    if (!attempt) throw new PaymentExecutionBindingError(`Unknown payment execution attempt ${attemptId}`);
+    if (
+      !attempt.authorizationKind
+      || !attempt.authorizationNonce
+      || !attempt.authorizationValidAfter
+      || !attempt.authorizationValidBefore
+    ) {
+      throw new PaymentExecutionBindingError("Payment execution has no durable authorization identity");
+    }
+    return {
+      authorizationKind: attempt.authorizationKind,
+      authorizationNonce: normalizeAuthorizationNonce(attempt.authorizationNonce),
+      authorizationValidAfter: normalizeAuthorizationTime(attempt.authorizationValidAfter, "validAfter"),
+      authorizationValidBefore: normalizeAuthorizationTime(attempt.authorizationValidBefore, "validBefore"),
+    };
   }
 
   getSettlementBinding(

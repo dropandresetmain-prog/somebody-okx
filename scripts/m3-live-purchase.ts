@@ -212,6 +212,7 @@ async function execute(stateFile: string, evidenceFile: string) {
   );
   const executionAttempt = executionAuthority.getAttempt(submission.executionAttemptId!);
   if (!executionAttempt) throw new Error("Submitted payment attempt disappeared from durable authority");
+  const authorization = executionAuthority.getAuthorizationIdentity(submission.executionAttemptId!);
   let verification: Awaited<ReturnType<typeof readAndVerifyXLayerSettlement>> | undefined;
   for (let i = 0; i < 12; i++) {
     verification = await readAndVerifyXLayerSettlement(rpc, {
@@ -221,6 +222,7 @@ async function execute(stateFile: string, evidenceFile: string) {
       executionAttemptId: submission.executionAttemptId!,
       executionBinding,
       executionClaimedAt: executionAttempt.claimedAt,
+      authorization,
       asset: execution.terms.asset,
       amount: execution.terms.maxAmountRequired,
       payTo: execution.terms.payTo,

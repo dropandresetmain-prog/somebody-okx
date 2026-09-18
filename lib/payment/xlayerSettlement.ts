@@ -1,5 +1,8 @@
 import type { SettlementReader } from "./types";
+import { decodeFunctionData, type Hex } from "viem";
+import { eip3009ABI } from "@okxweb3/x402-evm";
 import {
+  type PaymentAuthorizationIdentity,
   type SettlementExecutionBinding,
 } from "./executionAuthority";
 
@@ -39,11 +42,19 @@ type TransactionReceipt = {
   logs?: unknown;
 };
 
+type Transaction = {
+  hash?: unknown;
+  chainId?: unknown;
+  to?: unknown;
+  input?: unknown;
+};
+
 export type ExpectedExactSettlement = {
   purchaseId: string;
   executionAttemptId: string;
   executionBinding: SettlementExecutionBinding;
   executionClaimedAt: number;
+  authorization: PaymentAuthorizationIdentity;
   network: string;
   transactionHash: string;
   asset: string;
@@ -76,6 +87,10 @@ export type XLayerSettlementVerification =
   | { state: "reverted"; transactionHash: string; blockNumber?: string }
   | { state: "mismatch"; transactionHash: string; reason: string; blockNumber?: string }
   | { state: "settled"; transactionHash: string; blockNumber: string; transferLogIndex: number };
+
+export type XLayerTransactionVerification =
+  | { state: "valid" }
+  | { state: "mismatch"; reason: string };
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return typeof value === "object" && value !== null
@@ -121,6 +136,39 @@ function blockNumberFrom(receipt: TransactionReceipt): string | undefined {
   return typeof receipt.blockNumber === "string" ? receipt.blockNumber : undefined;
 }
 
+function unsignedIntegerFrom(value: unknown): bigint | null {
+  if (typeof value === "bigint") return value >= 0n ? value : null;
+  if (typeof value !== "string" || !/^(?:0x[0-9a-f]+|[0-9]+)$/i.test(value)) return null;
+  try {
+    const parsed = BigInt(value);
+    return parsed >= 0n ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function bytes32From(value: unknown): string | null {
+  if (typeof value !== "string" || !/^0x[0-9a-fA-F]{64}$/.test(value)) return null;
+  return value.toLowerCase();
+}
+
+function bytesFrom(value: unknown): string | null {
+  if (
+    typeof value !== "string"
+    || !/^0x[0-9a-fA-F]*$/.test(value)
+    || value.length < 4
+    || (value.length - 2) % 2 !== 0
+  ) {
+    return null;
+  }
+  return value.toLowerCase();
+}
+
+function addressFromValue(value: unknown): string | null {
+  if (typeof value !== "string" || !/^0x[0-9a-fA-F]{40}$/.test(value)) return null;
+  return value.toLowerCase();
+}
+
 function chainTimestampFrom(value: unknown): bigint | null {
   if (typeof value !== "string" || !/^(?:0x[0-9a-f]+|[0-9]+)$/i.test(value)) return null;
   try {
@@ -156,6 +204,100 @@ function executionProvenanceMismatch(
     return "settlement block timestamp predates the current execution claim beyond clock-skew tolerance";
   }
   return undefined;
+}
+
+/**
+ * Verify the independent transaction body for the current EIP-3009 attempt.
+ * The installed x402 ABI is authoritative for both accepted
+ * transferWithAuthorization overloads; signatures themselves are never
+ * returned or persisted by this verifier.
+ */
+export function verifyExactXLayerTransaction(
+  rawTransaction: unknown,
+  expected: ExpectedExactSettlement,
+): XLayerTransactionVerification {
+  assertExecutionBinding(expected);
+  if (expected.network !== XLAYER_TESTNET_NETWORK) {
+    return { state: "mismatch", reason: `Transaction verifier only permits ${XLAYER_TESTNET_NETWORK}` };
+  }
+  if (expected.authorization.authorizationKind !== "eip3009") {
+    return { state: "mismatch", reason: "Unsupported payment authorization kind" };
+  }
+
+  const transaction = asRecord(rawTransaction) as Transaction | null;
+  if (!transaction) return { state: "mismatch", reason: "eth_getTransactionByHash returned no transaction" };
+
+  const expectedHash = normalizeHash(expected.transactionHash);
+  const transactionHash = typeof transaction.hash === "string" ? transaction.hash : "";
+  let normalizedTransactionHash: string;
+  try {
+    normalizedTransactionHash = normalizeHash(transactionHash);
+  } catch {
+    return { state: "mismatch", reason: "transaction hash is missing or malformed" };
+  }
+  if (normalizedTransactionHash !== expectedHash) {
+    return { state: "mismatch", reason: "transaction hash does not match requested hash" };
+  }
+
+  const chainId = unsignedIntegerFrom(transaction.chainId);
+  if (chainId !== 1952n) {
+    return { state: "mismatch", reason: "transaction chainId is not X Layer Testnet" };
+  }
+  const transactionTarget = addressFromValue(transaction.to);
+  if (!transactionTarget || transactionTarget !== normalizeAddress(expected.asset)) {
+    return { state: "mismatch", reason: "transaction target is not the approved EIP-3009 token contract" };
+  }
+  if (typeof transaction.input !== "string" || !/^0x[0-9a-fA-F]+$/.test(transaction.input)) {
+    return { state: "mismatch", reason: "transaction input is missing or malformed" };
+  }
+
+  let decoded: { functionName: string; args?: readonly unknown[] };
+  try {
+    decoded = decodeFunctionData({ abi: eip3009ABI, data: transaction.input as Hex });
+  } catch {
+    return { state: "mismatch", reason: "transaction input is not decodable as EIP-3009 transferWithAuthorization" };
+  }
+  if (decoded.functionName !== "transferWithAuthorization" || !decoded.args) {
+    return { state: "mismatch", reason: "transaction calls an unsupported function" };
+  }
+
+  const args = Array.from(decoded.args);
+  if (args.length !== 9 && args.length !== 7) {
+    return { state: "mismatch", reason: "transaction uses an unsupported EIP-3009 overload" };
+  }
+  const from = addressFromValue(args[0]);
+  const to = addressFromValue(args[1]);
+  const value = unsignedIntegerFrom(args[2]);
+  const validAfter = unsignedIntegerFrom(args[3]);
+  const validBefore = unsignedIntegerFrom(args[4]);
+  const nonce = bytes32From(args[5]);
+  const expectedPayer = normalizeAddress(expected.payer);
+  const expectedPayTo = normalizeAddress(expected.payTo);
+  if (!from || from !== expectedPayer) return { state: "mismatch", reason: "transaction authorization payer does not match approval" };
+  if (!to || to !== expectedPayTo) return { state: "mismatch", reason: "transaction authorization recipient does not match approval" };
+  if (value === null || value !== BigInt(expected.amount)) return { state: "mismatch", reason: "transaction authorization amount does not match approval" };
+  if (validAfter === null || validBefore === null || validAfter >= validBefore) {
+    return { state: "mismatch", reason: "transaction authorization validity window is malformed" };
+  }
+  const expectedNonce = bytes32From(expected.authorization.authorizationNonce);
+  if (!expectedNonce || nonce !== expectedNonce) {
+    return { state: "mismatch", reason: "transaction authorization nonce does not match this execution attempt" };
+  }
+  if (validAfter !== BigInt(expected.authorization.authorizationValidAfter)) {
+    return { state: "mismatch", reason: "transaction validAfter does not match the durable authorization identity" };
+  }
+  if (validBefore !== BigInt(expected.authorization.authorizationValidBefore)) {
+    return { state: "mismatch", reason: "transaction validBefore does not match the durable authorization identity" };
+  }
+
+  if (args.length === 9) {
+    if (unsignedIntegerFrom(args[6]) === null || bytes32From(args[7]) === null || bytes32From(args[8]) === null) {
+      return { state: "mismatch", reason: "transaction ECDSA authorization signature fields are malformed" };
+    }
+  } else if (bytesFrom(args[6]) === null) {
+    return { state: "mismatch", reason: "transaction authorization signature bytes are malformed" };
+  }
+  return { state: "valid" };
 }
 
 /**
@@ -315,8 +457,9 @@ export function createXLayerJsonRpcTransport(
 }
 
 /**
- * Read chain identity and receipt, then independently verify exact settlement.
- * No retry is performed here: caller controls polling/reconciliation cadence.
+ * Read chain identity, transaction body, receipt, and block provenance, then
+ * independently verify exact settlement. No retry is performed here: caller
+ * controls polling/reconciliation cadence.
  */
 export async function readAndVerifyXLayerSettlement(
   rpc: JsonRpcTransport,
@@ -329,6 +472,7 @@ export async function readAndVerifyXLayerSettlement(
     );
   }
 
+  const transaction = await rpc("eth_getTransactionByHash", [expected.transactionHash]);
   const receipt = await rpc("eth_getTransactionReceipt", [expected.transactionHash]);
   if (receipt === null) return verifyExactXLayerReceipt(receipt, expected, null);
 
@@ -337,6 +481,16 @@ export async function readAndVerifyXLayerSettlement(
     ? receiptRecord.blockNumber
     : undefined;
   if (!blockNumber) return verifyExactXLayerReceipt(receipt, expected, null);
+
+  const transactionVerification = verifyExactXLayerTransaction(transaction, expected);
+  if (transactionVerification.state === "mismatch") {
+    return {
+      state: "mismatch",
+      transactionHash: normalizeHash(expected.transactionHash),
+      reason: transactionVerification.reason,
+      blockNumber,
+    };
+  }
 
   const block = await rpc("eth_getBlockByNumber", [blockNumber, false]);
   const blockRecord = asRecord(block);

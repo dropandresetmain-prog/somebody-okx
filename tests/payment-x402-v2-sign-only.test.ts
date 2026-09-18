@@ -159,13 +159,23 @@ describe("normalization and founder-approved economics", () => {
 // ── sign-only executor ──────────────────────────────────────────────────────
 
 const AUTH_SECRET_MARKER = "SECRET-SIG-MATERIAL";
+const AUTHORIZATION_NONCE = `0x${"b".repeat(64)}`;
+
+class FailingAuthorizationPersistenceAuthority extends FilePaymentExecutionAuthority {
+  override recordAuthorization(): void {
+    throw new Error("simulated authorization persistence failure");
+  }
+}
 
 function b64url(value: unknown): string {
   return Buffer.from(JSON.stringify(value)).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
-/** Emulates the official CLI: embeds the supplied accepts entry as `accepted`. */
-function fakeRunner(calls: string[][], mode: "ok" | "fail" | "hpke" | "no-amount" = "ok"): OnchainosPaymentRunner {
+/** Emulates the official CLI: embeds the supplied accepts entry and EIP-3009 authorization. */
+function fakeRunner(
+  calls: string[][],
+  mode: "ok" | "fail" | "hpke" | "no-amount" | "missing-authorization" | "malformed-nonce" = "ok",
+): OnchainosPaymentRunner {
   return async (args) => {
     calls.push(args);
     if (mode === "fail") return { ok: false, stdout: "", stderr: `boom ${AUTH_SECRET_MARKER}`, exitCode: 1 };
@@ -175,6 +185,14 @@ function fakeRunner(calls: string[][], mode: "ok" | "fail" | "hpke" | "no-amount
     const payload = JSON.parse(Buffer.from(args[args.indexOf("--payload") + 1], "base64").toString("utf8"));
     const accepted = { ...payload.accepts[0] };
     if (mode === "no-amount") delete accepted.amount;
+    const authorization = {
+      from: "0xd2dd2eb5028a1afaa09c9d350b3378f1ad4f1db4",
+      to: accepted.payTo,
+      value: accepted.amount,
+      validAfter: "5",
+      validBefore: "65",
+      nonce: mode === "malformed-nonce" ? "0x1234" : AUTHORIZATION_NONCE,
+    };
     return {
       ok: true,
       stderr: "",
@@ -182,7 +200,14 @@ function fakeRunner(calls: string[][], mode: "ok" | "fail" | "hpke" | "no-amount
       stdout: JSON.stringify({
         ok: true,
         data: {
-          authorization_header: b64url({ x402Version: 2, accepted, payload: { signature: AUTH_SECRET_MARKER } }),
+          authorization_header: b64url({
+            x402Version: 2,
+            accepted,
+            payload: {
+              signature: AUTH_SECRET_MARKER,
+              ...(mode === "missing-authorization" ? {} : { authorization }),
+            },
+          }),
           header_name: "PAYMENT-SIGNATURE",
           scheme: "exact",
           wallet: "0xwallet",
@@ -293,6 +318,53 @@ describe("official TEE sign-only + application-owned replay", () => {
     assert.ok(!serialized.includes(header));
     assert.ok(!serialized.includes(AUTH_SECRET_MARKER));
     assert.ok(!serialized.includes("authorization_header"));
+  });
+
+  it("persists only the safe EIP-3009 identity and replays exactly once", async () => {
+    const { executor, execution, authority } = setup({});
+    const result = await executor.executeApprovedPayment(inputFor(execution));
+    const identity = authority.getAuthorizationIdentity(result.executionAttemptId!);
+    assert.deepEqual(identity, {
+      authorizationKind: "eip3009",
+      authorizationNonce: AUTHORIZATION_NONCE,
+      authorizationValidAfter: "5",
+      authorizationValidBefore: "65",
+    });
+    const serializedResult = JSON.stringify(result);
+    const serializedAttempt = JSON.stringify(authority.getAttempt(result.executionAttemptId!));
+    assert.equal((result as unknown as Record<string, unknown>).authorizationNonce, undefined);
+    assert.ok(!serializedResult.includes(AUTH_SECRET_MARKER));
+    assert.ok(!serializedAttempt.includes(AUTH_SECRET_MARKER));
+    assert.ok(!serializedAttempt.includes("PAYMENT-SIGNATURE"));
+  });
+
+  it("refuses malformed or missing authorization identity before merchant replay", async () => {
+    for (const mode of ["missing-authorization", "malformed-nonce"] as const) {
+      const calls: string[][] = [];
+      const { executor, execution, fetches } = setup({ runner: fakeRunner(calls, mode) });
+      await assert.rejects(
+        () => executor.executeApprovedPayment(inputFor(execution)),
+        OfficialPaymentAmbiguousError,
+      );
+      assert.equal(calls.length, 1);
+      assert.equal(fetches.length, 0);
+    }
+  });
+
+  it("does not replay when safe authorization identity persistence fails", async () => {
+    const calls: string[][] = [];
+    const { executor, execution, fetches } = setup({
+      authority: new FailingAuthorizationPersistenceAuthority(
+        path.join(fs.mkdtempSync(path.join(os.tmpdir(), "somebody-payment-persist-failure-")), "ledger.json"),
+      ),
+      runner: fakeRunner(calls),
+    });
+    await assert.rejects(
+      () => executor.executeApprovedPayment(inputFor(execution)),
+      OfficialPaymentAmbiguousError,
+    );
+    assert.equal(calls.length, 1);
+    assert.equal(fetches.length, 0);
   });
 
   it("redacts sensitive strings recursively while preserving safe diagnostics", async () => {

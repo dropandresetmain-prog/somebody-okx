@@ -16,6 +16,7 @@ import { spawn } from "node:child_process";
 
 import { parse402Challenge } from "./challenge";
 import {
+  type PaymentAuthorizationIdentity,
   type PaymentExecutionAuthority,
 } from "./executionAuthority";
 import {
@@ -556,8 +557,8 @@ function base64Json(value: string): Record<string, unknown> | null {
 }
 
 /**
- * Transient, in-memory check that the signed header carries the confirmed
- * economic terms with a v2 `accepted.amount`. Nothing decoded here is retained.
+ * Transient check that the signed header carries the confirmed economic terms
+ * with a v2 `accepted.amount`. No decoded secret material is retained here.
  */
 function signedHeaderMatchesTerms(header: string, terms: NormalizedChallengeTerms): boolean {
   const accepted = asRecord(base64Json(header)?.accepted);
@@ -570,6 +571,60 @@ function signedHeaderMatchesTerms(header: string, terms: NormalizedChallengeTerm
     typeof accepted.asset === "string" &&
     accepted.asset.toLowerCase() === terms.asset.toLowerCase()
   );
+}
+
+function unsignedDecimal(value: unknown): string | null {
+  if (typeof value !== "string" || !/^(0|[1-9][0-9]*)$/.test(value)) return null;
+  return BigInt(value).toString();
+}
+
+function bytes32(value: unknown): string | null {
+  if (typeof value !== "string" || !/^0x[0-9a-fA-F]{64}$/.test(value)) return null;
+  return value.toLowerCase();
+}
+
+/**
+ * Extract only the non-secret EIP-3009 identity from one transient signed
+ * header. The header, payload, and signature are intentionally not returned.
+ */
+function signedAuthorizationIdentity(
+  header: string,
+  terms: NormalizedChallengeTerms,
+): PaymentAuthorizationIdentity | null {
+  const root = base64Json(header);
+  const accepted = asRecord(root?.accepted);
+  const payload = asRecord(root?.payload);
+  const authorization = asRecord(payload?.authorization);
+  if (
+    !accepted
+    || !payload
+    || !authorization
+    || typeof payload.signature !== "string"
+    || payload.signature.length === 0
+  ) return null;
+
+  const amount = unsignedDecimal(authorization.value);
+  const validAfter = unsignedDecimal(authorization.validAfter);
+  const validBefore = unsignedDecimal(authorization.validBefore);
+  const nonce = bytes32(authorization.nonce);
+  const to = typeof authorization.to === "string" ? authorization.to.toLowerCase() : "";
+  if (
+    amount === null
+    || validAfter === null
+    || validBefore === null
+    || nonce === null
+    || to !== terms.payTo.toLowerCase()
+    || amount !== terms.maxAmountRequired
+    || BigInt(validAfter) >= BigInt(validBefore)
+  ) {
+    return null;
+  }
+  return {
+    authorizationKind: "eip3009",
+    authorizationNonce: nonce,
+    authorizationValidAfter: validAfter,
+    authorizationValidBefore: validBefore,
+  };
 }
 
 function boundedText(text: string): string {
@@ -733,6 +788,32 @@ export class OfficialSignOnlyReplayExecutor implements PaymentExecutor {
     }
     if (!signedHeaderMatchesTerms(authorization, this.quoted.terms)) {
       throw signFailure("Signed authorization does not carry the confirmed terms with accepted.amount");
+    }
+
+    const authorizationIdentity = signedAuthorizationIdentity(authorization, this.quoted.terms);
+    if (!authorizationIdentity) {
+      try {
+        this.executionAuthority.recordAmbiguous(attempt.attemptId, this.now());
+      } catch {
+        // The original signed authorization remains local and is never replayed.
+      }
+      throw new OfficialPaymentAmbiguousError(
+        paymentId,
+        "Signed authorization lacks a valid EIP-3009 identity; reconcile before any new payment",
+      );
+    }
+    try {
+      this.executionAuthority.recordAuthorization(attempt.attemptId, authorizationIdentity, this.now());
+    } catch {
+      try {
+        this.executionAuthority.recordAmbiguous(attempt.attemptId, this.now());
+      } catch {
+        // Do not allow a persistence failure to reach the merchant replay.
+      }
+      throw new OfficialPaymentAmbiguousError(
+        paymentId,
+        "Signed authorization identity could not be durably recorded; reconcile before any new payment",
+      );
     }
 
     // ── 2. Application-owned replay: exactly one request, no redirects. ──
