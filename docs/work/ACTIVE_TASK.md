@@ -3,6 +3,31 @@
 Status: **ACTIVE — M2 ACCEPTED; stop before real payment / supervised M3**  
 Updated: **18 September 2026**
 
+## M3 PAYMENT INTEGRATION PREFLIGHT — NO-GO BEFORE NEXT SIGNED ATTEMPT
+
+Audit date: **18 September 2026**. Full matrix and local preflight:
+`docs/work/M3_PAYMENT_PREFLIGHT.md`.
+
+Current finding: the next payment is **not authorized yet**. JIT quote handling is
+fixed, but the wallet signing path must pass harmless personal + EIP-712 canaries
+after a supported clean login, and the live Mock Merchant asset must be re-probed
+because Sep-17 runtime returned USDC_TEST while current official OKX payment docs
+describe USD₮0.
+
+Application hardening on `feat/m3-live-payment` now also:
+- accepts current `amount` and historical `maxAmountRequired` x402 shapes
+  without accepting disagreement;
+- classifies source-proven quote/HPKE failures as pre-submission while keeping
+  unknown CLI failures ambiguous;
+- forces post-submission failures and failed-purchase retries through explicit
+  reconciliation evidence;
+- independently verifies X Layer chain/receipt + exact ERC-20 Transfer terms.
+
+No payment command was run during this audit. No authorization was created.
+Do not merge M3 to main.
+
+---
+
 ## M2 ACCEPTED — live runtime proof (fix/m2-live-acceptance)
 
 Deployment: `clean-tapir-151` (`dropandreset-main/somebody-okx`). Provider: `openrouter` / `openai/gpt-5.6-terra`.
