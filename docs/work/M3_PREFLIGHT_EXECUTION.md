@@ -4,7 +4,7 @@
 **Branch:** `feat/m3-live-payment`
 **Preflight start SHA:** `530d2043502a7dddf38ee00738ccb0e3c9cad6d5`
 **Repair SHA:** `f4381372e831b0c3a082e4f459f9cb450401760f`
-**Status:** **NO-GO — one local blocker (repairable) and one upstream blocker (not ours to fix)**
+**Status:** **NO-GO — blocked solely on local wallet signing (repairable, needs one founder login)**
 
 This document records the preflight in `M3_PAYMENT_PREFLIGHT.md` actually being
 *executed* on the founder machine. The prior audit could edit the branch but had
@@ -100,7 +100,7 @@ evidence of signing health — only the canary is.
 the delete may fail the same way — and logout would still report success. The
 stale target must therefore be **verified gone**, not assumed gone.
 
-## 3. Blocker 2 — the merchant advertises a domain the token cannot verify
+## 3. Risk 2 — the challenge advertises a domain the token does not use
 
 The live challenge asks us to sign EIP-712 typed data with domain
 `{"name":"USDC_TEST","version":"1"}` for asset
