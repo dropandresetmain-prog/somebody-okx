@@ -81,6 +81,31 @@ export class OfficialPaymentAmbiguousError extends Error {
   }
 }
 
+export type OfficialPreSubmissionFailureStage =
+  | "quote_state"
+  | "wallet_session_crypto";
+
+/**
+ * Source-proven failure before a payment proof can reach the merchant.
+ *
+ * This distinction matters for reconciliation: a known pre-submission failure
+ * must not be mislabeled as submitted, while every unknown/non-clean CLI
+ * failure remains ambiguous and therefore non-retryable until reconciled.
+ */
+export class OfficialPaymentPreSubmissionError extends Error {
+  readonly definitelyNotSubmitted = true as const;
+
+  constructor(
+    public readonly paymentId: string,
+    public readonly stage: OfficialPreSubmissionFailureStage,
+    message: string,
+    public readonly safeResponse?: SafeOfficialPaymentResponse,
+  ) {
+    super(message);
+    this.name = "OfficialPaymentPreSubmissionError";
+  }
+}
+
 /** Material economic terms changed between confirmation and execution. */
 export class PaymentTermsMutationError extends Error {
   constructor(
@@ -288,7 +313,22 @@ function sanitizeSafeValue(value: unknown): unknown {
   return sanitized;
 }
 
-function safeResponseFrom(parsed: unknown): SafeOfficialPaymentResponse {
+function sanitizeSafeErrorText(value: unknown): unknown {
+  if (typeof value !== "string") return undefined;
+  // Keep bounded diagnostic text while redacting obvious inline credential-like
+  // values. Raw stderr is never persisted by this adapter.
+  return value
+    .slice(0, 1000)
+    .replace(
+      /\b(authorization|signature|session[_ -]?key|access[_ -]?token|refresh[_ -]?token|private[_ -]?key|secret|password)\b\s*[:=]\s*[^\s,;]+/gi,
+      "$1=[redacted]",
+    );
+}
+
+function safeResponseFrom(
+  parsed: unknown,
+  exitCode?: number | null,
+): SafeOfficialPaymentResponse {
   const root = asRecord(parsed);
   const rawData = asRecord(root?.data);
   const data = rawData
@@ -299,10 +339,45 @@ function safeResponseFrom(parsed: unknown): SafeOfficialPaymentResponse {
       )
     : null;
 
+  const topLevelError = sanitizeSafeErrorText(root?.error);
   return {
     ok: typeof root?.ok === "boolean" ? root.ok : null,
+    ...(topLevelError !== undefined ? { topLevelError } : {}),
+    ...(exitCode !== undefined ? { exitCode } : {}),
     data,
   };
+}
+
+function safeResponseFromStdout(
+  stdout: string,
+  exitCode: number | null,
+): SafeOfficialPaymentResponse | undefined {
+  try {
+    return safeResponseFrom(JSON.parse(stdout), exitCode);
+  } catch {
+    return undefined;
+  }
+}
+
+function knownPreSubmissionStage(
+  safeResponse: SafeOfficialPaymentResponse | undefined,
+  stderr: string,
+): OfficialPreSubmissionFailureStage | undefined {
+  const topError =
+    typeof safeResponse?.topLevelError === "string" ? safeResponse.topLevelError : "";
+  // stderr may help classify a supported CLI error, but is never retained.
+  const diagnostic = `${topError}\n${stderr}`.toLowerCase();
+
+  if (diagnostic.includes("quote_expired_or_missing")) {
+    return "quote_state";
+  }
+  if (
+    diagnostic.includes("hpke decryption failed") ||
+    diagnostic.includes("failed to open ciphertext")
+  ) {
+    return "wallet_session_crypto";
+  }
+  return undefined;
 }
 
 /** Parse safe receipt/merchant metadata; intentionally discard authorization material. */
@@ -403,9 +478,22 @@ export class OfficialOnchainosPaymentExecutor implements PaymentExecutor {
       "--yes",
     ]);
     if (!result.ok) {
+      const safeResponse = safeResponseFromStdout(result.stdout, result.exitCode);
+      const stage = knownPreSubmissionStage(safeResponse, result.stderr);
+      if (stage) {
+        throw new OfficialPaymentPreSubmissionError(
+          this.quoted.paymentId,
+          stage,
+          stage === "wallet_session_crypto"
+            ? "Official Agentic Wallet session/signing material failed before a payment proof was produced"
+            : "Official payment quote state expired or disappeared before signing",
+          safeResponse,
+        );
+      }
       throw new OfficialPaymentAmbiguousError(
         this.quoted.paymentId,
         "Official payment command did not complete cleanly; reconcile before retrying",
+        safeResponse,
       );
     }
     return parseOfficialPaymentSubmission(result.stdout, this.quoted.paymentId);
