@@ -45,6 +45,32 @@ describe("402 Challenge Parsing and Binding", () => {
       assert.strictEqual(terms[0].maxTimeoutSeconds, 300);
     });
 
+    it("normalizes the current x402 v2 amount field", () => {
+      const currentWireShape = {
+        x402Version: 2,
+        accepts: [{
+          ...mockChallengeBody.accepts[0],
+          amount: "10000",
+          maxAmountRequired: undefined,
+        }],
+      };
+      const terms = parse402Challenge(currentWireShape);
+      assert.strictEqual(terms.length, 1);
+      assert.strictEqual(terms[0].maxAmountRequired, "10000");
+    });
+
+    it("rejects an entry when amount aliases conflict", () => {
+      const conflicting = {
+        x402Version: 2,
+        accepts: [{
+          ...mockChallengeBody.accepts[0],
+          amount: "9999",
+          maxAmountRequired: "10000",
+        }],
+      };
+      assert.deepStrictEqual(parse402Challenge(conflicting), []);
+    });
+
     it("throws if x402Version missing", () => {
       const invalidBody = { accepts: mockChallengeBody.accepts };
       assert.throws(
