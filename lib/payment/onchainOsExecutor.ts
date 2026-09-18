@@ -561,7 +561,11 @@ export class OfficialSignOnlyReplayExecutor implements PaymentExecutor {
     }
     // The requirement handed to the signer must express exactly the confirmed
     // economics, with a v2 `amount`.
-    const signedTerms = parse402Challenge({ x402Version: 2, accepts: [requirement] })[0];
+    const signedTerms = parse402Challenge({
+      x402Version: 2,
+      resource: { url: this.quoted.terms.resource },
+      accepts: [requirement],
+    })[0];
     if (
       !signedTerms ||
       requirement.amount !== signedTerms.maxAmountRequired ||

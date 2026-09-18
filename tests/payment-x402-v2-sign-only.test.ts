@@ -193,7 +193,7 @@ function setup(opts: {
   runner?: OnchainosPaymentRunner;
   fetchImpl?: MerchantReplayFetch;
   execution?: ReturnType<typeof buildQuoteFromChallenge>;
-  challenge?: { x402Version: number; accepts: unknown[] };
+  challenge?: { x402Version: number; resource?: unknown; accepts: unknown[] };
   now?: number;
   url?: string;
 }) {
@@ -390,5 +390,24 @@ describe("official TEE sign-only + application-owned replay", () => {
       /Merchant URL/,
     );
     assert.equal(publicPort.calls.length, 0);
+  });
+  it("signs a native v2 challenge whose resource is top-level only", async () => {
+    const { resource: _omit, ...entryWithoutResource } = legacyEntry as Record<string, unknown>;
+    const nativeChallenge = {
+      x402Version: 2,
+      resource: { url: "/m3/paid-ping" },
+      accepts: [{
+        ...entryWithoutResource,
+        asset: "0x9e29b3aada05bf2d2c827af80bd28dc0b9b4fb0c",
+        payTo: "0x1111111111111111111111111111111111111111",
+        extra: { name: "USD₮0", version: "1" },
+        amount: "10000",
+      }],
+    };
+    const execution = buildQuoteFromChallenge(nativeChallenge, "local-exec", 10);
+    const local = setup({ challenge: nativeChallenge, execution, url: "http://127.0.0.1:4021/m3/paid-ping" });
+    const result = await local.executor.executeApprovedPayment(inputFor(execution));
+    assert.equal(result.submitted, true);
+    assert.equal(local.fetches.length, 1);
   });
 });
