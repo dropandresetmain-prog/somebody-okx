@@ -11,6 +11,11 @@ import {
   type OfficialQuotedPayment,
   type PreviewQuote,
 } from "./onchainOsExecutor";
+import {
+  assertAssetDomainCompatible,
+  type AssetDomainVerdict,
+} from "./assetDomain";
+import type { JsonRpcTransport } from "./xlayerSettlement";
 import type { PaymentApproval, PurchaseRecord, RailConfig } from "./types";
 
 export type ReadyToSignPurchase = {
@@ -92,5 +97,30 @@ export function authorizeFreshExecutionQuote(input: {
     purchaseId: input.purchase.id,
     execution: input.execution,
     now: input.now,
+  });
+}
+
+/**
+ * Read-only asset-domain preflight for an approved, ready-to-sign purchase.
+ *
+ * Run this after `prepareApprovedPurchase` and BEFORE constructing the payment
+ * executor. It proves that the EIP-712 domain the 402 challenge tells us to
+ * sign actually matches the deployed token. A mismatch here is terminal for the
+ * attempt: the resulting signature would be unverifiable by the asset, so the
+ * facilitator could never settle it and the merchant would keep returning 402
+ * with no funds moved and no transaction to reconcile.
+ *
+ * Throws `AssetDomainMismatchError` on a proven mismatch. Returns the verdict
+ * otherwise so an `unverifiable` result is recorded rather than assumed safe.
+ */
+export async function preflightApprovedPurchaseAssetDomain(
+  rpc: JsonRpcTransport,
+  prepared: PreparedPayment,
+  decimals?: number,
+): Promise<AssetDomainVerdict> {
+  return assertAssetDomainCompatible(rpc, prepared.terms.asset, {
+    name: prepared.terms.eip712.name,
+    version: prepared.terms.eip712.version,
+    decimals,
   });
 }
