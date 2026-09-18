@@ -163,6 +163,23 @@ describe("402 Challenge Parsing and Binding", () => {
       assert.strictEqual(intent.state, "ready_to_sign");
     });
 
+    it("compares atomic amounts exactly beyond JavaScript safe integers", () => {
+      const terms = {
+        ...parse402Challenge(mockChallengeBody)[0],
+        maxAmountRequired: "9007199254740993",
+      };
+      const approval = { ...mockApproval, approvedMaxAmount: "9007199254740992" };
+      assert.throws(() => bindTermsToApproval(terms, approval), /Amount exceeds approval/);
+    });
+
+    it("rejects non-atomic amount formats", () => {
+      const terms = {
+        ...parse402Challenge(mockChallengeBody)[0],
+        maxAmountRequired: "0.01",
+      };
+      assert.throws(() => bindTermsToApproval(terms, mockApproval), /atomic units/);
+    });
+
     it("dynamically binds challenge values", () => {
       // Test that mutating the challenge body changes the bound intent
       const challenge1 = {

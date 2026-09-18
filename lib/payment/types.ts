@@ -183,11 +183,15 @@ export type PaymentExecutor = {
   readonly kind: "official_onchainos" | "test_scaffold";
   executeApprovedPayment(input: {
     intentId: string;
+    scheme: string;
     network: string;
     asset: string;
     amount: string;
     payTo: string;
     resource: string;
+    eip712Name: string;
+    eip712Version: string;
+    maxTimeoutSeconds: number;
     approvalId: string;
   }): Promise<PaymentSubmissionResult>;
 };

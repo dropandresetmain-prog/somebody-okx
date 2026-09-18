@@ -13,7 +13,7 @@ import type {
   PaymentExecutor,
   PaymentSubmissionResult,
 } from "./types";
-import { parse402Challenge, bindTermsToApproval } from "./challenge";
+import { parse402Challenge, bindTermsToApproval, parseAtomicAmount } from "./challenge";
 import { assertIdempotencyDistinct } from "./purchase";
 
 export type { PaymentExecutor, PaymentSubmissionResult };
@@ -61,8 +61,12 @@ export function preparePayment(
     throw new Error("No valid payment terms found in 402 challenge");
   }
 
-  // Select first scheme (in production, could implement scheme selection logic)
-  const terms = allTerms[0];
+  // M3 only authorizes exact, fixed-price payments. Never let a changed
+  // merchant ordering silently select an unsupported/deferred scheme.
+  const terms = allTerms.find((candidate) => candidate.scheme === "exact");
+  if (!terms) {
+    throw new Error("No supported exact payment terms found in 402 challenge");
+  }
 
   // Validate network is allowed
   if (!config.allowedNetworks.includes(terms.network)) {
@@ -72,12 +76,8 @@ export function preparePayment(
   }
 
   // Validate amount is within spend limit
-  const requiredAmount = parseFloat(terms.maxAmountRequired);
-  const maxSpend = parseFloat(config.maxSpend);
-
-  if (isNaN(requiredAmount) || isNaN(maxSpend)) {
-    throw new Error("Invalid amount values");
-  }
+  const requiredAmount = parseAtomicAmount(terms.maxAmountRequired, "terms");
+  const maxSpend = parseAtomicAmount(config.maxSpend, "rail maximum");
 
   if (requiredAmount > maxSpend) {
     throw new Error(
@@ -151,11 +151,15 @@ export async function executeApprovedPayment(
   }
   return executor.executeApprovedPayment({
     intentId: prepared.intent.intentId,
+    scheme: prepared.terms.scheme,
     network: prepared.terms.network,
     asset: prepared.terms.asset,
     amount: prepared.terms.maxAmountRequired,
     payTo: prepared.terms.payTo,
     resource: prepared.terms.resource,
+    eip712Name: prepared.terms.eip712.name,
+    eip712Version: prepared.terms.eip712.version,
+    maxTimeoutSeconds: prepared.terms.maxTimeoutSeconds,
     approvalId: prepared.intent.approval.approvalId,
   });
 }
@@ -176,11 +180,15 @@ export class TestScaffoldPaymentExecutor implements PaymentExecutor {
 
   async executeApprovedPayment(input: {
     intentId: string;
+    scheme: string;
     network: string;
     asset: string;
     amount: string;
     payTo: string;
     resource: string;
+    eip712Name: string;
+    eip712Version: string;
+    maxTimeoutSeconds: number;
     approvalId: string;
   }): Promise<PaymentSubmissionResult> {
     const payload = {

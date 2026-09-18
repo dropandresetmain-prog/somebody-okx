@@ -110,6 +110,26 @@ describe("Buyer Rail", () => {
         /No valid payment terms/
       );
     });
+
+    it("selects exact even when the merchant lists a deferred scheme first", () => {
+      const deferredFirst = {
+        ...mockChallengeBody,
+        accepts: [
+          { ...mockChallengeBody.accepts[0], scheme: "aggr_deferred" },
+          mockChallengeBody.accepts[0],
+        ],
+      };
+      const prepared = preparePayment(deferredFirst, mockApproval, mockConfig);
+      assert.strictEqual(prepared.terms.scheme, "exact");
+    });
+
+    it("refuses a challenge with no fixed-price exact scheme", () => {
+      const noExact = {
+        ...mockChallengeBody,
+        accepts: [{ ...mockChallengeBody.accepts[0], scheme: "aggr_deferred" }],
+      };
+      assert.throws(() => preparePayment(noExact, mockApproval, mockConfig), /No supported exact/);
+    });
   });
 
   describe("executeSignedPayment", () => {

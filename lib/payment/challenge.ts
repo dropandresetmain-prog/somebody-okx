@@ -153,13 +153,10 @@ export function bindTermsToApproval(
     );
   }
 
-  // Verify amount is within approved bounds (decimal comparison)
-  const requiredAmount = parseFloat(terms.maxAmountRequired);
-  const approvedAmount = parseFloat(approval.approvedMaxAmount);
-
-  if (isNaN(requiredAmount) || isNaN(approvedAmount)) {
-    throw new Error("Amount values must be valid decimal numbers");
-  }
+  // x402 amounts are atomic integer units. Floating-point comparison would
+  // silently lose precision for larger token amounts, widening spend bounds.
+  const requiredAmount = parseAtomicAmount(terms.maxAmountRequired, "terms");
+  const approvedAmount = parseAtomicAmount(approval.approvedMaxAmount, "approval");
 
   if (requiredAmount > approvedAmount) {
     throw new Error(
@@ -175,6 +172,13 @@ export function bindTermsToApproval(
     boundAt: boundAt ?? 0,
     state: "ready_to_sign",
   };
+}
+
+export function parseAtomicAmount(value: string, source: string): bigint {
+  if (!/^(0|[1-9][0-9]*)$/.test(value)) {
+    throw new Error(`${source} amount must be a non-negative integer in atomic units`);
+  }
+  return BigInt(value);
 }
 
 /**
