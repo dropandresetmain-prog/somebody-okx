@@ -8,6 +8,7 @@ import {
   EXECUTION_QUOTE_MAX_AGE_MS,
   OfficialOnchainosPaymentExecutor,
   OfficialPaymentAmbiguousError,
+  OfficialPaymentPreSubmissionError,
   paymentTermsFingerprint,
   PaymentTermsMutationError,
   StaleExecutionQuoteError,
@@ -222,6 +223,50 @@ describe("Official Onchain OS payment executor", () => {
       },
     });
     assert.ok(!JSON.stringify(error).includes("authorization_header"));
+  });
+
+  it("classifies source-proven quote/HPKE failures as definitely pre-submission", async () => {
+    const confirmation = confirmPreviewPaymentTerms({
+      confirmationId: "founder-confirmation-1",
+      confirmedAt: 1,
+      purchaseId: "purchase-m3-1",
+      preview: quote("pay_preview_1", 1),
+    });
+
+    for (const [topLevelError, expectedStage] of [
+      ["quote_expired_or_missing: pay_quoted_1", "quote_state"],
+      ["HPKE decryption failed: Failed to open ciphertext", "wallet_session_crypto"],
+    ] as const) {
+      const executor = new OfficialOnchainosPaymentExecutor(
+        quote("pay_quoted_1", 10),
+        confirmation,
+        async () => ({
+          ok: false,
+          stderr: "",
+          exitCode: 1,
+          stdout: JSON.stringify({ ok: false, error: topLevelError, data: null }),
+        }),
+        () => 15,
+      );
+
+      let caught: unknown;
+      await assert.rejects(
+        () => executor.executeApprovedPayment(input),
+        (error: unknown) => {
+          caught = error;
+          return error instanceof OfficialPaymentPreSubmissionError;
+        },
+      );
+      const error = caught as OfficialPaymentPreSubmissionError;
+      assert.equal(error.stage, expectedStage);
+      assert.equal(error.definitelyNotSubmitted, true);
+      assert.deepEqual(error.safeResponse, {
+        ok: false,
+        topLevelError,
+        exitCode: 1,
+        data: null,
+      });
+    }
   });
 
   it("renders the required confirmation surface without secrets", () => {
