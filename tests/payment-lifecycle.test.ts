@@ -382,6 +382,37 @@ describe("Payment Lifecycle State Machine", () => {
     });
   });
 
+  describe("Post-submission failure safety", () => {
+    test("a failure reported after submission routes to reconciliation, not failed", () => {
+      let { state, context } = initial();
+
+      for (const event of [
+        { type: "request_approval", requestedBy: "user", reason: "test" },
+        { type: "grant_approval", grantedBy: "admin", approvalId: "approval-123" },
+        { type: "attempt_payment", paymentId: "payment-123" },
+        { type: "submit_payment", transactionHash: "0xabc" },
+      ] as PaymentEvent[]) {
+        const result = transition(state, event, context);
+        assert.equal(result.success, true);
+        if (result.success) {
+          state = result.state;
+          context = result.context;
+        }
+      }
+
+      const result = transition(
+        state,
+        { type: "report_failure", failureReason: "merchant returned an error after submission" },
+        context,
+      );
+      assert.equal(result.success, true);
+      if (result.success) {
+        assert.equal(result.state, "reconciliation_required");
+        assert.match(result.context.uncertaintyReason ?? "", /after submission/i);
+      }
+    });
+  });
+
   describe("Failure invariants", () => {
     test("failure cannot become verified", () => {
       let { state, context } = initial();
