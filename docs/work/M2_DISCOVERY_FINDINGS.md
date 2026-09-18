@@ -1,62 +1,115 @@
 # M2 Discovery Findings
 
-Status: **Discovery research complete — no supported programmatic primitive confirmed**
-Date: 2026-09-17
-Lane: B (Market Discovery)
+Status: **CORRECTED — official Onchain OS CLI discovery confirmed**  
+Date: 2026-09-18  
+Correction of: overnight Lane B finding that claimed no supported programmatic primitive  
+CLI verified: **onchainos 4.6.1** (official release `okx/onchainos-skills` v4.6.1)
 
-## Research Conducted
+## Correction summary
 
-### 1. npm registry search
+The overnight report incorrectly concluded that no supported OKX discovery CLI exists.
 
-| Query | Result |
-|-------|--------|
-| `npm view @okx/agent` | **404 Not Found** — package does not exist |
-| `npm search okx-agent` | Found `desic-okx-agent` (third-party, not official OKX), `hvip-mcp-server` (third-party OKX REST wrapper), `agent-tradekit-cli` (trading CLI by `okx_retail`, not agent discovery) |
-| `npm view okx-cli` | **Unrelated placeholder** — v0.0.0, maintainer `scriptpower`, no OKX affiliation, 746 bytes unpacked |
+The official current `okx/onchainos-skills` CLI **does** expose marketplace discovery:
 
-### 2. Official OKX.AI documentation review
+| Command | Auth required (observed) | Need-driven without on-chain job? |
+|---------|--------------------------|-----------------------------------|
+| `onchainos agent service-match --keywords …` | **No** (works unauthenticated) | **Yes** — primary live path |
+| `onchainos agent search --query "…"` | **Yes** (`onchainos wallet login`) | Yes — free-text agent search |
+| `onchainos agent service-list --agent-id <id>` | **Yes** (login) | Per-agent service inspection |
+| `onchainos agent asp-match --job-id <id>` | Likely yes | **No** — requires an existing task/job |
 
-**Pages fetched and analyzed:**
-- `https://web3.okx.com/onchainos/dev-docs/okxai/asp-introduction`
-- `https://web3.okx.com/onchainos/dev-docs/okxai/howtomcp`
+### Important discrepancy vs earlier skill wording
 
-**Findings:**
-- ASP docs describe the marketplace concept: A2A (negotiated) and A2MCP (fixed-price per call) service types.
-- "Active order taking" is mentioned — agents can search for matching public tasks — but this is described as a **UI/prompt workflow inside OKX.AI**, not an externally callable API or CLI.
-- A2MCP guide covers how ASPs register endpoints (free or x402 pay-per-call), but does NOT document any consumer-side discovery API.
-- No mention of `agent search`, `agent service-list`, or `agent asp-match` as documented CLI commands or programmatic endpoints.
-- No SDK, REST API, or machine-readable discovery surface for searching/listing agent services from outside OKX.AI.
+Some skill/docs text describes `asp-match --task-desc`. In **CLI v4.6.1** that flag does **not** exist:
 
-### 3. Contract-mentioned primitives
+```text
+onchainos agent asp-match --task-desc "…"
+→ error: unexpected argument '--task-desc'
+Usage: onchainos agent asp-match [OPTIONS] --job-id <JOB_ID>
+```
 
-The shared contract (§4) mentions `agent search`, `agent service-list`, `agent asp-match` as concepts. However:
-- These appear to be OKX.AI internal/marketplace UI concepts, not documented external APIs.
-- No CLI binary, npm package, or programmatic endpoint was found that implements them.
-- The OKX.AI FAQ page and agent installation guide were not separately fetched but the main docs make clear that discovery is a marketplace-internal workflow.
+Task-description / capability matching **without** a job is supported by:
 
-## Conclusion
+```bash
+onchainos agent service-match --keywords <words…> --limit 5
+```
 
-**No supported official OKX programmatic discovery primitive was confirmed.**
+and (when logged in):
 
-- No official npm package for agent/service discovery exists.
-- No documented REST API or CLI for `agent search` / `agent service-list` / `agent asp-match` exists in the public docs.
-- The `agent-tradekit-cli` package is for trading, not agent discovery.
-- Scraping OKX.AI HTML is explicitly forbidden by the contract and would be fragile/unreliable.
+```bash
+onchainos agent search --query "<free text>"
+```
 
-## Implementation Decision
+## Installation (official only)
 
-**Snapshot is the primary discovery path.**
+Windows (verified):
 
-- `lib/market/snapshotData.ts` — small synchronized snapshot of the 4 demo offerings.
-- `lib/market/snapshotDiscovery.ts` — `MarketDiscovery` impl filtering by resourceClass + task keywords.
-- `lib/market/okxDiscovery.ts` — adapter behind the same `MarketDiscovery` interface, currently delegates to snapshot. Clearly documented as the file to replace when a founder-gated live CLI integration becomes available.
+```powershell
+# Official release binary (not a third-party npm package)
+# https://github.com/okx/onchainos-skills/releases/tag/v4.6.1
+# asset: onchainos-x86_64-pc-windows-msvc.exe → %USERPROFILE%\.local\bin\onchainos.exe
+```
 
-## Founder-Gated Next Steps
+Do **not** install similarly named third-party npm packages (`okx-cli`, `desic-okx-agent`, etc.).
 
-When/if OKX releases an official agent discovery CLI or SDK:
+## Live probes (2026-09-18)
 
-1. Install the official package.
-2. Implement `createOkxDiscovery()` to shell out to the CLI or call the SDK from a **Next.js server bridge** (NOT from a Convex Node action — CLI tools may need filesystem/network access that Convex restricts).
-3. Parse machine-readable JSON output into `MarketOffering[]`.
-4. Pass results through the verified service registry before use.
-5. The `MarketDiscovery` interface remains unchanged — only `okxDiscovery.ts` changes.
+### CLI version
+
+```text
+onchainos 4.6.1
+```
+
+### service-match (no login) — SUCCESS
+
+```bash
+onchainos agent service-match --keywords "social" "intelligence" "twitter" "X" --limit 5
+```
+
+Returned real marketplace services (examples observed): XAgent Portfolio Health, Token Security Scan, X Layer Wallet Activity, XBubbleAI Health Check, etc. Fields include `aspAgentId`, `aspName`, `securityRate`, `feedbackRate`, `soldCount`, `serviceId`, `serviceName`, `serviceDescription`, `serviceType`, `feeAmount`, `feeToken` / `feeTokenSymbol`.
+
+Newsliquid / FlyBeacon / xbird **did not** appear in these unauthenticated keyword matches. A targeted `service-match --keywords "OpenNews" "Newsliquid" "twitter" "search"` returned zero services.
+
+### agent search — LOGIN REQUIRED
+
+```bash
+onchainos agent search --query "current X social intelligence search for customer language"
+→ {"ok":false,"error":"session expired, please login again: onchainos wallet login"}
+```
+
+### service-list for snapshot agent ids — LOGIN REQUIRED
+
+```bash
+onchainos agent service-list --agent-id 2135
+onchainos agent service-list --agent-id 4442
+→ session expired / wallet login required
+```
+
+Founder action if deeper agent-scoped inspection is needed:
+
+```bash
+onchainos wallet login
+```
+
+(interactive; stop at that boundary — do not automate credentials).
+
+## Implementation decision (corrected)
+
+**Primary:** official live discovery via `MarketDiscovery` → `OkxDiscoveryAdapter` → `onchainos` CLI (prefer `service-match`; optionally `search` / `service-list` when authenticated).
+
+**Fallback:** synchronized snapshot (`lib/market/snapshotDiscovery.ts`) **only** when live CLI/bridge fails or returns no registry-compatible offerings — with **explicit, persisted provenance** (`source.kind: "snapshot"` plus `raw.fallbackReason`). Never silent degrade.
+
+**Runtime boundary:** do not assume Convex Node can shell out. Preferred demo path is a documented local/Next.js CLI bridge; Convex injects `MarketDiscovery` and records provenance. Discovery output remains **untrusted** until verified registry + candidate assessment.
+
+## Trust boundary (unchanged)
+
+```text
+external discovery
+→ untrusted MarketOffering
+→ application verified service/resource mapping
+→ generic CandidateAssessment
+→ approved provider path
+→ deterministic sourcing kernel
+```
+
+Discovery does not authorize spend. Provider identity does not imply resource compatibility. The model does not choose the final provider.

@@ -67,4 +67,7 @@ No wallet creation, no signing, no transaction submission, no spend, no founder 
 
 - `tests/growthWorker.test.ts` was not produced by Lane C; PRIMARY verified tool materialization + no-spend-grant with a throwaway probe and the growth capability definition is covered indirectly. LOW risk; recommend a dedicated test before M5.
 - Full live Convex resume (waiting→fulfilled→resumed run) is not exercised end-to-end because no deployment/credentials are present in this environment. It is IMPLEMENTATION-READY; live acceptance is founder-gated.
-- Discovery uses the synchronized snapshot as primary; no supported official OKX programmatic discovery primitive was confirmed (Lane B finding). The `MarketDiscovery` interface is replaceable when one is available.
+- Discovery uses the official Onchain OS CLI (`service-match` / `search` /
+  `service-list`) behind `MarketDiscovery`, with synchronized snapshot only as
+  an **explicit** fallback carrying `source.kind` + `fallbackReason` provenance
+  (corrected 2026-09-18; see `docs/work/M2_DISCOVERY_FINDINGS.md`).

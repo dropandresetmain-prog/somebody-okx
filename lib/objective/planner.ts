@@ -111,7 +111,31 @@ export const M1_ROLE_REQUIREMENTS: Record<string, RoleObservationRequirement> = 
     roleKey: "RESEARCH_ROLE",
     requiredToolPermissions: ["read_company_record", "read_public_web", "record_finding"],
   },
+  GROWTH_ROLE: {
+    roleKey: "GROWTH_ROLE",
+    requiredToolPermissions: [
+      "read_company_record",
+      "read_public_web",
+      "record_finding",
+      "update_company_artifact",
+      "request_resource",
+    ],
+  },
 };
+
+/** Heuristic role selection from the founder objective text (application-owned). */
+export function selectRoleKeyForRequest(request: string): "RESEARCH_ROLE" | "GROWTH_ROLE" {
+  const text = request.toLowerCase();
+  if (
+    text.includes("launch") ||
+    text.includes("relaunch") ||
+    text.includes("growth") ||
+    text.includes("convert")
+  ) {
+    return "GROWTH_ROLE";
+  }
+  return "RESEARCH_ROLE";
+}
 
 // ── Server-side planning seam (contract §7) ─────────────────────────────────
 

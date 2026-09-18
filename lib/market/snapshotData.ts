@@ -4,8 +4,9 @@ import type { MarketOffering } from "./discovery";
  * Synchronized snapshot of demo offerings from the canonical provider set.
  *
  * Provider/scenario strings are allowed in this data file per §0 rule 2.
- * This snapshot is the primary discovery path until a supported programmatic
- * OKX discovery primitive is confirmed (see M2_DISCOVERY_FINDINGS.md).
+ * Synchronized fallback / cache of demo offerings. Live discovery prefers the
+ * official onchainos CLI; this snapshot is used only with explicit provenance
+ * (see M2_DISCOVERY_FINDINGS.md, corrected 2026-09-18).
  */
 
 const SNAPSHOT_RETRIEVED_AT = 1726617600000; // 2024-09-18T00:00:00Z (fixed for determinism)

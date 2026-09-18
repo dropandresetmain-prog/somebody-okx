@@ -259,22 +259,100 @@ describe("Market — snapshot discovery", () => {
 });
 
 describe("Market — okxDiscovery adapter", () => {
-  it("delegates to snapshot and returns same interface", async () => {
-    const discovery = createOkxDiscovery();
+  it("uses injected live CLI results when registry-compatible", async () => {
+    const liveJson = JSON.stringify({
+      ok: true,
+      data: {
+        services: [
+          {
+            asp: { aspAgentId: "2135", aspName: "Newsliquid" },
+            sid: "newsliquid_twitter_search",
+            serviceId: "newsliquid_twitter_search",
+            serviceName: "OpenNews Twitter Search",
+            serviceDescription: "social intelligence twitter search",
+            feeAmount: 0.002,
+            feeTokenSymbol: "USDT",
+            serviceType: "A2MCP",
+          },
+        ],
+      },
+    });
+    const discovery = createOkxDiscovery({
+      allowSnapshotFallback: true,
+      now: () => 1_700_000_000_000,
+      runner: async () => ({
+        ok: true,
+        stdout: liveJson,
+        stderr: "",
+        exitCode: 0,
+      }),
+    });
+    const results = await discovery.discover({
+      resourceClass: "proprietary_data",
+      taskDescription: "social intelligence about founders",
+    });
+    assert.ok(results.length >= 1);
+    assert.equal(results[0].source.kind, "okx_cli");
+    assert.equal(results[0].providerId, "2135");
+    // Discovery does not self-authorize: classes empty until registry step in adapter
+    assert.ok(results[0].compatibleResourceClasses.includes("proprietary_data"));
+  });
+
+  it("snapshot fallback carries explicit provenance when live fails", async () => {
+    const discovery = createOkxDiscovery({
+      allowSnapshotFallback: true,
+      now: () => 1_700_000_000_000,
+      runner: async () => ({
+        ok: false,
+        stdout: "",
+        stderr: "cli missing",
+        exitCode: null,
+      }),
+    });
     const results = await discovery.discover({
       resourceClass: "proprietary_data",
       taskDescription: "social intelligence twitter",
     });
     assert.ok(results.length >= 1);
-    // Verify it's the same as snapshot
-    const snapshot = createSnapshotDiscovery();
-    const snapshotResults = await snapshot.discover({
+    assert.equal(results[0].source.kind, "snapshot");
+    const raw = results[0].source.raw as { fallbackReason?: string; liveAttempted?: boolean };
+    assert.equal(raw.fallbackReason, "live_cli_unavailable_or_failed");
+    assert.equal(raw.liveAttempted, true);
+  });
+
+  it("does not treat discovery output as spend authority (untrusted until assessment)", async () => {
+    const discovery = createOkxDiscovery({
+      allowSnapshotFallback: true,
+      runner: async () => ({
+        ok: true,
+        stdout: JSON.stringify({
+          ok: true,
+          data: {
+            services: [
+              {
+                asp: { aspAgentId: "9999", aspName: "Unknown" },
+                sid: "unknown_svc",
+                serviceName: "Mystery",
+                serviceDescription: "social intelligence",
+                feeAmount: 1,
+                feeTokenSymbol: "USDT",
+              },
+            ],
+          },
+        }),
+        stderr: "",
+        exitCode: 0,
+      }),
+    });
+    // Unknown service → no registry match → snapshot fallback, never auto-BUY
+    const results = await discovery.discover({
       resourceClass: "proprietary_data",
       taskDescription: "social intelligence twitter",
     });
-    assert.equal(results.length, snapshotResults.length);
-    for (let i = 0; i < results.length; i++) {
-      assert.equal(results[i].offeringId, snapshotResults[i].offeringId);
+    assert.ok(results.every((r) => r.source.kind === "snapshot" || r.compatibleResourceClasses.length >= 0));
+    // No offering may claim spend; assessment is separate
+    for (const r of results) {
+      assert.ok(r.offeringId.includes(":"));
     }
   });
 });

@@ -41,12 +41,13 @@ import {
   resolveWorker,
   validatePlannerProposal,
 } from "../lib/workforce";
-import { CURRENT_RESOURCE_INVENTORY, RESEARCH_ROLE } from "../lib/objective/policy";
+import { CURRENT_RESOURCE_INVENTORY, RESEARCH_ROLE, GROWTH_ROLE } from "../lib/objective/policy";
 import { sourceIdentity } from "../lib/objective/contract";
 import { toolPermissionsForCapabilities } from "../lib/workforce/permissions";
 import {
   M1_ROLE_REQUIREMENTS,
   assertRoleRequirementsSatisfied,
+  selectRoleKeyForRequest,
 } from "../lib/objective/planner";
 import {
   LEASE_MS,
@@ -54,6 +55,11 @@ import {
   fenceRunWrite,
 } from "../lib/objective/runGuards";
 import { providerConfiguration } from "../lib/worker/modelSelection";
+import {
+  CANONICAL_LAUNCH_ARTIFACT,
+} from "../lib/objective/seedData";
+import { createArtifact, applyArtifactChange } from "../lib/objective/artifact";
+import type { ResourceClass } from "../lib/workforce/types";
 import type {
   ActivityEvent,
   ActivityResult,
@@ -63,6 +69,11 @@ import type {
   ValidatedPlan,
   WorkerSpec,
 } from "../lib/workforce";
+import type { ResourceNeed } from "../lib/objective/resourceNeed";
+import type { SourcingDecisionRecord } from "../lib/objective/resourceNeed";
+import type { CandidateAssessment } from "../lib/market/assessment";
+import type { MarketOffering } from "../lib/market/discovery";
+import type { CompanyArtifact } from "../lib/objective/artifact";
 
 type ObjectiveRow = { _id: Id<"objectives">; key: string; data: ObjectiveRecord };
 
@@ -141,7 +152,10 @@ function assertActiveRun(record: ObjectiveRecord, runId: string, now: number) {
 
 // Deterministic planning validation, authoritative because it runs inside the
 // mutation that writes the plan. The model proposal is only ever an input.
-function validatePlanningInput(proposal: PlannerProposal): {
+function validatePlanningInput(
+  proposal: PlannerProposal,
+  roleKey: "RESEARCH_ROLE" | "GROWTH_ROLE" = "RESEARCH_ROLE",
+): {
   validated: ValidatedPlan;
   grantedPermissions: string[];
 } {
@@ -155,13 +169,14 @@ function validatePlanningInput(proposal: PlannerProposal): {
     if (permission === "authorize_external_spend")
       throw new Error(`Plan cannot carry external spend authority`);
   }
+  const role = M1_ROLE_REQUIREMENTS[roleKey];
   const roleCheck = assertRoleRequirementsSatisfied({
     grantedPermissions,
-    role: M1_ROLE_REQUIREMENTS.RESEARCH_ROLE,
+    role,
   });
   if (!roleCheck.ok)
     throw new Error(
-      `RESEARCH_ROLE cannot be satisfied by this plan: missing ${roleCheck.missing.join(", ")}`,
+      `${roleKey} cannot be satisfied by this plan: missing ${roleCheck.missing.join(", ")}`,
     );
   return { validated, grantedPermissions };
 }
@@ -243,18 +258,22 @@ export const planObjective = internalMutation({
       );
     const now = Date.now();
 
+    const roleKey = selectRoleKeyForRequest(record.request);
     // 1. Fail-closed capability/resource validation + role satisfiability.
     //    An unknown capability, unknown resource class, smuggled permission,
     //    or a capability set that cannot obtain both required evidence classes
     //    throws here — before any work item, contract or run exists.
-    const { validated } = validatePlanningInput({
-      capabilityKeys: args.proposal.capabilityKeys,
-      responsibility: args.proposal.responsibility,
-      requiredResourceClasses: args.proposal.requiredResourceClasses,
-      ...(args.proposal.requestedToolPermissions
-        ? { requestedToolPermissions: args.proposal.requestedToolPermissions }
-        : {}),
-    });
+    const { validated } = validatePlanningInput(
+      {
+        capabilityKeys: args.proposal.capabilityKeys,
+        responsibility: args.proposal.responsibility,
+        requiredResourceClasses: args.proposal.requiredResourceClasses,
+        ...(args.proposal.requestedToolPermissions
+          ? { requestedToolPermissions: args.proposal.requestedToolPermissions }
+          : {}),
+      },
+      roleKey,
+    );
 
     // 2. Factual resource inventory → canonical sourcing decision.
     //    The rule itself lives in lib/sourcing/policy.ts; this seam only
@@ -316,15 +335,31 @@ export const planObjective = internalMutation({
     // 4. Bind the WorkContract from the validated plan + role policy. The
     //    contract carries DISTINCT-source proof requirements, so proof is a
     //    property of the assignment rather than a count of persisted rows.
-    const assignment = `Evaluate whether the target described in "${record.request}" is a suitable partnership/business target using the company's internal criteria and current public information.`;
+    const isGrowth = roleKey === "GROWTH_ROLE";
+    const rolePolicy = isGrowth ? GROWTH_ROLE : RESEARCH_ROLE;
+    const assignment = isGrowth
+      ? `Fix the failing launch described in "${record.request}". Read launch/context, research one relevant public page, rewrite the controlled launch page artifact with a clearer founder-facing message, then request_resource for proprietary_data social intelligence if owned resources are insufficient. Do not pay or invoke providers.`
+      : `Evaluate whether the target described in "${record.request}" is a suitable partnership/business target using the company's internal criteria and current public information.`;
     const contract = createWorkContract({
       assignment,
       idempotencyScope: `${args.objectiveKey}:wi-1`,
       worker: resolution.worker as WorkerSpec,
-      sourceProofs: RESEARCH_ROLE.sourceProofs.map((proof) => ({ ...proof })),
+      sourceProofs: rolePolicy.sourceProofs.map((proof) => ({ ...proof })),
     });
 
     const workItemId = `${args.objectiveKey}:wi-1`;
+    const seededArtifacts: CompanyArtifact[] = isGrowth
+      ? [
+          createArtifact({
+            key: CANONICAL_LAUNCH_ARTIFACT.key,
+            objectiveKey: args.objectiveKey,
+            label: CANONICAL_LAUNCH_ARTIFACT.label,
+            content: CANONICAL_LAUNCH_ARTIFACT.initialContent,
+            runId: "seed",
+            at: now,
+          }),
+        ]
+      : [];
     const updated: ObjectiveRecord = {
       ...record,
       state: "ready_to_execute",
@@ -334,7 +369,7 @@ export const planObjective = internalMutation({
         {
           id: workItemId,
           objectiveKey: args.objectiveKey,
-          title: RESEARCH_ROLE.title,
+          title: rolePolicy.title,
           assignment,
           workerKey: contract.workerKey,
           state: "assigned",
@@ -343,6 +378,9 @@ export const planObjective = internalMutation({
         },
       ],
       run: null,
+      ...(seededArtifacts.length > 0
+        ? { companyArtifacts: seededArtifacts }
+        : {}),
       updatedAt: now,
     };
     await ctx.db.patch(row._id, { data: updated });
@@ -650,6 +688,24 @@ export const readWorkerObservation = internalQuery({
       evidence,
       result: record.result,
     });
+    const unmet = [...check.unmet];
+    const isGrowth = workItem.contract.allowedToolPermissions.includes(
+      "update_company_artifact",
+    );
+    if (isGrowth) {
+      const artifactChanged = (record.companyArtifacts ?? []).some(
+        (a) => a.provenanceRunId === args.runId && a.version > 1,
+      );
+      if (!artifactChanged) {
+        unmet.push("company_artifact: no version change by this run");
+      }
+      const hasNeed = (record.resourceNeeds ?? []).some(
+        (n) => n.proposedByRunId === args.runId,
+      );
+      if (!hasNeed) {
+        unmet.push("resource_need: growth run must propose a resource need");
+      }
+    }
     return {
       assignment: workItem.contract.assignment,
       responsibility: workItem.contract.assignment,
@@ -668,12 +724,152 @@ export const readWorkerObservation = internalQuery({
         ...(item.url ? { url: item.url } : {}),
         ...(item.recordRef ? { recordRef: item.recordRef } : {}),
       })),
-      unmetCompletionRequirements: check.unmet,
+      unmetCompletionRequirements: unmet,
     };
   },
 });
 
-// ── Application-owned completion ─────────────────────────────────────────────
+// ── Application-owned M2 mutations (artifact + sourced need persistence) ─────
+
+// Company artifact mutation (growth MAKE proof).
+export const updateCompanyArtifact = internalMutation({
+  args: {
+    objectiveKey: v.string(),
+    runId: v.string(),
+    content: v.string(),
+    changeNote: v.string(),
+  },
+  returns: v.object({ key: v.string(), version: v.number() }),
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const row = await loadObjective(ctx.db, args.objectiveKey);
+    const record = row.data;
+    assertActiveRun(record, args.runId, now);
+    const artifacts = [...(record.companyArtifacts ?? [])];
+    if (artifacts.length === 0) {
+      throw new Error("No company artifact seeded for this objective");
+    }
+    const idx = 0;
+    const next = applyArtifactChange(artifacts[idx], {
+      content: args.content,
+      changeNote: args.changeNote,
+      runId: args.runId,
+      at: now,
+    });
+    artifacts[idx] = next;
+    const updated: ObjectiveRecord = {
+      ...record,
+      companyArtifacts: artifacts,
+      activity: `Company artifact ${next.key} → v${next.version}`,
+      updatedAt: now,
+    };
+    await ctx.db.patch(row._id, { data: updated });
+    await appendEvent(
+      ctx.db,
+      args.objectiveKey,
+      "evidence",
+      `Artifact ${next.key} updated to version ${next.version} by ${args.runId}`,
+      now,
+    );
+    return { key: next.key, version: next.version };
+  },
+});
+
+// Persist a completed sourceResourceNeed result (computed in the Node action so
+// CLI/spawn stays out of the Convex isolate). Application-owned; no spend.
+export const persistSourcedResource = internalMutation({
+  args: {
+    objectiveKey: v.string(),
+    runId: v.string(),
+    need: v.any(),
+    created: v.boolean(),
+    decision: v.union(v.any(), v.null()),
+    assessments: v.array(v.any()),
+    offerings: v.array(v.any()),
+  },
+  returns: v.object({
+    needId: v.string(),
+    created: v.boolean(),
+    decision: v.union(v.string(), v.null()),
+    needStatus: v.string(),
+  }),
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const row = await loadObjective(ctx.db, args.objectiveKey);
+    const record = row.data;
+    assertActiveRun(record, args.runId, now);
+
+    const need = args.need as ResourceNeed;
+    const decision = args.decision as SourcingDecisionRecord | null;
+    const resultAssessments = args.assessments as CandidateAssessment[];
+    const resultOfferings = args.offerings as MarketOffering[];
+
+    const needs = [...(record.resourceNeeds ?? [])] as ResourceNeed[];
+    const decisions = [
+      ...(record.sourcingDecisions ?? []),
+    ] as SourcingDecisionRecord[];
+    const assessments = [
+      ...(record.candidateAssessments ?? []),
+    ] as { decisionId: string; assessments: CandidateAssessment[] }[];
+    const offerings = [
+      ...(record.marketOfferings ?? []),
+    ] as MarketOffering[];
+
+    if (args.created) {
+      const existingIdx = needs.findIndex((n) => n.id === need.id);
+      if (existingIdx >= 0) needs[existingIdx] = need;
+      else needs.push(need);
+      if (decision) {
+        decisions.push(decision);
+        assessments.push({
+          decisionId: decision.id,
+          assessments: resultAssessments,
+        });
+      }
+      for (const o of resultOfferings) {
+        if (!offerings.some((x) => x.offeringId === o.offeringId)) {
+          offerings.push(o);
+        }
+      }
+    }
+
+    const waiting = need.status === "buy_pending";
+    const workItems = record.workItems.map((wi, i) =>
+      i === 0 && waiting
+        ? { ...wi, state: "waiting_for_resource" as const }
+        : wi,
+    );
+
+    const updated: ObjectiveRecord = {
+      ...record,
+      resourceNeeds: needs,
+      sourcingDecisions: decisions,
+      candidateAssessments: assessments,
+      marketOfferings: offerings,
+      workItems,
+      activity: waiting
+        ? `Resource need ${need.id} → buy_pending (${decision?.decision ?? "n/a"})`
+        : `Resource need ${need.id} status ${need.status}`,
+      updatedAt: now,
+    };
+    await ctx.db.patch(row._id, { data: updated });
+    await appendEvent(
+      ctx.db,
+      args.objectiveKey,
+      "decision",
+      waiting
+        ? `BUY pending for ${need.resourceClass}; discovery source=${resultOfferings[0]?.source.kind ?? "none"}; selected=${decision?.selectedOfferingId ?? "none"}`
+        : `Resource need sourced: ${decision?.decision ?? "deduped"} (${need.status})`,
+      now,
+    );
+    return {
+      needId: need.id,
+      created: args.created,
+      decision: decision?.decision ?? null,
+      needStatus: need.status,
+    };
+  },
+});
 
 // R1 Blocker E: only the live, lease-holding run may finalize. A replaced,
 // expired or already-finalized run is a deterministic no-op reporting the
@@ -756,12 +952,61 @@ export const finishRun = internalMutation({
       evidence,
       result: record.result,
     });
+
+    // Growth MAKE: require an actual artifact version bump beyond seed.
+    const artifacts = record.companyArtifacts ?? [];
+    const artifactChanged = artifacts.some(
+      (a) => a.provenanceRunId === args.runId && a.version > 1,
+    );
+    const isGrowthContract = workItem.contract.allowedToolPermissions.includes(
+      "update_company_artifact",
+    );
+    if (isGrowthContract && !artifactChanged) {
+      check.complete = false;
+      check.unmet = [
+        ...check.unmet,
+        "company_artifact: no version change by this run",
+      ];
+    }
+
+    const buyPending = (record.resourceNeeds ?? []).some(
+      (n) => n.status === "buy_pending",
+    );
+
     run.status = "stopped";
+    runs[runIndex] = run;
+    workItem.runs = runs;
+
+    // BUY is not failure: unresolved buy_pending → waiting_for_resource.
+    if (buyPending) {
+      run.summary = "Paused: waiting for external resource acquisition";
+      workItem.state = "waiting_for_resource";
+      const updated: ObjectiveRecord = {
+        ...record,
+        state: "waiting_for_resource",
+        activity:
+          "Waiting for external resource — BUY pending; no payment created.",
+        workItems: [workItem],
+        run,
+        updatedAt: now,
+      };
+      await ctx.db.patch(row._id, { data: updated });
+      await appendEvent(
+        ctx.db,
+        args.objectiveKey,
+        "decision",
+        "Objective waiting_for_resource: buy_pending need unresolved; no spend.",
+        now,
+      );
+      return {
+        completed: false,
+        unmet: ["waiting_for_resource: buy_pending need unresolved"],
+      };
+    }
+
     run.summary = check.complete
       ? "Application accepted completion"
       : `Incomplete: ${check.unmet.join("; ")}`;
-    runs[runIndex] = run;
-    workItem.runs = runs;
     workItem.state = check.complete ? "completed" : "failed";
     const updated: ObjectiveRecord = {
       ...record,

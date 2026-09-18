@@ -158,6 +158,12 @@ export const objectiveRecord = v.object({
   workItems: v.array(workItem),
   run: v.union(workerRun, v.null()),
   result: v.union(activityResult, v.null()),
+  // M2 mission fields — optional so accepted M1 rows keep loading.
+  resourceNeeds: v.optional(v.array(v.any())),
+  sourcingDecisions: v.optional(v.array(v.any())),
+  candidateAssessments: v.optional(v.array(v.any())),
+  marketOfferings: v.optional(v.array(v.any())),
+  companyArtifacts: v.optional(v.array(v.any())),
 });
 
 export const activityEvent = v.object({

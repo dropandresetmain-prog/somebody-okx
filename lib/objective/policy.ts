@@ -36,6 +36,35 @@ export const RESEARCH_ROLE = {
     "Evaluate the assigned target using the company's internal criteria and current public information. Observe sources through tools, record findings with provenance, reconcile fit, risks and unknowns, and produce a structured recommendation. Never assert what the sources do not support.",
 } as const;
 
+// Growth/launch MAKE role: mutate a controlled company artifact and may propose
+// a missing external resource. Completion requires an actual artifact version
+// change (not advice alone). Source proofs remain application-observed.
+export const GROWTH_ROLE = {
+  title: "Growth launch operator",
+  requiredSourceClasses: ["company_record", "public_web"] as SourceClass[],
+  minObservations: 2,
+  sourceProofs: [
+    { sourceClass: "company_record", minDistinctSources: 1 },
+    { sourceClass: "public_web", minDistinctSources: 1 },
+  ] as SourceProof[],
+  requiredToolPermissions: [
+    "read_company_record",
+    "read_public_web",
+    "record_finding",
+    "update_company_artifact",
+    "request_resource",
+  ] as ToolPermissionId[],
+  resultRequirements: {
+    summary: true,
+    fit: true,
+    risks: true,
+    unknowns: true,
+    recommendedNextAction: true,
+  } satisfies ResultRequirements,
+  responsibility:
+    "Research launch context and public signals, rewrite the controlled launch artifact with a versioned change, and request any missing scarce resource the application must acquire. Do not pay, invoke providers, or publish externally.",
+} as const;
+
 // Internal company context the worker reads through the company_records
 // permission. Controlled development data, clearly identified as such.
 export type CompanyRecord = {
@@ -59,6 +88,15 @@ export const COMPANY_RECORDS: CompanyRecord[] = [
     ref: "company/profile",
     label: "Company profile",
     text: `Company profile (internal): the company builds Somebody, an AI manager for one-person companies and lean SMEs. It evaluates partnership targets that extend what a one-person company can do. It has no procurement or legal department; partnerships must be self-serve.`,
+  },
+  {
+    ref: "launch/context",
+    label: "Launch context and goals",
+    text: `Launch context (internal):
+Goal: relaunch today with a message that converts one-person-company founders.
+Current signal: low signup conversion; visitors do not recognise themselves.
+Owned resources: model reasoning, public web research, company records, ordinary compute.
+Constraint: no paid spend without an explicit application-approved provider path.`,
   },
 ];
 

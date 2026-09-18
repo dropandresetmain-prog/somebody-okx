@@ -10,9 +10,13 @@ import type {
   SettlementReader,
   PaidRequestSender,
   RailConfig,
+  PaymentExecutor,
+  PaymentSubmissionResult,
 } from "./types";
 import { parse402Challenge, bindTermsToApproval } from "./challenge";
 import { assertIdempotencyDistinct } from "./purchase";
+
+export type { PaymentExecutor, PaymentSubmissionResult };
 
 /**
  * Detect if a response is a 402 Payment Required challenge.
@@ -92,48 +96,144 @@ export function preparePayment(
 }
 
 /**
- * Execute a signed payment. Requires explicit authorization and injected signer.
- * 
- * This function:
- * 1. Verifies state is READY_TO_SIGN
- * 2. Calls injected signer to sign the EIP-712 payload
- * 3. Calls injected submit function to submit the signed payment
- * 4. Returns transaction hash
- * 
- * @param prepared - Prepared payment at READY_TO_SIGN
- * @param signer - Injected signer (FakeSigner in tests)
- * @param submit - Injected submit function (fake in tests)
- * @returns Transaction hash
- * @throws if state is not READY_TO_SIGN
+ * TEST-ONLY scaffold: exercise READY_TO_SIGN → inject FakeSigner → fake submit.
+ *
+ * This is NOT production signing. It constructs a simplified payload that is
+ * useful for lifecycle/idempotency tests only. Official x402 / Agentic Wallet
+ * signing must go through PaymentExecutor (kind: "official_onchainos").
+ *
+ * Prefer executeApprovedPayment(prepared, executor) at the application boundary.
+ *
+ * @deprecated name retained for existing tests — use TestScaffoldPaymentExecutor
+ *   or executeApprovedPayment with an official executor for new code.
  */
 export async function executeSignedPayment(
   prepared: PreparedPayment,
   signer: Signer,
   submit: (signedPayment: { signature: string; intent: BoundPaymentIntent }) => Promise<{ transactionHash: string }>,
 ): Promise<{ transactionHash: string }> {
-  // Verify state
   if (prepared.state !== "ready_to_sign") {
     throw new Error(
       `Cannot execute payment in state ${prepared.state}; must be ready_to_sign`,
     );
   }
 
-  // Create EIP-712 payload (simplified — in production would construct proper typed data)
+  // Simplified test payload — NOT production EIP-712 / x402 authorization.
   const payload = {
     network: prepared.terms.network,
     asset: prepared.terms.asset,
     amount: prepared.terms.maxAmountRequired,
     payTo: prepared.terms.payTo,
     resource: prepared.terms.resource,
+    _scaffold: "test_only_simplified_signer",
   };
 
-  // Sign with injected signer
   const signature = await signer.signEIP712(payload);
+  return submit({ signature, intent: prepared.intent });
+}
 
-  // Submit with injected submit function
-  const result = await submit({ signature, intent: prepared.intent });
+/**
+ * Application payment boundary: execute an approved READY_TO_SIGN intent via
+ * an injected PaymentExecutor. Production must inject an official Onchain OS /
+ * Agentic Wallet executor — never FakeSigner / TestScaffoldPaymentExecutor.
+ */
+export async function executeApprovedPayment(
+  prepared: PreparedPayment,
+  executor: PaymentExecutor,
+): Promise<PaymentSubmissionResult> {
+  if (prepared.state !== "ready_to_sign") {
+    throw new Error(
+      `Cannot execute payment in state ${prepared.state}; must be ready_to_sign`,
+    );
+  }
+  if (!prepared.intent.approval) {
+    throw new Error("Cannot execute payment without explicit approval");
+  }
+  return executor.executeApprovedPayment({
+    intentId: prepared.intent.intentId,
+    network: prepared.terms.network,
+    asset: prepared.terms.asset,
+    amount: prepared.terms.maxAmountRequired,
+    payTo: prepared.terms.payTo,
+    resource: prepared.terms.resource,
+    approvalId: prepared.intent.approval.approvalId,
+  });
+}
 
-  return result;
+/**
+ * TEST-ONLY PaymentExecutor wrapping FakeSigner + fake submit.
+ * kind is always "test_scaffold" so it cannot be mistaken for production.
+ */
+export class TestScaffoldPaymentExecutor implements PaymentExecutor {
+  readonly kind = "test_scaffold" as const;
+
+  constructor(
+    private readonly signer: Signer = new FakeSigner(),
+    private readonly submitFn: (
+      signedPayment: { signature: string; intent: BoundPaymentIntent },
+    ) => Promise<{ transactionHash: string }> = fakeSubmit,
+  ) {}
+
+  async executeApprovedPayment(input: {
+    intentId: string;
+    network: string;
+    asset: string;
+    amount: string;
+    payTo: string;
+    resource: string;
+    approvalId: string;
+  }): Promise<PaymentSubmissionResult> {
+    const payload = {
+      ...input,
+      _scaffold: "test_only_simplified_signer",
+    };
+    const signature = await this.signer.signEIP712(payload);
+    // Minimal intent for the fake submit path — not a production binding.
+    const intent = {
+      intentId: input.intentId,
+      state: "ready_to_sign" as const,
+      terms: {
+        scheme: "exact",
+        network: input.network,
+        asset: input.asset,
+        maxAmountRequired: input.amount,
+        payTo: input.payTo,
+        resource: input.resource,
+        eip712: { name: "TEST", version: "1" },
+        maxTimeoutSeconds: 60,
+      },
+      approval: {
+        approver: "test",
+        approvedMaxAmount: input.amount,
+        approvedNetwork: input.network,
+        approvedAsset: input.asset,
+        approvedPayTo: input.payTo,
+        approvalId: input.approvalId,
+        approvedAt: 0,
+      },
+      boundAt: 0,
+    } satisfies BoundPaymentIntent;
+    const result = await this.submitFn({ signature, intent });
+    return {
+      submitted: true,
+      transactionHash: result.transactionHash,
+      note: "test_scaffold_only — not official Onchain OS signing",
+    };
+  }
+}
+
+/**
+ * Placeholder for the official Onchain OS / Agentic Wallet executor.
+ * Always refuses until a real implementation is wired in supervised M3.
+ */
+export class OfficialSigningPendingExecutor implements PaymentExecutor {
+  readonly kind = "official_onchainos" as const;
+
+  async executeApprovedPayment(): Promise<PaymentSubmissionResult> {
+    throw new Error(
+      "Official Onchain OS / Agentic Wallet PaymentExecutor not yet wired — M3 live sign/pay pending",
+    );
+  }
 }
 
 /**
@@ -193,18 +293,19 @@ export function planRetry(
 }
 
 /**
- * Fake signer for tests — returns deterministic fake signature.
- * NEVER constructed from a real secret.
+ * TEST-ONLY fake signer — deterministic fake signature.
+ * NEVER constructed from a real secret. Not a production PaymentExecutor.
  */
 export class FakeSigner implements Signer {
   readonly address: string;
+  /** Marker so static review can assert this is test-only. */
+  readonly isTestOnlySigner = true as const;
 
   constructor(address: string = "0x0000000000000000000000000000000000000000") {
     this.address = address;
   }
 
   async signEIP712(payload: unknown): Promise<string> {
-    // Deterministic fake signature — no real key
     const payloadStr = JSON.stringify(payload);
     let hash = 0;
     for (let i = 0; i < payloadStr.length; i++) {

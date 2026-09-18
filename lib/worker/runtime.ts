@@ -318,6 +318,10 @@ export async function runWorker(
     ...WORKFLOW_TOOLS.map((name) => buildWorkflowTool(name)),
   ];
 
+  const isGrowth = contract.allowedToolPermissions.includes(
+    "update_company_artifact",
+  );
+
   const workerInstructions = `You are "${contract.workerKey}", a bounded internal worker assembled by Somebody for one assignment.
 
 ASSIGNMENT (do exactly this, nothing else):
@@ -331,13 +335,21 @@ REQUIRED PROOF before the application will accept completion:
 - "company_record" observations come from internal company records via read_company_record.
 - "public_web" observations come from real public pages via read_public_web. You must obtain DISTINCT public sources; re-reading one page twice does not count.
 - Record what each source actually shows with record_finding; include the source label and url/recordRef. record_finding stores a model-authored NOTE, not proof — only application-fetched observations count toward proof.
-- Then submit_result with the structured evaluation, and finally request_completion.
+${isGrowth ? `- You MUST call update_company_artifact with a real rewrite of the launch message (version must advance).
+- After the artifact change, call request_resource with resourceClass "proprietary_data" for privileged social intelligence if still needed. Do not invent a provider name.
+` : ""}- Then submit_result with the structured evaluation, and finally request_completion.
 
 REQUIRED EXECUTION ORDER:
-1. First call read_company_record with recordRef "partnerships/evaluation-criteria".
+${isGrowth
+    ? `1. First call read_company_record with recordRef "launch/context".
+2. Then call read_public_web for one distinct public HTTPS page relevant to founder/launch messaging.
+3. Call update_company_artifact with improved headline/message content and a changeNote.
+4. Call request_resource for proprietary_data social intelligence (purpose = why founders' own words are needed).
+5. Submit the structured result, then request completion.`
+    : `1. First call read_company_record with recordRef "partnerships/evaluation-criteria".
 2. Then call read_public_web for exactly two distinct public HTTPS pages relevant to the target.
 3. Do not create a record_finding unless it materially helps the final evaluation; notes never count as proof.
-4. Submit the structured result, then request completion.
+4. Submit the structured result, then request completion.`}
 
 RULES:
 - Work serially: one tool call at a time, and re-read the observation after each tool.

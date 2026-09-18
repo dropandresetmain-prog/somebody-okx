@@ -130,6 +130,15 @@ export type ObjectiveRecord = {
   workItems: WorkItem[];
   run: WorkerRun | null;
   result: ActivityResult | null;
+  // Optional M2 mission state (absent on accepted M1 rows — loaders must tolerate).
+  resourceNeeds?: import("./resourceNeed").ResourceNeed[];
+  sourcingDecisions?: import("./resourceNeed").SourcingDecisionRecord[];
+  candidateAssessments?: {
+    decisionId: string;
+    assessments: import("../market/assessment").CandidateAssessment[];
+  }[];
+  marketOfferings?: import("../market/discovery").MarketOffering[];
+  companyArtifacts?: import("./artifact").CompanyArtifact[];
 };
 
 // ── Evidence ─────────────────────────────────────────────────────────────────

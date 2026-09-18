@@ -456,10 +456,32 @@ describe("Buyer Rail", () => {
       
       // Address is a dummy, not derived from a real key
       assert.strictEqual(signer.address, "0x1234567890123456789012345678901234567890");
+      assert.strictEqual(signer.isTestOnlySigner, true);
       
       // Signature is fake
       const sig = signer.signEIP712({ test: "data" });
       assert.ok(sig instanceof Promise);
+    });
+
+    it("TestScaffoldPaymentExecutor is marked test_scaffold, not official", async () => {
+      const {
+        executeApprovedPayment,
+        TestScaffoldPaymentExecutor,
+        OfficialSigningPendingExecutor,
+      } = await import("../lib/payment/buyerRail");
+      const prepared = preparePayment(mockChallengeBody, mockApproval, mockConfig, "intent-exec");
+      const scaffold = new TestScaffoldPaymentExecutor();
+      assert.strictEqual(scaffold.kind, "test_scaffold");
+      const result = await executeApprovedPayment(prepared, scaffold);
+      assert.strictEqual(result.submitted, true);
+      assert.ok(result.note?.includes("test_scaffold_only"));
+
+      const official = new OfficialSigningPendingExecutor();
+      assert.strictEqual(official.kind, "official_onchainos");
+      await assert.rejects(
+        async () => executeApprovedPayment(prepared, official),
+        /Official Onchain OS/,
+      );
     });
   });
 

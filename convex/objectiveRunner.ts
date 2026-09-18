@@ -24,6 +24,7 @@ import {
   M1_ROLE_REQUIREMENTS,
   RESOURCE_CLASS_VALUES,
   planObjectiveWithModel,
+  selectRoleKeyForRequest,
 } from "../lib/objective/planner";
 import { listControlledCapabilityKeys } from "../lib/workforce/catalog";
 import { runWorker } from "../lib/worker/runtime";
@@ -37,6 +38,13 @@ import type {
   SourceClass,
   WorkContract,
 } from "../lib/objective/types";
+import { sourceResourceNeed } from "../lib/objective/orchestration";
+import { createOkxDiscovery } from "../lib/market/okxDiscovery";
+import { createLocalOnchainosRunner } from "../lib/market/okxCliBridge";
+import { VERIFIED_SERVICE_REGISTRY } from "../lib/market/registryData";
+import { CURRENT_RESOURCE_INVENTORY } from "../lib/objective/policy";
+import type { ResourceClass } from "../lib/workforce/types";
+import type { ResourceNeed } from "../lib/objective/resourceNeed";
 
 // Ceiling for text the application resolves from a source before persisting it.
 // The bounded surface the MODEL sees is owned by lib/worker/runtime.ts.
@@ -198,6 +206,73 @@ function makeConvexPort(ctx: ActionCtx, objectiveKey: string, runId: string) {
             );
           return "Application proof requirements met; the run finalizes on return";
         }
+        case "update_company_artifact": {
+          const content = String(command.content ?? "");
+          const changeNote = String(command.changeNote ?? "");
+          const result = await ctx.runMutation(
+            internal.objectives.updateCompanyArtifact,
+            { objectiveKey, runId, content, changeNote },
+          );
+          return `Company artifact ${result.key} updated to version ${result.version}. Provenance run=${runId}.`;
+        }
+        case "request_resource": {
+          const resourceClass = String(command.resourceClass ?? "");
+          const purpose = String(command.purpose ?? "");
+          const reasonOwnedInsufficient = String(
+            command.reasonOwnedInsufficient ?? "",
+          );
+          const row = await ctx.runQuery(
+            internal.objectives.getObjectiveInternal,
+            { objectiveKey },
+          );
+          const record = row.data as ObjectiveRecord;
+          const now = Date.now();
+          const needId = `need_${now}_${Math.random().toString(36).slice(2, 8)}`;
+          const decisionId = `dec_${now}_${Math.random().toString(36).slice(2, 8)}`;
+
+          // Prefer live onchainos CLI when present in this Node runtime; otherwise
+          // explicit snapshot fallback with provenance (never silent).
+          const discovery = createOkxDiscovery({
+            allowSnapshotFallback: true,
+            runner: createLocalOnchainosRunner(),
+          });
+
+          const sourced = await sourceResourceNeed({
+            proposal: {
+              objectiveKey,
+              workItemId: record.workItems[0]?.id ?? null,
+              resourceClass: resourceClass as ResourceClass,
+              purpose,
+              reasonOwnedInsufficient,
+              proposedByRunId: runId,
+            },
+            existingNeeds: (record.resourceNeeds ?? []) as ResourceNeed[],
+            ownedResourceClasses: CURRENT_RESOURCE_INVENTORY,
+            registry: VERIFIED_SERVICE_REGISTRY,
+            discovery,
+            needId,
+            decisionId,
+            at: now,
+          });
+
+          const persisted = await ctx.runMutation(
+            internal.objectives.persistSourcedResource,
+            {
+              objectiveKey,
+              runId,
+              need: sourced.need,
+              created: sourced.created,
+              decision: sourced.decision,
+              assessments: sourced.assessments,
+              offerings: sourced.offerings,
+            },
+          );
+
+          const sourceKind =
+            sourced.offerings[0]?.source.kind ?? "none";
+          const selected = sourced.selectedOffering?.offeringId ?? "none";
+          return `Resource need ${persisted.needId} persisted (created=${persisted.created}, status=${persisted.needStatus}, decision=${persisted.decision ?? "n/a"}, discovery=${sourceKind}, selected=${selected}). Application owns sourcing; worker cannot pay or fulfill.`;
+        }
         default:
           throw new Error(
             `Unknown worker command: ${String((command as { type?: unknown }).type)}`,
@@ -224,7 +299,8 @@ export const proposePlan = internalAction({
   }),
   handler: async (_ctx, args) => {
     const configuration = providerConfiguration(process.env);
-    const role = M1_ROLE_REQUIREMENTS.RESEARCH_ROLE;
+    const roleKey = selectRoleKeyForRequest(args.request);
+    const role = M1_ROLE_REQUIREMENTS[roleKey];
     const proposal = await proposePlanWithOpenAI({
       configuration,
       request: args.request,
@@ -282,8 +358,9 @@ async function proposePlanWithOpenAI(input: {
           `Allowed resource classes: ${RESOURCE_CLASS_VALUES.join(", ")}`,
           "",
           "Propose the smallest capability set that can satisfy the role.",
-          "For a research role the capability set must make BOTH internal",
-          "company-record evidence AND public web evidence obtainable.",
+          roleKey === "GROWTH_ROLE"
+            ? "For a growth/launch role include growth_launch_operations so the worker can update a company artifact and request a missing resource."
+            : "For a research role the capability set must make BOTH internal company-record evidence AND public web evidence obtainable.",
           'Shape: {"capabilityKeys":string[],"responsibility":string,','"requiredResourceClasses":string[]}',
         ].join("\n"),
       },

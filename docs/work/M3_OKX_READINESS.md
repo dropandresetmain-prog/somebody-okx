@@ -1,7 +1,9 @@
 # M3 OKX Payment Rail Readiness
 
-**Access date:** 2026-09-17  
-**Status:** Research complete; one design constraint and one token discrepancy to resolve before M3 integration
+**Access date:** 2026-09-17 (signing boundary corrected 2026-09-18)  
+**Status:** PAYMENT POLICY / BUYER RAIL READY — OFFICIAL SIGNING EXECUTOR + LIVE TESTNET ACCEPTANCE PENDING
+
+The application owns purchase identity, spend approval, approved network/asset/amount/recipient, lifecycle, idempotency, retry/reconciliation, and settlement/result verification. Actual wallet/signing belongs to an official Onchain OS / Agentic Wallet `PaymentExecutor` (not the test-only simplified EIP-712 scaffold / `FakeSigner`).
 
 ---
 

@@ -24,6 +24,12 @@ import { Mascot } from "./somebody/Mascot";
 import { cleanError, formatClock, type Tone } from "./somebody/presentation";
 import { resolveResultDisplay, type CompletionField } from "./resultStatus";
 import type { SourcingReason } from "@/lib/objective/types";
+import { buildObjectiveMissionView } from "./readModel";
+import type { ResourceNeed } from "@/lib/objective/resourceNeed";
+import type { SourcingDecisionRecord } from "@/lib/objective/resourceNeed";
+import type { CandidateAssessment } from "@/lib/market/assessment";
+import type { CompanyArtifact } from "@/lib/objective/artifact";
+import type { MarketOffering } from "@/lib/market/discovery";
 
 type NoticeState = { kind: "ok" | "error"; text: string } | null;
 
@@ -510,6 +516,87 @@ class ObjectiveErrorBoundary extends Component<
   }
 }
 
+function MissionSection({ record }: { record: ObjectiveRecord }) {
+  const needs = (record.resourceNeeds ?? []) as ResourceNeed[];
+  const decisions = (record.sourcingDecisions ?? []) as SourcingDecisionRecord[];
+  const assessmentsByDecision: Record<string, CandidateAssessment[]> = {};
+  for (const row of record.candidateAssessments ?? []) {
+    assessmentsByDecision[row.decisionId] = row.assessments as CandidateAssessment[];
+  }
+  const offerings = (record.marketOfferings ?? []) as MarketOffering[];
+  const artifacts = (record.companyArtifacts ?? []) as CompanyArtifact[];
+  if (
+    needs.length === 0 &&
+    decisions.length === 0 &&
+    artifacts.length === 0 &&
+    record.state !== "waiting_for_resource"
+  ) {
+    return null;
+  }
+  const mission = buildObjectiveMissionView({
+    objectiveState: record.state,
+    needs,
+    decisions: decisions.map((d) => ({
+      id: d.id,
+      resourceNeedId: d.resourceNeedId,
+      decision: d.decision,
+      selectedOfferingId: d.selectedOfferingId,
+    })),
+    assessmentsByDecision,
+    offerings,
+    purchases: [],
+    artifacts,
+  });
+  return (
+    <section className="section" id="mission">
+      <SectionHead
+        kicker="Mission"
+        title="Resources and marketplace"
+        aside={
+          mission.isWaitingForResource ? (
+            <StatusPill tone="decision">Waiting for resource</StatusPill>
+          ) : null
+        }
+      />
+      {mission.artifacts.map((a) => (
+        <div key={a.key} className="result-row">
+          <span className="kicker">Artifact {a.key}</span>
+          <p>
+            {a.label} · version {a.currentVersion}
+          </p>
+        </div>
+      ))}
+      {mission.needs.map((n) => (
+        <div key={n.id} className="result-row">
+          <span className="kicker">Need · {n.resourceClass}</span>
+          <p>
+            {n.purpose} — <StatusPill tone={n.tone === "waiting" ? "decision" : n.tone === "done" ? "verified" : "waiting"}>{n.statusLabel}</StatusPill>
+          </p>
+        </div>
+      ))}
+      {mission.sourcingSteps.map((step) => (
+        <div key={step.decisionId} className="result-row">
+          <span className="kicker">Sourcing · {step.decision}</span>
+          <ul>
+            {step.candidates.map((c) => (
+              <li key={c.offeringId}>
+                {c.offeringName} ({c.offeringId}): {c.verdictLabel}
+                {c.selected ? " · SELECTED BUY" : ""}
+                {c.priceLabel ? ` · ${c.priceLabel}` : ""}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+      {mission.hasUnresolvedRequiredResource && (
+        <p className="muted">
+          No payment created. Objective waits until the resource is acquired.
+        </p>
+      )}
+    </section>
+  );
+}
+
 function ObjectiveWorkspace() {
   const [activeKey, setActiveKey] = useState<string | undefined>(undefined);
   const [pending, setPending] = useState<string | null>(null);
@@ -650,6 +737,7 @@ function ObjectiveWorkspace() {
           <div className="stack">
             {record && <PlanSection record={record} />}
             {record && <WorkerSection record={record} />}
+            {record && <MissionSection record={record} />}
             {view && <EvidenceSection evidence={view.evidence} />}
             {record && <ResultSection record={record} completion={view.completion} />}
           </div>

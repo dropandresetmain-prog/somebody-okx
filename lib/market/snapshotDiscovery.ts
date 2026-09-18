@@ -11,7 +11,9 @@ import { resolveCompatibleClasses } from "./registry";
  * 2. taskDescription keywords must appear in name or description (case-insensitive).
  * 3. Capped at limit (default 5, hard cap 10).
  *
- * This is the primary discovery path (see M2_DISCOVERY_FINDINGS.md).
+ * Explicit fallback / synchronized cache when live OKX CLI discovery is
+ * unavailable or returns no registry-compatible offerings.
+ * See docs/work/M2_DISCOVERY_FINDINGS.md (corrected 2026-09-18).
  */
 
 const DEFAULT_LIMIT = 5;

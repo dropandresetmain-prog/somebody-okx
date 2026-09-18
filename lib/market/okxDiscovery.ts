@@ -1,46 +1,148 @@
 import type { MarketDiscovery, MarketDiscoveryInput, MarketOffering } from "./discovery";
 import { createSnapshotDiscovery } from "./snapshotDiscovery";
+import {
+  buildServiceMatchArgs,
+  createLocalOnchainosRunner,
+  parseServiceMatchStdout,
+  type OkxCliRunner,
+} from "./okxCliBridge";
+import { VERIFIED_SERVICE_REGISTRY } from "./registryData";
+import { resolveCompatibleClasses } from "./registry";
 
 /**
- * OKX discovery adapter — behind the MarketDiscovery interface.
+ * Official OKX Onchain OS discovery adapter behind MarketDiscovery.
  *
- * DISCOVERY FINDINGS (see docs/work/M2_DISCOVERY_FINDINGS.md):
+ * Preferred path: `onchainos agent service-match` (need/keywords driven).
+ * Snapshot is an EXPLICIT fallback only — every fallback offering carries
+ * source.kind === "snapshot" and raw.fallbackReason (never silent degrade).
  *
- * No supported official OKX programmatic discovery primitive was confirmed during
- * this pass. Specifically:
- *
- * - `@okx/agent` npm package does not exist (404).
- * - `okx-cli` on npm is an unrelated placeholder package (0.0.0, no OKX affiliation).
- * - `agent-tradekit-cli` is a trading CLI, not an agent/service discovery tool.
- * - OKX.AI official docs (asp-introduction, howtomcp) describe the marketplace
- *   concept and ASP registration but do NOT document any programmatic API, CLI
- *   command, or SDK for agent search, agent service-list, or agent asp-match.
- * - The docs mention "active order taking" where agents search for matching public
- *   tasks, but this is described as a UI/prompt workflow inside OKX.AI, not an
- *   externally callable API.
- *
- * CONCLUSION: No supported programmatic primitive exists → snapshot is the primary
- * discovery path. This adapter delegates to the snapshot implementation and
- * maintains the same MarketDiscovery interface so that when/if a founder-gated
- * live CLI integration becomes available, only this file needs to change.
- *
- * FUTURE: If OKX releases an official agent discovery CLI/SDK, implement it here
- * behind the same MarketDiscovery interface. The adapter should:
- * - Shell out to the CLI or call the SDK from a Next.js server bridge (NOT from
- *   a Convex Node action, since CLI tools may require filesystem/network access
- *   that Convex actions restrict).
- * - Parse machine-readable output (JSON) into MarketOffering[].
- * - Still pass results through the verified service registry before use.
+ * Discovery output is UNTRUSTED. Registry + assessment authorize use.
+ * This file must not live inside sourcing policy, Objective lifecycle,
+ * worker runtime, or completion logic beyond injecting MarketDiscovery.
  */
 
-export function createOkxDiscovery(): MarketDiscovery {
-  // Delegate to snapshot — the only confirmed-safe discovery path.
+export type OkxDiscoveryOptions = {
+  /** Injected CLI runner (tests / bridge). Default: local onchainos spawn. */
+  runner?: OkxCliRunner;
+  /** When false, live failure throws instead of snapshot fallback. Default true. */
+  allowSnapshotFallback?: boolean;
+  /** Clock for retrievedAt. */
+  now?: () => number;
+};
+
+function withRegistryClasses(offerings: MarketOffering[]): MarketOffering[] {
+  return offerings.map((o) => ({
+    ...o,
+    compatibleResourceClasses: resolveCompatibleClasses(
+      o,
+      VERIFIED_SERVICE_REGISTRY,
+    ),
+  }));
+}
+
+function registryCompatible(
+  offerings: MarketOffering[],
+  resourceClass: MarketDiscoveryInput["resourceClass"],
+): MarketOffering[] {
+  return withRegistryClasses(offerings).filter((o) =>
+    o.compatibleResourceClasses.includes(resourceClass),
+  );
+}
+
+async function discoverLive(
+  runner: OkxCliRunner,
+  input: MarketDiscoveryInput,
+  now: number,
+): Promise<{ offerings: MarketOffering[]; command: string[]; raw: unknown }> {
+  const command = buildServiceMatchArgs({
+    taskDescription: input.taskDescription,
+    limit: input.limit,
+  });
+  const result = await runner(command);
+  if (!result.ok && !result.stdout.trim()) {
+    throw new Error(
+      `okx discovery CLI failed: ${result.stderr || `exit ${result.exitCode}`}`,
+    );
+  }
+  const parsed = parseServiceMatchStdout(result.stdout, {
+    command: ["onchainos", ...command],
+    retrievedAt: now,
+    limit: input.limit,
+  });
+  return {
+    offerings: parsed.offerings,
+    command: parsed.command,
+    raw: parsed.raw,
+  };
+}
+
+async function snapshotFallback(
+  input: MarketDiscoveryInput,
+  reason: string,
+  liveMeta: { command?: string[]; liveCount?: number; liveError?: string },
+  now: number,
+): Promise<MarketOffering[]> {
   const snapshot = createSnapshotDiscovery();
+  const base = await snapshot.discover(input);
+  return base.map((o) => ({
+    ...o,
+    source: {
+      kind: "snapshot" as const,
+      retrievedAt: now,
+      raw: {
+        fallbackReason: reason,
+        liveAttempted: true,
+        ...(liveMeta.command ? { liveCommand: liveMeta.command } : {}),
+        ...(liveMeta.liveCount !== undefined
+          ? { liveOfferingCount: liveMeta.liveCount }
+          : {}),
+        ...(liveMeta.liveError ? { liveError: liveMeta.liveError } : {}),
+        snapshotOfferingId: o.offeringId,
+      },
+    },
+  }));
+}
+
+export function createOkxDiscovery(
+  options: OkxDiscoveryOptions = {},
+): MarketDiscovery {
+  const runner = options.runner ?? createLocalOnchainosRunner();
+  const allowSnapshotFallback = options.allowSnapshotFallback !== false;
+  const nowFn = options.now ?? (() => Date.now());
 
   return {
     async discover(input: MarketDiscoveryInput): Promise<MarketOffering[]> {
-      // When a live CLI integration is available, replace this delegation.
-      return snapshot.discover(input);
+      const now = nowFn();
+      try {
+        const live = await discoverLive(runner, input, now);
+        const compatible = registryCompatible(live.offerings, input.resourceClass);
+        if (compatible.length > 0) {
+          // Live offerings that the application registry recognizes.
+          return compatible;
+        }
+        if (!allowSnapshotFallback) {
+          return withRegistryClasses(live.offerings);
+        }
+        // Live ran, but nothing maps to a verified resource class for this need.
+        return snapshotFallback(
+          input,
+          "live_returned_no_registry_compatible_offerings",
+          {
+            command: live.command,
+            liveCount: live.offerings.length,
+          },
+          now,
+        );
+      } catch (err) {
+        if (!allowSnapshotFallback) throw err;
+        const message = err instanceof Error ? err.message : String(err);
+        return snapshotFallback(
+          input,
+          "live_cli_unavailable_or_failed",
+          { liveError: message },
+          now,
+        );
+      }
     },
   };
 }

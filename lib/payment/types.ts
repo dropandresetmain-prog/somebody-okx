@@ -149,12 +149,47 @@ export type PurchaseRecord = {
 // ─── §9c Buyer rail injected dependencies ───────────────────────────────────
 
 /**
- * Signing abstraction. In tests a FakeSigner with no real secret is injected.
- * The rail itself never holds or creates a private key.
+ * TEST-ONLY signing stub. Used by FakeSigner / simplified EIP-712 scaffolding.
+ * This is NOT the production wallet/signing surface.
+ *
+ * Production signing belongs to an official Onchain OS / Agentic Wallet
+ * PaymentExecutor implementation (x402 payment payload with authorization
+ * fields: from, to, value, validAfter, validBefore, nonce, signature).
  */
 export type Signer = {
   readonly address: string;
+  /** Simplified test payload — not a production EIP-712 typed-data signer. */
   signEIP712(payload: unknown): Promise<string>;
+};
+
+/**
+ * Production-facing payment execution boundary.
+ *
+ * The application owns: purchase identity, spend approval, approved
+ * network/asset/amount/recipient, lifecycle, idempotency, retry/reconciliation,
+ * and settlement/result verification.
+ *
+ * The official OKX / Onchain OS / Agentic Wallet layer owns actual wallet
+ * signing wherever practical. Do not hand-roll cryptographic signing here.
+ */
+export type PaymentSubmissionResult = {
+  submitted: boolean;
+  transactionHash?: string;
+  paymentPayloadRef?: string;
+  note?: string;
+};
+
+export type PaymentExecutor = {
+  readonly kind: "official_onchainos" | "test_scaffold";
+  executeApprovedPayment(input: {
+    intentId: string;
+    network: string;
+    asset: string;
+    amount: string;
+    payTo: string;
+    resource: string;
+    approvalId: string;
+  }): Promise<PaymentSubmissionResult>;
 };
 
 /**
