@@ -1,7 +1,7 @@
 # M3 supervised live-session ledger
 
-Status: **BLOCKED AFTER SINGLE FRESH PAYMENT COMMAND / NO SIGNATURE**
-Recorded: **2026-09-18T17:57:10+08:00**
+Status: **POST-SIGN PAYMENT INTEGRATION DEFECT**
+Recorded: **2026-09-18T20:43:01+08:00**
 
 This ledger contains only public challenge terms and safe payment identifiers.
 It deliberately contains no private key, authorization header, session token,
@@ -220,3 +220,88 @@ attempt. M3 is not an acceptance candidate. The immediate integration result
 is **APPLICATION DEFECT FOUND**: the supervised flow allowed a local quote
 handle to age out between quote/confirmation and the one-shot payment gate,
 without a freshness check that could fail before presenting confirmation.
+
+## Quote-lifetime fix (application)
+
+Committed on `feat/m3-live-payment` as
+`fix(payment): execute from fresh confirmed quote`
+(`4c01c1c1e4fbbf8ebd878da58459d465239ad471`):
+
+- PreviewQuote vs ExecutionQuote separation;
+- `paymentTermsFingerprint()` over material terms only (not local paymentId);
+- founder confirmation binds to purchase identity + economic terms;
+- JIT ExecutionQuote after confirmation; terms must match before pay;
+- conservative local freshness window `EXECUTION_QUOTE_MAX_AGE_MS = 30000`;
+- focused tests cover term mutation, paymentId change OK, stale quote block,
+  and cross-purchase confirmation isolation.
+
+## JIT attempt — PreviewQuote then founder confirmation
+
+PreviewQuote acquired `2026-09-18T20:02:58.595+08:00` (display/approval only;
+local handle intentionally not used for signing):
+
+- preview paymentId: `pay_cc4692839ef83614994b982d` (not durable authority);
+- network: `eip155:1952` (X Layer Testnet);
+- scheme/index: `exact` / `0`;
+- asset: `0xcb8bf24c6ce16ad21d707c9505421a17f2bec79d` (`USDC_TEST`);
+- amount: `10000` atomic (`0.01`);
+- recipient: `0x3509655ad99effc7f3f74205482b1cb337ca08f7`;
+- resource: `/api/v1/pay/mock-merchant/resource`;
+- maxTimeoutSeconds: `60`;
+- EIP-712: `USDC_TEST` / `1`;
+- contemporaneous funding-check: `decision: ready`, balance `10`, sufficient.
+
+Founder confirmation at `2026-09-18T20:42:48.190+08:00` authorized those exact
+transaction terms (not the expired preview paymentId). Confirmation arrived
+after a delay; the preview CLI handle was deliberately discarded.
+
+## JIT ExecutionQuote and single payment command
+
+Immediate ExecutionQuote at `2026-09-18T20:42:48.216+08:00`:
+
+- execution paymentId: `pay_3ab1ba75284e1b135d78f118`
+  (different from preview; allowed);
+- material terms fingerprint: **identical** to confirmed preview terms;
+- network verified testnet (`isMainnet: false`);
+- age before pay: `2812` ms (under 30s freshness window).
+
+Single authorized command at `2026-09-18T20:42:51.579+08:00`:
+
+`onchainos payment pay --payment-id pay_3ab1ba75284e1b135d78f118 --selected-index 0 --yes`
+
+Safe CLI response (one attempt; no retry):
+
+- exit code: `1`;
+- top-level `ok`: `false`;
+- `data`: absent;
+- `data.status` / `txHash` / `decodedReceipt` / `result`: absent;
+- top-level `error`: `HPKE decryption failed: Failed to open ciphertext`;
+- no `PAYMENT-SIGNATURE` retained;
+- no merchant replay body;
+- no second 402 challenge returned in the envelope;
+- no transaction hash;
+- no decoded receipt.
+
+Post-attempt read-only evidence at `2026-09-18T20:43:01.318+08:00`:
+
+- direct `USDC_TEST` balance remained `10` (`10000000` atomic units);
+- funding-check remained `decision: ready`, `sufficient: true`;
+- wallet history remained three inbound faucet transfers only; zero outgoing
+  orders attributable to this paymentId.
+
+Classification:
+
+`PAYMENT_COMMAND_FAILED_DURING_WALLET_CRYPTO`
+`HPKE decryption failed before merchant/settlement evidence`
+`quote-lifetime application defect not reproduced`
+`no settlement observed`
+
+M3 is **not** an acceptance candidate. Session status:
+
+**POST-SIGN PAYMENT INTEGRATION DEFECT**
+
+Meaning: application gates (confirmation → fresh matching ExecutionQuote →
+freshness → single pay) succeeded; the official Agentic Wallet / TEE pay path
+failed during HPKE decryption before producing a signature, merchant result,
+or transaction identity. No second payment command is authorized in this
+session.
