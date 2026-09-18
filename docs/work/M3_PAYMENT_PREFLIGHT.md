@@ -298,8 +298,39 @@ demonstrably in play. At that point inspect/repair only the
 keyring files, or signing material by hand.
 
 4. If personal signing passes, exercise the supported EIP-712 path with a
-non-payment typed-data message. It must not use EIP-3009
-`TransferWithAuthorization` fields.
+non-payment typed-data message. It deliberately has no token contract and no
+EIP-3009 `TransferWithAuthorization` fields, so the signature is a healthcheck,
+not spend authorization.
+
+```powershell
+$typedData = @{
+  domain = @{
+    name = "Somebody OKX M3 Healthcheck"
+    version = "1"
+    chainId = 1952
+  }
+  types = @{
+    EIP712Domain = @(
+      @{ name = "name"; type = "string" },
+      @{ name = "version"; type = "string" },
+      @{ name = "chainId"; type = "uint256" }
+    )
+    Healthcheck = @(
+      @{ name = "message"; type = "string" }
+    )
+  }
+  primaryType = "Healthcheck"
+  message = @{
+    message = "somebody-okx-m3-session-healthcheck"
+  }
+} | ConvertTo-Json -Depth 10 -Compress
+
+onchainos wallet sign-message --chain xlayer_test --from <ADDRESS_FROM_PREVIOUS_COMMAND> --type eip712 --message $typedData
+```
+
+If the CLI responds with its normal signing confirmation gate, confirm only
+this exact healthcheck payload and rerun the same command with `--force`.
+Never reuse `--force` as a general payment bypass.
 
 5. Only after both canaries pass, acquire a **read-only** fresh quote:
 
