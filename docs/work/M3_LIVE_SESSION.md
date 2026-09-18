@@ -305,3 +305,71 @@ freshness → single pay) succeeded; the official Agentic Wallet / TEE pay path
 failed during HPKE decryption before producing a signature, merchant result,
 or transaction identity. No second payment command is authorized in this
 session.
+
+
+---
+
+## Integration audit checkpoint — 18 Sep 2026 (no payment attempt)
+
+This checkpoint was added after the Attempt C HPKE failure. It records research
+and hardening only; it does **not** alter Attempts A/B/C above.
+
+### External findings
+
+- Current upstream Onchain OS source/tag inspected: **4.6.2**; live session had
+  used 4.6.1.
+- Core payment signing files are unchanged between 4.6.1 and 4.6.2, so the
+  version bump alone is not treated as an HPKE fix.
+- Upstream `okx/onchainos-skills#50` documents the same Windows HPKE failure.
+  The resolved cause was a stale Windows Credential Manager credential being
+  preferred over a fresh encrypted-file fallback, pairing the wrong
+  `session_key` with a new `encryptedSessionSk`.
+- Current v4.6.2 keyring source still reads OS keyring first on Windows/macOS
+  and `clear_all()` ignores an OS credential deletion error before clearing
+  the file fallback. Therefore successful `wallet status` or logout/login
+  cannot by themselves prove signing health.
+- Current official Mock Merchant/payment docs describe X Layer Testnet USD₮0 at
+  `0x9e29b3aada05bf2d2c827af80bd28dc0b9b4fb0c`, while the Sep-17 live
+  challenge returned USDC_TEST at
+  `0xcb8bf24c6ce16ad21d707c9505421a17f2bec79d`.
+- Current CLI source maps any signed merchant replay HTTP 402 to
+  `status=pending` / `facilitator non-terminal`; that generic label is not
+  enough to distinguish true pending settlement from rejection/rechallenge.
+
+### Application hardening added
+
+See `docs/work/M3_PAYMENT_PREFLIGHT.md` for the full matrix.
+
+- x402 amount compatibility: accepts current `amount` and historical
+  `maxAmountRequired`; conflicting aliases fail closed.
+- safe CLI diagnostics: top-level error + exit code retained; raw stderr and
+  signing material are not persisted.
+- source-proven `quote_expired_or_missing` and HPKE failures are classified
+  as definitely pre-submission; unknown failures remain ambiguous.
+- post-submission failure can no longer become a normal retryable failure.
+- retry planning from failed purchase state requires reconciliation evidence.
+- independent X Layer receipt verifier requires chain 1952, successful receipt,
+  and exact approved ERC-20 Transfer token/payer/recipient/amount.
+
+### Current gate
+
+**NO-GO. No live payment is authorized.**
+
+Before another quote/sign/pay sequence:
+
+1. focused payment tests + typecheck must pass on the exact branch head;
+2. current supported CLI must be verified on the founder machine;
+3. official logout/login must complete;
+4. personal-sign canary must pass;
+5. safe non-payment EIP-712 canary must pass;
+6. fresh Mock Merchant quote must be inspected read-only;
+7. token/facilitator compatibility must be resolved;
+8. direct exact-token balance/funding check must be sufficient.
+
+If HPKE fails at either signing canary: stop before obtaining a payment quote and
+diagnose the Windows credential-store/session mismatch. Manual credential repair
+is not the first step and is permitted only after official tooling is shown to
+have left stale OS credential state.
+
+No `onchainos payment pay` command was executed in this audit.
+No new authorization exists.
