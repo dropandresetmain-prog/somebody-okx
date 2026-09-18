@@ -62,6 +62,10 @@ describe("Official Onchain OS payment executor", () => {
     assert.equal(result.transactionHash, "0xabc123");
     assert.equal(result.paymentPayloadRef, "pay_quoted_1");
     assert.ok(!JSON.stringify(result).includes("authorization_header"));
+    assert.deepEqual(result.safeResponse, {
+      ok: true,
+      data: { },
+    });
   });
 
   it("refuses mainnet, changed terms, and a missing confirmation before invoking the CLI", async () => {
@@ -98,23 +102,51 @@ describe("Official Onchain OS payment executor", () => {
       (error: unknown) => error instanceof OfficialPaymentAmbiguousError && error.paymentId === "pay_quoted_1",
     );
 
+    let invocationCount = 0;
     const pending = new OfficialOnchainosPaymentExecutor(
       { paymentId: "pay_quoted_2", selectedIndex: 0, terms },
       { confirmationId: "founder-confirmation-1", confirmedAt: 1 },
-      async () => ({
+      async () => {
+        invocationCount += 1;
+        return {
         ok: true,
         stderr: "",
         exitCode: 0,
         stdout: JSON.stringify({
           ok: true,
-          data: { ok: false, status: "pending", txHash: null, decodedReceipt: null },
+          data: {
+            status: "pending",
+            txHash: null,
+            decodedReceipt: null,
+            result: { status: 402, body: { error: "Payment Required" } },
+            error: "facilitator non-terminal: HTTP 402",
+            authorization_header: "must-not-be-retained",
+          },
         }),
-      }),
+        };
+      },
     );
+    let caught: unknown;
     await assert.rejects(
       () => pending.executeApprovedPayment(input),
-      (error: unknown) => error instanceof OfficialPaymentAmbiguousError && error.paymentId === "pay_quoted_2",
+      (error: unknown) => {
+        caught = error;
+        return error instanceof OfficialPaymentAmbiguousError && error.paymentId === "pay_quoted_2";
+      },
     );
+    const error = caught as OfficialPaymentAmbiguousError;
+    assert.equal(invocationCount, 1);
+    assert.deepEqual((error as OfficialPaymentAmbiguousError).safeResponse, {
+      ok: true,
+      data: {
+        status: "pending",
+        txHash: null,
+        decodedReceipt: null,
+        result: { status: 402, body: { error: "Payment Required" } },
+        error: "facilitator non-terminal: HTTP 402",
+      },
+    });
+    assert.ok(!JSON.stringify(error).includes("authorization_header"));
   });
 
   it("renders the required confirmation surface without secrets", () => {

@@ -1,6 +1,6 @@
 # M3 supervised live-session ledger
 
-Status: **BLOCKED BEFORE APPROVAL / SIGNING**  
+Status: **BLOCKED AFTER SINGLE FRESH PAYMENT COMMAND / NO SIGNATURE**
 Recorded: **2026-09-18T17:57:10+08:00**
 
 This ledger contains only public challenge terms and safe payment identifiers.
@@ -122,3 +122,101 @@ Correction: a `PAYMENT-RESPONSE` header can be an x402 receipt format and the
 CLI can decode it when present, but this OKX testnet guide does not require it
 as the only success evidence. Our pending response has neither that terminal
 paid response body nor a transaction hash, so it still cannot be accepted.
+
+## Previous attempt reconciliation — closed before fresh authorization
+
+The prior replacement payment command is recorded in the official CLI audit at
+`2026-09-18 +08:00 18:09:01.566`, with the exact challenge timeout of `60`
+seconds. Therefore its authorization `validBefore` was no later than
+`2026-09-18T18:10:01.566+08:00`; the read-only reconciliation at
+`2026-09-18T18:50:48.445+08:00` was safely later.
+
+Read-only evidence:
+
+- direct `USDC_TEST` balance: `10` (`10000000` atomic units);
+- funding-check: `decision: ready`, `sufficient: true`, `shortfall: 0`;
+- official wallet history: three inbound faucet transfers only, zero outgoing
+  orders, and no settlement receipt attributable to `pay_af95d85ff8bc7d6fe3b66ac2`.
+
+Formal closure:
+
+`EXPIRED_UNSETTLED`
+`authorization expired`
+`no settlement observed`
+`no outgoing transfer observed`
+
+## Fresh quote and application binding
+
+Fresh quote audit time: `2026-09-18 +08:00 18:51:15.293`. This is a new local
+CLI handle and was not reused from either previous attempt:
+
+- paymentId: `pay_eaf2d6069444dfb04c1a8ad1`;
+- x402Version: `2`;
+- accepts count: `2`;
+- selected index/scheme: `0` / `exact`;
+- alternate index/scheme: `1` / `aggr_deferred` (not selected);
+- network: `eip155:1952` (X Layer Testnet);
+- asset: `0xcb8bf24c6ce16ad21d707c9505421a17f2bec79d` (`USDC_TEST`);
+- amount: `10000` atomic units (`0.01` human);
+- recipient: `0x3509655ad99effc7f3f74205482b1cb337ca08f7`;
+- resource: `/api/v1/pay/mock-merchant/resource`;
+- maxTimeoutSeconds: `60`;
+- EIP-712 domain: name `USDC_TEST`, version `1`;
+- quote preflight: `balanceStatus: unavailable`, `hasBalance: false`;
+- contemporaneous direct balance at `18:51:51.738+08:00`: `10` USDC_TEST;
+- contemporaneous funding-check: `decision: ready`, `sufficient: true`,
+  `shortfall: 0`.
+
+The quote terms matched the previous challenge materially. The application
+created a new exact-bound record and stopped at `READY_TO_SIGN`:
+
+- Purchase ID: `purchase-m3-mock-af2d6069444dfb04c1a8ad1`;
+- idempotency key: `idem-m3-mock-af2d6069444dfb04c1a8ad1`;
+- approval ID: `approval-m3-mock-af2d6069444dfb04c1a8ad1`;
+- intent ID: `intent-m3-mock-af2d6069444dfb04c1a8ad1`;
+- purchase state: `approved`;
+- bound intent state: `ready_to_sign`.
+
+Founder confirmation was explicit in chat (`Proceed`) for the displayed
+TESTNET terms. No authorization, signature, or private signing material is
+stored here.
+
+## Single fresh payment command — CLI stopped before signing
+
+The only fresh command permitted in this session was run once at
+`2026-09-18 +08:00 19:37:51.093`:
+
+`onchainos payment pay --payment-id pay_eaf2d6069444dfb04c1a8ad1 --selected-index 0 --yes`
+
+Safe CLI response:
+
+- exit code: `1`;
+- top-level `ok`: `false`;
+- `data`: absent (`null`);
+- `data.status`: absent;
+- `data.txHash`: absent;
+- `data.decodedReceipt`: absent;
+- `data.result`: absent;
+- `data.error`: absent in the stdout envelope;
+- official audit error: `quote_expired_or_missing: pay_eaf2d6069444dfb04c1a8ad1`;
+- duration: `22ms`;
+- fresh local payment state file: absent after the command.
+
+There was no wallet signature, no `PAYMENT-SIGNATURE` retained, no merchant
+replay, no `PAYMENT-RESPONSE`, no second challenge, no transaction hash, and
+no receipt. The command failed before signing because the fresh local quote
+handle was no longer available when the founder confirmation was acted on.
+No automatic retry, re-quote, or second payment command was made.
+
+Post-command read-only evidence at `2026-09-18T19:38:49.684+08:00`:
+
+- direct `USDC_TEST` balance remained `10` (`10000000` atomic units);
+- wallet history remained three inbound faucet transfers and zero outgoing
+  orders.
+
+This is classified as `PAYMENT_COMMAND_ABORTED_BEFORE_SIGNING`, not
+`SIGNED_REPLAY_REJECTED_OR_UNACCEPTED`; the merchant was never reached in this
+attempt. M3 is not an acceptance candidate. The immediate integration result
+is **APPLICATION DEFECT FOUND**: the supervised flow allowed a local quote
+handle to age out between quote/confirmation and the one-shot payment gate,
+without a freshness check that could fail before presenting confirmation.

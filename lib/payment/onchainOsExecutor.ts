@@ -13,6 +13,7 @@ import type {
   NormalizedChallengeTerms,
   PaymentExecutor,
   PaymentSubmissionResult,
+  SafeOfficialPaymentResponse,
 } from "./types";
 
 export type OnchainosPaymentRunner = (args: string[]) => Promise<{
@@ -41,6 +42,7 @@ export class OfficialPaymentAmbiguousError extends Error {
   constructor(
     public readonly paymentId: string,
     message: string,
+    public readonly safeResponse?: SafeOfficialPaymentResponse,
   ) {
     super(message);
     this.name = "OfficialPaymentAmbiguousError";
@@ -106,7 +108,42 @@ function transactionHashFrom(value: unknown): string | undefined {
   return transactionHashFrom(record.receipt) ?? transactionHashFrom(record.payment);
 }
 
-/** Parse only safe receipt metadata; intentionally discard authorization headers/signatures. */
+const SAFE_RESPONSE_FIELDS = ["status", "txHash", "decodedReceipt", "result", "error"] as const;
+const SENSITIVE_KEY = /authorization|signature|session|private|secret|password|token/i;
+
+function sanitizeSafeValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(sanitizeSafeValue);
+  }
+  const record = asRecord(value);
+  if (!record) return value;
+
+  const sanitized: Record<string, unknown> = {};
+  for (const [key, nested] of Object.entries(record)) {
+    if (SENSITIVE_KEY.test(key)) continue;
+    sanitized[key] = sanitizeSafeValue(nested);
+  }
+  return sanitized;
+}
+
+function safeResponseFrom(parsed: unknown): SafeOfficialPaymentResponse {
+  const root = asRecord(parsed);
+  const rawData = asRecord(root?.data);
+  const data = rawData
+    ? Object.fromEntries(
+        SAFE_RESPONSE_FIELDS
+          .filter((field) => Object.prototype.hasOwnProperty.call(rawData, field))
+          .map((field) => [field, sanitizeSafeValue(rawData[field])]),
+      )
+    : null;
+
+  return {
+    ok: typeof root?.ok === "boolean" ? root.ok : null,
+    data,
+  };
+}
+
+/** Parse safe receipt/merchant metadata; intentionally discard authorization material. */
 export function parseOfficialPaymentSubmission(
   stdout: string,
   paymentId: string,
@@ -117,20 +154,30 @@ export function parseOfficialPaymentSubmission(
   } catch {
     throw new OfficialPaymentAmbiguousError(paymentId, "Official payment response was not valid JSON; reconcile before retrying");
   }
+  const safeResponse = safeResponseFrom(parsed);
   const root = asRecord(parsed);
   const data = asRecord(root?.data);
   if (root?.ok !== true || !data) {
-    throw new OfficialPaymentAmbiguousError(paymentId, "Official payment did not return a confirmed receipt; reconcile before retrying");
+    throw new OfficialPaymentAmbiguousError(
+      paymentId,
+      "Official payment did not return a confirmed receipt; reconcile before retrying",
+      safeResponse,
+    );
   }
   const transactionHash = transactionHashFrom(data);
   if (!transactionHash) {
-    throw new OfficialPaymentAmbiguousError(paymentId, "Official payment response lacks a safe transaction identity; reconcile before retrying");
+    throw new OfficialPaymentAmbiguousError(
+      paymentId,
+      "Official payment response lacks a safe transaction identity; reconcile before retrying",
+      safeResponse,
+    );
   }
   return {
     submitted: true,
     transactionHash,
     paymentPayloadRef: paymentId,
     note: "Official Onchain OS TEE payment; authorization material intentionally discarded",
+    safeResponse,
   };
 }
 

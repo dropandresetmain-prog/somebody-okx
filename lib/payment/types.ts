@@ -163,6 +163,22 @@ export type Signer = {
 };
 
 /**
+ * Safe subset of the official CLI response retained for reconciliation.
+ * Authorization headers, signatures, and session material are intentionally
+ * excluded even when the CLI returns additional fields.
+ */
+export type SafeOfficialPaymentResponse = {
+  ok: boolean | null;
+  data: {
+    status?: unknown;
+    txHash?: unknown;
+    decodedReceipt?: unknown;
+    result?: unknown;
+    error?: unknown;
+  } | null;
+};
+
+/**
  * Production-facing payment execution boundary.
  *
  * The application owns: purchase identity, spend approval, approved
@@ -177,6 +193,7 @@ export type PaymentSubmissionResult = {
   transactionHash?: string;
   paymentPayloadRef?: string;
   note?: string;
+  safeResponse?: SafeOfficialPaymentResponse;
 };
 
 export type PaymentExecutor = {
