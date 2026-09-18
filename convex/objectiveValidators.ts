@@ -164,6 +164,15 @@ export const objectiveRecord = v.object({
   candidateAssessments: v.optional(v.array(v.any())),
   marketOfferings: v.optional(v.array(v.any())),
   companyArtifacts: v.optional(v.array(v.any())),
+  // M4 management engine fields — optional so M2 rows keep loading.
+  // Storage only; business rules live in lib/management/*.
+  management: v.optional(
+    v.object({
+      contractId: v.union(v.string(), v.null()),
+      currentContractRevision: v.optional(v.number()),
+      controlNotes: v.optional(v.array(v.any())),
+    }),
+  ),
 });
 
 export const activityEvent = v.object({

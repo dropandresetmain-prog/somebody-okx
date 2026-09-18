@@ -113,17 +113,17 @@ Evidence:
 
 ### Checkpoint 3 — persistent workforce
 
-- [ ] persist Worker identity / lifecycle / reservation;
-- [ ] actual REUSE demonstrated;
-- [ ] supported CREATE reason path;
-- [ ] dynamic semantic CapabilitySpec/tool-contract definition;
-- [ ] no dynamic real-world authority invention;
-- [ ] capability/resource request returns through Somebody;
-- [ ] objective-wide worker/assignment limits.
+- [x] persist Worker identity / lifecycle / reservation; (`convex/schema.ts` +8 M4 tables: workers, outcomeContracts, requirements, managerialDecisions, assignments, executionIntents, wakeEvents, objectiveBudgets. `convex/managementValidators.ts` mirrors the frozen contract; `convex/internal/workforce.ts` mutations; `objectiveRecord.management` added as an OPTIONAL field so every M1/M2 row keeps loading.)
+- [x] actual REUSE demonstrated; (`tests/managementStaffing.test.ts`: capable+available worker is reused, active lease blocks reuse, lapsed lease restores it; `listWorkers` is the real inventory read replacing `resolveWorker({inventory: []})` at convex/objectives.ts:332 — call-site swap lands with CP7 integration.)
+- [x] supported CREATE reason path; (availability + parallelism reasons proven; unsupported paths return typed `no_staffing_possible` with blockers.)
+- [x] dynamic semantic CapabilitySpec/tool-contract definition; (`addDynamicCapability` runs `validateCapabilitySpec` and writes NOTHING on failure — persistence test proves the negative.)
+- [x] no dynamic real-world authority invention; (`authorize_external_spend` / any externalAuthority primitive rejected by the validator; worker→worker creation asserted structurally impossible in the staffing test.)
+- [ ] capability/resource request returns through Somebody; (kernels + wake plumbing exist; the `request_resource` tool call-site rewiring from the M2 sourcing seam to a `worker_resource_request` wake is CP7 integration work.)
+- [x] objective-wide worker/assignment limits. (`applyBudgetSpend` delegates every counter to lib/management/budget.ts — no arithmetic in storage; `countObjectiveWorkers` + maxWorkersCreated/maxActiveAssignments enforced; `model_call` given its own pure helper `trySpendModelCall` so the 40-decision and 60-model-call ceilings stay independent.)
 
 Evidence:
-- reuse/create focused tests;
-- unsupported capability blocks/escalates rather than throws.
+- reuse/create focused tests; (`tests/managementStaffing.test.ts` 9 pass.)
+- unsupported capability blocks/escalates rather than throws. (pure staffing + capability tests, plus `tests/managementWorkforce.test.ts` / `tests/managementWorkforcePersistence.test.ts` — 31 pass under convex-test covering reservation fencing, wake dedupe by `dedupeKey`, budget spend refusals that do not mutate stored figures, and stale downsert protection on satisfied requirements.)
 
 ### Checkpoint 4 — LangGraph management loop
 

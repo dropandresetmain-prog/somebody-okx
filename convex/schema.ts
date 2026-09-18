@@ -4,7 +4,20 @@
 
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
-import { objectiveRecord, activityEvent } from "./objectiveValidators";
+import {
+  objectiveRecord,
+  activityEvent,
+} from "./objectiveValidators";
+import {
+  vWorkerRecord,
+  vOutcomeContract,
+  vRequirement,
+  vManagerialDecision,
+  vAssignment,
+  vExecutionIntent,
+  vWakeEvent,
+  vObjectiveBudget,
+} from "./managementValidators";
 
 export default defineSchema({
   // One bounded founder objective per row; the aggregate carries its plan,
@@ -45,4 +58,70 @@ export default defineSchema({
   })
     .index("by_objectiveKey", ["objectiveKey"])
     .index("by_objectiveEvidence", ["objectiveKey", "evidenceId"]),
+
+  // M4 Management Engine tables — persistent workforce and control state
+  workers: defineTable({
+    workerKey: v.string(),
+    data: vWorkerRecord,
+  })
+    .index("by_workerKey", ["workerKey"]),
+
+  outcomeContracts: defineTable({
+    objectiveKey: v.string(),
+    contractId: v.string(),
+    revision: v.number(),
+    data: vOutcomeContract,
+  })
+    .index("by_contractId", ["contractId"])
+    .index("by_objective", ["objectiveKey"])
+    .index("by_objectiveRevision", ["objectiveKey", "revision"]),
+
+  requirements: defineTable({
+    objectiveKey: v.string(),
+    requirementKey: v.string(),
+    data: vRequirement,
+  })
+    .index("by_objectiveKey", ["objectiveKey"])
+    .index("by_objectiveRequirement", ["objectiveKey", "requirementKey"]),
+
+  managerialDecisions: defineTable({
+    objectiveKey: v.string(),
+    decisionId: v.string(),
+    data: vManagerialDecision,
+  })
+    .index("by_objectiveKey", ["objectiveKey"])
+    .index("by_decisionId", ["decisionId"]),
+
+  assignments: defineTable({
+    assignmentId: v.string(),
+    objectiveKey: v.string(),
+    data: vAssignment,
+  })
+    .index("by_assignmentId", ["assignmentId"])
+    .index("by_objective", ["objectiveKey"]),
+
+  executionIntents: defineTable({
+    intentId: v.string(),
+    objectiveKey: v.string(),
+    idempotencyKey: v.string(),
+    data: vExecutionIntent,
+  })
+    .index("by_intentId", ["intentId"])
+    .index("by_idempotency", ["idempotencyKey"])
+    .index("by_objective", ["objectiveKey"]),
+
+  wakeEvents: defineTable({
+    eventId: v.string(),
+    objectiveKey: v.string(),
+    dedupeKey: v.string(),
+    data: vWakeEvent,
+  })
+    .index("by_eventId", ["eventId"])
+    .index("by_objective", ["objectiveKey"])
+    .index("by_dedupe", ["dedupeKey"]),
+
+  objectiveBudgets: defineTable({
+    objectiveKey: v.string(),
+    data: vObjectiveBudget,
+  }).index("by_objectiveKey", ["objectiveKey"]),
 });

@@ -131,6 +131,22 @@ export function trySpendDecision(budget: ObjectiveBudget): SpendResult {
   });
 }
 
+// A model call that is NOT a managerial decision (e.g. a worker continuation
+// turn) spends the model-call ceiling only. Keeping this separate preserves
+// the two independent ceilings: 40 decisions, 60 model calls.
+export function trySpendModelCall(budget: ObjectiveBudget): SpendResult {
+  if (budget.used.modelCalls >= budget.limits.maxModelCalls)
+    return no(
+      "maxModelCalls",
+      `${budget.used.modelCalls} model calls reached the ceiling ${budget.limits.maxModelCalls}`,
+      "recovery_required",
+    );
+  return yes({
+    ...budget,
+    used: { ...budget.used, modelCalls: budget.used.modelCalls + 1 },
+  });
+}
+
 export function tryStartAssignment(budget: ObjectiveBudget): SpendResult {
   if (budget.used.activeAssignments >= budget.limits.maxActiveAssignments)
     return no(
