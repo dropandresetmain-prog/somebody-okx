@@ -299,7 +299,7 @@ describe("Buyer Rail", () => {
       );
     });
 
-    it("allows retry from failed state", () => {
+    it("requires reconciliation evidence before retry planning from failed state", () => {
       const purchase = createPurchase({
         id: "purchase-1",
         objectiveKey: "objective-1",
@@ -309,9 +309,12 @@ describe("Buyer Rail", () => {
       });
 
       const failed = updatePurchaseState(purchase, "failed");
-      
-      const allowed = planRetry(failed, []);
-      assert.strictEqual(allowed, true);
+
+      assert.throws(
+        () => planRetry(failed, []),
+        /without reconciliation proof/,
+      );
+      assert.strictEqual(planRetry(failed, [], "expired authorization; no settlement observed"), true);
     });
 
     it("prevents double-pay: same idempotencyKey already submitted", () => {
@@ -335,7 +338,7 @@ describe("Buyer Rail", () => {
       const failed = updatePurchaseState(purchase2, "failed");
 
       assert.throws(
-        () => planRetry(failed, [submitted]),
+        () => planRetry(failed, [submitted], "reconciled-unsettled"),
         /Cannot retry.*idempotency key.*already used.*submitted/
       );
     });
@@ -361,7 +364,7 @@ describe("Buyer Rail", () => {
       const failed = updatePurchaseState(purchase2, "failed");
 
       assert.throws(
-        () => planRetry(failed, [settled]),
+        () => planRetry(failed, [settled], "reconciled-unsettled"),
         /Cannot retry.*idempotency key.*already used.*settled/
       );
     });
