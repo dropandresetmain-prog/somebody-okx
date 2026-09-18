@@ -4,7 +4,7 @@
 **Branch:** `feat/m3-live-payment`
 **Preflight start SHA:** `530d2043502a7dddf38ee00738ccb0e3c9cad6d5`
 **Repair SHA:** `f4381372e831b0c3a082e4f459f9cb450401760f`
-**Status:** **GO — wallet repaired and signing proven healthy; one supervised attempt authorized pending founder economic confirmation**
+**Status:** **ATTEMPT D EXECUTED — EXPIRED_UNSETTLED. Our stack is exonerated end-to-end; the blocker is upstream at the merchant/facilitator.**
 
 This document records the preflight in `M3_PAYMENT_PREFLIGHT.md` actually being
 *executed* on the founder machine. The prior audit could edit the branch but had
@@ -362,3 +362,87 @@ signing API.
 **This clears the only blocker.** The residual unknown in section 3 — whether
 OKX's backend derives the correct `domainHash` for this asset — is unchanged and
 remains unresolvable without attempting.
+
+## 9. Attempt D — one supervised live attempt, executed
+
+Founder confirmed the economic terms. Executed as a single scripted pass so no
+human latency could sit between quoting and signing.
+
+| Gate | Result |
+|---|---|
+| execution quote | `pay_a1557a9e578f33dbcacd1c47` |
+| term fingerprint vs founder-confirmed | **identical** |
+| exact entry index | 0 (pinned via `--selected-index 0`) |
+| freshness | **2 ms** (bound: 30 s) |
+| signed attempts | **exactly one**, no retry |
+
+### Outcome
+
+```
+status      : pending
+error       : facilitator non-terminal: HTTP 402
+txHash      : null
+decodedReceipt : null
+```
+
+The merchant's 402 body was captured this time — the diagnostic Attempt A never
+preserved. It contains **no `invalidReason`, no `errorReason`, no facilitator
+detail whatsoever**: just `"error":"Payment Required"` and a verbatim re-issue of
+the same two `accepts` entries, still carrying `extra.version: "1"`.
+
+### Terminal reconciliation — EXPIRED_UNSETTLED
+
+Verified after the 60-second EIP-3009 authorization expired:
+
+- payer `0xd2dd2eb...` balance **10 USDC_TEST — unchanged**, read directly from
+  X Layer Testnet, not from the CLI;
+- payee `0x3509655a...` balance unchanged;
+- **zero** outgoing transfers in wallet history;
+- no txHash was ever produced, so there is nothing to verify a receipt against.
+
+No funds moved. No double-spend exposure. The retry-prevention path held: the
+attempt reconciled to terminal safety rather than becoming a retryable `failed`.
+
+### What this attempt bought
+
+It **exonerates our stack and the wallet.** The decisive difference from Attempt
+A is that signing health was independently proven beforehand by two canaries. The
+payment still failed at the identical boundary. Therefore:
+
+- not the wallet (canaries green, and the CLI reached merchant replay);
+- not quote freshness (2 ms);
+- not approval binding (fingerprint identical);
+- not scheme selection (`exact` pinned at index 0);
+- not balance (verified on-chain three ways);
+- not our parsing, state machine, or reconciliation.
+
+The failure is **downstream of a correctly produced payment authorization**, at
+the merchant/facilitator.
+
+### Remaining hypotheses — both upstream, neither resolvable from outside
+
+1. **Backend `domainHash` derived from a stale registry.** The TEE resolves the
+   EIP-712 domain internally from the token. If OKX's registry carries the same
+   stale `version "1"` that the merchant challenge does, every signature it
+   produces is unverifiable by a `version "2"` token, and the facilitator must
+   reject. This is consistent with section 3 and with both A and D.
+2. **The facilitator does not settle X Layer Testnet.** The documented
+   `/api/v6/pay/x402/supported` enumerates only `eip155:196` (mainnet); chain
+   1952 appears in no supported-networks table. The mock merchant advertises a
+   rail the facilitator may not actually service.
+
+`/api/v6/pay/x402/supported` requires an `OK-ACCESS-KEY`, so the supported-rail
+list cannot be confirmed anonymously. The merchant returns no failure reason. We
+have exhausted what is observable from our side.
+
+### M3 status
+
+**M3 cannot be accepted.** Acceptance requires an authoritative settlement
+receipt and the merchant's protected resource; neither exists, because no
+transaction was ever created. This is not an application defect — every
+application-side criterion held — but the milestone's evidence bar is not met.
+
+**Do not spend another attempt** until OKX either corrects the challenge's
+`extra.version`, confirms testnet facilitator support, or returns a failure
+reason. A fifth attempt against unchanged conditions would only re-purchase this
+result.
