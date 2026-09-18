@@ -224,4 +224,4 @@ No scenario-specific orchestration.
 
 ## Current next action
 
-CP1+CP2 kernels committed and pushed (CP1 `27128d6` ledger follow-up `34a65cb`, CP2 `51b1e133b5fff49751d28780536eee88ba282e59`). Next: Checkpoint 3 — persistent workforce: Convex schema tables (workers/contracts/requirements/decisions/assignments/intents/wakeEvents/budgets), real worker inventory replacing the empty-inventory `resolveWorker({inventory: []})` call in `convex/objectives.ts:332`, reuse/create focused tests, capability/resource-request wiring through Somebody, objective-wide limits enforced.
+CP1–CP4 committed and pushed (CP1 `27128d6` + ledger `34a65cb`; CP2 `51b1e13` + ledger `81825cc`; CP3 workforce `df4fdd5`, reducer `dc3a9b7`; CP4 graph + continuation evidence `76fedd5`). Next: Checkpoint 5 — formal Cutoff-2 adversarial suite (duplicate wakes + budget/approval/no-progress are already pinned by graph tests; add stale-run fencing, malformed model-output variants, impossible deadline, contradictory requirements, malicious provider text, unrelated prompt ⇒ typed terminal; then CP6 ExecutionIntent + labeled mock buyer rail, CP7 call-site integration).
