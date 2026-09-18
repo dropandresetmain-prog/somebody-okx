@@ -1,14 +1,17 @@
 # ACTIVE TASK — Somebody × OKX Dev Day 2026
 
-Status: **ACTIVE — M3 live evidence accepted; R2/R2.1 safety fixes complete; review pending**
+Status: **ACTIVE — M3 live evidence accepted; R2/R2.1/R2.2 safety fixes complete; review pending**
 Updated: **19 September 2026**
 
 ## CURRENT M3 CONTROLLED SELLER CHECKPOINT
 
-Branch: `feat/m3-live-payment` at the R2.1-fixer candidate SHA recorded below.
+Branch: `feat/m3-live-payment` at the R2.2 final-fixer candidate SHA recorded below.
 R2 fixer implementation candidate: `ebc4278` (`Harden M3 payment execution safety`).
 R2.1 fixer implementation candidate: `16600bdac9e9925e6120bd4d6d92bb4464ff6fc5`
 (`Close R2.1 payment replay gaps`).
+R2.2 final payment-safety implementation candidate: `bfbd539597c1affeaea8b2af92465267ee956cf3`
+(`Bind settlement to signed authorization`). The final review candidate is this
+implementation checkpoint plus the docs reconciliation below.
 
 Implemented the narrow controlled seller at `GET /m3/paid-ping` using the official
 OKX TypeScript seller SDK (`@okxweb3/x402-core`, `@okxweb3/x402-evm`,
@@ -53,6 +56,22 @@ scope:
 R2.1 verification: local TypeScript check and 139 focused payment tests pass;
 no additional live payment was run. The repository remains review-gated and must
 not be promoted yet.
+
+R2.2 replaced temporal settlement association with protocol-native EIP-3009
+linkage. The installed OKX/x402 path and the accepted historical X Layer
+transaction were independently inspected as direct `transferWithAuthorization`
+calls. The durable attempt now stores only the safe authorization identity
+(`authorizationKind`, nonce, `validAfter`, `validBefore`) before merchant replay;
+the verifier fetches `eth_getTransactionByHash` and decodes the installed x402
+EIP-3009 ABI, requiring the current nonce, payer, recipient, amount, validity
+window, token target, and X Layer chain before exact receipt verification. The
+120-second block freshness check remains defense-in-depth only. Missing or
+malformed authorization identity, calldata, target, or nonce fails closed.
+
+The historical live transaction can be decoded and contains an EIP-3009 nonce,
+but the pre-R2.2 attempt did not durably retain that nonce, so the old evidence
+does not retroactively prove current execution-attempt linkage. No new live
+payment was performed. Final R2 review is still required; do not promote.
 
 ---
 
