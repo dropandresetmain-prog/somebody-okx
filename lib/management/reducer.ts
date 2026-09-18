@@ -169,10 +169,14 @@ export function reduceManagementState(facts: ReducerFacts): ReducedState {
       detail: "all required requirements resolved; completion must pass the independent gate",
     };
 
-  // 8. A blocked requirement with no eligible path is the engine's honest
-  //    "no way forward" — but only when EVERY open required one has that
-  //    shape (one blocked requirement never stops a solvable objective).
+  // 8. No executable path anywhere. IMPORTANT distinction: a requirement with
+  //    NO grounding entry has simply never been decided for this revision —
+  //    that is decision work, not a dead end. Only requirements that HAVE been
+  //    grounded and produced no eligible option count toward "no path".
+  const groundedKnown = (requirement: Requirement) =>
+    groundedByRequirement.has(requirement.requirementKey);
   const solvable = open.filter((requirement) => {
+    if (!groundedKnown(requirement)) return true; // undecided ⇒ work to do
     const grounded = groundedByRequirement.get(requirement.requirementKey) ?? [];
     return grounded.some((option) => option.eligibility.eligible);
   });

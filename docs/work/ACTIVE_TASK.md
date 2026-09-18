@@ -127,16 +127,16 @@ Evidence:
 
 ### Checkpoint 4 — LangGraph management loop
 
-- [ ] minimal graph state;
-- [ ] observe / manage / ground / authorize / dispatch / wait / verify / resolve loop;
-- [ ] consequential nodes reload Convex truth;
-- [ ] event-driven wake/resume;
-- [ ] quiescent waiting/approval/escalation states;
-- [ ] no scenario/provider state branches;
-- [ ] coarse plan + next bounded action.
+- [x] minimal graph state; (`lib/management/graph.ts` `GraphAnnotation` is field-for-field the frozen `GraphState` — objectiveKey, contractRevision, focusRequirementKey, managerDecisionId, pendingIntentId, wakeReason, wakeEventIds, continuation (string map, correlation only), lastNode, pass — plus one internal `outcome` channel for the settle hand-off, mapped back out of the returned GraphState in `invoke()`. No business row type appears anywhere in the annotation; a compile-pin test holds `ReducerFacts`/graph wiring honest.)
+- [x] observe / manage / ground / authorize / dispatch / wait / verify / resolve loop; (observeNode consumes wakes → reduceNode applies the pure `reduceManagementState` and persists the control state via `writeObjectiveState` → conditional edge on `continuation.reducerAction` routes to decideNode (CP2 `runManagerialDecisionPass`: ground→recommend→deterministically reauthorize→bind→persist) / proposeNode (resolve: gate only) / verifyNode (routes wake-borne evidence into satisfaction ATTEMPTS only) / settleNode (computes the pass outcome + expected next wake) → END.)
+- [x] consequential nodes reload Convex truth; (decideNode, proposeNode and settleNode each call `ports.loadContract`/`loadRequirements`/`loadGrounded` fresh — nothing downstream trusts business rows carried through the graph channel; the fake ports serve whatever the in-memory world holds at call time and `loadRequirements` returns a `structuredClone`, so a node cannot mask a stale read from the next node.)
+- [x] event-driven wake/resume; (wake1 → decide+dispatch, wake2 → verified rows → propose → gate → completed; duplicate wake (same event id) consumes to a no-op turn — nothing re-fires. Production resumes via `scheduleWake` + `consumeWakeEvents`, not timers polling business state.)
+- [x] quiescent waiting/approval/escalation states; (waiting_for_resource / waiting_for_wake / approval_required / escalated / recovery_required only ever yield await_wake/hold actions; the reduce node asserts `isCoherentHold` on EVERY pass and throws a typed incoherence error otherwise, and the budget-exhaustion and pending-approval graph tests land in exactly those states with zero decision passes run.)
+- [x] no scenario/provider state branches; (`lib/management/graph.ts` + `lib/management/reducer.ts` contain no scenario, provider, or role-name string comparisons in control flow — routing derives purely from contract/requirement/grounded-option/verdict/budget shapes; grep-verified at this commit. Graph tests use the fixture key "obj_launch" but no branch reads it.)
+- [x] coarse plan + next bounded action; (`ManagerialDecision.coarsePlanSummary` is composed from typed decision notes; the reducer's `continuation` carries the single next action + reason, and reduceNode persists state+detail onto the objective via `writeObjectiveState` — the objective's `management.controlNotes` field is the CP7 call-site that stores it.)
 
 Evidence:
-- real Agent/Runner internal continuation across at least one wake/replan.
+- real Agent/Runner internal continuation across at least one wake/replan. (`tests/managementWorkerContinuation.test.ts`: a genuine `@openai/agents` Runner executes run A (public observation survives, company-record lookup fails, run ends WITHOUT claiming completion — `assignment_run_finished` is then refused by the requirements kernel); the wake injects the record; run B under the same idempotency scope continues from persisted evidence and finishes — the run finalizes because the application's `evaluateCompletion` verdict came back clean after `submit_result` (scripted `request_completion` turn never consumed: completion is application-owned, the same semantic M2 pinned in tests/worker.test.ts), and only then does `attemptRequirementSatisfaction` accept satisfaction through the kernel with current-revision bound `application_observation` proofs. M4 suites now 106 pass (contract 12, requirements 18, decision 13, reducer 15, graph 7, staffing 9, continuation 1 = 75 pure; workforce+persistence 31); M2 regressions objective/workforce/sourcing/runLifecycle/resourceNeed 76 + worker 13 all pass; tsc clean.)
 
 ### Checkpoint 5 — recovery / Cutoff 2
 

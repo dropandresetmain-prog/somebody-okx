@@ -73,6 +73,13 @@ function eligibleOption(requirementKey: string): GroundedOption {
   };
 }
 
+function ineligibleOption(requirementKey: string): GroundedOption {
+  return {
+    ...eligibleOption(requirementKey),
+    eligibility: { eligible: false, reasons: ["capability_not_governed"], detail: "no governed path" },
+  };
+}
+
 function base(overrides: Partial<ReducerFacts> = {}): ReducerFacts {
   return {
     contract,
@@ -165,7 +172,8 @@ test("no eligible path anywhere + a blocked requirement → blocked awaiting rec
   const r = reduceManagementState(
     base({
       requirements: [requirement({ state: "blocked", blockedReason: "registry down" })],
-      groundedByRequirement: new Map(),
+      // grounded this revision, and grounding found nothing executable
+      groundedByRequirement: new Map([["page_live", [ineligibleOption("page_live")]]]),
     }),
   );
   assert.equal(r.state, "blocked");
@@ -173,9 +181,17 @@ test("no eligible path anywhere + a blocked requirement → blocked awaiting rec
 });
 
 test("no eligible path but nothing blocked → waiting on timeout wake", () => {
-  const r = reduceManagementState(base({ groundedByRequirement: new Map() }));
+  const r = reduceManagementState(
+    base({ groundedByRequirement: new Map([["page_live", [ineligibleOption("page_live")]]]) }),
+  );
   assert.equal(r.state, "waiting");
   assert.equal(r.action.kind, "await_wake");
+});
+
+test("a never-grounded requirement is DECISION WORK, not a dead end", () => {
+  const r = reduceManagementState(base({ groundedByRequirement: new Map() }));
+  assert.equal(r.state, "executing");
+  assert.deepEqual(r.action, { kind: "decide_requirement", requirementKey: "page_live" });
 });
 
 test("one blocked requirement never stops a solvable sibling", () => {
@@ -249,7 +265,7 @@ test("Cutoff-2 sweep: every reachable state is a ManagementState literal and qui
     base({ budgetVerdict: { ok: false, limit: "x", detail: "d", state: "recovery_required" } }),
     base({ pendingApproval: { question: "q" } }),
     base({ groundedByRequirement: new Map() }),
-    base({ requirements: [requirement({ state: "blocked", blockedReason: "b" })], groundedByRequirement: new Map() }),
+    base({ requirements: [requirement({ state: "blocked", blockedReason: "b" })], groundedByRequirement: new Map([["page_live", [ineligibleOption("page_live")]]]) }),
     base(),
   ];
   const legal = new Set(["received","planning","ready_to_execute","executing","waiting_for_resource","completed","failed","waiting","approval_required","blocked","escalated","recovery_required"]);
