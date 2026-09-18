@@ -140,17 +140,17 @@ Evidence:
 
 ### Checkpoint 5 — recovery / Cutoff 2
 
-- [ ] stable decision/assignment/effect identities;
-- [ ] duplicate wake-up harmless;
-- [ ] stale objective/run fenced;
-- [ ] finite decision/retry/time/cost/no-progress limits;
-- [ ] invalid model output bounded repair/failure;
-- [ ] weird unrelated prompts terminate/wait coherently;
-- [ ] no infinite worker spawning;
-- [ ] no false completion.
+- [x] stable decision/assignment/effect identities; (`tests/managementCutoff2.test.ts` — optionId replay determinism: equal semantics collide onto ONE id, revision/kind can never alias a live option; plus CP3's replay-stable `deriveWorkerKey` and by_idempotency `putIntent` upsert. ExecutionIntent id derivation lands with CP6.)
+- [x] duplicate wake-up harmless; (graph test: re-invoking after `consumedAt` folds zero fresh events; persistence: `appendWakeEvent` by_dedupe pre-check returns duplicate:true and `markWakeConsumed` only touches null cursors.)
+- [x] stale objective/run fenced; (requirements kernel refuses stale-revision proof; `putRequirement` rejects stale downserts on satisfied rows; `releaseWorker` is owner-fenced — a different assignmentId cannot release; decision pass refuses a stale contract revision; reducer rule 2 lands revision mismatch on recovery_required.)
+- [x] finite decision/retry/time/cost/no-progress limits; (CP5 budget sweep: every ceiling exhausted ⇒ typed verdict (recovery_required/escalated/waiting/approval_required), never an exception; the 40-decision and 60-model-call ceilings pinned independent both ways; commit-refusal leaves stored figures untouched.)
+- [x] invalid model output bounded repair/failure; (CP5 parser sweep: 17 hostile shapes — null/string/number/array/missing/wrong-target/hallucinated-option/oversized/junk-list — every one a typed ok/refusal, zero throws; accepted values only ever carry application-known eligible ids; plus decision-pass outage marker surfacing.)
+- [x] weird unrelated prompts terminate/wait coherently; (CP5 graph passes: garbage wake summary on over-budget objective ⇒ recovery_required consumed-once with zero decision calls; nonsense objective ⇒ typed executing decision work — never a crash, never completed; `isCoherentHold` asserted every reduce.)
+- [x] no infinite worker spawning; (CP5 replay test: identical envelope ×10 ⇒ ONE reused worker key and ONE option id; `maxWorkersCreated` spend refusal typed; worker→worker creation structurally 0 (CP3 staffing test); graph totals verified over 30 consecutive invokes.)
+- [x] no false completion. (CP5: a hostile row reading "satisfied" still fails the gate when the application verified no proofs — unmet names the exact proof; `assignment_run_finished` refusal pinned in CP4 continuation test; only accepted gate verdict reaches completed (CP1 gate + CP4 graph tests).)
 
 Evidence:
-- targeted adversarial tests only.
+- targeted adversarial tests only. (`tests/managementCutoff2.test.ts` 12 pass against the real kernels and the real compiled graph; full M4 set 118 pass (75 pure + 31 persistence + 12 adversarial); tsc clean.)
 
 ### Checkpoint 6 — external seam
 
