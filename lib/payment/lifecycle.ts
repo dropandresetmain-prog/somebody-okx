@@ -208,7 +208,7 @@ function handleVerifyResult(
   if (!context.settlementProof) {
     return fail(state, event.type, "Cannot verify without settlement proof");
   }
-  if (!context.resultData) {
+  if (context.resultData === undefined) {
     return fail(state, event.type, "Cannot verify without result data");
   }
   return succeed("verified", { ...context, verificationProof: event.verificationProof });
@@ -223,9 +223,22 @@ function handleReportFailure(
   event: { type: "report_failure"; failureReason: string },
   context: PaymentContext,
 ): TransitionResult {
-  // Failure can be reported from payment_attempted, submitted, or uncertain states
-  if (state !== "payment_attempted" && state !== "submitted" && state !== "uncertain") {
-    return fail(state, event.type, "Failure can only be reported from payment_attempted, submitted, or uncertain states");
+  // A source-proven pre-submission failure may become failed. Once a payment
+  // was submitted — or submission is already uncertain — a later error can no
+  // longer prove non-settlement, so it must reconcile before any new spend.
+  if (state === "submitted" || state === "uncertain") {
+    return succeed("reconciliation_required", {
+      ...context,
+      failureReason: event.failureReason,
+      uncertaintyReason: "Failure reported after submission became possible",
+    });
+  }
+  if (state !== "payment_attempted") {
+    return fail(
+      state,
+      event.type,
+      "Failure can only be reported from payment_attempted, submitted, or uncertain states",
+    );
   }
   return succeed("failed", { ...context, failureReason: event.failureReason });
 }
@@ -334,7 +347,7 @@ export function assertComplete(
   if (!context.settlementProof) {
     throw new Error("Payment lifecycle is missing settlement proof");
   }
-  if (!context.resultData) {
+  if (context.resultData === undefined) {
     throw new Error("Payment lifecycle is missing result data");
   }
   if (!context.verificationProof) {
