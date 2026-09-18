@@ -630,3 +630,27 @@ authorization is required to learn it and was not issued (one-attempt rule).
 Next attempt should keep the fixed driver, which saves the safe evidence
 first; if the merchant returns 402, decode the (transient) signed `accepted`
 shape and `/verify` it before concluding.
+
+## Attempt F — fixed driver, second application-path attempt (founder-authorized)
+
+- Canary OK; identical terms to Attempt E (10000 atomic USDC_TEST, payTo
+  `0x3509…08f7`); purchase `purchase-m3-1789755383869`.
+- Normalization applied; fingerprint equal; TEE signing OK; the transient
+  pre-replay check confirmed the signed header carried `accepted.amount == "10000"`
+  and the confirmed network/scheme/payTo/asset.
+- Single application replay (GET, `redirect: manual`) → **merchant HTTP 402**,
+  body = a fresh challenge (`accepts[]` still `maxAmountRequired`-only,
+  `Payment Required`). No PAYMENT-RESPONSE, no txHash.
+- State: `payment_attempted → uncertain → reconciliation_required`. Readback at
+  ~+90s (> 60s timeout): USDC_TEST balance 10.000000 unchanged, 0 outgoing
+  transfers ⇒ **EXPIRED_UNSETTLED**, no funds moved.
+- Safe evidence: `docs/work/M3_ATTEMPT_F_EVIDENCE.json` (no signature material).
+
+**Conclusion:** the normalized wire (`accepted.amount` present) is NOT sufficient
+for the Mock Merchant to accept payment. The rejection is merchant/facilitator-
+side. Untested hypotheses: (a) the merchant forwards its own
+`maxAmountRequired`-only requirement to the facilitator, so `amount` mismatches
+on that side; (b) `accepted` carrying both fields, or the relative `resource`
+in the payload, is rejected; (c) merchant-side settle problem independent of
+verify. Distinguishing them needs a fresh authorization to `/verify` and vary
+shapes (verify-only, no settle) — none issued this session.
