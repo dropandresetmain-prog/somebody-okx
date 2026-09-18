@@ -110,6 +110,8 @@ describe("PreviewQuote vs ExecutionQuote confirmation gate", () => {
       confirmationId: "conf-1",
       confirmedAt: 2,
       purchaseId: "purchase-a",
+      approvalId: "approval-m3-1",
+      merchantEndpoint: "https://www.okx.com/api/v1/pay/mock-merchant/resource",
       preview,
     });
     const execution: ExecutionQuote = quote("pay_execution_b", 3);
@@ -130,6 +132,8 @@ describe("PreviewQuote vs ExecutionQuote confirmation gate", () => {
       confirmationId: "conf-1",
       confirmedAt: 2,
       purchaseId: "purchase-a",
+      approvalId: "approval-m3-1",
+      merchantEndpoint: "https://www.okx.com/api/v1/pay/mock-merchant/resource",
       preview,
     });
     const mutations: Array<Partial<NormalizedChallengeTerms>> = [
@@ -160,6 +164,8 @@ describe("PreviewQuote vs ExecutionQuote confirmation gate", () => {
       confirmationId: "conf-1",
       confirmedAt: 2,
       purchaseId: "purchase-a",
+      approvalId: "approval-m3-1",
+      merchantEndpoint: "https://www.okx.com/api/v1/pay/mock-merchant/resource",
       preview: quote("pay_preview_a", 1),
     });
     const execution = quote("pay_totally_different_id", 3);
@@ -177,6 +183,8 @@ describe("PreviewQuote vs ExecutionQuote confirmation gate", () => {
       confirmationId: "conf-1",
       confirmedAt: 2,
       purchaseId: "purchase-a",
+      approvalId: "approval-m3-1",
+      merchantEndpoint: "https://www.okx.com/api/v1/pay/mock-merchant/resource",
       preview: quote("pay_preview_a", 1),
     });
     const stale = quote("pay_execution_stale", 1);
@@ -197,6 +205,8 @@ describe("PreviewQuote vs ExecutionQuote confirmation gate", () => {
       confirmationId: "conf-1",
       confirmedAt: 2,
       purchaseId: "purchase-a",
+      approvalId: "approval-m3-1",
+      merchantEndpoint: "https://www.okx.com/api/v1/pay/mock-merchant/resource",
       preview: quote("pay_preview_a", 1),
     });
     assert.throws(
@@ -232,6 +242,7 @@ describe("PreviewQuote vs ExecutionQuote confirmation gate", () => {
       preview,
       confirmationId: "founder-conf-1",
       confirmedAt: 4,
+      merchantEndpoint: "https://www.okx.com/api/v1/pay/mock-merchant/resource",
     });
     assert.equal(confirmation.purchaseId, "purchase-m3-1");
     assert.equal(confirmation.confirmedTermsFingerprint, paymentTermsFingerprint(terms));

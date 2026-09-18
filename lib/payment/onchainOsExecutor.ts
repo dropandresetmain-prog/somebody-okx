@@ -16,6 +16,9 @@ import { spawn } from "node:child_process";
 
 import { parse402Challenge } from "./challenge";
 import {
+  type PaymentExecutionAuthority,
+} from "./executionAuthority";
+import {
   normalizeX402V2PaymentRequirement,
   type X402V2Normalization,
 } from "./x402V2Compat";
@@ -105,6 +108,9 @@ export type FounderPaymentConfirmation = {
   confirmationId: string;
   confirmedAt: number;
   purchaseId: string;
+  approvalId: string;
+  /** Canonical absolute endpoint frozen at founder confirmation time. */
+  confirmedMerchantEndpoint: string;
   confirmedTermsFingerprint: string;
   confirmedTerms: NormalizedChallengeTerms;
 };
@@ -187,6 +193,28 @@ export class ConfirmationPurchaseMismatchError extends Error {
   }
 }
 
+export class ConfirmationApprovalMismatchError extends Error {
+  constructor(
+    public readonly confirmationApprovalId: string,
+    public readonly attemptedApprovalId: string,
+    message = "Founder confirmation does not authorize this approval identity",
+  ) {
+    super(message);
+    this.name = "ConfirmationApprovalMismatchError";
+  }
+}
+
+export class ConfirmationMerchantEndpointMismatchError extends Error {
+  constructor(
+    public readonly confirmedMerchantEndpoint: string,
+    public readonly attemptedMerchantEndpoint: string,
+    message = "Founder confirmation does not authorize this merchant endpoint",
+  ) {
+    super(message);
+    this.name = "ConfirmationMerchantEndpointMismatchError";
+  }
+}
+
 /**
  * Pure deterministic fingerprint over material payment terms only.
  * Excludes local paymentId, acquisition timestamps, and transport handles.
@@ -197,12 +225,55 @@ export function paymentTermsFingerprint(terms: NormalizedChallengeTerms): string
     terms.asset,
     terms.maxAmountRequired,
     terms.payTo,
-    terms.resource,
+    normalizedResourceTerm(terms.resource),
     terms.scheme,
     String(terms.maxTimeoutSeconds),
     terms.eip712.name,
     terms.eip712.version,
   ].join("\0");
+}
+
+function normalizedResourceTerm(resource: string): string {
+  try {
+    if (/^https?:\/\//i.test(resource)) return canonicalMerchantEndpoint(resource);
+    const parsed = new URL(resource, "http://resource.invalid");
+    return `${parsed.pathname}${parsed.search}`;
+  } catch {
+    return resource.split("#", 1)[0];
+  }
+}
+
+/** Canonical HTTP request identity; fragments are not sent in HTTP requests. */
+export function canonicalMerchantEndpoint(value: string): string {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error("Merchant endpoint must be an absolute HTTP(S) URL");
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new Error("Merchant endpoint must use HTTP(S)");
+  }
+  if (url.username || url.password) {
+    throw new Error("Merchant endpoint must not contain URL credentials");
+  }
+  url.hash = "";
+  return url.href;
+}
+
+function endpointForResource(resource: string, merchantEndpoint: string): string {
+  const base = new URL(merchantEndpoint);
+  const resolved = /^https?:\/\//i.test(resource)
+    ? new URL(resource)
+    : new URL(resource, `${base.protocol}//${base.host}`);
+  resolved.hash = "";
+  return canonicalMerchantEndpoint(resolved.href);
+}
+
+function assertResourceMatchesMerchantEndpoint(resource: string, merchantEndpoint: string): void {
+  if (endpointForResource(resource, merchantEndpoint) !== merchantEndpoint) {
+    throw new Error("Merchant endpoint does not exactly match the approved resource");
+  }
 }
 
 export function paymentTermsEqual(
@@ -217,6 +288,8 @@ export function confirmPreviewPaymentTerms(input: {
   confirmationId: string;
   confirmedAt: number;
   purchaseId: string;
+  approvalId: string;
+  merchantEndpoint: string;
   preview: PreviewQuote;
 }): FounderPaymentConfirmation {
   if (!input.confirmationId) {
@@ -225,10 +298,17 @@ export function confirmPreviewPaymentTerms(input: {
   if (!input.purchaseId) {
     throw new Error("Confirmation must be bound to a purchase identity");
   }
+  if (!input.approvalId) {
+    throw new Error("Confirmation must be bound to an approval identity");
+  }
+  const confirmedMerchantEndpoint = canonicalMerchantEndpoint(input.merchantEndpoint);
+  assertResourceMatchesMerchantEndpoint(input.preview.terms.resource, confirmedMerchantEndpoint);
   return {
     confirmationId: input.confirmationId,
     confirmedAt: input.confirmedAt,
     purchaseId: input.purchaseId,
+    approvalId: input.approvalId,
+    confirmedMerchantEndpoint,
     confirmedTermsFingerprint: paymentTermsFingerprint(input.preview.terms),
     confirmedTerms: input.preview.terms,
   };
@@ -240,6 +320,15 @@ export function assertConfirmationForPurchase(
 ): void {
   if (confirmation.purchaseId !== purchaseId) {
     throw new ConfirmationPurchaseMismatchError(confirmation.purchaseId, purchaseId);
+  }
+}
+
+export function assertConfirmationForApproval(
+  confirmation: FounderPaymentConfirmation,
+  approvalId: string,
+): void {
+  if (confirmation.approvalId !== approvalId) {
+    throw new ConfirmationApprovalMismatchError(confirmation.approvalId, approvalId);
   }
 }
 
@@ -340,12 +429,22 @@ function transactionHashFrom(value: unknown): string | undefined {
 }
 
 const SAFE_RESPONSE_FIELDS = ["status", "txHash", "decodedReceipt", "result", "error"] as const;
-const SENSITIVE_KEY = /authorization|signature|session|private|secret|password|token/i;
+const SENSITIVE_KEY = /authorization|signature|session|private|secret|password|token|api[_ -]?key/i;
+
+const SENSITIVE_STRING_VALUE = /(?:payment[-_ ]?signature|x[-_ ]?payment|authorization(?:[-_ ]?header)?|signed[-_ ]?payload|signature|session[_ -]?key|access[_ -]?token|refresh[_ -]?token|api[_ -]?key|private[_ -]?key|secret|password)\s*(?:[:=]|=>)\s*["']?[^\s,;}'"]+/gi;
+
+function sanitizeSafeString(value: string): string {
+  return value
+    .slice(0, 1000)
+    .replace(SENSITIVE_STRING_VALUE, "[redacted]")
+    .replace(/\b(PAYMENT[-_ ]?SIGNATURE|X[-_ ]?PAYMENT)\b/gi, "[redacted]");
+}
 
 function sanitizeSafeValue(value: unknown): unknown {
   if (Array.isArray(value)) {
     return value.map(sanitizeSafeValue);
   }
+  if (typeof value === "string") return sanitizeSafeString(value);
   const record = asRecord(value);
   if (!record) return value;
 
@@ -359,14 +458,9 @@ function sanitizeSafeValue(value: unknown): unknown {
 
 function sanitizeSafeErrorText(value: unknown): unknown {
   if (typeof value !== "string") return undefined;
-  // Keep bounded diagnostic text while redacting obvious inline credential-like
+  // Keep bounded diagnostic text while redacting inline credential-like
   // values. Raw stderr is never persisted by this adapter.
-  return value
-    .slice(0, 1000)
-    .replace(
-      /\b(authorization|signature|session[_ -]?key|access[_ -]?token|refresh[_ -]?token|private[_ -]?key|secret|password)\b\s*[:=]\s*[^\s,;]+/gi,
-      "$1=[redacted]",
-    );
+  return sanitizeSafeString(value);
 }
 
 function safeResponseFrom(
@@ -497,19 +591,20 @@ function parseBody(text: string): unknown {
  *   Somebody            ->  exactly ONE replay to the frozen merchant URL
  *
  * The signed authorization lives only in local variables of one call. It is
- * never returned, stored, logged, or included in an error. The executor is
- * single-use: a second call throws before touching the wallet. `--payment-id`
+ * never returned, stored, logged, or included in an error. The application
+ * execution ledger is durable: a second call or reconstructed executor throws
+ * before touching the wallet. `--payment-id`
  * is deliberately not used because it re-embeds the merchant's original
  * (`maxAmountRequired`-only) requirement as `accepted`.
  */
 export class OfficialSignOnlyReplayExecutor implements PaymentExecutor {
   readonly kind = "official_onchainos" as const;
-  private attempted = false;
 
   constructor(
     private readonly quoted: OfficialQuotedPayment,
     private readonly confirmation: FounderPaymentConfirmation,
     private readonly merchantUrl: string,
+    private readonly executionAuthority: PaymentExecutionAuthority,
     private readonly run: OnchainosPaymentRunner = createLocalOnchainosPaymentRunner(),
     private readonly now: () => number = () => Date.now(),
     private readonly replayFetch: MerchantReplayFetch = (url, init) => fetch(url, init),
@@ -517,6 +612,8 @@ export class OfficialSignOnlyReplayExecutor implements PaymentExecutor {
   ) {}
 
   async executeApprovedPayment(input: {
+    purchaseId: string;
+    idempotencyKey: string;
     intentId: string;
     scheme: string;
     network: string;
@@ -532,6 +629,8 @@ export class OfficialSignOnlyReplayExecutor implements PaymentExecutor {
     if (!this.confirmation.confirmationId) {
       throw new Error("Founder confirmation is required before official payment signing");
     }
+    assertConfirmationForPurchase(this.confirmation, input.purchaseId);
+    assertConfirmationForApproval(this.confirmation, input.approvalId);
     const intentTerms: NormalizedChallengeTerms = {
       ...this.quoted.terms,
       scheme: input.scheme,
@@ -577,12 +676,17 @@ export class OfficialSignOnlyReplayExecutor implements PaymentExecutor {
         "Signing requirement does not match confirmed payment terms",
       );
     }
-    this.assertMerchantUrlBoundToTerms();
+    const canonicalMerchantUrl = this.assertMerchantUrlBoundToTerms();
 
-    if (this.attempted) {
-      throw new Error("This payment executor is single-use; a second signing attempt is refused");
-    }
-    this.attempted = true;
+    // This is the point of no return for application-owned payment authority.
+    // The durable claim is written before the wallet runner is invoked. A
+    // restart or a reconstructed executor therefore cannot regain authority.
+    const attempt = this.executionAuthority.claim({
+      purchaseId: input.purchaseId,
+      idempotencyKey: input.idempotencyKey,
+      approvalId: input.approvalId,
+      at: this.now(),
+    });
 
     const paymentId = this.quoted.paymentId;
     const payload = Buffer.from(
@@ -610,6 +714,7 @@ export class OfficialSignOnlyReplayExecutor implements PaymentExecutor {
     const headerName = data?.header_name;
     const signFailure = (message: string) => {
       const safe = safeResponseFromStdout(signed.stdout, signed.exitCode);
+      this.executionAuthority.recordPreSubmissionFailure(attempt.attemptId, "tee_sign", this.now());
       return new OfficialPaymentPreSubmissionError(
         paymentId,
         knownPreSubmissionStage(safe, signed.stderr) ?? "tee_sign",
@@ -631,14 +736,16 @@ export class OfficialSignOnlyReplayExecutor implements PaymentExecutor {
     }
 
     // ── 2. Application-owned replay: exactly one request, no redirects. ──
-    const ambiguous = (message: string, safe?: SafeOfficialPaymentResponse) =>
-      new OfficialPaymentAmbiguousError(paymentId, message, safe);
+    const ambiguous = (message: string, safe?: SafeOfficialPaymentResponse) => {
+      this.executionAuthority.recordAmbiguous(attempt.attemptId, this.now());
+      return new OfficialPaymentAmbiguousError(paymentId, message, safe);
+    };
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.replayTimeoutMs);
     let response: MerchantReplayResponse;
     let bodyText: string;
     try {
-      response = await this.replayFetch(this.merchantUrl, {
+      response = await this.replayFetch(canonicalMerchantUrl, {
         method: "GET",
         headers: { [headerName]: authorization },
         redirect: "manual",
@@ -681,9 +788,15 @@ export class OfficialSignOnlyReplayExecutor implements PaymentExecutor {
     if (!transactionHash) {
       throw ambiguous("Merchant response lacks a transaction identity; reconcile before any new payment", safeResponse);
     }
+    try {
+      this.executionAuthority.recordSubmitted(attempt.attemptId, transactionHash, this.now());
+    } catch {
+      throw ambiguous("Submitted transaction could not be durably associated with this purchase; reconcile before any new payment", safeResponse);
+    }
     return {
       submitted: true,
       transactionHash,
+      executionAttemptId: attempt.attemptId,
       paymentPayloadRef: paymentId,
       note: "Official TEE sign-only + application-owned single merchant replay; authorization discarded",
       safeResponse,
@@ -691,21 +804,24 @@ export class OfficialSignOnlyReplayExecutor implements PaymentExecutor {
   }
 
   /** The frozen merchant URL must be the resource the founder confirmed. */
-  private assertMerchantUrlBoundToTerms(): void {
-    const url = new URL(this.merchantUrl);
-    const resource = this.quoted.terms.resource;
-    const matches = /^https?:\/\//.test(resource)
-      ? url.href === new URL(resource).href
-      : url.pathname === resource;
+  private assertMerchantUrlBoundToTerms(): string {
+    const canonicalUrl = canonicalMerchantEndpoint(this.merchantUrl);
+    const confirmedUrl = canonicalMerchantEndpoint(this.confirmation.confirmedMerchantEndpoint);
+    if (canonicalUrl !== confirmedUrl) {
+      throw new ConfirmationMerchantEndpointMismatchError(confirmedUrl, canonicalUrl);
+    }
+    assertResourceMatchesMerchantEndpoint(this.quoted.terms.resource, canonicalUrl);
+    const url = new URL(canonicalUrl);
     const hostedOriginAllowed =
       url.protocol === "https:" && M3_ALLOWED_MERCHANT_ORIGINS.includes(url.origin);
     const loopbackOriginAllowed =
       this.quoted.terms.network === "eip155:1952" &&
       url.protocol === "http:" &&
       M3_ALLOWED_LOOPBACK_MERCHANT_ORIGINS.includes(url.origin);
-    if ((!hostedOriginAllowed && !loopbackOriginAllowed) || !matches) {
+    if (!hostedOriginAllowed && !loopbackOriginAllowed) {
       throw new Error("Merchant URL is not the confirmed https resource or controlled Testnet loopback resource");
     }
+    return canonicalUrl;
   }
 }
 

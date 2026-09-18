@@ -1,4 +1,7 @@
 import type { SettlementReader } from "./types";
+import {
+  type SettlementExecutionBinding,
+} from "./executionAuthority";
 
 /**
  * Read-only X Layer Testnet settlement verification.
@@ -35,6 +38,9 @@ type TransactionReceipt = {
 };
 
 export type ExpectedExactSettlement = {
+  purchaseId: string;
+  executionAttemptId: string;
+  executionBinding: SettlementExecutionBinding;
   network: string;
   transactionHash: string;
   asset: string;
@@ -42,6 +48,18 @@ export type ExpectedExactSettlement = {
   payTo: string;
   payer: string;
 };
+
+function assertExecutionBinding(
+  expected: ExpectedExactSettlement,
+): void {
+  if (
+    expected.executionBinding.purchaseId !== expected.purchaseId
+    || expected.executionBinding.executionAttemptId !== expected.executionAttemptId
+    || expected.executionBinding.transactionHash.toLowerCase() !== expected.transactionHash.toLowerCase()
+  ) {
+    throw new Error("Settlement evidence is not bound to this purchase execution");
+  }
+}
 
 export type XLayerSettlementVerification =
   | { state: "pending"; transactionHash: string }
@@ -106,6 +124,7 @@ export function verifyExactXLayerReceipt(
   rawReceipt: unknown,
   expected: ExpectedExactSettlement,
 ): XLayerSettlementVerification {
+  assertExecutionBinding(expected);
   if (expected.network !== XLAYER_TESTNET_NETWORK) {
     throw new Error(`Settlement verifier only permits ${XLAYER_TESTNET_NETWORK}`);
   }
@@ -261,13 +280,16 @@ export async function readAndVerifyXLayerSettlement(
 export class XLayerExactSettlementReader implements SettlementReader {
   constructor(
     private readonly rpc: JsonRpcTransport,
-    private readonly expected: Omit<ExpectedExactSettlement, "transactionHash">,
+    private readonly expected: Omit<ExpectedExactSettlement, "transactionHash" | "executionBinding"> & {
+      executionBinding: Omit<SettlementExecutionBinding, "transactionHash">;
+    },
   ) {}
 
   async readSettlement(transactionHash: string): Promise<{ settled: boolean }> {
     const result = await readAndVerifyXLayerSettlement(this.rpc, {
       ...this.expected,
       transactionHash,
+      executionBinding: { ...this.expected.executionBinding, transactionHash },
     });
     return { settled: result.state === "settled" };
   }

@@ -34,6 +34,9 @@ export function detect402(response: { status: number; body: unknown }): boolean 
 export type PreparedPayment = {
   intent: BoundPaymentIntent;
   terms: NormalizedChallengeTerms;
+  /** Set by the supervised purchase wrapper; required for production execution. */
+  purchaseId?: string;
+  idempotencyKey?: string;
   state: "ready_to_sign";
 };
 
@@ -149,7 +152,12 @@ export async function executeApprovedPayment(
   if (!prepared.intent.approval) {
     throw new Error("Cannot execute payment without explicit approval");
   }
+  if (!prepared.purchaseId || !prepared.idempotencyKey) {
+    throw new Error("Cannot execute payment without a durable purchase identity");
+  }
   return executor.executeApprovedPayment({
+    purchaseId: prepared.purchaseId,
+    idempotencyKey: prepared.idempotencyKey,
     intentId: prepared.intent.intentId,
     scheme: prepared.terms.scheme,
     network: prepared.terms.network,
@@ -179,6 +187,8 @@ export class TestScaffoldPaymentExecutor implements PaymentExecutor {
   ) {}
 
   async executeApprovedPayment(input: {
+    purchaseId: string;
+    idempotencyKey: string;
     intentId: string;
     scheme: string;
     network: string;

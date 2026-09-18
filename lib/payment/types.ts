@@ -195,6 +195,8 @@ export type SafeOfficialPaymentResponse = {
 export type PaymentSubmissionResult = {
   submitted: boolean;
   transactionHash?: string;
+  /** Durable application-owned execution attempt, safe to persist. */
+  executionAttemptId?: string;
   paymentPayloadRef?: string;
   note?: string;
   safeResponse?: SafeOfficialPaymentResponse;
@@ -203,6 +205,8 @@ export type PaymentSubmissionResult = {
 export type PaymentExecutor = {
   readonly kind: "official_onchainos" | "test_scaffold";
   executeApprovedPayment(input: {
+    purchaseId: string;
+    idempotencyKey: string;
     intentId: string;
     scheme: string;
     network: string;

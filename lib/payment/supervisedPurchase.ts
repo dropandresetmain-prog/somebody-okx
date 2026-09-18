@@ -50,7 +50,11 @@ export function prepareApprovedPurchase(input: {
       input.approval,
       input.at,
     ),
-    prepared,
+    prepared: {
+      ...prepared,
+      purchaseId: input.purchase.id,
+      idempotencyKey: input.purchase.idempotencyKey,
+    },
   };
 }
 
@@ -63,6 +67,7 @@ export function confirmApprovedPurchaseTerms(input: {
   preview: PreviewQuote;
   confirmationId: string;
   confirmedAt: number;
+  merchantEndpoint: string;
 }): FounderPaymentConfirmation {
   if (!input.purchase.boundTerms || !input.purchase.approval) {
     throw new Error("Purchase must be approved with bound terms before confirmation");
@@ -74,6 +79,8 @@ export function confirmApprovedPurchaseTerms(input: {
     confirmationId: input.confirmationId,
     confirmedAt: input.confirmedAt,
     purchaseId: input.purchase.id,
+    approvalId: input.purchase.approval.approvalId,
+    merchantEndpoint: input.merchantEndpoint,
     preview: input.preview,
   });
 }

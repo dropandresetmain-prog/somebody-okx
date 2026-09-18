@@ -1,11 +1,15 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 
 import {
   readAndVerifyXLayerSettlement,
   verifyExactXLayerReceipt,
   XLAYER_TESTNET_CHAIN_ID_HEX,
 } from "../lib/payment/xlayerSettlement";
+import { FilePaymentExecutionAuthority } from "../lib/payment/executionAuthority";
 
 const txHash = `0x${"a".repeat(64)}`;
 const payer = "0x1111111111111111111111111111111111111111";
@@ -37,6 +41,13 @@ function receipt(overrides: Record<string, unknown> = {}) {
 }
 
 const expected = {
+  purchaseId: "purchase-a",
+  executionAttemptId: "attempt-a",
+  executionBinding: {
+    purchaseId: "purchase-a",
+    executionAttemptId: "attempt-a",
+    transactionHash: txHash,
+  },
   network: "eip155:1952",
   transactionHash: txHash,
   asset,
@@ -53,6 +64,34 @@ describe("X Layer settlement readback", () => {
       blockNumber: "0x123",
       transferLogIndex: 0,
     });
+  });
+
+  it("cannot use transaction evidence recorded for purchase A to settle purchase B", () => {
+    const purchaseB = {
+      ...expected,
+      purchaseId: "purchase-b",
+      executionAttemptId: "attempt-b",
+      executionBinding: expected.executionBinding,
+    };
+    assert.throws(
+      () => verifyExactXLayerReceipt(receipt(), purchaseB),
+      /not bound to this purchase execution/,
+    );
+  });
+
+  it("durable execution evidence can bind the current transaction only to purchase A", () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "somebody-settlement-binding-"));
+    const authority = new FilePaymentExecutionAuthority(path.join(directory, "ledger.json"));
+    const attempt = authority.claim({ purchaseId: "purchase-a", idempotencyKey: "idem-a", approvalId: "approval-a" });
+    authority.recordSubmitted(attempt.attemptId, txHash);
+    assert.throws(
+      () => authority.getSettlementBinding(attempt.attemptId, "purchase-b", txHash),
+      /belongs to another purchase/,
+    );
+    assert.deepEqual(
+      authority.getSettlementBinding(attempt.attemptId, "purchase-a", txHash),
+      { purchaseId: "purchase-a", executionAttemptId: attempt.attemptId, transactionHash: txHash },
+    );
   });
 
   it("distinguishes pending and reverted from settled", () => {

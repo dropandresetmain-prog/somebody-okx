@@ -28,6 +28,21 @@ export const M3_SELLER_ASSET_VERSION = "1" as const;
 export const M3_SELLER_AMOUNT = "10000" as const;
 export const M3_SELLER_TIMEOUT_SECONDS = 60 as const;
 
+/** Exact protected result contract returned after the controlled M3 payment. */
+export type M3ProtectedResult = {
+  ok: true;
+  message: "Somebody M3 payment verified";
+  resource: "m3-paid-ping";
+};
+
+export function verifyM3ProtectedResult(value: unknown): value is M3ProtectedResult {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const result = value as Record<string, unknown>;
+  return result.ok === true
+    && result.message === "Somebody M3 payment verified"
+    && result.resource === "m3-paid-ping";
+}
+
 const ADDRESS_PATTERN = /^0x[a-fA-F0-9]{40}$/;
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost"]);
 const REQUIRED_CREDENTIAL_ENV = [

@@ -10,9 +10,11 @@
  * No signature / authorization header is ever printed or written.
  */
 import fs from "node:fs";
+import path from "node:path";
 
 import { transition } from "../lib/payment/lifecycle";
 import { decodePaymentRequiredHeader } from "../lib/payment/challenge";
+import { FilePaymentExecutionAuthority, PaymentExecutionAlreadyClaimedError } from "../lib/payment/executionAuthority";
 import { executeApprovedPayment } from "../lib/payment/buyerRail";
 import { createPurchase, recordPurchaseReceipt, recordPurchaseResult, updatePurchaseState, verifyPurchase } from "../lib/payment/purchase";
 import {
@@ -22,6 +24,7 @@ import {
 } from "../lib/payment/supervisedPurchase";
 import {
   buildQuoteFromChallenge,
+  canonicalMerchantEndpoint,
   describeFounderApproval,
   OfficialPaymentAmbiguousError,
   OfficialPaymentPreSubmissionError,
@@ -32,14 +35,18 @@ import {
   readAndVerifyXLayerSettlement,
   XLAYER_TESTNET_NETWORK,
 } from "../lib/payment/xlayerSettlement";
+import { verifyM3ProtectedResult } from "../lib/payment/m3Seller";
 import type { PaymentContext, PaymentState } from "../lib/payment/types";
 
 const MERCHANT_URL = process.env.M3_MERCHANT_URL ?? "http://127.0.0.1:4021/m3/paid-ping";
 const PAYER = process.env.M3_BUYER_ADDRESS ?? "0xd2dd2eb5028a1afaa09c9d350b3378f1ad4f1db4";
 const CONFIG = { allowedNetworks: [XLAYER_TESTNET_NETWORK], maxSpend: "10000" } as const;
+// One application-owned ledger for this M3 driver. It is intentionally not
+// selectable per invocation: changing a path must not restore spend authority.
+const PAYMENT_LEDGER_FILE = path.resolve(".m3-payment-execution-ledger.json");
 
-async function fetchChallenge(): Promise<unknown> {
-  const res = await fetch(MERCHANT_URL, { redirect: "manual", signal: AbortSignal.timeout(20_000) });
+async function fetchChallenge(merchantEndpoint: string): Promise<unknown> {
+  const res = await fetch(merchantEndpoint, { redirect: "manual", signal: AbortSignal.timeout(20_000) });
   if (res.status !== 402) throw new Error(`Expected HTTP 402 challenge, got ${res.status}`);
   const encoded = res.headers.get("PAYMENT-REQUIRED");
   if (encoded) return decodePaymentRequiredHeader(encoded);
@@ -85,11 +92,12 @@ function preparedFor(body: unknown, purchaseId: string, at: number) {
 }
 
 async function preview(stateFile: string) {
-  const body = await fetchChallenge();
+  const merchantEndpoint = canonicalMerchantEndpoint(MERCHANT_URL);
+  const body = await fetchChallenge(merchantEndpoint);
   const at = Date.now();
   const purchaseId = `purchase-m3-${at}`;
   const { ready, preview: quote } = preparedFor(body, purchaseId, at);
-  fs.writeFileSync(stateFile, JSON.stringify({ purchaseId, previewAt: at, challengeBody: body }, null, 2));
+  fs.writeFileSync(stateFile, JSON.stringify({ purchaseId, previewAt: at, merchantEndpoint, challengeBody: body }, null, 2));
   console.log(describeFounderApproval(ready.prepared.intent, purchaseId));
   console.log(`human amount: ${humanAmount(quote.terms.maxAmountRequired)} ${quote.terms.eip712.name}`);
   console.log(`payer: ${PAYER}`);
@@ -97,8 +105,15 @@ async function preview(stateFile: string) {
 }
 
 async function execute(stateFile: string, evidenceFile: string) {
-  const state = JSON.parse(fs.readFileSync(stateFile, "utf8")) as { purchaseId: string; previewAt: number; challengeBody: unknown };
-  const evidence: Record<string, unknown> = { purchaseId: state.purchaseId, startedAt: new Date().toISOString(), states: [] };
+  const state = JSON.parse(fs.readFileSync(stateFile, "utf8")) as {
+    purchaseId: string;
+    previewAt: number;
+    merchantEndpoint?: string;
+    challengeBody: unknown;
+  };
+  if (!state.merchantEndpoint) throw new Error("Preview state lacks the frozen merchant endpoint; refuse to execute");
+  const merchantEndpoint = canonicalMerchantEndpoint(state.merchantEndpoint);
+  const evidence: Record<string, unknown> = { purchaseId: state.purchaseId, merchantEndpoint, startedAt: new Date().toISOString(), states: [] };
   const save = () => fs.writeFileSync(evidenceFile, JSON.stringify(evidence, null, 2));
 
   let ps: PaymentState = "prepared";
@@ -121,17 +136,24 @@ async function execute(stateFile: string, evidenceFile: string) {
     preview: previewQuote,
     confirmationId: `founder-conf-${state.purchaseId}`,
     confirmedAt: Date.now(),
+    merchantEndpoint,
   });
 
   // JIT: fresh merchant challenge, normalized, compared, freshness-gated.
-  const freshBody = await fetchChallenge();
+  const freshBody = await fetchChallenge(merchantEndpoint);
   const execution = buildQuoteFromChallenge(freshBody, "local-exec", Date.now());
   evidence.normalizationApplied = execution.normalization;
   evidence.executionTerms = execution.terms;
   authorizeFreshExecutionQuote({ purchase, confirmation, execution, now: Date.now() });
   evidence.confirmedFingerprintEqual = true;
 
-  const executor = new OfficialSignOnlyReplayExecutor(execution, confirmation, MERCHANT_URL);
+  const executionAuthority = new FilePaymentExecutionAuthority(PAYMENT_LEDGER_FILE);
+  const executor = new OfficialSignOnlyReplayExecutor(
+    execution,
+    confirmation,
+    merchantEndpoint,
+    executionAuthority,
+  );
   step({ type: "attempt_payment", paymentId: execution.paymentId });
   purchase = updatePurchaseState(purchase, "payment_attempted", Date.now());
   save();
@@ -148,6 +170,12 @@ async function execute(stateFile: string, evidenceFile: string) {
       save();
       step({ type: "report_uncertainty", uncertaintyReason: error.message });
       step({ type: "require_reconciliation", reason: error.message });
+    } else if (error instanceof PaymentExecutionAlreadyClaimedError) {
+      evidence.outcome = {
+        boundary: "durable_execution_claim_refused",
+        status: error.existing.status,
+        message: error.message,
+      };
     } else {
       evidence.outcome = { boundary: "unexpected", message: (error as Error).message };
     }
@@ -162,6 +190,7 @@ async function execute(stateFile: string, evidenceFile: string) {
   const txHash = submission.transactionHash!;
   evidence.submission = {
     transactionHash: txHash,
+    executionAttemptId: submission.executionAttemptId,
     merchantHttpStatus: submission.safeResponse?.data?.status,
     decodedReceipt: submission.safeResponse?.data?.decodedReceipt,
   };
@@ -170,11 +199,19 @@ async function execute(stateFile: string, evidenceFile: string) {
 
   // Independent readback (does not trust the merchant's prose).
   const rpc = createXLayerJsonRpcTransport();
+  const executionBinding = executionAuthority.getSettlementBinding(
+    submission.executionAttemptId!,
+    state.purchaseId,
+    txHash,
+  );
   let verification: Awaited<ReturnType<typeof readAndVerifyXLayerSettlement>> | undefined;
   for (let i = 0; i < 12; i++) {
     verification = await readAndVerifyXLayerSettlement(rpc, {
       network: execution.terms.network,
       transactionHash: txHash,
+      purchaseId: state.purchaseId,
+      executionAttemptId: submission.executionAttemptId!,
+      executionBinding,
       asset: execution.terms.asset,
       amount: execution.terms.maxAmountRequired,
       payTo: execution.terms.payTo,
@@ -187,13 +224,19 @@ async function execute(stateFile: string, evidenceFile: string) {
 
   if (verification?.state === "settled") {
     step({ type: "confirm_settlement", settlementProof: `${txHash}@${verification.blockNumber}` });
+    executionAuthority.recordSettled(submission.executionAttemptId!, Date.now());
     purchase = recordPurchaseReceipt(purchase, txHash, Date.now());
     const result = submission.safeResponse?.data?.result;
+    const validProtectedResult = verifyM3ProtectedResult(result);
+    evidence.protectedResultValid = validProtectedResult;
     if (result !== undefined && result !== null && result !== "") {
       step({ type: "receive_result", resultData: result });
       purchase = recordPurchaseResult(purchase, result, Date.now());
-      step({ type: "verify_result", verificationProof: `x-layer-readback:${txHash}` });
-      purchase = verifyPurchase(purchase, Date.now());
+      if (validProtectedResult) {
+        step({ type: "verify_result", verificationProof: `x-layer-readback:${txHash}+m3-result-contract` });
+        executionAuthority.recordVerified(submission.executionAttemptId!, Date.now());
+        purchase = verifyPurchase(purchase, Date.now());
+      }
     }
   } else {
     step({ type: "report_uncertainty", uncertaintyReason: `settlement readback state ${verification?.state}` });

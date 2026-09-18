@@ -12,6 +12,7 @@ import {
   M3_SELLER_ASSET,
   M3_SELLER_NETWORK,
   M3_SELLER_PATH,
+  verifyM3ProtectedResult,
 } from "../lib/payment/m3Seller";
 
 const RECEIVER = "0x1111111111111111111111111111111111111111";
@@ -57,6 +58,17 @@ function request(port: number): Promise<{
 }
 
 describe("controlled M3 seller", () => {
+  it("accepts only the exact protected result contract", () => {
+    assert.equal(verifyM3ProtectedResult({
+      ok: true,
+      message: "Somebody M3 payment verified",
+      resource: "m3-paid-ping",
+    }), true);
+    assert.equal(verifyM3ProtectedResult("hello"), false);
+    assert.equal(verifyM3ProtectedResult({ ok: true, message: "Somebody M3 payment verified", resource: "wrong" }), false);
+    assert.equal(verifyM3ProtectedResult({ error: "whatever" }), false);
+  });
+
   it("freezes the seller to Testnet, the current USDT0 asset, and an env recipient", () => {
     const routes = createM3SellerRoutes(RECEIVER) as Record<string, { accepts: { price: unknown; network: string; payTo: string } }>;
     const route = routes[`GET ${M3_SELLER_PATH}`];

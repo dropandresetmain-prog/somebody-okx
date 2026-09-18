@@ -90,9 +90,11 @@ function normalizeChallengeEntry(entry: unknown, topLevelResourceUrl?: string): 
       : topLevelResourceUrl;
   if (!resource) throw new Error("resource must be a non-empty string");
 
-  // Required number field
-  if (typeof e.maxTimeoutSeconds !== "number") {
-    throw new Error("maxTimeoutSeconds must be a number");
+  // The official core schema requires a positive number. The official EVM
+  // signer then adds it to a Unix-second integer and converts the result to
+  // uint256, so finite positive integer seconds are the interoperable domain.
+  if (!isValidMaxTimeoutSeconds(e.maxTimeoutSeconds)) {
+    throw new Error("maxTimeoutSeconds must be a finite positive integer number of seconds");
   }
   const maxTimeoutSeconds = e.maxTimeoutSeconds;
 
@@ -114,6 +116,13 @@ function normalizeChallengeEntry(entry: unknown, topLevelResourceUrl?: string): 
     eip712: { name, version },
     maxTimeoutSeconds,
   };
+}
+
+export function isValidMaxTimeoutSeconds(value: unknown): value is number {
+  return typeof value === "number"
+    && Number.isFinite(value)
+    && Number.isInteger(value)
+    && value > 0;
 }
 
 function readTopLevelResourceUrl(value: unknown): string | undefined {

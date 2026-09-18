@@ -492,7 +492,11 @@ describe("Buyer Rail", () => {
         TestScaffoldPaymentExecutor,
         OfficialSigningPendingExecutor,
       } = await import("../lib/payment/buyerRail");
-      const prepared = preparePayment(mockChallengeBody, mockApproval, mockConfig, "intent-exec");
+       const prepared = {
+         ...preparePayment(mockChallengeBody, mockApproval, mockConfig, "intent-exec"),
+         purchaseId: "purchase-scaffold",
+         idempotencyKey: "idem-scaffold",
+       };
       const scaffold = new TestScaffoldPaymentExecutor();
       assert.strictEqual(scaffold.kind, "test_scaffold");
       const result = await executeApprovedPayment(prepared, scaffold);

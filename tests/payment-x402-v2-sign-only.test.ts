@@ -1,5 +1,8 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 
 import {
   buildQuoteFromChallenge,
@@ -16,6 +19,7 @@ import {
   type MerchantReplayResponse,
   type OnchainosPaymentRunner,
 } from "../lib/payment/onchainOsExecutor";
+import { FilePaymentExecutionAuthority, type PaymentExecutionAuthority } from "../lib/payment/executionAuthority";
 import { normalizeX402V2PaymentRequirement } from "../lib/payment/x402V2Compat";
 
 const MERCHANT_URL = "https://www.okx.com/api/v1/pay/mock-merchant/resource";
@@ -33,7 +37,12 @@ const legacyEntry = {
   extra: { name: "USDC_TEST", version: "1" },
 };
 const liveChallenge = { x402Version: 2, accepts: [legacyEntry, { ...legacyEntry, scheme: "aggr_deferred" }] };
-const inputFor = (q: ReturnType<typeof buildQuoteFromChallenge>) => ({
+const inputFor = (
+  q: ReturnType<typeof buildQuoteFromChallenge>,
+  overrides: Partial<{ purchaseId: string; idempotencyKey: string; approvalId: string }> = {},
+) => ({
+  purchaseId: overrides.purchaseId ?? "p1",
+  idempotencyKey: overrides.idempotencyKey ?? "idem-p1",
   intentId: "intent-1",
   scheme: q.terms.scheme,
   network: q.terms.network,
@@ -44,7 +53,7 @@ const inputFor = (q: ReturnType<typeof buildQuoteFromChallenge>) => ({
   eip712Name: q.terms.eip712.name,
   eip712Version: q.terms.eip712.version,
   maxTimeoutSeconds: q.terms.maxTimeoutSeconds,
-  approvalId: "approval-1",
+  approvalId: overrides.approvalId ?? "approval-1",
 });
 
 describe("x402 v2 requirement normalization", () => {
@@ -107,6 +116,8 @@ describe("normalization and founder-approved economics", () => {
     confirmationId: "conf-1",
     confirmedAt: 2,
     purchaseId: "purchase-1",
+    approvalId: "approval-1",
+    merchantEndpoint: MERCHANT_URL,
     preview,
   });
 
@@ -181,10 +192,10 @@ function fakeRunner(calls: string[][], mode: "ok" | "fail" | "hpke" | "no-amount
   };
 }
 
-function okResponse(): MerchantReplayResponse {
+function okResponse(transactionHash = TX): MerchantReplayResponse {
   return {
     status: 200,
-    headers: { get: (n) => (n.toUpperCase() === "PAYMENT-RESPONSE" ? b64url({ success: true, transaction: TX, network: "eip155:1952" }) : null) },
+    headers: { get: (n) => (n.toUpperCase() === "PAYMENT-RESPONSE" ? b64url({ success: true, transaction: transactionHash, network: "eip155:1952" }) : null) },
     text: async () => JSON.stringify({ data: "protected-result" }),
   };
 }
@@ -196,17 +207,34 @@ function setup(opts: {
   challenge?: { x402Version: number; resource?: unknown; accepts: unknown[] };
   now?: number;
   url?: string;
+  approvedUrl?: string;
+  authority?: PaymentExecutionAuthority;
+  purchaseId?: string;
+  idempotencyKey?: string;
+  approvalId?: string;
+  txHash?: string;
 }) {
   const preview = buildQuoteFromChallenge(opts.challenge ?? liveChallenge, "local-preview", 1);
-  const confirmation = confirmPreviewPaymentTerms({ confirmationId: "conf", confirmedAt: 2, purchaseId: "p1", preview });
+  const approvedUrl = opts.approvedUrl ?? opts.url ?? MERCHANT_URL;
+  const confirmation = confirmPreviewPaymentTerms({
+    confirmationId: "conf",
+    confirmedAt: 2,
+    purchaseId: opts.purchaseId ?? "p1",
+    approvalId: opts.approvalId ?? "approval-1",
+    merchantEndpoint: approvedUrl,
+    preview,
+  });
   const execution = opts.execution ?? buildQuoteFromChallenge(liveChallenge, "local-exec", 10);
   const calls: string[][] = [];
   const fetches: Array<{ url: string; init: Parameters<MerchantReplayFetch>[1] }> = [];
-  const fetchImpl: MerchantReplayFetch = opts.fetchImpl ?? (async () => okResponse());
+  const fetchImpl: MerchantReplayFetch = opts.fetchImpl ?? (async () => okResponse(opts.txHash ?? TX));
+  const ledgerDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "somebody-payment-test-"));
+  const authority = opts.authority ?? new FilePaymentExecutionAuthority(path.join(ledgerDirectory, "ledger.json"));
   const executor = new OfficialSignOnlyReplayExecutor(
     execution,
     confirmation,
     opts.url ?? MERCHANT_URL,
+    authority,
     opts.runner ?? fakeRunner(calls),
     () => opts.now ?? 15,
     async (url, init) => {
@@ -215,7 +243,17 @@ function setup(opts: {
     },
     1000,
   );
-  return { executor, execution, calls, fetches };
+  return {
+    executor,
+    execution,
+    calls,
+    fetches,
+    authority,
+    confirmation,
+    purchaseId: opts.purchaseId ?? "p1",
+    idempotencyKey: opts.idempotencyKey ?? "idem-p1",
+    approvalId: opts.approvalId ?? "approval-1",
+  };
 }
 
 describe("official TEE sign-only + application-owned replay", () => {
@@ -257,13 +295,131 @@ describe("official TEE sign-only + application-owned replay", () => {
     assert.ok(!serialized.includes("authorization_header"));
   });
 
+  it("redacts sensitive strings recursively while preserving safe diagnostics", async () => {
+    const { executor, execution } = setup({
+      fetchImpl: async () => ({
+        status: 402,
+        headers: { get: () => null },
+        text: async () => JSON.stringify({
+          result: [
+            { innocent: "authorization=AUTH-MARKER", nested: ["signature=SIG-MARKER"] },
+            { diagnostic: "normal diagnostic" },
+          ],
+          error: "access_token=TOKEN-MARKER; safe context",
+        }),
+      }),
+    });
+    let caught: unknown;
+    await assert.rejects(
+      () => executor.executeApprovedPayment(inputFor(execution)),
+      (error) => { caught = error; return error instanceof OfficialPaymentAmbiguousError; },
+    );
+    const serialized = JSON.stringify(caught);
+    assert.ok(!serialized.includes("AUTH-MARKER"));
+    assert.ok(!serialized.includes("SIG-MARKER"));
+    assert.ok(!serialized.includes("TOKEN-MARKER"));
+    assert.ok(!serialized.includes("authorization"));
+    assert.ok(!serialized.includes("PAYMENT-SIGNATURE"));
+    assert.ok(serialized.includes("normal diagnostic"));
+  });
+
   it("is single-use: a second execution never reaches the wallet or merchant", async () => {
     const calls: string[][] = [];
     const { executor, execution, fetches } = setup({ runner: fakeRunner(calls) });
     await executor.executeApprovedPayment(inputFor(execution));
-    await assert.rejects(() => executor.executeApprovedPayment(inputFor(execution)), /single-use/);
+    await assert.rejects(() => executor.executeApprovedPayment(inputFor(execution)), /already has durable payment execution authority/);
     assert.equal(calls.length, 1);
     assert.equal(fetches.length, 1);
+  });
+
+  it("checks purchase identity again at the final signing boundary", async () => {
+    const calls: string[][] = [];
+    const { executor, execution } = setup({ runner: fakeRunner(calls) });
+    await assert.rejects(
+      () => executor.executeApprovedPayment(inputFor(execution, { purchaseId: "p2" })),
+      /confirmation does not authorize this purchase identity/,
+    );
+    assert.equal(calls.length, 0);
+  });
+
+  it("checks approval identity again at the final signing boundary", async () => {
+    const calls: string[][] = [];
+    const { executor, execution } = setup({ runner: fakeRunner(calls) });
+    await assert.rejects(
+      () => executor.executeApprovedPayment(inputFor(execution, { approvalId: "approval-other" })),
+      /confirmation does not authorize this approval identity/,
+    );
+    assert.equal(calls.length, 0);
+  });
+
+  it("refuses a reconstructed executor through the durable application ledger", async () => {
+    const ledgerDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "somebody-payment-restart-"));
+    const ledgerFile = path.join(ledgerDirectory, "ledger.json");
+    const first = setup({ authority: new FilePaymentExecutionAuthority(ledgerFile) });
+    await first.executor.executeApprovedPayment(inputFor(first.execution));
+
+    const secondCalls: string[][] = [];
+    const second = setup({ authority: new FilePaymentExecutionAuthority(ledgerFile), runner: fakeRunner(secondCalls) });
+    await assert.rejects(
+      () => second.executor.executeApprovedPayment(inputFor(second.execution)),
+      /already has durable payment execution authority/,
+    );
+    assert.equal(secondCalls.length, 0);
+    assert.equal(second.fetches.length, 0);
+  });
+
+  it("durably records a source-proven pre-sign failure and does not silently retry it", async () => {
+    const ledgerDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "somebody-payment-pre-sign-"));
+    const ledgerFile = path.join(ledgerDirectory, "ledger.json");
+    const first = setup({
+      authority: new FilePaymentExecutionAuthority(ledgerFile),
+      runner: fakeRunner([], "fail"),
+    });
+    await assert.rejects(
+      () => first.executor.executeApprovedPayment(inputFor(first.execution)),
+      OfficialPaymentPreSubmissionError,
+    );
+    const secondCalls: string[][] = [];
+    const second = setup({
+      authority: new FilePaymentExecutionAuthority(ledgerFile),
+      runner: fakeRunner(secondCalls),
+    });
+    await assert.rejects(
+      () => second.executor.executeApprovedPayment(inputFor(second.execution)),
+      /already has durable payment execution authority/,
+    );
+    assert.equal(secondCalls.length, 0);
+  });
+
+  it("allows two separately approved purchases with identical economics", async () => {
+    const ledgerDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "somebody-payment-race-"));
+    const authority = new FilePaymentExecutionAuthority(path.join(ledgerDirectory, "ledger.json"));
+    const a = setup({ authority, purchaseId: "purchase-a", idempotencyKey: "idem-a", approvalId: "approval-a", txHash: TX });
+    const b = setup({ authority, purchaseId: "purchase-b", idempotencyKey: "idem-b", approvalId: "approval-b", txHash: "0x" + "cd".repeat(32) });
+    await a.executor.executeApprovedPayment(inputFor(a.execution, {
+      purchaseId: "purchase-a", idempotencyKey: "idem-a", approvalId: "approval-a",
+    }));
+    await b.executor.executeApprovedPayment(inputFor(b.execution, {
+      purchaseId: "purchase-b", idempotencyKey: "idem-b", approvalId: "approval-b",
+    }));
+    assert.equal(a.calls.length, 1);
+    assert.equal(b.calls.length, 1);
+  });
+
+  it("allows only one concurrent contender to claim one purchase", async () => {
+    const ledgerDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "somebody-payment-race-"));
+    const authority = new FilePaymentExecutionAuthority(path.join(ledgerDirectory, "ledger.json"));
+    const callsA: string[][] = [];
+    const callsB: string[][] = [];
+    const a = setup({ authority, runner: fakeRunner(callsA) });
+    const b = setup({ authority, runner: fakeRunner(callsB) });
+    const results = await Promise.allSettled([
+      a.executor.executeApprovedPayment(inputFor(a.execution)),
+      b.executor.executeApprovedPayment(inputFor(b.execution)),
+    ]);
+    assert.equal(results.filter((result) => result.status === "fulfilled").length, 1);
+    assert.equal(results.filter((result) => result.status === "rejected").length, 1);
+    assert.equal(callsA.length + callsB.length, 1);
   });
 
   it("lost response after signing: ambiguous, no retry, no secret in error", async () => {
@@ -390,6 +546,49 @@ describe("official TEE sign-only + application-owned replay", () => {
       /Merchant URL/,
     );
     assert.equal(publicPort.calls.length, 0);
+  });
+
+  it("freezes the exact approved endpoint, including host, port, protocol, path, and query", async () => {
+    const controlledChallenge = {
+      x402Version: 2,
+      accepts: [{
+        ...legacyEntry,
+        asset: "0x9e29b3aada05bf2d2c827af80bd28dc0b9b4fb0c",
+        payTo: "0x1111111111111111111111111111111111111111",
+        resource: "/m3/paid-ping",
+        extra: { name: "USD₮0", version: "1" },
+        amount: "10000",
+      }],
+    };
+    const execution = buildQuoteFromChallenge(controlledChallenge, "local-exec", 10);
+    const approved = "http://127.0.0.1:4021/m3/paid-ping";
+    for (const mutated of [
+      "http://localhost:4021/m3/paid-ping",
+      "http://127.0.0.1:4022/m3/paid-ping",
+      "https://127.0.0.1:4021/m3/paid-ping",
+      "http://127.0.0.1:4021/other",
+      "http://127.0.0.1:4021/m3/paid-ping?changed=1",
+    ]) {
+      const candidate = setup({
+        challenge: controlledChallenge,
+        execution,
+        approvedUrl: approved,
+        url: mutated,
+      });
+      await assert.rejects(
+        () => candidate.executor.executeApprovedPayment(inputFor(execution)),
+        /merchant endpoint|Merchant URL/,
+      );
+      assert.equal(candidate.calls.length, 0);
+      assert.equal(candidate.fetches.length, 0);
+    }
+
+    const fragmentOnly = setup({
+      approvedUrl: MERCHANT_URL + "#founder-fragment",
+      url: MERCHANT_URL + "#runtime-fragment",
+    });
+    await fragmentOnly.executor.executeApprovedPayment(inputFor(fragmentOnly.execution));
+    assert.equal(fragmentOnly.fetches[0].url, MERCHANT_URL);
   });
   it("signs a native v2 challenge whose resource is top-level only", async () => {
     const { resource: _omit, ...entryWithoutResource } = legacyEntry as Record<string, unknown>;

@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert";
-import { parse402Challenge, bindTermsToApproval } from "../lib/payment/challenge";
+import { isValidMaxTimeoutSeconds, parse402Challenge, bindTermsToApproval } from "../lib/payment/challenge";
 import type { PaymentApproval } from "../lib/payment/types";
 
 describe("402 Challenge Parsing and Binding", () => {
@@ -126,6 +126,18 @@ describe("402 Challenge Parsing and Binding", () => {
       };
       const terms = parse402Challenge(bodyWithAllMalformed);
       assert.strictEqual(terms.length, 0);
+    });
+
+    it("accepts positive integer seconds and rejects non-finite, non-positive, or fractional values", () => {
+      assert.equal(isValidMaxTimeoutSeconds(1), true);
+      for (const invalid of [0, -1, 0.5, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+        assert.equal(isValidMaxTimeoutSeconds(invalid), false);
+        const challenge = {
+          ...mockChallengeBody,
+          accepts: [{ ...mockChallengeBody.accepts[0], maxTimeoutSeconds: invalid }],
+        };
+        assert.deepEqual(parse402Challenge(challenge), []);
+      }
     });
   });
 
