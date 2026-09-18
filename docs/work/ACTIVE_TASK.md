@@ -154,13 +154,13 @@ Evidence:
 
 ### Checkpoint 6 — external seam
 
-- [ ] AuthorizedExecutionIntent for external acquisition/effect;
-- [ ] provider/result/verification events feed back into Convex + wake Somebody;
-- [ ] no duplicate payment state machine;
-- [ ] boundary compatible with M3 concepts without claiming M3 success.
+- [x] AuthorizedExecutionIntent for external acquisition/effect; (`lib/management/intents.ts` `createIntentFromAuthorization` — the ONLY way an intent is born: refusal/approval_required/MAKE-wrong-option/ineligible-option all produce typed `{ok:false}` refusals; intentId + idempotencyKey derived from the authorized-decision identity, so replays build byte-identical intents and `putIntent` upserts (by intentId, indexed by_idempotency) leave exactly one row per logical effect. M4 intents ACQUISITION effects; external_effect stays a governed-vocabulary question for later.)
+- [x] provider/result/verification events feed back into Convex + wake Somebody; (`planWakeForRailEvent` routes provider_result/verification_result/rail_failure to typed WakeReasons with event-scoped dedupeKeys; `applyRailEvent` advances the intent through a SMALL monotone lifecycle (authorized→awaiting_m3/handed_off→result_recorded→verified|failed→reconciliation_required) with an event-cursor that refuses already-applied event ids; `tests/managementIntentsPersistence.test.ts` drives the SHIPPED `putIntent`/`appendWakeEvent`/`markWakeConsumed` handlers: duplicate webhook dedupes to one wake, consumption closes the consumedAt cursor, re-consume marks 0.)
+- [x] no duplicate payment state machine; (this file never references M3 purchase states (submitted/uncertain/settled/…) — the intent lifecycle is Somebody-side bookkeeping only; payment states remain M3's single authority; convex-program typecheck now also clean after fixing four lane defects the root tsc never compiled: `canAcceptReservation` arity bug (real fencing hole), two union-literal returns, and a wake-patch spread typed as partial data.)
+- [x] boundary compatible with M3 concepts without claiming M3 success. (`mayHandOffExternally` stays the ONE predicate; under `m3_unavailable` the intent is BORN in awaiting_m3 with boundaryNote "no payment was attempted or made" — recorded, visible, honest; the reducer already reads awaiting_m3 ⇒ waiting_for_resource.)
 
 Evidence:
-- mock/fixture seam only if M3 unavailable, labelled truthfully.
+- mock/fixture seam only if M3 unavailable, labelled truthfully. (`mockBuyerRailFixture` self-describes "MOCK/FIXTURE … NOT M3", prefixes every railRef with `mock:`, and a no-fixture offer refuses with "the real M3 rail is the only production path"; replayed hand-off calls the rail exactly once; a rail refusal never fakes handed_off. `tests/managementIntents.test.ts` 11 + persistence 2 pass; full M4 set 131 pass; M2 regressions 89 pass; `tsc --noEmit` and `tsc -p convex/tsconfig.json` both clean.)
 
 ### Checkpoint 7 — tonight completion
 
@@ -224,4 +224,4 @@ No scenario-specific orchestration.
 
 ## Current next action
 
-CP1–CP4 committed and pushed (CP1 `27128d6` + ledger `34a65cb`; CP2 `51b1e13` + ledger `81825cc`; CP3 workforce `df4fdd5`, reducer `dc3a9b7`; CP4 graph + continuation evidence `76fedd5`). Next: Checkpoint 5 — formal Cutoff-2 adversarial suite (duplicate wakes + budget/approval/no-progress are already pinned by graph tests; add stale-run fencing, malformed model-output variants, impossible deadline, contradictory requirements, malicious provider text, unrelated prompt ⇒ typed terminal; then CP6 ExecutionIntent + labeled mock buyer rail, CP7 call-site integration).
+CP1–CP5 committed and pushed (CP1 `27128d6` + ledger `34a65cb`; CP2 `51b1e13` + ledger `81825cc`; CP3 workforce `df4fdd5`, reducer `dc3a9b7`; CP4 graph + continuation evidence `76fedd5` + ledger `94da7ac`; CP5 adversarial suite `3e8479e`). Next: Checkpoint 7 — scenario-coupling removal + runtime integration: convex/objectives.ts:332 `resolveWorker({inventory: []})` → `listWorkers`; strip `selectRoleKeyForRequest` from the generic path; generalize the lib/worker/runtime.ts:321-352 execution-order prompt; remove growth completion extras and role-keyed prompts; `request_resource` → `worker_resource_request` wake; wake-scheduler wiring; finishRun completion inference → completion-gate proposal path. Then ledger reconciliation, 19-section completion report, exact R3 SHA.

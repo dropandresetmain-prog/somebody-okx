@@ -27,7 +27,7 @@ import {
   tryCommitSpend,
   trySpendModelCall,
 } from "../../lib/management/budget";
-import type { WorkerRecord, ObjectiveBudget } from "../../lib/management/types";
+import type { WorkerRecord, ObjectiveBudget, WakeEvent } from "../../lib/management/types";
 
 type WorkerRow = { _id: Id<"workers">; workerKey: string; data: WorkerRecord };
 type BudgetRow = { _id: Id<"objectiveBudgets">; objectiveKey: string; data: ObjectiveBudget };
@@ -137,8 +137,10 @@ export const reserveWorker = internalMutation({
       return { ok: true, replayed: true };
     }
 
-    // Check if worker can accept reservation
-    const check = canAcceptReservation(worker, args.at);
+    // Check if worker can accept reservation (replay of the same assignmentId
+    // is handled by the guard itself; the early return above stays as the
+    // fast path).
+    const check = canAcceptReservation(worker, args.assignmentId, args.at);
     if (!check.ok) {
       return { ok: false, reason: check.reason };
     }
@@ -299,7 +301,7 @@ export const addDynamicCapability = internalMutation({
     // Validate using pure function
     const validation = validateCapabilitySpec(args.proposedSpec);
     if (!validation.ok) {
-      return { ok: false, validation };
+      return { ok: false as const, validation };
     }
 
     const row = await ctx.db
@@ -308,7 +310,7 @@ export const addDynamicCapability = internalMutation({
       .unique();
 
     if (!row) {
-      return { ok: false, validation: { blocker: "worker not found" } };
+      return { ok: false as const, validation: { blocker: "worker not found" } };
     }
 
     const worker = (row as WorkerRow).data;
@@ -319,7 +321,7 @@ export const addDynamicCapability = internalMutation({
     );
     if (existing) {
       // Idempotent: already present
-      return { ok: true };
+      return { ok: true as const };
     }
 
     // Append
@@ -330,7 +332,7 @@ export const addDynamicCapability = internalMutation({
     };
 
     await ctx.db.patch(row._id, { data: updated });
-    return { ok: true };
+    return { ok: true as const };
   },
 });
 
@@ -357,7 +359,7 @@ export const appendWakeEvent = internalMutation({
 
     if (existing) {
       const existingEventId = (existing as { eventId: string }).eventId;
-      return { ok: false, duplicate: true, existingEventId };
+      return { ok: false as const, duplicate: true as const, existingEventId };
     }
 
     await ctx.db.insert("wakeEvents", {
@@ -367,7 +369,7 @@ export const appendWakeEvent = internalMutation({
       data: args.data,
     });
 
-    return { ok: true };
+    return { ok: true as const };
   },
 });
 
@@ -390,7 +392,7 @@ export const markWakeConsumed = internalMutation({
 
       if (!row) continue;
 
-      const data = (row as { data: { consumedAt: number | null } }).data;
+      const data = (row as { data: WakeEvent }).data;
       if (data.consumedAt !== null) continue;
 
       await ctx.db.patch(row._id, {
