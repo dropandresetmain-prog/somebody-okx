@@ -1,7 +1,28 @@
 # ACTIVE TASK — Somebody × OKX Dev Day 2026
 
-Status: **ACTIVE — M3 live evidence accepted; R2/R2.1/R2.2 safety fixes complete; review pending**
+Status: **M3 ACCEPTED / PROMOTED / FROZEN — M4 (`feat/m4-management-engine`) is the active lane**
 Updated: **19 September 2026**
+
+## M3 FINAL DISPOSITION (authoritative; supersedes "review pending" / "do not promote" prose below)
+
+M3 ACCEPTED / FROZEN FOR HACKATHON SCOPE.
+
+R2: **PASS WITH PARKED / ACCEPTED RISKS**
+
+Park for Later:
+- stale ledger lock recovery
+- global npm shim
+
+Ignore / Accept Risk for M3:
+- persist `authorization.from` for a more formally complete `(from, nonce)` authorization identity
+  (R2.2 already binds settlement to the retained EIP-3009 authorization identity; judged sufficient for demo scope)
+
+NO MORE M3 PAYMENT FIXERS unless materially new evidence appears.
+NO MORE LIVE M3 PAYMENT required for promotion.
+
+Historical evidence below is preserved unchanged. M3 remains the single payment
+execution/settlement authority; M4 orchestrates and hands authorized acquisition
+intents to the M3 rail without duplicating payment state.
 
 ## CURRENT M3 CONTROLLED SELLER CHECKPOINT
 
