@@ -654,3 +654,26 @@ on that side; (b) `accepted` carrying both fields, or the relative `resource`
 in the payload, is rejected; (c) merchant-side settle problem independent of
 verify. Distinguishing them needs a fresh authorization to `/verify` and vary
 shapes (verify-only, no settle) — none issued this session.
+
+## Attempt G — controlled OKX SDK seller, X Layer Testnet (2026-09-18)
+
+Result: **SUCCESS — full chain verified.** Sanitized evidence only; no credentials,
+authorization headers, or signatures recorded.
+
+- Seller: `GET /m3/paid-ping`, official OKX seller SDK, loopback `127.0.0.1:4021`,
+  `eip155:1952`. Native x402 v2 `amount` — the legacy amount shim was not needed.
+- Terms (founder-approved in chat): USD₮0 `0x9e29…fb0c`, 10000 atomic (0.010000),
+  payTo `0x8c5b…c3ee`, resource `/m3/paid-ping`, purchase `purchase-m3-1789769056615`.
+- Preflight: wallet personal-sign and EIP-712 canaries OK; buyer `0xd2dd…1db4`
+  held 10.000000 USD₮0 plus gas.
+- First execute stopped **before signing**: pre-sign guard re-parsed the requirement
+  without the v2 top-level `resource`. Fixed in `df11a65` with a regression test that
+  fails without the fix. No authorization was created by that attempt.
+- Second execute: fresh challenge, terms fingerprint equal, official TEE sign-only,
+  exactly one replay. Seller HTTP 200; protected resource returned; facilitator receipt
+  `status: success`.
+- txHash `0x7d1d639910471bc573a45d7e1d1d4bea1afe081a3dc59862703251fdc3e8660d`,
+  block 41310643 (`0x27659b3`), receipt status 1.
+- Independent RPC readback: Transfer buyer→seller of 10000; buyer 10000000→9990000,
+  seller 0→10000.
+- Application states: … → submitted → settled → result_received → verified.
