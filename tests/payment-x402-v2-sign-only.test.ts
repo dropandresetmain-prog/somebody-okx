@@ -193,10 +193,11 @@ function setup(opts: {
   runner?: OnchainosPaymentRunner;
   fetchImpl?: MerchantReplayFetch;
   execution?: ReturnType<typeof buildQuoteFromChallenge>;
+  challenge?: { x402Version: number; accepts: unknown[] };
   now?: number;
   url?: string;
 }) {
-  const preview = buildQuoteFromChallenge(liveChallenge, "local-preview", 1);
+  const preview = buildQuoteFromChallenge(opts.challenge ?? liveChallenge, "local-preview", 1);
   const confirmation = confirmPreviewPaymentTerms({ confirmationId: "conf", confirmedAt: 2, purchaseId: "p1", preview });
   const execution = opts.execution ?? buildQuoteFromChallenge(liveChallenge, "local-exec", 10);
   const calls: string[][] = [];
@@ -355,5 +356,39 @@ describe("official TEE sign-only + application-owned replay", () => {
       assert.equal(s.calls.length, 0);
       assert.equal(s.fetches.length, 0);
     }
+  });
+
+  it("allows only the fixed Testnet loopback seller origin and frozen path", async () => {
+    const controlledChallenge = {
+      x402Version: 2,
+      accepts: [{
+        ...legacyEntry,
+        asset: "0x9e29b3aada05bf2d2c827af80bd28dc0b9b4fb0c",
+        payTo: "0x1111111111111111111111111111111111111111",
+        resource: "/m3/paid-ping",
+        extra: { name: "USD₮0", version: "1" },
+        amount: "10000",
+      }],
+    };
+    const execution = buildQuoteFromChallenge(controlledChallenge, "local-exec", 10);
+    const local = setup({
+      challenge: controlledChallenge,
+      execution,
+      url: "http://127.0.0.1:4021/m3/paid-ping",
+    });
+    const result = await local.executor.executeApprovedPayment(inputFor(execution));
+    assert.equal(result.submitted, true);
+    assert.equal(local.fetches.length, 1);
+
+    const publicPort = setup({
+      challenge: controlledChallenge,
+      execution,
+      url: "http://127.0.0.1:4022/m3/paid-ping",
+    });
+    await assert.rejects(
+      () => publicPort.executor.executeApprovedPayment(inputFor(execution)),
+      /Merchant URL/,
+    );
+    assert.equal(publicPort.calls.length, 0);
   });
 });

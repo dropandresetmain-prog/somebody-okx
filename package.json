@@ -8,13 +8,18 @@
     "start": "next start --hostname 127.0.0.1",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts",
+    "m3:seller": "tsx scripts/m3-controlled-seller.ts",
     "typecheck:convex": "tsc -p convex/tsconfig.json --noEmit",
     "convex:dev": "convex dev",
     "convex:codegen": "convex codegen"
   },
   "dependencies": {
+    "@okxweb3/x402-core": "^0.1.0",
+    "@okxweb3/x402-evm": "^0.2.1",
+    "@okxweb3/x402-express": "^0.1.1",
     "@openai/agents": "^0.18.0",
     "convex": "^1.45.0",
+    "express": "^5.2.1",
     "googleapis": "^159.0.0",
     "next": "^16.3.5",
     "openai": "^7.15.0",
@@ -23,6 +28,7 @@
     "zod": "^4.6.4"
   },
   "devDependencies": {
+    "@types/express": "^5.0.6",
     "@types/node": "^24",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",

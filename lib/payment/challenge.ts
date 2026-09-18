@@ -7,6 +7,18 @@ import type {
   BoundPaymentIntent,
 } from "./types";
 
+/** Decode the x402 v2 PAYMENT-REQUIRED header emitted by the official seller SDK. */
+export function decodePaymentRequiredHeader(value: string): unknown {
+  if (!/^[A-Za-z0-9+/]*={0,2}$/.test(value)) {
+    throw new Error("PAYMENT-REQUIRED header is not valid base64");
+  }
+  try {
+    return JSON.parse(Buffer.from(value, "base64").toString("utf8")) as unknown;
+  } catch {
+    throw new Error("PAYMENT-REQUIRED header is not valid JSON");
+  }
+}
+
 /**
  * Parse a 402 challenge response body into normalized payment terms.
  * 
@@ -34,11 +46,13 @@ export function parse402Challenge(body: unknown): NormalizedChallengeTerms[] {
     throw new Error("Challenge must include accepts as an array");
   }
 
+  const resourceUrl = readTopLevelResourceUrl(obj.resource);
+
   const results: NormalizedChallengeTerms[] = [];
 
   for (const entry of obj.accepts) {
     try {
-      const normalized = normalizeChallengeEntry(entry);
+      const normalized = normalizeChallengeEntry(entry, resourceUrl);
       results.push(normalized);
     } catch (err) {
       // Malformed entry — skip it (fail-closed: we don't throw, just skip)
@@ -57,7 +71,7 @@ export function parse402Challenge(body: unknown): NormalizedChallengeTerms[] {
  * @returns Normalized challenge terms
  * @throws if any required field is missing or malformed
  */
-function normalizeChallengeEntry(entry: unknown): NormalizedChallengeTerms {
+function normalizeChallengeEntry(entry: unknown, topLevelResourceUrl?: string): NormalizedChallengeTerms {
   if (typeof entry !== "object" || entry === null) {
     throw new Error("Challenge entry must be an object");
   }
@@ -70,7 +84,11 @@ function normalizeChallengeEntry(entry: unknown): NormalizedChallengeTerms {
   const asset = requireString(e, "asset");
   const maxAmountRequired = requireNormalizedAmount(e);
   const payTo = requireString(e, "payTo");
-  const resource = requireString(e, "resource");
+  const resource =
+    typeof e.resource === "string" && e.resource.length > 0
+      ? e.resource
+      : topLevelResourceUrl;
+  if (!resource) throw new Error("resource must be a non-empty string");
 
   // Required number field
   if (typeof e.maxTimeoutSeconds !== "number") {
@@ -96,6 +114,15 @@ function normalizeChallengeEntry(entry: unknown): NormalizedChallengeTerms {
     eip712: { name, version },
     maxTimeoutSeconds,
   };
+}
+
+function readTopLevelResourceUrl(value: unknown): string | undefined {
+  if (typeof value === "string" && value.length > 0) return value;
+  if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+    const url = (value as Record<string, unknown>).url;
+    if (typeof url === "string" && url.length > 0) return url;
+  }
+  return undefined;
 }
 
 /**

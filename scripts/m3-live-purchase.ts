@@ -12,6 +12,7 @@
 import fs from "node:fs";
 
 import { transition } from "../lib/payment/lifecycle";
+import { decodePaymentRequiredHeader } from "../lib/payment/challenge";
 import { executeApprovedPayment } from "../lib/payment/buyerRail";
 import { createPurchase, recordPurchaseReceipt, recordPurchaseResult, updatePurchaseState, verifyPurchase } from "../lib/payment/purchase";
 import {
@@ -33,13 +34,15 @@ import {
 } from "../lib/payment/xlayerSettlement";
 import type { PaymentContext, PaymentState } from "../lib/payment/types";
 
-const MERCHANT_URL = "https://www.okx.com/api/v1/pay/mock-merchant/resource";
-const PAYER = "0xd2dd2eb5028a1afaa09c9d350b3378f1ad4f1db4";
+const MERCHANT_URL = process.env.M3_MERCHANT_URL ?? "http://127.0.0.1:4021/m3/paid-ping";
+const PAYER = process.env.M3_BUYER_ADDRESS ?? "0xd2dd2eb5028a1afaa09c9d350b3378f1ad4f1db4";
 const CONFIG = { allowedNetworks: [XLAYER_TESTNET_NETWORK], maxSpend: "10000" } as const;
 
 async function fetchChallenge(): Promise<unknown> {
   const res = await fetch(MERCHANT_URL, { redirect: "manual", signal: AbortSignal.timeout(20_000) });
   if (res.status !== 402) throw new Error(`Expected HTTP 402 challenge, got ${res.status}`);
+  const encoded = res.headers.get("PAYMENT-REQUIRED");
+  if (encoded) return decodePaymentRequiredHeader(encoded);
   return res.json();
 }
 

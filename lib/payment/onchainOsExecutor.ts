@@ -67,7 +67,11 @@ export function buildQuoteFromChallenge(
   const exact = root.accepts.find((entry) => asRecord(entry)?.scheme === "exact");
   if (!exact) throw new Error("No exact payment requirement in challenge");
   const { requirement, normalization } = normalizeX402V2PaymentRequirement(exact, root.x402Version);
-  const terms = parse402Challenge({ x402Version: root.x402Version, accepts: [requirement] })[0];
+  const terms = parse402Challenge({
+    x402Version: root.x402Version,
+    resource: root.resource,
+    accepts: [requirement],
+  })[0];
   if (!terms) throw new Error("Exact payment requirement is malformed");
   return {
     paymentId,
@@ -440,6 +444,11 @@ export type MerchantReplayFetch = (
 export const MERCHANT_REPLAY_TIMEOUT_MS = 20_000;
 /** M3 only replays a signed payment to the OKX Mock Merchant origin. */
 export const M3_ALLOWED_MERCHANT_ORIGINS: readonly string[] = ["https://www.okx.com"];
+/** Controlled M3 seller exception: loopback only, fixed port, Testnet only. */
+export const M3_ALLOWED_LOOPBACK_MERCHANT_ORIGINS: readonly string[] = [
+  "http://127.0.0.1:4021",
+  "http://localhost:4021",
+];
 const SIGNED_HEADER_NAMES = new Set(["PAYMENT-SIGNATURE", "X-PAYMENT"]);
 
 function base64Json(value: string): Record<string, unknown> | null {
@@ -684,8 +693,14 @@ export class OfficialSignOnlyReplayExecutor implements PaymentExecutor {
     const matches = /^https?:\/\//.test(resource)
       ? url.href === new URL(resource).href
       : url.pathname === resource;
-    if (url.protocol !== "https:" || !M3_ALLOWED_MERCHANT_ORIGINS.includes(url.origin) || !matches) {
-      throw new Error("Merchant URL is not the confirmed https resource");
+    const hostedOriginAllowed =
+      url.protocol === "https:" && M3_ALLOWED_MERCHANT_ORIGINS.includes(url.origin);
+    const loopbackOriginAllowed =
+      this.quoted.terms.network === "eip155:1952" &&
+      url.protocol === "http:" &&
+      M3_ALLOWED_LOOPBACK_MERCHANT_ORIGINS.includes(url.origin);
+    if ((!hostedOriginAllowed && !loopbackOriginAllowed) || !matches) {
+      throw new Error("Merchant URL is not the confirmed https resource or controlled Testnet loopback resource");
     }
   }
 }

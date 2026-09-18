@@ -1,7 +1,32 @@
 # ACTIVE TASK — Somebody × OKX Dev Day 2026
 
-Status: **ACTIVE — M2 ACCEPTED; stop before real payment / supervised M3**  
-Updated: **18 September 2026**
+Status: **ACTIVE — M3 controlled seller implemented; live acceptance pending**
+Updated: **19 September 2026**
+
+## CURRENT M3 CONTROLLED SELLER CHECKPOINT
+
+Branch: `feat/m3-live-payment` at expected starting HEAD
+`6a03ccfdc2452ed33d54b253076818c328db03db`.
+
+Implemented the narrow controlled seller at `GET /m3/paid-ping` using the official
+OKX TypeScript seller SDK (`@okxweb3/x402-core`, `@okxweb3/x402-evm`,
+`@okxweb3/x402-express`). The seller is loopback-only on `http://127.0.0.1:4021`,
+Testnet-only (`eip155:1952`), uses the current SDK USDT0 Testnet asset, and binds
+the recipient only from `M3_SELLER_RECEIVER_ADDRESS`. Credentials remain env-only.
+
+The buyer now accepts the official x402 v2 top-level `resource` plus
+`PAYMENT-REQUIRED` header while preserving the existing legacy amount shim and
+single sign/replay, no-redirect, no-retry, no-secret-persistence boundaries.
+
+Focused seller and buyer seam tests pass, including unpaid 402 shape, Testnet and
+recipient binding, wrong-network/host rejection, top-level resource parsing,
+loopback origin/path freeze, secret redaction, and single replay behavior.
+
+Live acceptance has not started. Required founder-controlled preflight remains:
+seller recipient, OKX facilitator credentials, buyer balance, HPKE canary, and
+current terms approval. Do not run a live payment until those checks are green.
+
+---
 
 ## M3 PAYMENT INTEGRATION PREFLIGHT — NO-GO BEFORE NEXT SIGNED ATTEMPT
 
