@@ -1,18 +1,24 @@
 /**
  * Official Onchain OS / Agentic Wallet payment adapter.
  *
- * The adapter deliberately delegates construction, TEE signing, settlement,
- * and merchant replay to `onchainos payment pay --payment-id`. It never accepts
- * a private key, nor returns an authorization header for application storage.
+ * Signing is delegated to the Agentic Wallet TEE through the sign-only mode
+ * `onchainos payment pay --payload`. The application owns the single merchant
+ * replay. It never accepts a private key, nor returns/persists the
+ * authorization header. (`--payment-id` is NOT used: it re-embeds the merchant's
+ * `maxAmountRequired`-only requirement and the facilitator rejects it.)
  *
- * Quote lifetime (official onchainos): local quotes expire at
- * min(challengeExpires, quoteCreatedAt + 300s). Therefore a preview quote
- * cannot survive open-ended human confirmation. Confirmation authorizes
- * economic terms; a fresh ExecutionQuote is acquired only after confirmation.
+ * Confirmation authorizes economic terms; a fresh ExecutionQuote (fresh
+ * merchant challenge, normalized) is acquired only after confirmation and must
+ * match the confirmed fingerprint and be <30s old at signing time.
  */
 
 import { spawn } from "node:child_process";
 
+import { parse402Challenge } from "./challenge";
+import {
+  normalizeX402V2PaymentRequirement,
+  type X402V2Normalization,
+} from "./x402V2Compat";
 import type {
   BoundPaymentIntent,
   NormalizedChallengeTerms,
@@ -29,16 +35,49 @@ export type OnchainosPaymentRunner = (args: string[]) => Promise<{
 }>;
 
 /**
- * Local CLI quote handle + material terms. `paymentId` is a transport-local
- * identifier owned by the CLI — never durable execution authority.
+ * A live merchant challenge reduced to material terms plus the requirement to
+ * sign. `paymentId` is a local reference only — never durable execution authority.
  */
 export type OfficialQuotedPayment = {
   paymentId: string;
   selectedIndex: number;
   terms: NormalizedChallengeTerms;
-  /** Local wall-clock when this application acquired the quote from the CLI. */
+  /** Local wall-clock when this application fetched the merchant challenge. */
   acquiredAt: number;
+  /** Normalized exact `accepts[]` entry handed to the TEE signer (no secrets). */
+  signingRequirement?: Record<string, unknown>;
+  /** Audit record when the v2 compatibility edit was applied; null otherwise. */
+  normalization?: X402V2Normalization | null;
 };
+
+/**
+ * Turn a live 402 body into a quote: pick the exact entry, normalize the known
+ * v2 defect (fail closed on ambiguity), and derive economic terms. The original
+ * body stays with the caller; only the safe audit record is kept here.
+ */
+export function buildQuoteFromChallenge(
+  body: unknown,
+  paymentId: string,
+  acquiredAt: number,
+): OfficialQuotedPayment {
+  const root = asRecord(body);
+  if (!root || typeof root.x402Version !== "number" || !Array.isArray(root.accepts)) {
+    throw new Error("Challenge must include x402Version and accepts[]");
+  }
+  const exact = root.accepts.find((entry) => asRecord(entry)?.scheme === "exact");
+  if (!exact) throw new Error("No exact payment requirement in challenge");
+  const { requirement, normalization } = normalizeX402V2PaymentRequirement(exact, root.x402Version);
+  const terms = parse402Challenge({ x402Version: root.x402Version, accepts: [requirement] })[0];
+  if (!terms) throw new Error("Exact payment requirement is malformed");
+  return {
+    paymentId,
+    selectedIndex: 0,
+    terms,
+    acquiredAt,
+    signingRequirement: requirement,
+    normalization,
+  };
+}
 
 /** Shown to the founder for economic-term approval. Not durable for signing. */
 export type PreviewQuote = OfficialQuotedPayment;
@@ -83,7 +122,8 @@ export class OfficialPaymentAmbiguousError extends Error {
 
 export type OfficialPreSubmissionFailureStage =
   | "quote_state"
-  | "wallet_session_crypto";
+  | "wallet_session_crypto"
+  | "tee_sign";
 
 /**
  * Source-proven failure before a payment proof can reach the merchant.
@@ -380,57 +420,91 @@ function knownPreSubmissionStage(
   return undefined;
 }
 
-/** Parse safe receipt/merchant metadata; intentionally discard authorization material. */
-export function parseOfficialPaymentSubmission(
-  stdout: string,
-  paymentId: string,
-): PaymentSubmissionResult {
-  let parsed: unknown;
+/** Minimal response surface the application-owned merchant replay depends on. */
+export type MerchantReplayResponse = {
+  status: number;
+  headers: { get(name: string): string | null };
+  text(): Promise<string>;
+};
+
+export type MerchantReplayFetch = (
+  url: string,
+  init: {
+    method: "GET";
+    headers: Record<string, string>;
+    redirect: "manual";
+    signal: AbortSignal;
+  },
+) => Promise<MerchantReplayResponse>;
+
+export const MERCHANT_REPLAY_TIMEOUT_MS = 20_000;
+/** M3 only replays a signed payment to the OKX Mock Merchant origin. */
+export const M3_ALLOWED_MERCHANT_ORIGINS: readonly string[] = ["https://www.okx.com"];
+const SIGNED_HEADER_NAMES = new Set(["PAYMENT-SIGNATURE", "X-PAYMENT"]);
+
+function base64Json(value: string): Record<string, unknown> | null {
   try {
-    parsed = JSON.parse(stdout);
+    const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = normalized + "=".repeat((4 - (normalized.length % 4)) % 4);
+    return asRecord(JSON.parse(Buffer.from(padded, "base64").toString("utf8")));
   } catch {
-    throw new OfficialPaymentAmbiguousError(paymentId, "Official payment response was not valid JSON; reconcile before retrying");
+    return null;
   }
-  const safeResponse = safeResponseFrom(parsed);
-  const root = asRecord(parsed);
-  const data = asRecord(root?.data);
-  if (root?.ok !== true || !data) {
-    throw new OfficialPaymentAmbiguousError(
-      paymentId,
-      "Official payment did not return a confirmed receipt; reconcile before retrying",
-      safeResponse,
-    );
-  }
-  const transactionHash = transactionHashFrom(data);
-  if (!transactionHash) {
-    throw new OfficialPaymentAmbiguousError(
-      paymentId,
-      "Official payment response lacks a safe transaction identity; reconcile before retrying",
-      safeResponse,
-    );
-  }
-  return {
-    submitted: true,
-    transactionHash,
-    paymentPayloadRef: paymentId,
-    note: "Official Onchain OS TEE payment; authorization material intentionally discarded",
-    safeResponse,
-  };
 }
 
 /**
- * Production executor for a JIT-quoted fixed-price M3 payment. `--yes` is
- * reached only after founder confirmation of economic terms and a fresh
- * ExecutionQuote that still matches that fingerprint.
+ * Transient, in-memory check that the signed header carries the confirmed
+ * economic terms with a v2 `accepted.amount`. Nothing decoded here is retained.
  */
-export class OfficialOnchainosPaymentExecutor implements PaymentExecutor {
+function signedHeaderMatchesTerms(header: string, terms: NormalizedChallengeTerms): boolean {
+  const accepted = asRecord(base64Json(header)?.accepted);
+  return (
+    accepted !== null &&
+    accepted.amount === terms.maxAmountRequired &&
+    accepted.network === terms.network &&
+    accepted.scheme === terms.scheme &&
+    accepted.payTo === terms.payTo &&
+    typeof accepted.asset === "string" &&
+    accepted.asset.toLowerCase() === terms.asset.toLowerCase()
+  );
+}
+
+function boundedText(text: string): string {
+  return String(sanitizeSafeErrorText(text) ?? "");
+}
+
+function parseBody(text: string): unknown {
+  try {
+    return sanitizeSafeValue(JSON.parse(text));
+  } catch {
+    return boundedText(text);
+  }
+}
+
+/**
+ * Production executor for a JIT-quoted fixed-price M3 payment.
+ *
+ *   Agentic Wallet TEE  ->  `onchainos payment pay --payload` (sign only)
+ *   Somebody            ->  exactly ONE replay to the frozen merchant URL
+ *
+ * The signed authorization lives only in local variables of one call. It is
+ * never returned, stored, logged, or included in an error. The executor is
+ * single-use: a second call throws before touching the wallet. `--payment-id`
+ * is deliberately not used because it re-embeds the merchant's original
+ * (`maxAmountRequired`-only) requirement as `accepted`.
+ */
+export class OfficialSignOnlyReplayExecutor implements PaymentExecutor {
   readonly kind = "official_onchainos" as const;
+  private attempted = false;
 
   constructor(
     private readonly quoted: OfficialQuotedPayment,
     private readonly confirmation: FounderPaymentConfirmation,
+    private readonly merchantUrl: string,
     private readonly run: OnchainosPaymentRunner = createLocalOnchainosPaymentRunner(),
     private readonly now: () => number = () => Date.now(),
+    private readonly replayFetch: MerchantReplayFetch = (url, init) => fetch(url, init),
+    private readonly replayTimeoutMs: number = MERCHANT_REPLAY_TIMEOUT_MS,
   ) {}
 
   async executeApprovedPayment(input: {
@@ -471,32 +545,148 @@ export class OfficialOnchainosPaymentExecutor implements PaymentExecutor {
     if (this.quoted.terms.scheme !== "exact" || this.quoted.terms.network !== "eip155:1952") {
       throw new Error("M3 official executor only permits exact payments on X Layer Testnet");
     }
-    const result = await this.run([
-      "payment", "pay",
-      "--payment-id", this.quoted.paymentId,
-      "--selected-index", String(this.quoted.selectedIndex),
-      "--yes",
-    ]);
-    if (!result.ok) {
-      const safeResponse = safeResponseFromStdout(result.stdout, result.exitCode);
-      const stage = knownPreSubmissionStage(safeResponse, result.stderr);
-      if (stage) {
-        throw new OfficialPaymentPreSubmissionError(
-          this.quoted.paymentId,
-          stage,
-          stage === "wallet_session_crypto"
-            ? "Official Agentic Wallet session/signing material failed before a payment proof was produced"
-            : "Official payment quote state expired or disappeared before signing",
-          safeResponse,
-        );
-      }
-      throw new OfficialPaymentAmbiguousError(
-        this.quoted.paymentId,
-        "Official payment command did not complete cleanly; reconcile before retrying",
-        safeResponse,
+
+    const requirement = this.quoted.signingRequirement;
+    if (!requirement) {
+      throw new Error("Execution quote carries no signing requirement");
+    }
+    // The requirement handed to the signer must express exactly the confirmed
+    // economics, with a v2 `amount`.
+    const signedTerms = parse402Challenge({ x402Version: 2, accepts: [requirement] })[0];
+    if (
+      !signedTerms ||
+      requirement.amount !== signedTerms.maxAmountRequired ||
+      !paymentTermsEqual(signedTerms, this.confirmation.confirmedTerms)
+    ) {
+      throw new PaymentTermsMutationError(
+        this.confirmation.confirmedTermsFingerprint,
+        signedTerms ? paymentTermsFingerprint(signedTerms) : "unparseable",
+        "Signing requirement does not match confirmed payment terms",
       );
     }
-    return parseOfficialPaymentSubmission(result.stdout, this.quoted.paymentId);
+    this.assertMerchantUrlBoundToTerms();
+
+    if (this.attempted) {
+      throw new Error("This payment executor is single-use; a second signing attempt is refused");
+    }
+    this.attempted = true;
+
+    const paymentId = this.quoted.paymentId;
+    const payload = Buffer.from(
+      JSON.stringify({
+        x402Version: 2,
+        resource: {
+          url: this.quoted.terms.resource,
+          ...(typeof requirement.mimeType === "string" ? { mimeType: requirement.mimeType } : {}),
+        },
+        accepts: [requirement],
+      }),
+      "utf8",
+    ).toString("base64");
+
+    // ── 1. Official TEE sign-only. Nothing has reached the merchant yet. ──
+    const signed = await this.run(["payment", "pay", "--payload", payload, "--selected-index", "0", "--yes"]);
+    let parsedStdout: unknown;
+    try {
+      parsedStdout = JSON.parse(signed.stdout);
+    } catch {
+      parsedStdout = undefined;
+    }
+    const data = asRecord(asRecord(parsedStdout)?.data);
+    const authorization = data?.authorization_header;
+    const headerName = data?.header_name;
+    const signFailure = (message: string) => {
+      const safe = safeResponseFromStdout(signed.stdout, signed.exitCode);
+      return new OfficialPaymentPreSubmissionError(
+        paymentId,
+        knownPreSubmissionStage(safe, signed.stderr) ?? "tee_sign",
+        message,
+        safe,
+      );
+    };
+    if (!signed.ok || asRecord(parsedStdout)?.ok !== true) {
+      throw signFailure("Official TEE signing did not produce an authorization; nothing was sent to the merchant");
+    }
+    if (typeof authorization !== "string" || authorization.length === 0 || typeof headerName !== "string") {
+      throw signFailure("Official TEE signing returned no usable authorization header");
+    }
+    if (!SIGNED_HEADER_NAMES.has(headerName.toUpperCase()) || /[\r\n]/.test(authorization)) {
+      throw signFailure("Official TEE signing returned an unexpected header shape");
+    }
+    if (!signedHeaderMatchesTerms(authorization, this.quoted.terms)) {
+      throw signFailure("Signed authorization does not carry the confirmed terms with accepted.amount");
+    }
+
+    // ── 2. Application-owned replay: exactly one request, no redirects. ──
+    const ambiguous = (message: string, safe?: SafeOfficialPaymentResponse) =>
+      new OfficialPaymentAmbiguousError(paymentId, message, safe);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.replayTimeoutMs);
+    let response: MerchantReplayResponse;
+    let bodyText: string;
+    try {
+      response = await this.replayFetch(this.merchantUrl, {
+        method: "GET",
+        headers: { [headerName]: authorization },
+        redirect: "manual",
+        signal: controller.signal,
+      });
+      bodyText = await response.text();
+    } catch {
+      throw ambiguous("Merchant replay response was lost or timed out; reconcile before any new payment");
+    } finally {
+      clearTimeout(timer);
+    }
+
+    const body = parseBody(bodyText);
+    const receiptHeader =
+      response.headers.get("PAYMENT-RESPONSE") ?? response.headers.get("X-PAYMENT-RESPONSE");
+    const decodedReceipt = receiptHeader ? sanitizeSafeValue(base64Json(receiptHeader)) : null;
+    const transactionHash = transactionHashFrom(decodedReceipt) ?? transactionHashFrom(body);
+    const safeResponse: SafeOfficialPaymentResponse = {
+      ok: response.status >= 200 && response.status < 300,
+      exitCode: signed.exitCode,
+      data: {
+        status: response.status,
+        ...(transactionHash ? { txHash: transactionHash } : {}),
+        decodedReceipt,
+        result: body,
+      },
+    };
+    if (JSON.stringify(safeResponse).includes(authorization)) {
+      throw ambiguous("Merchant response echoed authorization material; reconcile before any new payment");
+    }
+    if (response.status >= 300 && response.status < 400) {
+      throw ambiguous("Merchant redirected a signed request; authorization was not forwarded", safeResponse);
+    }
+    if (response.status < 200 || response.status >= 300) {
+      throw ambiguous(`Merchant returned HTTP ${response.status} to the signed request; reconcile before any new payment`, safeResponse);
+    }
+    if (asRecord(decodedReceipt)?.success === false) {
+      throw ambiguous("Merchant receipt reports unsuccessful settlement; reconcile before any new payment", safeResponse);
+    }
+    if (!transactionHash) {
+      throw ambiguous("Merchant response lacks a transaction identity; reconcile before any new payment", safeResponse);
+    }
+    return {
+      submitted: true,
+      transactionHash,
+      paymentPayloadRef: paymentId,
+      note: "Official TEE sign-only + application-owned single merchant replay; authorization discarded",
+      safeResponse,
+    };
+  }
+
+  /** The frozen merchant URL must be the resource the founder confirmed. */
+  private assertMerchantUrlBoundToTerms(): void {
+    const url = new URL(this.merchantUrl);
+    const resource = this.quoted.terms.resource;
+    const matches = /^https?:\/\//.test(resource)
+      ? url.href === new URL(resource).href
+      : url.pathname === resource;
+    if (url.protocol !== "https:" || !M3_ALLOWED_MERCHANT_ORIGINS.includes(url.origin) || !matches) {
+      throw new Error("Merchant URL is not the confirmed https resource");
+    }
   }
 }
 
