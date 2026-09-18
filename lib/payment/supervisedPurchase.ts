@@ -13,6 +13,8 @@ import {
 } from "./onchainOsExecutor";
 import {
   assertAssetDomainCompatible,
+  readAssetDomainFacts,
+  verifyAssetDomain,
   type AssetDomainVerdict,
 } from "./assetDomain";
 import type { JsonRpcTransport } from "./xlayerSettlement";
@@ -103,24 +105,39 @@ export function authorizeFreshExecutionQuote(input: {
 /**
  * Read-only asset-domain preflight for an approved, ready-to-sign purchase.
  *
- * Run this after `prepareApprovedPurchase` and BEFORE constructing the payment
- * executor. It proves that the EIP-712 domain the 402 challenge tells us to
- * sign actually matches the deployed token. A mismatch here is terminal for the
- * attempt: the resulting signature would be unverifiable by the asset, so the
- * facilitator could never settle it and the merchant would keep returning 402
- * with no funds moved and no transaction to reconcile.
+ * Enforcement deliberately depends on WHO builds the EIP-712 domain:
  *
- * Throws `AssetDomainMismatchError` on a proven mismatch. Returns the verdict
- * otherwise so an `unverifiable` result is recorded rather than assumed safe.
+ * - `"advisory"` (default) is for the official TEE path (`onchainos payment
+ *   pay`). That path does NOT read the challenge's `extra.name` / `extra.version`
+ *   at all: it posts the asset address and chain to the backend's `gen-msg-hash`
+ *   and signs the `domainHash` the backend returns. A divergence between the
+ *   challenge's advertised `extra` and the deployed token is therefore a real
+ *   integration smell and worth recording, but it does NOT prove the signature
+ *   will be rejected. Blocking on it here would refuse payments that can
+ *   actually settle.
+ *
+ * - `"strict"` is for any path where WE supply the domain — notably
+ *   `payment pay-local`, which reads `extra.name` / `extra.version` verbatim.
+ *   There a mismatch is fatal: the signature is unverifiable by the token, the
+ *   facilitator cannot settle, and the merchant keeps returning 402 with no
+ *   funds moved.
+ *
+ * Never silently upgrade advisory to strict: the enforcement mode must track
+ * the signing path actually in use.
  */
 export async function preflightApprovedPurchaseAssetDomain(
   rpc: JsonRpcTransport,
   prepared: PreparedPayment,
-  decimals?: number,
+  options: { decimals?: number; enforcement?: "advisory" | "strict" } = {},
 ): Promise<AssetDomainVerdict> {
-  return assertAssetDomainCompatible(rpc, prepared.terms.asset, {
+  const expected = {
     name: prepared.terms.eip712.name,
     version: prepared.terms.eip712.version,
-    decimals,
-  });
+    decimals: options.decimals,
+  };
+  if (options.enforcement === "strict") {
+    return assertAssetDomainCompatible(rpc, prepared.terms.asset, expected);
+  }
+  const facts = await readAssetDomainFacts(rpc, prepared.terms.asset);
+  return verifyAssetDomain(facts, expected);
 }

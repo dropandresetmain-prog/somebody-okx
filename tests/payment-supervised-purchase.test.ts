@@ -109,10 +109,27 @@ describe("supervised purchase asset-domain preflight", () => {
     });
   }
 
-  it("blocks an approved, ready-to-sign purchase whose challenge domain contradicts the token", async () => {
+  it("does NOT block the official TEE path, which ignores the challenge extra domain", async () => {
+    // `onchainos payment pay` posts asset+chain to gen-msg-hash and signs the
+    // domainHash the backend returns; extra.name/extra.version never reach the
+    // signature. A divergence is a smell, not proof of rejection, so blocking
+    // here would refuse a payment that can actually settle.
+    const { prepared } = readyToSign();
+    const verdict = await preflightApprovedPurchaseAssetDomain(liveTokenRpc, prepared, {
+      decimals: 6,
+    });
+    assert.equal(verdict.state, "incompatible");
+    assert.match(verdict.reasons.join(" "), /domain version mismatch/);
+  });
+
+  it("blocks under strict enforcement, which is the locally-signed pay-local path", async () => {
     const { prepared } = readyToSign();
     await assert.rejects(
-      () => preflightApprovedPurchaseAssetDomain(liveTokenRpc, prepared, 6),
+      () =>
+        preflightApprovedPurchaseAssetDomain(liveTokenRpc, prepared, {
+          decimals: 6,
+          enforcement: "strict",
+        }),
       (error: unknown) => {
         assert.ok(error instanceof AssetDomainMismatchError);
         assert.match(error.message, /Refusing to sign/);
