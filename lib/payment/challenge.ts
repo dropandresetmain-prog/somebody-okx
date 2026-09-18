@@ -68,7 +68,7 @@ function normalizeChallengeEntry(entry: unknown): NormalizedChallengeTerms {
   const scheme = requireString(e, "scheme");
   const network = requireString(e, "network");
   const asset = requireString(e, "asset");
-  const maxAmountRequired = requireString(e, "maxAmountRequired");
+  const maxAmountRequired = requireNormalizedAmount(e);
   const payTo = requireString(e, "payTo");
   const resource = requireString(e, "resource");
 
@@ -96,6 +96,36 @@ function normalizeChallengeEntry(entry: unknown): NormalizedChallengeTerms {
     eip712: { name, version },
     maxTimeoutSeconds,
   };
+}
+
+/**
+ * Normalize the amount field across the two OKX/x402 wire shapes we have
+ * authoritative evidence for:
+ * - the Sep-17 live Mock Merchant used `maxAmountRequired`;
+ * - current x402 v2 / OKX seller docs use `amount`.
+ *
+ * If a response supplies both, they must agree exactly. A mismatch is a
+ * challenge mutation and the entry is rejected rather than guessing which
+ * value the signer will use.
+ */
+function requireNormalizedAmount(obj: Record<string, unknown>): string {
+  const legacy = obj.maxAmountRequired;
+  const standard = obj.amount;
+
+  const legacyValue =
+    typeof legacy === "string" && legacy.length > 0 ? legacy : undefined;
+  const standardValue =
+    typeof standard === "string" && standard.length > 0 ? standard : undefined;
+
+  if (legacyValue && standardValue && legacyValue !== standardValue) {
+    throw new Error("Conflicting amount and maxAmountRequired values");
+  }
+
+  const value = legacyValue ?? standardValue;
+  if (!value) {
+    throw new Error("Challenge entry must include amount or maxAmountRequired");
+  }
+  return value;
 }
 
 /**
