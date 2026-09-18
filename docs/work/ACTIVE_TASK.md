@@ -1,12 +1,14 @@
 # ACTIVE TASK — Somebody × OKX Dev Day 2026
 
-Status: **ACTIVE — M3 live evidence accepted; R2 safety fixes complete; review pending**
+Status: **ACTIVE — M3 live evidence accepted; R2/R2.1 safety fixes complete; review pending**
 Updated: **19 September 2026**
 
 ## CURRENT M3 CONTROLLED SELLER CHECKPOINT
 
-Branch: `feat/m3-live-payment` at the R2-fixer candidate SHA recorded below.
+Branch: `feat/m3-live-payment` at the R2.1-fixer candidate SHA recorded below.
 R2 fixer implementation candidate: `ebc4278` (`Harden M3 payment execution safety`).
+R2.1 fixer implementation candidate: `16600bdac9e9925e6120bd4d6d92bb4464ff6fc5`
+(`Close R2.1 payment replay gaps`).
 
 Implemented the narrow controlled seller at `GET /m3/paid-ping` using the official
 OKX TypeScript seller SDK (`@okxweb3/x402-core`, `@okxweb3/x402-evm`,
@@ -36,6 +38,21 @@ authority, endpoint freezing, protected-result verification, settlement binding,
 string redaction, and timeout validation. This fixer pass addressed those blockers
 with focused tests. M3 is **not promoted** until the next R2 review passes. Do not
 run another live payment unless the reviewer specifically determines it is necessary.
+
+R2.1 closed the two remaining payment-safety gaps without reopening the broader R2
+scope:
+- the M3 payment ledger is resolved from the application/module location, never
+  from `process.cwd()` or a per-invocation override; separate launch directories
+  therefore share one durable authority;
+- installed `@okxweb3/x402-evm` inspection confirmed native EIP-3009/Permit2
+  nonces, but this official Onchain OS adapter does not retain a verifiable
+  nonce-to-transaction linkage, so settlement now requires an independently
+  fetched receipt-block timestamp no more than 120 seconds older than the durable
+  execution claim; the weak `SettlementReader` adapter fails closed.
+
+R2.1 verification: local TypeScript check and 139 focused payment tests pass;
+no additional live payment was run. The repository remains review-gated and must
+not be promoted yet.
 
 ---
 
