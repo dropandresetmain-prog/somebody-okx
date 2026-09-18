@@ -561,3 +561,72 @@ settlement.
 
 Do **not** retry Mock Merchant payment until OKX confirms the wire fix or we
 have an approved settle A/B.
+
+
+---
+
+## Compatibility workaround: x402 v2 `maxAmountRequired` → `amount`
+
+**Why it exists**
+
+```
+Mock Merchant emits x402 v2 requirement with only `maxAmountRequired`
+→ current Onchain OS (`payment pay`) embeds that original object as `accepted`
+→ OKX facilitator /verify requires `accepted.amount`  →  INVALID / param_mismatch
+```
+
+Proven live (`/verify` A/B): identical economics with `amount` present → VALID.
+
+**What we do** (`lib/payment/x402V2Compat.ts`, `buildQuoteFromChallenge` in
+`lib/payment/onchainOsExecutor.ts`): for `x402Version 2 + exact + eip155:1952`,
+when `amount` is absent and `maxAmountRequired` is a valid atomic-integer
+string, set `amount = maxAmountRequired`. Conflicting fields, malformed values,
+or unsupported version/scheme/network fail closed. Nothing else is edited and
+the confirmation fingerprint binds economics only (not field naming).
+
+**Signing path:** `onchainos payment pay --payload <b64 {x402Version,resource,accepts:[normalized]}>
+--selected-index 0 --yes` (official Agentic Wallet TEE, sign-only). NOT
+`--payment-id` (reconstructs the broken shape), NOT `pay-local`. The application
+performs exactly one merchant replay (`redirect: manual`, 20s timeout, https +
+`www.okx.com` origin + confirmed resource path only). The authorization header
+lives only in process memory for that one call.
+
+**Removal condition:** delete `x402V2Compat.ts`, the normalization call in
+`buildQuoteFromChallenge`, and this section once upstream Mock Merchant /
+Onchain OS emit a facilitator-valid v2 `accepted.amount` natively and that has
+been verified live.
+
+## Attempt E — application path with normalization + sign-only + app replay
+
+Driver: `scripts/m3-live-purchase.ts` (`preview` → founder approval → `execute`).
+
+- Pre-live: `wallet sign-message` personal-sign canary OK (payer
+  `0xd2dd…1db4`, USDC_TEST balance 10.000000).
+- Preview (live 402): X Layer Testnet `eip155:1952`, `exact`, USDC_TEST
+  `0xcb8b…c79d`, 10000 atomic (0.010000), payTo `0x3509…08f7`, resource
+  `/api/v1/pay/mock-merchant/resource`, purchase `purchase-m3-1789755066579`.
+- Founder approved that spend in chat.
+- Fresh execution challenge fetched; normalization applied
+  (`x402_v2_max_amount_to_amount`, `valueChanged:false`); confirmed-terms
+  fingerprint equal; freshness gate passed; state reached `payment_attempted`.
+- `executeApprovedPayment` then threw an **`OfficialPaymentAmbiguousError`**
+  (i.e. after TEE signing: merchant non-2xx, redirect, timeout/lost response,
+  or missing txHash). **The exact sub-cause was NOT captured**: the driver
+  called `require_reconciliation` from `payment_attempted`, which the lifecycle
+  forbids (needs `uncertain` first), and crashed before saving the error's
+  `safeResponse`. This was a driver defect (fixed: evidence is saved before any
+  transition; `report_uncertainty` then `require_reconciliation`).
+- Reconciliation readback: USDC_TEST balance unchanged at 10.000000; zero
+  outgoing transfers in wallet history; no txHash obtained.
+- Per the one-signed-attempt rule, no second authorization was issued.
+- Post-expiry readback (~143s after execute start, > 60s `maxTimeoutSeconds`):
+  balance still 10.000000, 0 outgoing transfers ⇒ **EXPIRED_UNSETTLED**;
+  no funds moved.
+
+**Attempt E verdict: M3 STILL BLOCKED — boundary is after TEE signing, at/after
+merchant replay; exact sub-cause (merchant 402 vs redirect vs timeout vs
+missing txHash) not captured due to the driver defect above.** A fresh
+authorization is required to learn it and was not issued (one-attempt rule).
+Next attempt should keep the fixed driver, which saves the safe evidence
+first; if the merchant returns 402, decode the (transient) signed `accepted`
+shape and `/verify` it before concluding.
