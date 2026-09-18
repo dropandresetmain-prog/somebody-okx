@@ -4,7 +4,7 @@
 **Branch:** `feat/m3-live-payment`
 **Preflight start SHA:** `530d2043502a7dddf38ee00738ccb0e3c9cad6d5`
 **Repair SHA:** `f4381372e831b0c3a082e4f459f9cb450401760f`
-**Status:** **NO-GO — blocked solely on local wallet signing (repairable, needs one founder login)**
+**Status:** **GO — wallet repaired and signing proven healthy; one supervised attempt authorized pending founder economic confirmation**
 
 This document records the preflight in `M3_PAYMENT_PREFLIGHT.md` actually being
 *executed* on the founder machine. The prior audit could edit the branch but had
@@ -232,9 +232,9 @@ Tests use the **actual recorded on-chain responses** as fixtures.
 
 ```
 [x] current CLI understood                     4.6.1 verified; commands source-checked
-[ ] wallet clean login                         BLOCKED - stale credential must be cleared
-[ ] HPKE signing canary works                  RED - reproduced failing, free, in 13 ms
-[ ] exact signing path healthy                 cannot test until HPKE is repaired
+[x] wallet clean login                         stale credential deleted; both stores cleared; fresh login
+[x] HPKE signing canary works                  GREEN - personal-sign returns a signature
+[x] exact signing path healthy                 GREEN - EIP-712 canary exercises gen-msg-hash + sign-msg
 [x] correct X Layer Testnet account            0xd2dd2eb..., chainIndex 1952
 [x] sufficient required asset                  10 USDC_TEST, verified on-chain independently
 [x] Mock Merchant current behavior verified    live; fresh quote captured this session
@@ -303,3 +303,62 @@ sufficient for M3 correctness.
 
 **H. `balanceStatus: unavailable`.** Preflight degradation only; direct balance
 and funding-check are authoritative and sufficient.
+
+## 8. Repair executed — wallet signing restored
+
+Sequence run on the founder machine, in one pass:
+
+1. **Deleted** the stale Windows Credential Manager target
+   `agentic-wallet.onchainos`, and verified removal.
+2. `onchainos wallet logout` — confirmed it cleared `session.json`,
+   `keyring.enc` and `wallets.json` (only `machine-identity` persists).
+3. `onchainos wallet login --phase init` → founder completed Google auth in the
+   browser → `--phase poll`.
+
+### The warning that proves the diagnosis
+
+The login emitted, verbatim:
+
+```
+Warning: OS keyring write failed (failed to write keyring blob), using file fallback
+```
+
+**The OS keyring write fails on this machine.** That is the upstream defect, and
+it is still present — the repair did not fix it and cannot. What the repair
+changed is that the *stale* OS entry was removed first, so the fresh file-stored
+`session_key` is no longer shadowed by an old one.
+
+This also retires the "just log out and back in" theory: a plain logout/login
+would have hit the same failing OS write while the stale entry survived
+`clear_all()`'s swallowed delete error, and the canary would have failed again.
+
+Note an oddity worth carrying forward: after login, `cmdkey /list` shows the
+`agentic-wallet.onchainos` target **present again** despite the write having
+reported failure. Signing nevertheless works, so the pairing is consistent — but
+the OS store on this machine is demonstrably unreliable, and the canary, not
+`wallet status` and not the credential listing, is the only trustworthy signal.
+
+### Canary results — both GREEN
+
+| Canary | Command | Result |
+|---|---|---|
+| personal-sign | `wallet sign-message --chain xlayer_test --from 0xd2dd2eb...` | `ok:true`, signature returned |
+| EIP-712 | same, `--type eip712`, non-payment typed data | `ok:true`, signature returned |
+
+The EIP-712 canary used `primaryType: "Healthcheck"` with **no
+`verifyingContract`** and no EIP-3009 fields, so it is structurally incapable of
+authorizing a transfer. It exercises the identical path the payment uses: HPKE
+unwrap, session certificate, `gen-msg-hash`, Ed25519 session signature, final
+signing API.
+
+### Post-repair state re-verified
+
+- account `251ac167-...`, address `0xd2dd2eb5028a1afaa09c9d350b3378f1ad4f1db4`
+  — unchanged;
+- balance 10 USDC_TEST per CLI, per `funding-check` (`ready`, `sufficient`), and
+  per independent `balanceOf` on X Layer Testnet;
+- fresh preview quote returns terms byte-identical to the historical challenge.
+
+**This clears the only blocker.** The residual unknown in section 3 — whether
+OKX's backend derives the correct `domainHash` for this asset — is unchanged and
+remains unresolvable without attempting.
