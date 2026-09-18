@@ -224,4 +224,4 @@ No scenario-specific orchestration.
 
 ## Current next action
 
-CP1+CP2 kernels committed and pushed (CP1 `27128d6`, CP2 pending SHA recorded below after push). Next: Checkpoint 3 — persistent workforce: Convex schema tables (workers/contracts/requirements/decisions/assignments/intents/wakeEvents/budgets), real worker inventory replacing the empty-inventory `resolveWorker({inventory: []})` call in `convex/objectives.ts:332`, reuse/create focused tests, capability/resource-request wiring through Somebody, objective-wide limits enforced.
+CP1+CP2 kernels committed and pushed (CP1 `27128d6` ledger follow-up `34a65cb`, CP2 `51b1e133b5fff49751d28780536eee88ba282e59`). Next: Checkpoint 3 — persistent workforce: Convex schema tables (workers/contracts/requirements/decisions/assignments/intents/wakeEvents/budgets), real worker inventory replacing the empty-inventory `resolveWorker({inventory: []})` call in `convex/objectives.ts:332`, reuse/create focused tests, capability/resource-request wiring through Somebody, objective-wide limits enforced.
