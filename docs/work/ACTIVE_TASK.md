@@ -80,19 +80,20 @@ When M3 is accepted, integrate its buyer-rail contract on this M4 branch and com
 - [x] lock architecture decision;
 - [x] lock management-protocol decisions;
 - [x] reconcile stale M2-era planning assumptions;
-- [ ] verify exact M4 branch/head before implementation.
+- [x] verify exact M4 branch/head before implementation. (2026-09-19: `feat/m4-management-engine` @ `b475287a4775ed57b4614b2554445cec5a20728e`, ancestry to accepted main `1fa7962d…` proven by fetch + merge-base; worktree clean at start.)
 
 ### Checkpoint 1 — domain truth
 
-- [ ] Outcome Contract / Outcome Level contracts;
-- [ ] minimum completion bar;
-- [ ] Requirement identity/revision/priority/lifecycle;
-- [ ] separate provider rejection from requirement resolution;
-- [ ] explicit Objective completion gate;
-- [ ] preserve M1/M2 historical row/evidence truth where required.
+- [x] Outcome Contract / Outcome Level contracts;
+- [x] minimum completion bar;
+- [x] Requirement identity/revision/priority/lifecycle;
+- [x] separate provider rejection from requirement resolution;
+- [x] explicit Objective completion gate;
+- [x] preserve M1/M2 historical row/evidence truth where required. (no schema or M2 kernel rewritten in CP1; M2 tables/tests untouched.)
 
 Evidence:
-- focused changed-behavior tests only.
+- focused changed-behavior tests only. (`tests/managementContract.test.ts` 12 pass, `tests/managementRequirements.test.ts` 18 pass via `npx tsx --test`; `npx tsc --noEmit` clean. Kernels: `lib/management/{types,contract,proposals,requirements,completion,authorization,capability,staffing,budget,options}.ts` + `lib/sourcing/eligibility.ts` — shared contract frozen at CP1.)
+- checkpoint commit: recorded below after push.
 
 ### Checkpoint 2 — managerial decision protocol
 

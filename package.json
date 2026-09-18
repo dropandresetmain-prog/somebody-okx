@@ -13,6 +13,7 @@
     "convex:codegen": "convex codegen"
   },
   "dependencies": {
+    "@langchain/langgraph": "^1.4.15",
     "@openai/agents": "^0.18.0",
     "convex": "^1.45.0",
     "googleapis": "^159.0.0",
