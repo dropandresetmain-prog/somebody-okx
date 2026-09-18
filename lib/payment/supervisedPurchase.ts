@@ -2,6 +2,15 @@
 
 import { bindPurchaseTerms } from "./purchase";
 import { preparePayment, type PreparedPayment } from "./buyerRail";
+import {
+  acceptExecutionQuoteForPayment,
+  confirmPreviewPaymentTerms,
+  paymentTermsEqual,
+  type ExecutionQuote,
+  type FounderPaymentConfirmation,
+  type OfficialQuotedPayment,
+  type PreviewQuote,
+} from "./onchainOsExecutor";
 import type { PaymentApproval, PurchaseRecord, RailConfig } from "./types";
 
 export type ReadyToSignPurchase = {
@@ -36,4 +45,52 @@ export function prepareApprovedPurchase(input: {
     ),
     prepared,
   };
+}
+
+/**
+ * Bind founder confirmation to preview economic terms for one purchase.
+ * The local preview paymentId is intentionally not treated as authority.
+ */
+export function confirmApprovedPurchaseTerms(input: {
+  purchase: PurchaseRecord;
+  preview: PreviewQuote;
+  confirmationId: string;
+  confirmedAt: number;
+}): FounderPaymentConfirmation {
+  if (!input.purchase.boundTerms || !input.purchase.approval) {
+    throw new Error("Purchase must be approved with bound terms before confirmation");
+  }
+  if (!paymentTermsEqual(input.purchase.boundTerms, input.preview.terms)) {
+    throw new Error("Preview quote terms no longer match the approved purchase terms");
+  }
+  return confirmPreviewPaymentTerms({
+    confirmationId: input.confirmationId,
+    confirmedAt: input.confirmedAt,
+    purchaseId: input.purchase.id,
+    preview: input.preview,
+  });
+}
+
+/**
+ * After confirmation: accept a fresh ExecutionQuote only when material terms
+ * still match. Local paymentId may differ from the preview handle.
+ */
+export function authorizeFreshExecutionQuote(input: {
+  purchase: PurchaseRecord;
+  confirmation: FounderPaymentConfirmation;
+  execution: ExecutionQuote;
+  now: number;
+}): OfficialQuotedPayment {
+  if (!input.purchase.boundTerms || !input.purchase.approval) {
+    throw new Error("Purchase must remain approved before execution");
+  }
+  if (!paymentTermsEqual(input.purchase.boundTerms, input.execution.terms)) {
+    throw new Error("Execution quote terms no longer match the approved purchase terms");
+  }
+  return acceptExecutionQuoteForPayment({
+    confirmation: input.confirmation,
+    purchaseId: input.purchase.id,
+    execution: input.execution,
+    now: input.now,
+  });
 }

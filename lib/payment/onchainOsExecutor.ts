@@ -4,6 +4,11 @@
  * The adapter deliberately delegates construction, TEE signing, settlement,
  * and merchant replay to `onchainos payment pay --payment-id`. It never accepts
  * a private key, nor returns an authorization header for application storage.
+ *
+ * Quote lifetime (official onchainos): local quotes expire at
+ * min(challengeExpires, quoteCreatedAt + 300s). Therefore a preview quote
+ * cannot survive open-ended human confirmation. Confirmation authorizes
+ * economic terms; a fresh ExecutionQuote is acquired only after confirmation.
  */
 
 import { spawn } from "node:child_process";
@@ -23,15 +28,42 @@ export type OnchainosPaymentRunner = (args: string[]) => Promise<{
   exitCode: number | null;
 }>;
 
+/**
+ * Local CLI quote handle + material terms. `paymentId` is a transport-local
+ * identifier owned by the CLI — never durable execution authority.
+ */
 export type OfficialQuotedPayment = {
   paymentId: string;
   selectedIndex: number;
   terms: NormalizedChallengeTerms;
+  /** Local wall-clock when this application acquired the quote from the CLI. */
+  acquiredAt: number;
 };
 
+/** Shown to the founder for economic-term approval. Not durable for signing. */
+export type PreviewQuote = OfficialQuotedPayment;
+
+/** Obtained after confirmation solely to execute already-confirmed terms. */
+export type ExecutionQuote = OfficialQuotedPayment;
+
+/**
+ * Conservative execution window after JIT ExecutionQuote acquisition.
+ * Confirmation already happened; this only bounds compare→pay latency.
+ * Well below the official 300s quote ceiling and the typical 60s challenge
+ * timeout so a founder cannot linger on a live signing handle.
+ */
+export const EXECUTION_QUOTE_MAX_AGE_MS = 30_000;
+
+/**
+ * Founder confirmation authorizes these exact transaction terms for one
+ * PurchaseRecord — not a local CLI `paymentId` handle forever.
+ */
 export type FounderPaymentConfirmation = {
   confirmationId: string;
   confirmedAt: number;
+  purchaseId: string;
+  confirmedTermsFingerprint: string;
+  confirmedTerms: NormalizedChallengeTerms;
 };
 
 /**
@@ -47,6 +79,149 @@ export class OfficialPaymentAmbiguousError extends Error {
     super(message);
     this.name = "OfficialPaymentAmbiguousError";
   }
+}
+
+/** Material economic terms changed between confirmation and execution. */
+export class PaymentTermsMutationError extends Error {
+  constructor(
+    public readonly confirmedFingerprint: string,
+    public readonly executionFingerprint: string,
+    message = "Execution quote terms no longer match confirmed payment terms",
+  ) {
+    super(message);
+    this.name = "PaymentTermsMutationError";
+  }
+}
+
+/** ExecutionQuote aged past the conservative local window before signing. */
+export class StaleExecutionQuoteError extends Error {
+  constructor(
+    public readonly paymentId: string,
+    public readonly ageMs: number,
+    public readonly maxAgeMs: number,
+    message = "Execution quote is stale; discard and re-quote before signing",
+  ) {
+    super(message);
+    this.name = "StaleExecutionQuoteError";
+  }
+}
+
+/** Confirmation for one purchase cannot authorize another. */
+export class ConfirmationPurchaseMismatchError extends Error {
+  constructor(
+    public readonly confirmationPurchaseId: string,
+    public readonly attemptedPurchaseId: string,
+    message = "Founder confirmation does not authorize this purchase identity",
+  ) {
+    super(message);
+    this.name = "ConfirmationPurchaseMismatchError";
+  }
+}
+
+/**
+ * Pure deterministic fingerprint over material payment terms only.
+ * Excludes local paymentId, acquisition timestamps, and transport handles.
+ */
+export function paymentTermsFingerprint(terms: NormalizedChallengeTerms): string {
+  return [
+    terms.network,
+    terms.asset,
+    terms.maxAmountRequired,
+    terms.payTo,
+    terms.resource,
+    terms.scheme,
+    String(terms.maxTimeoutSeconds),
+    terms.eip712.name,
+    terms.eip712.version,
+  ].join("\0");
+}
+
+export function paymentTermsEqual(
+  a: NormalizedChallengeTerms,
+  b: NormalizedChallengeTerms,
+): boolean {
+  return paymentTermsFingerprint(a) === paymentTermsFingerprint(b);
+}
+
+/** Record founder confirmation against preview economic terms (not paymentId). */
+export function confirmPreviewPaymentTerms(input: {
+  confirmationId: string;
+  confirmedAt: number;
+  purchaseId: string;
+  preview: PreviewQuote;
+}): FounderPaymentConfirmation {
+  if (!input.confirmationId) {
+    throw new Error("Founder confirmation id is required");
+  }
+  if (!input.purchaseId) {
+    throw new Error("Confirmation must be bound to a purchase identity");
+  }
+  return {
+    confirmationId: input.confirmationId,
+    confirmedAt: input.confirmedAt,
+    purchaseId: input.purchaseId,
+    confirmedTermsFingerprint: paymentTermsFingerprint(input.preview.terms),
+    confirmedTerms: input.preview.terms,
+  };
+}
+
+export function assertConfirmationForPurchase(
+  confirmation: FounderPaymentConfirmation,
+  purchaseId: string,
+): void {
+  if (confirmation.purchaseId !== purchaseId) {
+    throw new ConfirmationPurchaseMismatchError(confirmation.purchaseId, purchaseId);
+  }
+}
+
+export function assertConfirmedTermsMatchExecution(
+  confirmation: FounderPaymentConfirmation,
+  execution: ExecutionQuote,
+): void {
+  const executionFingerprint = paymentTermsFingerprint(execution.terms);
+  if (executionFingerprint !== confirmation.confirmedTermsFingerprint) {
+    throw new PaymentTermsMutationError(
+      confirmation.confirmedTermsFingerprint,
+      executionFingerprint,
+    );
+  }
+}
+
+export function assertFreshExecutionQuote(
+  execution: ExecutionQuote,
+  now: number,
+  maxAgeMs: number = EXECUTION_QUOTE_MAX_AGE_MS,
+): void {
+  if (now < execution.acquiredAt) {
+    throw new StaleExecutionQuoteError(
+      execution.paymentId,
+      now - execution.acquiredAt,
+      maxAgeMs,
+      "Execution quote acquisition time is in the future",
+    );
+  }
+  const ageMs = now - execution.acquiredAt;
+  if (ageMs > maxAgeMs) {
+    throw new StaleExecutionQuoteError(execution.paymentId, ageMs, maxAgeMs);
+  }
+}
+
+/**
+ * JIT gate: after founder confirmation, a fresh ExecutionQuote may proceed
+ * only when material terms still match and the local acquisition is fresh.
+ * Differing local paymentIds are acceptable when terms match.
+ */
+export function acceptExecutionQuoteForPayment(input: {
+  confirmation: FounderPaymentConfirmation;
+  purchaseId: string;
+  execution: ExecutionQuote;
+  now: number;
+  maxAgeMs?: number;
+}): OfficialQuotedPayment {
+  assertConfirmationForPurchase(input.confirmation, input.purchaseId);
+  assertConfirmedTermsMatchExecution(input.confirmation, input.execution);
+  assertFreshExecutionQuote(input.execution, input.now, input.maxAgeMs);
+  return input.execution;
 }
 
 export function createLocalOnchainosPaymentRunner(
@@ -76,21 +251,8 @@ function requireSameTerms(
   actual: NormalizedChallengeTerms,
   quoted: NormalizedChallengeTerms,
 ): void {
-  const fields: Array<keyof Pick<NormalizedChallengeTerms,
-    "scheme" | "network" | "asset" | "maxAmountRequired" | "payTo" | "resource" | "maxTimeoutSeconds"
-  >> = [
-    "scheme", "network", "asset", "maxAmountRequired", "payTo", "resource", "maxTimeoutSeconds",
-  ];
-  for (const field of fields) {
-    if (actual[field] !== quoted[field]) {
-      throw new Error(`Approved terms no longer match quoted ${field}`);
-    }
-  }
-  if (
-    actual.eip712.name !== quoted.eip712.name ||
-    actual.eip712.version !== quoted.eip712.version
-  ) {
-    throw new Error("Approved terms no longer match quoted EIP-712 domain");
+  if (!paymentTermsEqual(actual, quoted)) {
+    throw new Error("Approved terms no longer match quoted payment terms");
   }
 }
 
@@ -182,8 +344,9 @@ export function parseOfficialPaymentSubmission(
 }
 
 /**
- * Production executor for a pre-quoted fixed-price M3 payment. `--yes` is
- * reached only after a separate founder confirmation is recorded by the caller.
+ * Production executor for a JIT-quoted fixed-price M3 payment. `--yes` is
+ * reached only after founder confirmation of economic terms and a fresh
+ * ExecutionQuote that still matches that fingerprint.
  */
 export class OfficialOnchainosPaymentExecutor implements PaymentExecutor {
   readonly kind = "official_onchainos" as const;
@@ -192,6 +355,7 @@ export class OfficialOnchainosPaymentExecutor implements PaymentExecutor {
     private readonly quoted: OfficialQuotedPayment,
     private readonly confirmation: FounderPaymentConfirmation,
     private readonly run: OnchainosPaymentRunner = createLocalOnchainosPaymentRunner(),
+    private readonly now: () => number = () => Date.now(),
   ) {}
 
   async executeApprovedPayment(input: {
@@ -222,6 +386,13 @@ export class OfficialOnchainosPaymentExecutor implements PaymentExecutor {
       maxTimeoutSeconds: input.maxTimeoutSeconds,
     };
     requireSameTerms(intentTerms, this.quoted.terms);
+    if (!paymentTermsEqual(intentTerms, this.confirmation.confirmedTerms)) {
+      throw new PaymentTermsMutationError(
+        this.confirmation.confirmedTermsFingerprint,
+        paymentTermsFingerprint(intentTerms),
+      );
+    }
+    assertFreshExecutionQuote(this.quoted, this.now());
     if (this.quoted.terms.scheme !== "exact" || this.quoted.terms.network !== "eip155:1952") {
       throw new Error("M3 official executor only permits exact payments on X Layer Testnet");
     }
@@ -248,10 +419,14 @@ export function describeFounderApproval(
 ): string {
   return [
     "TESTNET: X Layer Testnet (eip155:1952)",
+    "Confirmation authorizes these exact transaction terms for this purchase only.",
+    "It does not authorize a durable local payment handle.",
     `asset: ${intent.terms.asset} (${intent.terms.eip712.name})`,
     `amount: ${intent.terms.maxAmountRequired} atomic units`,
     `recipient: ${intent.terms.payTo}`,
     `service: ${intent.terms.resource}`,
+    `network: ${intent.terms.network}`,
+    `scheme: ${intent.terms.scheme}`,
     `purchase id: ${purchaseId}`,
   ].join("\n");
 }
