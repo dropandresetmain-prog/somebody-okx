@@ -1,12 +1,12 @@
 # ACTIVE TASK — Somebody × OKX Dev Day 2026
 
-Status: **ACTIVE — M3 controlled seller implemented; live acceptance pending**
+Status: **ACTIVE — M3 live evidence accepted; R2 safety fixes complete; review pending**
 Updated: **19 September 2026**
 
 ## CURRENT M3 CONTROLLED SELLER CHECKPOINT
 
-Branch: `feat/m3-live-payment` at expected starting HEAD
-`6a03ccfdc2452ed33d54b253076818c328db03db`.
+Branch: `feat/m3-live-payment` at the R2-fixer candidate SHA recorded below.
+R2 fixer implementation candidate: `ebc4278` (`Harden M3 payment execution safety`).
 
 Implemented the narrow controlled seller at `GET /m3/paid-ping` using the official
 OKX TypeScript seller SDK (`@okxweb3/x402-core`, `@okxweb3/x402-evm`,
@@ -20,24 +20,29 @@ single sign/replay, no-redirect, no-retry, no-secret-persistence boundaries.
 
 Focused seller and buyer seam tests pass, including unpaid 402 shape, Testnet and
 recipient binding, wrong-network/host rejection, top-level resource parsing,
-loopback origin/path freeze, secret redaction, and single replay behavior.
+loopback origin/path freeze, secret redaction, and durable single-attempt behavior.
 
-Live acceptance has not started. Required founder-controlled preflight remains:
-seller recipient, OKX facilitator credentials, buyer balance, HPKE canary, and
-current terms approval. Do not run a live payment until those checks are green.
+The controlled M3 live payment succeeded on 18–19 September 2026 and remains the
+accepted live evidence:
+- purchase `purchase-m3-1789769056615`;
+- transaction `0x7d1d639910471bc573a45d7e1d1d4bea1afe081a3dc59862703251fdc3e8660d`;
+- X Layer Testnet block `41310643`, receipt status `1`;
+- exact 0.01 USD₮0 (`10000` atomic units), buyer → seller;
+- controlled `GET /m3/paid-ping` returned HTTP 200 and the protected result;
+- independent ERC-20 Transfer readback matched exactly; application reached verified.
+
+R2 found payment-safety blockers in purchase identity, durable exactly-once
+authority, endpoint freezing, protected-result verification, settlement binding,
+string redaction, and timeout validation. This fixer pass addressed those blockers
+with focused tests. M3 is **not promoted** until the next R2 review passes. Do not
+run another live payment unless the reviewer specifically determines it is necessary.
 
 ---
 
-## M3 PAYMENT INTEGRATION PREFLIGHT — NO-GO BEFORE NEXT SIGNED ATTEMPT
+## M3 PAYMENT SAFETY FIXER CHECKPOINT
 
 Audit date: **18 September 2026**. Full matrix and local preflight:
 `docs/work/M3_PAYMENT_PREFLIGHT.md`.
-
-Current finding: the next payment is **not authorized yet**. JIT quote handling is
-fixed, but the wallet signing path must pass harmless personal + EIP-712 canaries
-after a supported clean login, and the live Mock Merchant asset must be re-probed
-because Sep-17 runtime returned USDC_TEST while current official OKX payment docs
-describe USD₮0.
 
 Application hardening on `feat/m3-live-payment` now also:
 - accepts current `amount` and historical `maxAmountRequired` x402 shapes
@@ -46,9 +51,16 @@ Application hardening on `feat/m3-live-payment` now also:
   unknown CLI failures ambiguous;
 - forces post-submission failures and failed-purchase retries through explicit
   reconciliation evidence;
-- independently verifies X Layer chain/receipt + exact ERC-20 Transfer terms.
+- independently verifies X Layer chain/receipt + exact ERC-20 Transfer terms;
+- persists a pre-sign execution claim in the application-owned payment ledger;
+- binds final signing to purchase and approval identities plus one canonical
+  merchant endpoint;
+- requires the controlled M3 protected-result contract before `verified`.
 
-No payment command was run during this audit. No authorization was created.
+No additional payment command was run during this fixer pass. The existing live
+evidence remains relied upon because these changes harden application-owned
+authority, validation, persistence, and readback seams without changing the TEE
+signing protocol, network, asset, recipient, amount, or facilitator interaction.
 Do not merge M3 to main.
 
 ---
