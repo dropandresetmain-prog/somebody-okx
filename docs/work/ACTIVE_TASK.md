@@ -1,6 +1,6 @@
 # ACTIVE TASK — M5 Web Executive Mission Control
 
-Updated: 19 September 2026. Status: CP0 complete; implementation not started.
+Updated: 19 September 2026. Status: CP1 complete; shell next.
 
 ## Goal and recovery
 Build a desktop-first, fixture-only executive management surface. The Objective
@@ -15,7 +15,8 @@ Resume from this ledger and the latest pushed checkpoint, not historical chat.
 - Main's live remote SHA confirmed equal to the base on 19 September.
 - Outcome branch created cleanly from main; suggested feat branch not used
   because this session's authorized destination is the outcome branch above.
-- Exact CP0 pushed SHA: recorded by the next checkpoint note after push.
+- CP0 pushed: `ad36d9b68da2152b06abc91827d58cb168a3da35`.
+- Current HEAD before CP1 is CP0 above; CP1 SHA goes in the next note.
 - Each commit updates this ledger; each checkpoint MUST be pushed before work
   continues. Record the just-pushed SHA in the next note (no self-referential SHA).
 - M3 historical ledger remains in git at the base above; M3 stays frozen.
@@ -55,7 +56,7 @@ Resume from this ledger and the latest pushed checkpoint, not historical chat.
 
 ## Checkpoints
 - [x] CP0 truth + recovery ledger + preserved web references
-- [ ] CP1 frontend contract + deterministic fixtures + invariant tests
+- [x] CP1 frontend contract + deterministic fixtures + invariant tests
 - [ ] CP2 mission-control shell and Outcome/Somebody Now hierarchy
 - [ ] CP3 workers, grounded decisions, providers, Needs You
 - [ ] CP4 evidence, story, payments, independent completion
@@ -72,16 +73,27 @@ Resume from this ledger and the latest pushed checkpoint, not historical chat.
 - Dependencies are not installed in this fresh sandbox.
 - Delegation unavailable: no permitted blocking child-agent tool is exposed.
 
-## Current checkpoint / next action
-CP1: create fixture contract and tests under `app/m5/` and `tests/m5*.test.ts`.
-Use `/m5` for isolated preview; leave existing production workspace intact.
-Root Convex provider currently blocks all routes without env: when adding /m5,
-move existing provider wrapping to existing root page without changing backend.
-Install existing lockfile dependencies, then focused tests only until final gate.
+## CP1 evidence / current checkpoint
+- `npm ci --silent --no-audit --no-fund`: passed, lockfile unchanged.
+- `npx --no-install tsx --test tests/m5Fixtures.test.ts`: 8/8 passed.
+- Focused tsc of workspace.ts + fixtures.ts: passed with --ignoreConfig --noEmit
+  --strict --skipLibCheck --target ES2022 --module esnext --moduleResolution bundler.
+- First tsc invocation needed TS7's --ignoreConfig; corrected, no code failure.
+- 24 independent snapshots: 16 BUY/relaunch, 7 MAKE/partner, 1 blocked supplier.
+- Outcome is a relaunch-ready pack, NOT public publication or claimed lift.
+- Three paths have explicit IDs, times, references, proof and authority boundaries.
+- CP1 files: app/m5/workspace.ts, app/m5/fixtures.ts, tests/m5Fixtures.test.ts.
+- No component, backend, payment behavior or mobile changes.
 
-## Risks / active files
+## Next action / active files
+CP2: add mission-control shell at /m5, scoped CSS and rendering tests.
+Leave existing root workspace behavior intact. Move its Convex provider wrapping
+from global layout to root page so /m5 never initializes Convex.
+Next files: app/m5/{page,MissionControl}.tsx, mission-control.css, app/layout.tsx,
+app/page.tsx, tests/m5Components.test.ts. CP1 is verified; no in-progress edits.
+
+## Risks
 - Design reference is provisional, not runtime end-to-end evidence.
-- Generic live selection/economic grounding and BUY→M3 are not frontend claims.
-- Brand fonts may need network access at Next build; report actual evidence.
-- CP0 files: this ledger, two web design documents, two reference screenshots.
-- No backend, app behavior, payments or mobile files changed in CP0.
+- Live selection/economics and BUY→M3 remain explicitly unwired.
+- Brand fonts may need network access at build; report actual evidence.
+- No permitted blocking agent tool is available; primary performs focused work.
