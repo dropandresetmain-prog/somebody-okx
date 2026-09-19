@@ -722,6 +722,17 @@ export const readDecisionContext = internalQuery({
     const grant = (await ctx.runQuery(internal.internal.workforce.activeSpendGrant, {
       objectiveKey: args.objectiveKey,
     })) as FounderSpendGrant | null;
+    const objectiveRow = await ctx.db
+      .query("objectives")
+      .withIndex("by_key", (q) => q.eq("key", args.objectiveKey))
+      .unique();
+    const objectiveData = objectiveRow?.data as
+      | { companyArtifacts?: Array<{ key?: string }> }
+      | undefined;
+    const artifactKeyForInternalProof =
+      objectiveData?.companyArtifacts?.find(
+        (artifact) => typeof artifact.key === "string" && artifact.key.length > 0,
+      )?.key ?? null;
 
     return {
       contract,
@@ -731,6 +742,7 @@ export const readDecisionContext = internalQuery({
       creationAllowed,
       budget,
       grant: grant ? { limitUsd: grant.limitUsd, approvalId: grant.approvalId } : null,
+      artifactKeyForInternalProof,
     };
   },
 });
