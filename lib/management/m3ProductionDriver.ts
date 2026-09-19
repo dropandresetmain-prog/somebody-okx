@@ -112,10 +112,12 @@ async function persist(
   deps: M3ProductionDriverDeps,
   expectedIntent: ExecutionIntent,
   result: SeamResult,
-  at: number,
 ): Promise<void> {
   const needsM4Write = result.intent !== expectedIntent || result.events.length > 0;
-  const pending = needsM4Write ? { expectedIntent, nextIntent: result.intent, events: result.events, at } : null;
+  // The M4 kernel, not the caller's pre-observation clock, owns the transition
+  // timestamp. Reusing it makes a post-commit/lost-ack restart recognize the
+  // exact write that Convex already accepted.
+  const pending = needsM4Write ? { expectedIntent, nextIntent: result.intent, events: result.events, at: result.intent.updatedAt } : null;
   if (result.purchase) {
     deps.purchases.put((pending ? { ...result.purchase, pendingM4Sync: pending } : result.purchase) as PurchaseRecord);
   }
@@ -206,12 +208,12 @@ export async function runM3ProductionDriver(
           });
         })()
       : handoffIntentToM3(intent, deps.rail));
-    await persist(deps, intent, result, at);
+    await persist(deps, intent, result);
     return { mode, intent: result.intent, purchase: result.purchase, events: result.events, changed: true, stale, reconciliationRequired: result.reconciliationRequired, detail: result.detail };
   }
 
   if (!existing) throw new Error("refusing observation: no durable M3 purchase exists; use prepare or a separately authorized execute pass");
   const result = await observePurchase(intent, existing, deps.railForPurchase?.(existing) ?? deps.rail);
-  await persist(deps, intent, result, at);
+  await persist(deps, intent, result);
   return { mode, intent: result.intent, purchase: result.purchase, events: result.events, changed: result.purchase !== existing || result.intent !== intent || result.events.length > 0, stale, reconciliationRequired: result.reconciliationRequired, detail: result.detail };
 }

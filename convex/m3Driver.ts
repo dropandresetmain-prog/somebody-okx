@@ -41,6 +41,9 @@ function constantTimeEqual(left: string, right: string): boolean {
 async function assertFactAttestation(fact: M3DriverFact, attestation: string): Promise<void> {
   const key = process.env.M4_M3_FACT_ATTESTATION_KEY;
   if (!key) throw new Error("M4×M3 fact attestation key is not configured");
+  if (key === process.env.M4_M3_DRIVER_TOKEN) {
+    throw new Error("M4×M3 fact attestation key must be distinct from the bridge bearer token");
+  }
   const cryptoKey = await crypto.subtle.importKey("raw", new TextEncoder().encode(key), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
   const signature = await crypto.subtle.sign("HMAC", cryptoKey, new TextEncoder().encode(canonicalM3DriverFact(fact)));
   if (!constantTimeEqual(hex(new Uint8Array(signature)), attestation)) throw new Error("M4×M3 fact attestation is invalid");

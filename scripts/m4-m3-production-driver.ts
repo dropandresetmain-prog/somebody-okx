@@ -57,6 +57,12 @@ async function main() {
   const url = process.env.CONVEX_URL;
   const driverToken = process.env.M4_M3_DRIVER_TOKEN;
   if (!url || !driverToken) throw new Error("CONVEX_URL and M4_M3_DRIVER_TOKEN must be set; values are never printed");
+  if (mode === "execute" || mode === "observe") {
+    const factKey = process.env.M4_M3_FACT_ATTESTATION_KEY;
+    if (!factKey || factKey === driverToken) {
+      throw new Error("execute/observe require a distinct M4_M3_FACT_ATTESTATION_KEY before any M3 financial fact can be written back");
+    }
+  }
   const client = new ConvexHttpClient(url);
   // The generated API is refreshed by `convex codegen` on deployment. The CLI
   // intentionally uses named public refs so this Node-only file can compile
@@ -90,6 +96,7 @@ async function main() {
       };
       const attestationKey = process.env.M4_M3_FACT_ATTESTATION_KEY;
       if (!attestationKey) throw new Error("M4_M3_FACT_ATTESTATION_KEY is required to attest a financial M3 fact for Convex writeback");
+      if (attestationKey === driverToken) throw new Error("M4_M3_FACT_ATTESTATION_KEY must be distinct from M4_M3_DRIVER_TOKEN");
       const attestation = createHmac("sha256", attestationKey).update(canonicalM3DriverFact(fact)).digest("hex");
       await bridge.mutation("m3Driver:apply", {
         ...fact,

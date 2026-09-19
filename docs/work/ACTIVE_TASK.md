@@ -138,6 +138,19 @@ is **Act Now**.
   clean. Next: commit/push, freeze a new SHA, rerun the exact broad gate, then
   commission a NEW independent R3 review of that new SHA.
 
+### CP7 replacement-candidate R3 repair — 20 September 2026
+
+- A new independent reviewer invalidated the first replacement candidate before
+  verdict: configuration could reuse the bearer token as its M3 fact key, and
+  an acknowledged Convex transition whose response was lost could disagree with
+  the outbox timestamp. Neither defect performed a financial action.
+- The bridge and CLI now reject equal attestation/bearer secrets before
+  execute/observe. The outbox writes the M4 kernel's actual transition timestamp
+  rather than a pre-observation clock, so restart recognizes a committed write
+  even when its response was lost. Direct regressions pass 13/13 with root and
+  Convex TypeScript clean. Next: commit/push, freeze another exact candidate,
+  rerun the canonical gate, and commission a fresh independent R3.
+
 No live payment occurred in this CP1 work.
 
 > **M4 × M3 INTEGRATION (this branch `integration/m4-m3`).** This ledger now covers the

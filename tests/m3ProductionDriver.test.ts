@@ -246,3 +246,23 @@ test("R3: a failed governed M4 writeback leaves a durable outbox that restart ob
   assert.equal((purchases.get(intent.intentId) as PurchaseRecord & { pendingM4Sync?: unknown }).pendingM4Sync, undefined);
   assert.equal(verifierCalls, 1, "restart delivers the outbox instead of running verification again");
 });
+
+test("R3: a committed-but-unacknowledged M4 write clears the restart outbox despite different pre-observation and kernel clocks", async () => {
+  const initial = { ...intent, state: "result_recorded" as const, updatedAt: 10 };
+  const backing = store(initial);
+  let lostAcknowledgement = true;
+  backing.write = async (change) => {
+    backing.current = change.nextIntent; // Convex committed the transition.
+    if (lostAcknowledgement) throw new Error("simulated lost bridge acknowledgement");
+    backing.writes += 1;
+  };
+  const purchases = new MemoryPurchases();
+  purchases.put({ ...createPurchase({ id: initial.intentId, objectiveKey: initial.objectiveKey, resourceNeedId: initial.requirementKey, offeringId: initial.target.offeringId!, idempotencyKey: initial.idempotencyKey, at: 10 }), state: "result_received", result: { simulated: true } });
+  const deps = rail();
+  deps.now = () => 1010; // M3 kernel clock after the driver's pre-observation clock.
+  await assert.rejects(() => runM3ProductionDriver("observe", initial.intentId, { store: backing, purchases, rail: deps }), /lost bridge acknowledgement/);
+  lostAcknowledgement = false;
+  const resumed = await runM3ProductionDriver("observe", initial.intentId, { store: backing, purchases, rail: deps });
+  assert.equal(resumed.intent.state, "verified");
+  assert.equal((purchases.get(initial.intentId) as PurchaseRecord & { pendingM4Sync?: unknown }).pendingM4Sync, undefined);
+});

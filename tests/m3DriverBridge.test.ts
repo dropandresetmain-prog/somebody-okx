@@ -71,6 +71,22 @@ test("R3: the actual Convex bridge refuses a bearer-token-only forged verificati
   }
 });
 
+test("R3: the actual Convex bridge rejects configuration that reuses the bearer token as its fact-attestation key", async () => {
+  const previousToken = process.env.M4_M3_DRIVER_TOKEN;
+  const previousKey = process.env.M4_M3_FACT_ATTESTATION_KEY;
+  process.env.M4_M3_DRIVER_TOKEN = token;
+  process.env.M4_M3_FACT_ATTESTATION_KEY = token;
+  try {
+    const bridge = fixture();
+    const fact: M3DriverFact = { intentId: "int_bridge", expectedUpdatedAt: at, eventKind: "submitted", eventId: "same_secret", dedupeKey: "intent:int_bridge:submitted:same_secret", evidenceId: null, note: "bad configuration", at };
+    await assert.rejects(() => invoke(bridge.ctx, fact, createHmac("sha256", token).update(canonicalM3DriverFact(fact)).digest("hex")), /must be distinct/);
+    assert.equal(bridge.current().state, "awaiting_m3");
+  } finally {
+    if (previousToken === undefined) delete process.env.M4_M3_DRIVER_TOKEN; else process.env.M4_M3_DRIVER_TOKEN = previousToken;
+    if (previousKey === undefined) delete process.env.M4_M3_FACT_ATTESTATION_KEY; else process.env.M4_M3_FACT_ATTESTATION_KEY = previousKey;
+  }
+});
+
 test("R3: an attested already-submitted financial fact remains reportable after M4 revision advances", async () => {
   const previousToken = process.env.M4_M3_DRIVER_TOKEN;
   const previousKey = process.env.M4_M3_FACT_ATTESTATION_KEY;
