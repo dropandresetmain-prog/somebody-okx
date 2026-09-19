@@ -151,6 +151,29 @@ is **Act Now**.
   Convex TypeScript clean. Next: commit/push, freeze another exact candidate,
   rerun the canonical gate, and commission a fresh independent R3.
 
+### CP8 final R3 blocker repair candidate — 20 September 2026
+
+- Starting candidate `fcf7a1ad42100d52a2a07ac900a50edcafde7e99` was rejected
+  by R3 on exactly two Act Now defects: a revoked exact founder spend grant was
+  not reloaded by the Node snapshot, and the production CLI allowed a runtime
+  adapter-module override.
+- Code candidate `88afa084f64d57a0b189811df846d0016ac87e3e` repairs both
+  narrowly. `convex/m3Driver.ts` now derives `founderSpendApprovalCurrent` only
+  from the exact grant named by the intent: it must exist, match Objective,
+  remain unrevoked, and cover `priceUsd`. `prepare`, `preview`, `confirm`, and
+  `execute` fail closed without it; `observe`/`reconcile` deliberately remain
+  available after a possible financial effect. The CLI now has no runtime
+  adapter override and uses the concrete local composition for execute/observe
+  only; dependency injection stays at the library test seam.
+- Focused affected evidence: 15/15 pass (`m3ProductionDriver` and
+  `m3DriverBridge`); root and Convex TypeScript exit 0. Exact candidate broad
+  gate, run once: `npm test` 611 pass / 0 fail, root TypeScript exit 0, Convex
+  TypeScript exit 0. No production build was required by the established gate.
+- Latest pushed code checkpoint: `88afa084f64d57a0b189811df846d0016ac87e3e` on
+  `fix/m4-m3-production-driver`. The pending action is an independent final R3
+  recheck of this exact code SHA. No live payment, signing, submission,
+  provider replay, paid request, wallet command, or mainnet operation occurred.
+
 No live payment occurred in this CP1 work.
 
 > **M4 × M3 INTEGRATION (this branch `integration/m4-m3`).** This ledger now covers the

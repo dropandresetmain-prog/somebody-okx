@@ -3,7 +3,8 @@
 Date: 20 September 2026  
 Superseded first code candidate: `fe56db17e9275a7967778c091b5599b0d41d570d` (R3 FAIL; repaired below)  
 Superseded replacement candidate: `c6ed849f9a18d5d4b926701023f89c2b1dd289fc` (R3 repair follow-up)  
-Exact final code candidate: `fcf7a1ad42100d52a2a07ac900a50edcafde7e99`  
+Superseded replacement candidate: `fcf7a1ad42100d52a2a07ac900a50edcafde7e99` (R3 found two Act Now blockers; repaired below)
+Exact final code candidate: `88afa084f64d57a0b189811df846d0016ac87e3e`
 Branch: `fix/m4-m3-production-driver`
 
 ## Lineage and boundary
@@ -21,6 +22,9 @@ Branch: `fix/m4-m3-production-driver`
   `reconcile`. `inspect` and `reconcile` are read-only. `prepare` only creates
   or reloads a stable purchase identity. `preview` only fetches a 402 challenge
   and binds approved terms. `confirm` requires an explicit confirmation ID.
+  `execute` and `observe` always construct only
+  `createLocalProductionComposition(...)`; the CLI has no runtime adapter or
+  module override. Deterministic executors remain library-test dependencies.
 - `lib/payment/purchaseLedger.ts` owns M3 `PurchaseRecord` persistence,
   identity/idempotency uniqueness, exclusive local locking, and atomic writes.
   State survives prepare, approval binding, confirmation, payment attempt,
@@ -32,8 +36,14 @@ Branch: `fix/m4-m3-production-driver`
 
 ## Authority, quotes, and executor seam
 
-- M4 `awaiting_m3` plus a persisted founder spend approval identity is required;
-  the preview path derives an M3 `PaymentApproval` from exact live terms. The
+- M4 `awaiting_m3` plus a persisted founder spend approval identity is required.
+  Before every pre-submission authority-opening operation (`prepare`, `preview`,
+  `confirm`, and `execute`), the governed snapshot reloads the *exact*
+  `intent.terms.approvalId` founder grant and requires that it exists, belongs
+  to the same Objective, is unrevoked, and covers `intent.terms.priceUsd`.
+  No other active grant can substitute. Revocation after possible submission
+  never blocks observe/reconcile, because financial truth must remain tracked.
+  The preview path derives an M3 `PaymentApproval` from exact live terms. The
   driver rejects non-current revisions and all non-`awaiting_m3` preparation or
   execution attempts.
 - Preview handles are informational. A fresh `ExecutionQuote` is fetched only
@@ -88,8 +98,13 @@ Branch: `fix/m4-m3-production-driver`
   stale financial reporting, and acquisition-versus-effect proof separation.
 - Follow-up R3 repair regressions: 13/13 pass, including equal-secret rejection
   and committed-but-unacknowledged writeback recovery.
+- Final R3 blocker-repair focused evidence: 15/15 pass across the concrete
+  Convex snapshot, production driver, and CLI-path tests. It covers missing,
+  cross-approval, cross-Objective, revoked, and insufficient exact spend
+  grants; current grant acceptance; post-submission revocation observation;
+  and absence of a runtime adapter override.
 - Exact final candidate gate (run once on this SHA):
-  - `npm test` — exit 0, 608 pass / 0 fail.
+  - `npm test` — exit 0, 611 pass / 0 fail.
   - `npx tsc --noEmit` equivalent local compiler invocation with
     `--incremental false` — exit 0.
   - `npx tsc -p convex/tsconfig.json` equivalent local compiler invocation with
@@ -109,7 +124,7 @@ and does not invoke the executor.
 
 ## Review request
 
-R3 must inspect **exactly** `fcf7a1ad42100d52a2a07ac900a50edcafde7e99`, assume
+R3 must inspect **exactly** `88afa084f64d57a0b189811df846d0016ac87e3e`, assume
 an unsafe duplicate-spend or fake-truth path until disproven, and classify every
 material finding as Act Now, Investigate Now, Park for Later, or Ignore / Accept
 Risk. The reviewer is read-only and must not run a payment path.
