@@ -17,6 +17,7 @@ export function MissionControl({ view, objectiveNavigation, controls, company, a
   inspection?: ReactNode;
 }) {
   const now = view.somebodyNow;
+  const live = view.provenance === "backend_query";
   const current = view.requirements.find(r => r.requirementKey === now.currentRequirementKey);
   const pose = now.condition === "verified" ? "done" : now.condition === "needs_you" ? "presenting" : now.condition === "blocked" ? "stopped" : now.condition === "waiting" ? "waiting" : "typing";
   return <div className="mc-root">
@@ -24,11 +25,11 @@ export function MissionControl({ view, objectiveNavigation, controls, company, a
     <header className="mc-topbar">
       <a className="wordmark" href="/m5" aria-label="Somebody mission control"><img className="wordmark-avatar" src="/somebody-avatar.webp" width="28" height="28" alt="" />somebody<span className="wordmark-dot">.</span></a>
       <span className="mc-product-label">Your company, in motion</span>
-      <span className="mc-fixture-label"><i />Fixture workspace · not live</span>
+      <span className="mc-fixture-label"><i />{live ? "Live workspace · Convex authoritative" : "Fixture workspace · not live"}</span>
     </header>
     <div className="mc-layout">
       <aside className="mc-objective-rail" aria-label="Objectives and outcome">
-        <div className="mc-section-label">Your objectives <span>03</span></div>
+        <div className="mc-section-label">Your objectives{live ? "" : <span>03</span>}</div>
         {objectiveNavigation}
         <section className="mc-outcome" aria-labelledby="outcome-title">
           <span className="mc-section-label">Outcome contract</span>
@@ -66,7 +67,7 @@ export function MissionControl({ view, objectiveNavigation, controls, company, a
         {attention ?? <section className="mc-context-note"><span className="mc-section-label">Who has the ball?</span><h2>{now.ball}</h2><p>{now.detail}</p></section>}
         {controls}
         {inspection}
-        <p className="mc-fixture-note">Contract-faithful frontend fixtures. No live model, Convex, provider calls or payments. Current runtime does not emit this whole story end to end.</p>
+        <p className="mc-fixture-note">{live ? "Authoritative Convex read model. Payment execution remains supervised and fail-closed; live Cutoff-1 is pending." : "Contract-faithful frontend fixtures. No live model, Convex, provider calls or payments. Current runtime does not emit this whole story end to end."}</p>
       </aside>
     </div>
   </div>;
