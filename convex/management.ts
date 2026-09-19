@@ -25,6 +25,7 @@ import { buildManagementGraph } from "../lib/management/graph";
 import type { ManagementPorts } from "../lib/management/graph";
 import { runManagerialDecisionPass } from "../lib/management/decision";
 import type { DecisionPassResult } from "../lib/management/decision";
+import type { FounderSpendGrant } from "./internal/workforce";
 import { evaluateCompletionGate } from "../lib/management/completion";
 import { attemptRequirementSatisfaction } from "../lib/management/requirements";
 import type { ProofFacts, RequirementEvent } from "../lib/management/requirements";
@@ -240,6 +241,16 @@ export function buildConvexManagementPorts(ctx: MutationCtx): ManagementPorts {
       }
 
       // grounding.discovered: [] — live registry discovery is the CP2 sourcing seam and arrives as data
+      //
+      // R3 A4 — founder spend authority is READ, never assumed. No live grant
+      // record ⇒ `null`, which the kernel treats as NO authority (fail closed),
+      // not as an unlimited ceiling. The persisted budget ceiling stays a
+      // separate, engine-side self-limit: `budgetRemainingUsd` measures the
+      // objective's committed spend, `spendAuthorityUsd` measures what the
+      // founder actually permitted.
+      const grant = (await ctx.runQuery(internal.internal.workforce.activeSpendGrant, {
+        objectiveKey: state.objectiveKey,
+      })) as FounderSpendGrant | null;
       const result = await runManagerialDecisionPass({
         objectiveKey: state.objectiveKey,
         contract,
@@ -278,7 +289,7 @@ export function buildConvexManagementPorts(ctx: MutationCtx): ManagementPorts {
           requiresMandatoryProof: true,
           proofAvailable: true,
           workerAvailable: null,
-          spendAuthorityUsd: null, // no founder bound persisted yet
+          spendAuthorityUsd: grant ? grant.limitUsd : null,
           budgetRemainingUsd: budget
             ? budget.limits.maxExternalSpendUsd - budget.used.externalSpendCommittedUsd
             : 0,
@@ -288,7 +299,12 @@ export function buildConvexManagementPorts(ctx: MutationCtx): ManagementPorts {
           : async () => null,
         at,
         decisionId: `dec_${state.objectiveKey}_${requirement.requirementKey}_${at}`,
-        spendAuthorityUsd: null,
+        // R3 A4/I3 — persisted founder spend authority. `null` fails closed:
+        // a monetary BUY/HYBRID cannot be authorized (and therefore cannot be
+        // handed to the rail) until a founder grant record exists. Neither
+        // value is invented here; both are read from storage.
+        spendAuthorityUsd: grant ? grant.limitUsd : null,
+        spendApprovalId: grant ? grant.approvalId : null,
         externalAuthority: "m3_unavailable",
         waiverRequested: false,
       });

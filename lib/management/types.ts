@@ -339,6 +339,13 @@ export type AuthorizationResult =
       strategy: SatisfactionStrategy;
       optionId: string;
       authorizedAt: number;
+      // R3 A4 — the founder approval RECORD that bounds monetary external spend,
+      // bound at authorization time and carried onto the intent so the hand-off
+      // predicate can see it. REQUIRED so an external authorization cannot be
+      // constructed without naming the approval behind it: M4 authorizing a
+      // decision is not the founder approving a payment. For a non-monetary
+      // (MAKE) strategy this is null by definition.
+      spendApprovalId: string | null;
     }
   | {
       kind: "refused";

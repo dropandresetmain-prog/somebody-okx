@@ -169,6 +169,7 @@ function pass(overrides: Partial<Parameters<typeof runManagerialDecisionPass>[0]
     at,
     decisionId: "dec_1",
     spendAuthorityUsd: 2,
+    spendApprovalId: "appr_test_decision_1",
     externalAuthority: "m3_available_bounded",
     waiverRequested: false,
     ...overrides,

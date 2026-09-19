@@ -13,6 +13,7 @@ import {
   vVerifiedAssignmentRecord,
   vWakeEvent,
   vObjectiveBudget,
+  vFounderSpendGrant,
 } from "../managementValidators";
 import { canAcceptReservation } from "../workforceGuards";
 import { validateCapabilitySpec } from "../../lib/management/capability";
@@ -29,8 +30,21 @@ import {
 } from "../../lib/management/budget";
 import type { WorkerRecord, ObjectiveBudget, WakeEvent } from "../../lib/management/types";
 
+// Row shapes for the storage layer. `FounderSpendGrant` is the persisted
+// founder authority record (R3 A4); it lives here because nothing in
+// lib/management/* may read storage.
+export type FounderSpendGrant = {
+  approvalId: string;
+  objectiveKey: string;
+  limitUsd: number;
+  grantedAt: number;
+  revokedAt: number | null;
+  note: string;
+};
+
 type WorkerRow = { _id: Id<"workers">; workerKey: string; data: WorkerRecord };
 type BudgetRow = { _id: Id<"objectiveBudgets">; objectiveKey: string; data: ObjectiveBudget };
+type GrantRow = { _id: Id<"founderSpendGrants">; objectiveKey: string; data: FounderSpendGrant };
 
 // ── Worker CRUD ──────────────────────────────────────────────────────────────
 
@@ -708,5 +722,94 @@ export const putIntent = internalMutation({
     }
 
     return { ok: true };
+  },
+});
+
+// ── Founder spend authority (R3 A4) ─────────────────────────────────────────
+//
+// Storage only — the rule lives in lib/management/authorization.ts. The point
+// of these two functions is that a spend bound has to be a RECORD with an
+// identity, because "the founder never said no" is not authority: the
+// authorization kernel needs a `spendApprovalId` to name on a monetary intent,
+// and the hand-off predicate refuses a monetary intent that cannot name one.
+
+export const putSpendGrant = internalMutation({
+  args: {
+    approvalId: v.string(),
+    objectiveKey: v.string(),
+    limitUsd: v.number(),
+    at: v.number(),
+    note: v.string(),
+  },
+  returns: vFounderSpendGrant,
+  handler: async (ctx, args): Promise<FounderSpendGrant> => {
+    if (!(args.limitUsd > 0))
+      throw new Error("a spend grant must bound a positive amount");
+    const existing = await ctx.db
+      .query("founderSpendGrants")
+      .withIndex("by_approvalId", (q) => q.eq("approvalId", args.approvalId))
+      .unique();
+    // An existing approvalId keeps its bound: a replayed grant must not widen
+    // what the founder permitted. Raising a limit is a NEW grant with a new id,
+    // so both grants stay auditable.
+    const grant: FounderSpendGrant = {
+      approvalId: args.approvalId,
+      objectiveKey: args.objectiveKey,
+      limitUsd: existing ? (existing as GrantRow).data.limitUsd : args.limitUsd,
+      grantedAt: existing ? ((existing as GrantRow).data.grantedAt as number) : args.at,
+      revokedAt: existing ? ((existing as GrantRow).data.revokedAt as number | null) : null,
+      note: args.note,
+    };
+    if (existing) await ctx.db.patch(existing._id, { data: grant });
+    else
+      await ctx.db.insert("founderSpendGrants", {
+        approvalId: grant.approvalId,
+        objectiveKey: args.objectiveKey,
+        data: grant,
+      });
+    return grant;
+  },
+});
+
+export const revokeSpendGrant = internalMutation({
+  args: { approvalId: v.string(), at: v.number() },
+  returns: v.union(vFounderSpendGrant, v.null()),
+  handler: async (ctx, args): Promise<FounderSpendGrant | null> => {
+    const existing = await ctx.db
+      .query("founderSpendGrants")
+      .withIndex("by_approvalId", (q) => q.eq("approvalId", args.approvalId))
+      .unique();
+    if (!existing) return null;
+    const row = existing as GrantRow;
+    if (row.data.revokedAt !== null) return row.data;
+    const grant: FounderSpendGrant = { ...row.data, revokedAt: args.at };
+    await ctx.db.patch(row._id, { data: grant });
+    return grant;
+  },
+});
+
+// The LIVE grant for an objective, if any. `null` means no authority, and the
+// kernel treats that as fail-closed — never as unlimited. Revoked grants are
+// excluded here so a stale record cannot authorize a new effect.
+export const activeSpendGrant = internalQuery({
+  args: { objectiveKey: v.string() },
+  returns: v.union(vFounderSpendGrant, v.null()),
+  handler: async (ctx, args): Promise<FounderSpendGrant | null> => {
+    const rows = await ctx.db
+      .query("founderSpendGrants")
+      .withIndex("by_objective", (q) => q.eq("objectiveKey", args.objectiveKey))
+      .collect();
+    const live = rows
+      .map((row) => (row as GrantRow).data)
+      .filter((grant) => grant.revokedAt === null);
+    if (live.length === 0) return null;
+    // Deterministic when several live grants exist: the largest bound wins,
+    // tie-broken by id, so the pass is not order-dependent.
+    return live.reduce((max, grant) =>
+      grant.limitUsd > max.limitUsd ||
+      (grant.limitUsd === max.limitUsd && grant.approvalId < max.approvalId)
+        ? grant
+        : max,
+    );
   },
 });

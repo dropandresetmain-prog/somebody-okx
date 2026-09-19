@@ -265,6 +265,8 @@ export const vAuthorizationResult = v.union(
     strategy: vSatisfactionStrategy,
     optionId: v.string(),
     authorizedAt: v.number(),
+    // R3 A4 — the founder approval record bounding monetary external spend.
+    spendApprovalId: v.union(v.string(), v.null()),
   }),
   v.object({
     kind: v.literal("refused"),
@@ -594,3 +596,23 @@ export const vBudgetVerdict = v.union(
     state: vManagementState,
   }),
 );
+
+// R3 A4 — the founder's spend authority, as a PERSISTED RECORD.
+//
+// This is the artifact the authorization kernel needs a name for: the founder
+// granted a bounded amount for an objective, and the grant has an id. Without
+// it, "no limit" used to mean "no check". A grant is NOT a payment approval —
+// M3/R2 remains the only financial authority — it is the bound within which M4
+// may authorize an external effect and hand an INTENT to the rail.
+//
+// `approvalId` is the record identity used as `spendApprovalId` downstream; a
+// revoked grant cannot authorize anything, so revocation is a state change on
+// the record rather than a delete (provenance stays).
+export const vFounderSpendGrant = v.object({
+  approvalId: v.string(),
+  objectiveKey: v.string(),
+  limitUsd: v.number(),
+  grantedAt: v.number(),
+  revokedAt: v.union(v.number(), v.null()),
+  note: v.string(),
+});

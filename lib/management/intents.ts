@@ -93,7 +93,19 @@ export function createIntentFromAuthorization(input: {
   });
   // The very first state already encodes the boundary: with no hand-off
   // permission the intent rests in awaiting_m3 — recorded, visible, honest.
-  const mayHandOff = mayHandOffExternally(authorization.strategy, input.mode);
+  //
+  // R3 A4 — the founder approval record travels with the intent. A monetary
+  // external effect is only handoff-able once that approval identity is bound,
+  // and requiresApproval/approvalId are derived from it instead of being
+  // hard-coded to false/null (which is exactly how an unapproved BUY used to
+  // reach the rail looking fully authorized).
+  const priceUsd = option.external.priceUsd;
+  const monetary = priceUsd !== null && priceUsd > 0;
+  const spendApprovalId = authorization.spendApprovalId ?? null;
+  const mayHandOff = mayHandOffExternally(authorization.strategy, input.mode, {
+    spendApprovalId,
+    priceUsd,
+  });
   const intent: ExecutionIntent = {
     intentId,
     idempotencyKey,
@@ -113,10 +125,12 @@ export function createIntentFromAuthorization(input: {
       endpointRef: null,
     },
     terms: {
-      priceUsd: option.external.priceUsd,
+      priceUsd,
       priceProvenance: option.external.priceSource,
-      requiresApproval: false, // authorization already did its job; a bound breach re-asks, it does not silently flag
-      approvalId: null,
+      // Monetary and unapproved ⇒ still flagged, even though authorization.ts
+      // fails that case closed upstream. Belt and braces, never a silent false.
+      requiresApproval: monetary && spendApprovalId === null,
+      approvalId: spendApprovalId,
     },
     state: mayHandOff ? "authorized" : "awaiting_m3",
     attempts: 0,
@@ -124,8 +138,11 @@ export function createIntentFromAuthorization(input: {
     resultEvidenceId: null,
     verificationEvidenceId: null,
     boundaryNote: mayHandOff
-      ? "intent authorized under m3_available_bounded; hand-off attempted by the caller"
-      : "M4 stopped at the buyer-rail boundary: M3/R2 payment authority is not available, so this intent is RECORDED and waits — no payment was attempted or made",
+      ? "intent authorized under m3_available_bounded with founder approval "
+        + `${spendApprovalId}; hand-off attempted by the caller`
+      : monetary && spendApprovalId === null
+        ? "M4 did NOT hand this off: no founder approval record is bound, so no payment may be attempted"
+        : "M4 stopped at the buyer-rail boundary: M3/R2 payment authority is not available, so this intent is RECORDED and waits — no payment was attempted or made",
     createdAt: input.at,
     updatedAt: input.at,
   };
@@ -211,7 +228,15 @@ export async function attemptHandoff(
   mode: ExternalAuthorityMode,
   at: number,
 ): Promise<{ intent: ExecutionIntent; handedOff: boolean; detail: string }> {
-  if (!mayHandOffExternally(intent.strategy, mode)) {
+  // Defence in depth (R3 A4): even if a row reached `authorized` some other
+  // way, the hand-off itself re-reads the approval bound on the intent. No
+  // founder approval record ⇒ no payment attempt, ever.
+  if (
+    !mayHandOffExternally(intent.strategy, mode, {
+      spendApprovalId: intent.terms.approvalId,
+      priceUsd: intent.terms.priceUsd,
+    })
+  ) {
     // No hand-off permission: the intent rests (or stays) in awaiting_m3.
     if (intent.state === "awaiting_m3")
       return { intent, handedOff: false, detail: intent.boundaryNote };

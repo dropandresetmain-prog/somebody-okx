@@ -379,6 +379,7 @@ test("replaying the identical decision envelope ten times yields ONE stable work
     at: at0,
     decisionId: `dec_replay_${seed}`,
     spendAuthorityUsd: 2,
+    spendApprovalId: null, // this replay only ever authorizes MAKE — no grant needed
     externalAuthority: "m3_unavailable",
     waiverRequested: false,
   });

@@ -201,6 +201,7 @@ function makePorts(world: World): ManagementPorts {
         at: world.now,
         decisionId: `dec_${state.pass}`,
         spendAuthorityUsd: 2,
+        spendApprovalId: "appr_test_graph_1",
         externalAuthority: "m3_unavailable",
         waiverRequested: false,
       });

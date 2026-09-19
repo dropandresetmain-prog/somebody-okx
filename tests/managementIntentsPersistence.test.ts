@@ -72,6 +72,8 @@ const authorization: AuthorizationResult = {
   strategy: "BUY",
   optionId: optionIdFor({ requirementKey: "social_intel", contractRevision: 1, kind: "external", target: "external:reg_offer_1" }),
   authorizedAt: now,
+  // R3 A4 — a monetary BUY authorization names the founder grant behind it.
+  spendApprovalId: "appr_intents_persistence_1",
 };
 
 // _handler is the shipped mutation body; convex-test only routes generated

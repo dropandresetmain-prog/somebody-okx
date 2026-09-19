@@ -17,6 +17,7 @@ import {
   vExecutionIntent,
   vWakeEvent,
   vObjectiveBudget,
+  vFounderSpendGrant,
 } from "./managementValidators";
 
 export default defineSchema({
@@ -124,4 +125,17 @@ export default defineSchema({
     objectiveKey: v.string(),
     data: vObjectiveBudget,
   }).index("by_objectiveKey", ["objectiveKey"]),
+
+  // R3 A4 — founder-granted spend authority, one bounded record per grant.
+  // A monetary external effect may only be authorized (and only handed to the
+  // buyer rail as an INTENT) while a live, unrevoked grant covers it. Absence
+  // means NO authority, never unlimited. M3/R2 remains the only payment
+  // authority; these records bound M4's decision-making only.
+  founderSpendGrants: defineTable({
+    approvalId: v.string(),
+    objectiveKey: v.string(),
+    data: vFounderSpendGrant,
+  })
+    .index("by_approvalId", ["approvalId"])
+    .index("by_objective", ["objectiveKey"]),
 });

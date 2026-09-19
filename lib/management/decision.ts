@@ -93,7 +93,11 @@ export type DecisionPassInput = {
   recommend: (eligible: readonly GroundedOption[]) => Promise<unknown>;
   at: number;
   decisionId: string;
+  // null = NO founder financial authority for this objective, which fails closed
+  // to approval_required for any monetary BUY/HYBRID (R3 A4). Never "unlimited".
   spendAuthorityUsd: number | null;
+  // The persisted founder authorization/approval record behind that bound.
+  spendApprovalId: string | null;
   externalAuthority: ExternalAuthorityMode;
   waiverRequested: boolean;
 };
@@ -271,6 +275,7 @@ export async function runManagerialDecisionPass(
       at: input.at,
       decisionId: input.decisionId,
       spendAuthorityUsd: input.spendAuthorityUsd,
+      spendApprovalId: input.spendApprovalId,
       externalAuthority: input.externalAuthority,
       unresolvedMaterialAmbiguity: stale ? null : unresolvedMaterialAmbiguity(contract),
       waiverRequested: input.waiverRequested,

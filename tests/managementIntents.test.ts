@@ -62,6 +62,10 @@ const authorized: AuthorizationResult = {
   strategy: "BUY",
   optionId: optionIdFor({ requirementKey: "social_intel", contractRevision: 1, kind: "external", target: "external:reg_offer_1" }),
   authorizedAt: at0,
+  // R3 A4 — this BUY costs $4, so it may only exist as an authorization with a
+  // founder grant record named. Tests that assert hand-off use it; the
+  // fail-closed tests below construct their own without it.
+  spendApprovalId: "appr_intents_1",
 };
 
 function intent(mode: "m3_unavailable" | "m3_available_bounded" = "m3_unavailable"): ExecutionIntent {

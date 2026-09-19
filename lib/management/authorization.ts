@@ -40,7 +40,15 @@ export type RecheckContext = {
   at: number;
   decisionId: string;
   // Founder-granted authority for this objective, if any.
+  // null means NO financial authority exists — see the fail-closed rule in
+  // reauthorizeRecommendation step 6. It never means "unlimited".
   spendAuthorityUsd: number | null;
+  // The persisted founder authorization/approval RECORD that granted that bound
+  // (idempotency: the same grant keeps the same id). Required before a monetary
+  // external intent may be handed to the rail: M4's own authorization is NOT
+  // the founder's payment approval, so the approval identity has to be bound
+  // explicitly rather than implied by a decision having been authorized.
+  spendApprovalId: string | null;
   externalAuthority: ExternalAuthorityMode;
   // Material ambiguity in the contract still requires founder input.
   unresolvedMaterialAmbiguity: string | null;
@@ -107,6 +115,17 @@ export function reauthorizeRecommendation(
     };
 
   // 6. External effects need the financial boundary respected and a live rail.
+  //
+  //  R3 A4 — SPEND AUTHORITY FAILS CLOSED.
+  // A missing/absent founder spend limit is NOT unlimited authority. It used to
+  // be: the amount check was skipped when `spendAuthorityUsd === null`, so any
+  // monetary BUY/HYBRID sailed through to `authorized` with no approval record
+  // and became externally handoff-able. "The founder never said no" is not the
+  // same as "the founder said yes to any amount", so a monetary external effect
+  // with no bound now routes to founder approval.
+  //
+  // The economic comparison is still made BEFORE approval (the option stays
+  // visible and recommendable); only the authorization is withheld.
   if (option.strategy === "BUY" || option.strategy === "HYBRID") {
     const price = option.external?.priceUsd ?? null;
     if (ctx.externalAuthority === "external_disabled")
@@ -117,14 +136,35 @@ export function reauthorizeRecommendation(
         reasons: ["authority_not_granted"],
         detail: "external effects are disabled for this objective",
       };
-    if (price !== null && ctx.spendAuthorityUsd !== null && price > ctx.spendAuthorityUsd)
-      return {
-        kind: "approval_required",
-        requirementKey: recommendation.requirementKey,
-        contractRevision: ctx.currentContractRevision,
-        question: `Acquisition costs $${price}, above the granted bound of $${ctx.spendAuthorityUsd}. Approve the higher amount or choose another option?`,
-        reason: "spend_authority_required",
-      };
+    if (price !== null && price > 0) {
+      if (ctx.spendAuthorityUsd === null)
+        return {
+          kind: "approval_required",
+          requirementKey: recommendation.requirementKey,
+          contractRevision: ctx.currentContractRevision,
+          question: `No founder spend limit is set for this objective. Acquiring ${option.external?.offeringId ?? "the selected offering"} costs $${price}. Approve a bounded spend limit, or choose another option?`,
+          reason: "spend_authority_required",
+        };
+      if (price > ctx.spendAuthorityUsd)
+        return {
+          kind: "approval_required",
+          requirementKey: recommendation.requirementKey,
+          contractRevision: ctx.currentContractRevision,
+          question: `Acquisition costs $${price}, above the granted bound of $${ctx.spendAuthorityUsd}. Approve the higher amount or choose another option?`,
+          reason: "spend_authority_required",
+        };
+      // A bound with no approval record behind it is still not a payment
+      // approval: M4 authorizing a decision is not the founder approving spend,
+      // so the intent would have nothing to name when the rail asks. Fail closed.
+      if (ctx.spendApprovalId === null)
+        return {
+          kind: "approval_required",
+          requirementKey: recommendation.requirementKey,
+          contractRevision: ctx.currentContractRevision,
+          question: `Acquisition costs $${price}, within the $${ctx.spendAuthorityUsd} bound, but no founder authorization record is bound to it. Approve this acquisition explicitly?`,
+          reason: "spend_authority_required",
+        };
+    }
   }
 
   // 7. WAIT / ASK_FOUNDER / BLOCK never become effects.
@@ -145,16 +185,38 @@ export function reauthorizeRecommendation(
     strategy: option.strategy,
     optionId: option.optionId,
     authorizedAt: ctx.at,
+    // Only an external, monetary authorization can carry a founder approval;
+    // step 6 already failed closed for a monetary BUY/HYBRID with no bound, so
+    // anything reaching here with a price names the approval it cleared.
+    spendApprovalId:
+      (option.strategy === "BUY" || option.strategy === "HYBRID") &&
+      (option.external?.priceUsd ?? 0) > 0
+        ? ctx.spendApprovalId
+        : null,
   };
 }
 
 // Whether an authorized intent may actually be handed to the buyer rail. Kept
 // separate from authorization so the M4/M3 boundary is one explicit predicate
 // rather than a scattered set of checks.
+//
+// R3 A4 — a monetary external effect is handoff-able ONLY when a founder
+// approval record is bound to it. `spendApprovalId` is that record's identity:
+// null (or blank) means no founder ever approved this spend, and no amount of
+// internal authorization substitutes for it. A zero-price acquisition needs no
+// financial approval, so `priceUsd` is passed in to make that distinction
+// explicit rather than assuming it.
 export function mayHandOffExternally(
   strategy: SatisfactionStrategy,
   mode: ExternalAuthorityMode,
+  approval: { spendApprovalId: string | null; priceUsd: number | null } = {
+    spendApprovalId: null,
+    priceUsd: null,
+  },
 ): boolean {
   if (strategy !== "BUY" && strategy !== "HYBRID") return false;
-  return mode === "m3_available_bounded";
+  if (mode !== "m3_available_bounded") return false;
+  const monetary = approval.priceUsd !== null && approval.priceUsd > 0;
+  if (monetary && !approval.spendApprovalId?.trim()) return false;
+  return true;
 }

@@ -135,6 +135,8 @@ test("persistDecision writes decision + options, and loadGrounded reconstructs t
       strategy: "MAKE",
       optionId: options[0].optionId,
       authorizedAt: now,
+      // MAKE has no monetary external effect, so there is no grant to name.
+      spendApprovalId: null,
     },
     coarsePlanSummary: "test decision",
     consideredOptionIds: options.map((o) => o.optionId),
