@@ -26,6 +26,7 @@ import assert from "node:assert/strict";
 import {
   handoffIntentToM3,
   observePurchase,
+  runPurchaseLifecycle,
   purchaseIdentityFromIntent,
   purchaseRecordFromIntent,
   m3BuyerRailAdapter,
@@ -787,6 +788,144 @@ test("SEAM: the BuyerRailPort adapter drives the real M3 rail and reports accept
   const noGrant = makeIntent({ spendApprovalId: null });
   const refused = await adapter.submitForPurchase(noGrant);
   assert.equal(refused.accepted, false);
+});
+
+// ── CP4 — production-style whole-loop trace (one authorized intent → verified
+//    → Requirement satisfied), driven end-to-end through the REAL seam. ────────
+//
+// CLOUD INTEGRATION PROOF / SIMULATED FINANCIAL EXECUTION.
+//
+// This is the production-shaped cut-off trace: it runs the same code path the
+// supervised LOCAL lane will run, with the ONLY difference that the injected
+// PaymentExecutor / settlement / provider / verifier are deterministic fakes
+// (kind "test_scaffold", every artifact labelled SIMULATED). No signing, no
+// wallet, no blockchain, no live provider, no money. It proves the full ordered
+// pipeline: authorized intent → hand-off → submitted → settled → result_received
+// → verified → Somebody re-evaluates → Requirement satisfied, with each M3 fact
+// observed in a DISTINCT step (never collapsed) and each M4 consequence carrying
+// a deduped wake.
+
+test("CP4 CLOUD INTEGRATION PROOF / SIMULATED FINANCIAL EXECUTION: authorized intent → M3 hand-off → submitted → settled → result_received → verified → Somebody satisfied", async () => {
+  const intent = makeIntent({ spendApprovalId: "appr_founder_integration_cp4" });
+  const txHash = "0xsimulatedtxhash00000000000000000000000000000000000000000000000000cp4";
+  const settlement = fakeSettlementReader();
+  settlement.setSettled(txHash, true, at0 + 1000);
+  const paid = fakePaidSender();
+  paid.setResult(RESOURCE, true, { rows: 128, source: "mock_merchant", simulated: true });
+  const deps = makeDeps({
+    settlement,
+    paid,
+    executor: fakeExecutor({ txHash }),
+    verifyResult: () => ({ verified: true, verificationProof: "simulated-erc20-transfer-readback-match" }),
+  });
+
+  // Drive the whole lifecycle through the production convenience driver. Each
+  // observation advances exactly one M3 fact; runPurchaseLifecycle keeps
+  // observing while the lifecycle keeps advancing and is not terminal.
+  const { final, trail, observations } = await runPurchaseLifecycle(intent, deps, { maxObservations: 8 });
+
+  // ── the ordered M3 pipeline reached verified, one distinct fact per step ──
+  assert.equal(final.m3State, "verified", "M3 pipeline reached verified");
+  assert.equal(final.purchase?.state, "verified", "the M3 PurchaseRecord is verified");
+  assert.equal(final.purchase?.verified, true, "verification proof bound on the M3 record");
+  assert.equal(final.terminal, true, "the lifecycle is terminal");
+  assert.equal(final.reconciliationRequired, false, "a clean verified loop needs no reconciliation");
+  assert.equal(observations, 3, "submitted→settled→result_received→verified is THREE distinct observations (no collapse)");
+
+  // ── the ordered M4 pipeline reached verified with both evidence refs ──────
+  assert.equal(final.intent.state, "verified", "M4 intent verified");
+  assert.equal(final.intent.intentId, intent.intentId, "identity is stable end to end (never regenerated)");
+  assert.ok(final.intent.resultEvidenceId, "result evidence ref persisted");
+  assert.ok(final.intent.verificationEvidenceId, "verification evidence ref persisted");
+  // M4 attempts incremented exactly once (one hand-off), proving one logical
+  // purchase despite three observations.
+  assert.equal(final.intent.attempts, 1, "exactly one hand-off attempt across the whole loop");
+
+  // ── the deduped wake trail maps each M3 fact to its M4 wake reason ────────
+  const reasons = trail.map((e) => e.reason);
+  assert.deepEqual(
+    reasons,
+    ["provider_result", "verification_result"],
+    "the trail carries exactly the provider_result then verification_result wakes (hand-off itself is the state move, not a rail event)",
+  );
+  const dedupeKeys = trail.map((e) => e.dedupeKey);
+  assert.equal(new Set(dedupeKeys).size, dedupeKeys.length, "every wake is uniquely keyed (deduped)");
+
+  // ── Somebody re-evaluates: the verified result satisfies the Requirement ──
+  const requirement = buildVerifiedExternalRequirement(1, final.intent.intentId);
+  const facts: ProofFacts = {
+    artifactVersions: {},
+    applicationObservationIds: [],
+    verifiedIntentIds: [final.intent.intentId],
+    founderConfirmationRefs: [],
+  };
+  const satisfied = attemptRequirementSatisfaction({
+    requirement,
+    event: { kind: "external_result_verified", intentId: final.intent.intentId, contractRevision: 1 },
+    facts,
+    resolutionId: "res_integration_cp4",
+    acceptedDecisionId: "dec_integration_1",
+    acceptedAssignmentId: null,
+    acceptedIntentId: final.intent.intentId,
+    proofRefs: [final.intent.verificationEvidenceId!],
+    currentContractRevision: 1,
+    at: at0,
+  });
+  assert.equal(satisfied.satisfied, true, "Somebody re-evaluates and the Requirement is satisfied by the verified external result");
+  assert.equal(satisfied.requirement?.state, "satisfied", "the Requirement row is now satisfied");
+
+  // ── nothing here was ever live: the only executor was a labelled scaffold,
+  //    the terminal observation carries NO payment submission (observation never
+  //    re-submits), and the provider result itself is flagged simulated. ──────
+  assert.equal(deps.executor.kind, "test_scaffold", "the only executor used was a deterministic SIMULATED scaffold");
+  assert.equal(final.submission, null, "a verification observation performs no payment submission");
+  assert.equal((final.purchase?.result as { simulated?: boolean } | undefined)?.simulated, true, "the provider result is explicitly labelled simulated");
+});
+
+test("CP4 negative: the whole-loop trace never satisfies a Requirement when the injected verifier rejects the provider result", async () => {
+  const intent = makeIntent({ spendApprovalId: "appr_founder_integration_cp4neg" });
+  const txHash = "0xsimulatedtxhash00000000000000000000000000000000000000000000000000cneg";
+  const settlement = fakeSettlementReader();
+  settlement.setSettled(txHash, true, at0 + 1000);
+  const paid = fakePaidSender();
+  paid.setResult(RESOURCE, true, { rows: 0, simulated: true });
+  const deps = makeDeps({
+    settlement,
+    paid,
+    executor: fakeExecutor({ txHash }),
+    verifyResult: () => ({ verified: false, verificationProof: "erc20-transfer-readback-mismatch" }),
+  });
+
+  const { final, observations } = await runPurchaseLifecycle(intent, deps, { maxObservations: 8 });
+  // The loop stops at the rejected verification: M3 failed, M4 intent failed,
+  // no Requirement may be satisfied by an unverified result, and nothing is
+  // repaid (payment settled; only the RESULT failed to verify).
+  assert.equal(final.m3State, "failed", "M3 record failed on rejected verification");
+  assert.equal(final.intent.state, "failed", "M4 intent failed");
+  assert.equal(final.purchase?.verified, false, "the result never verified");
+  assert.equal(final.reconciliationRequired, false, "a rejected RESULT is not payment ambiguity — no reconciliation");
+  assert.equal(observations, 3, "settled then result_received then the rejecting verification = three observations");
+
+  const requirement = buildVerifiedExternalRequirement(1, final.intent.intentId);
+  const facts: ProofFacts = {
+    artifactVersions: {},
+    applicationObservationIds: [],
+    verifiedIntentIds: [], // nothing verified
+    founderConfirmationRefs: [],
+  };
+  const unsatisfied = attemptRequirementSatisfaction({
+    requirement,
+    event: { kind: "external_result_verified", intentId: final.intent.intentId, contractRevision: 1 },
+    facts,
+    resolutionId: "res_integration_cp4neg",
+    acceptedDecisionId: "dec_integration_1",
+    acceptedAssignmentId: null,
+    acceptedIntentId: final.intent.intentId,
+    proofRefs: [],
+    currentContractRevision: 1,
+    at: at0,
+  });
+  assert.equal(unsatisfied.satisfied, false, "an unverified/rejected result cannot satisfy the Requirement");
 });
 
 // ── helpers ──────────────────────────────────────────────────────────────────
