@@ -1314,9 +1314,9 @@ surface. Fail-closed.
   rows surfacing `settled` truth into Convex — today the UI truthfully never
   claims settled from Convex data; (c) artifact→evidence refs are not
   persisted, so ProofLinks on artifacts show none (truthful empty).
-- **Ignore / Accept Risk**: mission-story assignment "dispatched" events use
-  objective createdAt as the timestamp when the assignment row lacks its own
-  dispatch time (row has createdAt; ordering may be approximate). Cosmetic.
+- **Ignore / Accept Risk**: none material. (Story timestamps use each row's
+  own createdAt when persisted; objective createdAt only as a documented
+  fallback for legacy rows.)
 
 ## Boundaries restated
 

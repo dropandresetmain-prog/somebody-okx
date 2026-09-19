@@ -82,6 +82,7 @@ export type SourceRequirement = {
   strategy: string | null;
   contractRevision: number;
   resolution: { resolutionId: string; proofRefs: string[]; acceptedAt: number } | null;
+  createdAt?: number;
 };
 
 export type SourceWorker = {
@@ -103,6 +104,7 @@ export type SourceAssignment = {
   state: "authorized" | "dispatched" | "running" | "result_submitted" | "verified" | "failed" | "superseded";
   resultSummary: string | null;
   runId: string | null;
+  createdAt?: number;
   updatedAt: number;
 };
 
@@ -710,7 +712,7 @@ export function deriveMissionStory(source: WorkspaceSource): MissionStoryEvent[]
   for (const req of source.requirements) {
     events.push({
       id: `story:requirement:${req.requirementKey}`,
-      at: objective.createdAt,
+      at: req.createdAt ?? objective.createdAt,
       title: "Requirement identified",
       detail: `${req.title} — ${req.mustBeTrue.slice(0, 160)}`,
       kind: "management",
@@ -752,7 +754,7 @@ export function deriveMissionStory(source: WorkspaceSource): MissionStoryEvent[]
   for (const assignment of source.assignments) {
     events.push({
       id: `story:assignment:${assignment.assignmentId}`,
-      at: objective.createdAt,
+      at: assignment.createdAt ?? objective.createdAt,
       title: "Assignment dispatched",
       detail: `${assignment.workerKey} → ${assignment.requirementKey}`,
       kind: "staffing",
