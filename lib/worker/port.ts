@@ -36,6 +36,10 @@ export type WorkerCommand =
       type: "update_company_artifact";
       content: string;
       changeNote: string;
+      // When verified acquired inputs are present, an artifact revision must
+      // name the exact provider-result evidence it used. The application
+      // validates these ids; the model cannot mint causal proof.
+      usedAcquisitionEvidenceIds?: string[];
     };
 
 // The structured evaluation the role policy requires.
