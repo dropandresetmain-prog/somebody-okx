@@ -1,0 +1,281 @@
+/* System X-ray — secondary inspection view */
+
+.mc-xray {
+  margin: 32px 0;
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--paper);
+}
+
+.mc-xray-header {
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.mc-xray-title {
+  font-family: var(--font-display-stack);
+  font-size: 20px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  margin: 0 0 6px;
+  color: var(--ink);
+}
+
+.mc-xray-note {
+  font-size: 12px;
+  color: var(--ink-3);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.mc-xray-section {
+  margin-top: 24px;
+}
+
+.mc-xray-section-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-display-stack);
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 0 0 12px;
+  color: var(--ink);
+}
+
+.mc-xray-count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 11px;
+  background: var(--paper-sunk);
+  color: var(--ink-2);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.mc-xray-table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-size: 13px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.mc-xray-table td,
+.mc-xray-table th {
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.mc-xray-table thead {
+  background: var(--paper-sunk);
+}
+
+.mc-xray-table th {
+  padding: 10px 14px;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 650;
+  color: var(--ink-3);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid var(--line);
+}
+
+.mc-xray-table td {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+
+.mc-xray-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.mc-xray-badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.4;
+  white-space: nowrap;
+  text-transform: capitalize;
+}
+
+.mc-xray-badge--verified {
+  background: var(--verified-wash);
+  color: var(--verified-ink);
+}
+
+.mc-xray-badge--somebody {
+  background: var(--somebody-wash);
+  color: var(--somebody-ink);
+}
+
+.mc-xray-badge--waiting {
+  background: var(--waiting-wash);
+  color: var(--waiting-ink);
+}
+
+.mc-xray-badge--decision {
+  background: var(--decision-wash);
+  color: var(--decision-ink);
+}
+
+.mc-xray-badge--ineligible {
+  background: var(--ineligible-wash);
+  color: var(--ineligible-ink);
+}
+
+.mc-xray-node-label strong {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  margin-bottom: 2px;
+}
+
+.mc-xray-id {
+  display: block;
+  font-size: 10px;
+  color: var(--ink-3);
+  font-family: var(--font-mono-stack);
+  font-weight: 400;
+}
+
+.mc-xray-node-detail {
+  color: var(--ink-2);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.mc-xray-rel-end {
+  vertical-align: middle;
+}
+
+.mc-xray-rel-end strong {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  margin-bottom: 2px;
+}
+
+.mc-xray-rel-label {
+  text-align: center;
+  vertical-align: middle;
+}
+
+.mc-xray-arrow {
+  display: inline-block;
+  color: var(--ink-3);
+  font-size: 14px;
+  margin: 0 4px;
+}
+
+.mc-xray-rel-verb {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 12px;
+  background: var(--paper-sunk);
+  color: var(--ink-2);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+.mc-xray-facts {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 16px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.mc-xray-fact {
+  display: grid;
+  grid-template-columns: minmax(0, 180px) minmax(0, 1fr);
+  gap: 12px;
+  align-items: baseline;
+}
+
+.mc-xray-fact dt {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-3);
+}
+
+.mc-xray-fact dd {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
+.mc-xray-empty {
+  padding: 20px;
+  text-align: center;
+  color: var(--ink-3);
+  font-size: 12px;
+  font-style: italic;
+  background: var(--surface);
+  border: 1px dashed var(--line-strong);
+  border-radius: 8px;
+  margin: 0;
+}
+
+/* Responsive adjustments */
+@media (max-width: 1440px) {
+  .mc-xray {
+    padding: 20px;
+  }
+}
+
+@media (max-width: 1000px) {
+  .mc-xray {
+    padding: 16px;
+  }
+
+  .mc-xray-table {
+    font-size: 12px;
+  }
+
+  .mc-xray-table th,
+  .mc-xray-table td {
+    padding: 10px 12px;
+  }
+
+  .mc-xray-fact {
+    grid-template-columns: 140px 1fr;
+    gap: 10px;
+  }
+
+  .mc-xray-fact dt {
+    font-size: 11px;
+  }
+
+  .mc-xray-fact dd {
+    font-size: 12px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mc-xray * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
