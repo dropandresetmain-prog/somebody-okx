@@ -32,14 +32,16 @@ deliberately OUT OF SCOPE for cloud and must NEVER be simulated and reported as 
 - Repository: `dropandresetmain-prog/somebody-okx`.
 - Integration branch: `integration/m4-m3` (also published identically to
   `qoder/general-session-7yasu4`).
-- Candidate tip: **`e0cdf42b765c642a429ae53822ce882d3c2ca292`** (this handoff doc is the
-  final docs-only commit; see item 16 for gate provenance).
+- Last CODE-bearing candidate the full gate was run on:
+  **`e0cdf42b765c642a429ae53822ce882d3c2ca292`** (CP5 integration ledger). This handoff
+  file is a docs-only commit whose parent is `e0cdf42`; it changes no source, test, or
+  config, so the verified gate result (item 16) still describes the candidate's code.
 - Lineage: M4 CP8 `99df92d` × frozen M3 main `37afaa5`, merge base `1fa7962`; CP1 is a
   `--no-ff` merge (`79815d9`) preserving BOTH histories. `package-lock.json` was
   regenerated via `npm install`, not spliced.
 - Verify locally before anything else:
-  `git fetch origin && git checkout integration/m4-m3 && git rev-parse HEAD`
-  (must equal the candidate tip) `&& git log --oneline -5`.
+  `git fetch origin && git checkout integration/m4-m3 && git log --oneline -6`
+  (confirm the CP1→CP5 chain and that the tip is this docs commit on top of `e0cdf42`).
 
 ## 3. The single application-owned seam and its public API
 
