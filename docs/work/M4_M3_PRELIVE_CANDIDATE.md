@@ -1,7 +1,8 @@
 # M4 × M3 pre-live candidate packet
 
 Date: 20 September 2026  
-Exact code candidate: `fe56db17e9275a7967778c091b5599b0d41d570d`  
+Superseded first code candidate: `fe56db17e9275a7967778c091b5599b0d41d570d` (R3 FAIL; repaired below)  
+Exact replacement code candidate: `c6ed849f9a18d5d4b926701023f89c2b1dd289fc`  
 Branch: `fix/m4-m3-production-driver`
 
 ## Lineage and boundary
@@ -53,21 +54,34 @@ Branch: `fix/m4-m3-production-driver`
   retrieves a staged safe result or rests—never replays a signed provider call.
   Result retrieval failure retains the same settled purchase. Only M3's existing
   reconciliation/retry authority can ever reopen a failed purchase.
-- `convex/m3Driver.ts` accepts only named M3 facts, reloads current Objective,
-  contract, requirement, and intent state, routes through M4 kernels, and
-  appends stable deduped wake events. Old financial facts remain reconcilable,
-  but stale contract/requirement evidence cannot satisfy a new revision.
+- `convex/m3Driver.ts` accepts only named, independently HMAC-attested M3 facts;
+  the bearer bridge token alone cannot assert payment/business truth. The local
+  M3 driver and Convex deployment each require `M4_M3_FACT_ATTESTATION_KEY`;
+  that key is distinct from `M4_M3_DRIVER_TOKEN` and is never printed or stored
+  in a ledger. The bridge reloads current Objective, contract, requirement, and
+  intent state, routes through M4 kernels, and appends stable deduped wakes.
+  Old financial facts remain reconcilable, but stale evidence cannot satisfy a
+  new Requirement.
 - M4, not the Node driver, recomputes Requirement proof and completion after
   `provider_result` / `verification_result` wakes. Buying a resource does not
-  assert a later external business effect.
+  assert a later external business effect: acquisition/result and effect facts
+  now have distinct proof identities.
+- A durable per-purchase M4 writeback outbox is persisted before each governed
+  bridge write. If Convex is unavailable, restart observation replays the exact
+  saved transition before any new observation and never reruns verification or
+  execution. Attested submitted facts remain reportable after an M4 revision
+  changes, while satisfaction remains revision-scoped.
 
 ## Evidence
 
 - Focused production/payment/management evidence: 161/161 pass, including the
   D1–D41 authority, quote, duplicate, restart, lifecycle, ambiguity,
   settled-without-result, stale-revision, wake, and Somebody-resume seams.
-- Exact candidate final gate (run once on this SHA):
-  - `npm test` — exit 0, 602 pass / 0 fail.
+- R3 repair regressions: 39/39 pass, including actual bridge rejection of a
+  bearer-token-only forged sequence, interrupted writeback/restart delivery,
+  stale financial reporting, and acquisition-versus-effect proof separation.
+- Exact replacement candidate final gate (run once on this SHA):
+  - `npm test` — exit 0, 606 pass / 0 fail.
   - `npx tsc --noEmit` equivalent local compiler invocation with
     `--incremental false` — exit 0.
   - `npx tsc -p convex/tsconfig.json` equivalent local compiler invocation with
@@ -87,7 +101,7 @@ and does not invoke the executor.
 
 ## Review request
 
-R3 must inspect **exactly** `fe56db17e9275a7967778c091b5599b0d41d570d`, assume
+R3 must inspect **exactly** `c6ed849f9a18d5d4b926701023f89c2b1dd289fc`, assume
 an unsafe duplicate-spend or fake-truth path until disproven, and classify every
 material finding as Act Now, Investigate Now, Park for Later, or Ignore / Accept
 Risk. The reviewer is read-only and must not run a payment path.
