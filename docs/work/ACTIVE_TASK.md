@@ -28,6 +28,25 @@ is **Act Now**.
   `OfficialSignOnlyReplayExecutor`. It must preserve preview-versus-execution
   quote semantics; CP1 deliberately does not synthesize that confirmation.
 
+### CP1 continuation audit — 20 September 2026
+
+- A read-only M3 API audit found that this is not an adapter-only omission:
+  `handoffIntentToM3` currently reconstructs a `PurchaseRecord`, fetches/binds
+  one challenge, and immediately invokes its executor. It cannot consume the
+  already-approved durable purchase, durable confirmation, and a second fresh
+  execution quote required by the local production contract.
+- **Act Now / blocker to pre-live candidate:** refactor the Node seam to add a
+  dedicated supervised-submit path that takes the existing approved purchase
+  and prepared M3 input, writes `payment_attempted` before executor invocation,
+  and reloads M3 execution authority on restart. Current CP1 can otherwise
+  leave the purchase record `approved` after an executor-start crash even
+  though the M3 execution ledger correctly blocks a second attempt.
+- The required M3 authority functions are already present and must be reused:
+  `prepareApprovedPurchase`, `confirmApprovedPurchaseTerms`,
+  `authorizeFreshExecutionQuote`, `assertConfirmationForApproval`, and
+  `OfficialSignOnlyReplayExecutor`. No product decision or credential is
+  required for that code work; no real executor was invoked during the audit.
+
 No live payment occurred in this CP1 work.
 
 > **M4 × M3 INTEGRATION (this branch `integration/m4-m3`).** This ledger now covers the
