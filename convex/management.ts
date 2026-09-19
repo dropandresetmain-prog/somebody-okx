@@ -90,10 +90,10 @@ import type {
 
 type AnyRow = { _id: unknown; [k: string]: unknown };
 
-// The M3 buyer rail is not integrated in M4. One constant states it, so both
-// the decision pass and the dispatch seam share the SAME truth instead of
-// repeating a string literal (and so nobody "fixes" one without the other).
-const EXTERNAL_AUTHORITY_MODE: ExternalAuthorityMode = "m3_unavailable";
+// The accepted production M4×M3 driver is available as a bounded hand-off
+// boundary. M4 still cannot pay: it may only mint an authorized intent carrying
+// the founder's persisted spend approval; M3 remains the financial authority.
+const EXTERNAL_AUTHORITY_MODE: ExternalAuthorityMode = "m3_available_bounded";
 
 // R3 CP-4 — cumulative per-requirement ceiling on decision attempts. The begin
 // step (runDecisionPass port) refuses to schedule another proposeDecision action
@@ -1802,10 +1802,10 @@ async function dispatchInternal(
   return assignmentId;
 }
 
-// BUY / HYBRID-external: one persisted intent that STOPS at the M3 boundary.
-// There is no production buyer rail in M4 and this file must not pretend there
-// is one: the intent rests in `awaiting_m3` with its truthful boundaryNote, which
-// is why `attemptHandoff` is deliberately not called here.
+// BUY / HYBRID-external: one persisted intent at the M3 boundary.
+// M4 never signs, submits or pays. With bounded authority available the intent
+// rests in `authorized` for the accepted external driver (or the explicit M1
+// simulation adapter) to consume; the external boundary owns what happens next.
 async function dispatchExternal(
   ctx: MutationCtx,
   objectiveKey: string,
