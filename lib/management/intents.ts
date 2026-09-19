@@ -19,7 +19,7 @@
 //     the same model-proposes/application-authorizes rule as everywhere else.
 
 import { mayHandOffExternally, type ExternalAuthorityMode } from "./authorization";
-import { createHash } from "node:crypto";
+import { hash24, identityMaterial } from "./sha256";
 import type {
   AuthorizationResult,
   ExecutionIntent,
@@ -30,10 +30,6 @@ import type {
 
 // ── deterministic identities ─────────────────────────────────────────────────
 
-function hash24(payload: string): string {
-  return createHash("sha256").update(payload).digest("hex").slice(0, 24);
-}
-
 // One logical effect = one intent, forever. The key is the AUTHORIZED DECISION
 // identity (requirement + revision + option), not a timestamp or a random.
 export function deriveIntentId(input: {
@@ -43,7 +39,7 @@ export function deriveIntentId(input: {
   optionId: string;
 }): string {
   return `int_${hash24(
-    [input.objectiveKey, input.requirementKey, String(input.contractRevision), input.optionId].join("\u0000"),
+    identityMaterial([input.objectiveKey, input.requirementKey, String(input.contractRevision), input.optionId]),
   )}`;
 }
 
@@ -54,7 +50,7 @@ export function deriveIdempotencyKey(input: {
   optionId: string;
 }): string {
   return `idem_${hash24(
-    [input.objectiveKey, input.requirementKey, String(input.contractRevision), input.optionId].join("\u0000"),
+    identityMaterial([input.objectiveKey, input.requirementKey, String(input.contractRevision), input.optionId]),
   )}`;
 }
 

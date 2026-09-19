@@ -184,6 +184,95 @@ CP7 evidence (this milestone, all verified before this ledger edit — both `tsc
 
 Regression evidence (only seams that changed): tests/managementWakesPersistence.test.ts 4 pass (wake determinism, pointer-not-payload refs, shipped appendWakeEvent dedupe round-trips); tests/managementFinishGate.test.ts 5 pass (completion proposed, never asserted; M4-managed vs M2-legacy branches); tests/managementAdapterPersistence.test.ts 6 pass (ports over real handlers, run-finished refusal, no-contract gate rejection, typed planning outcome); targeted set 160 pass incl. canonical M2 (75), runLifecycle/objective, graph/cutoff2/intents-persistence/workforce persistence; full suite 404/404.
 
+## R3 verdict (SUPERSEDING the CP7/M4 terminal claim above)
+
+The M4 completion report at `7723c09` and the terminal status line above recorded
+CP1–CP7 as implemented and self-verified. **R3 premium review of `59f75f7` did not
+accept it.** That earlier claim remains in this ledger for provenance but its
+TERMINAL status is superseded by:
+
+> M4 ENGINE KERNELS IMPLEMENTED AND UNIT-PROVEN; PRODUCTION WIRING INCOMPLETE;
+> M3 SEAM NOT READY; R3 NOT ACCEPTED; CUTOFF 1 NOT PROVEN.
+
+Code reviewed by R3: `59f75f7` (commits `e6af324` and `7723c09` are docs/ledger and
+the completion report only; verified by `git diff --stat 59f75f7..7723c09`).
+
+## CP8 — Close the Production Loop (INTERNAL checkpoint, still milestone M4)
+
+Goal: repair the concrete R3 blockers. Not a new milestone. Not M4 acceptance.
+
+Findings to close: **A1–A7** (act now) and **I1–I4** (investigate now; resolve I1–I3,
+treat I4 as part of dispatch idempotency).
+
+Baseline verified before editing (2026-09-19):
+
+- `git fetch origin`; `origin/feat/m4-management-engine` = `7723c096f58067c79a59782792ec4346184df1f4` (unchanged since R3).
+- `59f75f7f72e40ecaa11f27d1437cef0dfbd2d5fa` is an ancestor of that tip (ancestry proven).
+- frozen M3 main still `37afaa5a7cd0aa82a30c63ce6795c48d34f04d07`; NOT merged (CP8 must not merge it).
+- worktree clean; no untracked files.
+- pre-change gate: `npm test` 404 pass / 0 fail; `tsc --noEmit` and `tsc -p convex/tsconfig.json` both clean.
+
+Working branch: `qoder/general-session-1dclny`, created from `7723c09` (the session's
+authorized outcome branch; push destination for CP8 evidence).
+
+### CP8 triage ledger
+
+| # | Finding | Class | Status |
+|---|---------|-------|--------|
+| A1 | Founder Objective never enters M4 engine | Act Now | in progress |
+| A2 | Graph decides but never dispatches/verifies | Act Now | in progress |
+| A3 | waiting/blocked zero-delay self-reschedule | Act Now | in progress |
+| A4 | null spend authority authorizes BUY/HYBRID | Act Now (critical) | in progress |
+| A5 | completion-gate proof mismatch + forged satisfaction | Act Now (critical) | in progress |
+| A6 | M2 growth-spine artifact obligation regression | Act Now | in progress |
+| A7 | scenario coupling in generic M4 control flow | Act Now | in progress |
+| I1 | Convex runtime compatibility / node:crypto | Investigate Now | **RESOLVED** (below) |
+| I2 | model call cannot run inside a mutation | Investigate Now | in progress |
+| I3 | no economic facts / discovery + $1 default | Investigate Now | in progress |
+| I4 | concurrent passes after dispatch | Investigate Now | folded into A2 dispatch idempotency |
+
+### CP8 evidence
+
+**I1 — RESOLVED.** `node:crypto` is genuinely incompatible with the Convex default
+runtime: modules without `"use node"` are bundled at esbuild `platform: "browser"`,
+which cannot resolve it. Proven directly — bundling the pre-fix
+`lib/management/options.ts` (still importing `node:crypto`) fails with
+`Could not resolve "node:crypto"`, while `--platform=node` succeeds.
+`convex/management.ts` and `convex/internal/workforce.ts` declare no `"use node"`
+and import those kernels, so this was a deployment blocker, not a style issue.
+
+Fix: `lib/management/sha256.ts` — pure, synchronous, dependency-free SHA-256,
+byte-identical to `createHash("sha256").digest("hex")`. Chosen over
+`crypto.subtle.digest` (available in the default runtime) because it is async-only
+and would turn synchronous business-identity derivation into an await chain across
+every kernel — a wider change than the finding warrants. It is not used for any
+security purpose; only for deterministic identity material.
+Identity SEMANTICS unchanged at every call site (same material, same NUL join, same
+24 hex chars); only the implementation moved. Swapped in
+`lib/management/{wakes,options,intents}.ts`. `lib/objective/resourceNeed.ts` and
+`lib/google/gmail.ts` keep `node:crypto`: both are reachable only from
+`"use node"` modules (`convex/objectiveRunner.ts`, `convex/objectives.ts`) or from
+app code, which is legitimate — deliberately not churned.
+
+A transcription error (`K[63]`) was caught during this work by deriving the round
+constants from the FIPS 180-4 definition — `floor(frac(cbrt(prime)) * 2^32)` —
+instead of trusting the hand-typed table. Pinned by test so it cannot recur.
+
+`tests/managementRuntime.test.ts` (4 pass) pins: (a) byte-identity vs node:crypto
+over 21 inputs incl. multi-byte UTF-8, astral code points, NUL and 50 000-byte
+lengths; (b) NUL-join anti-aliasing; (c) that option/intent/wake identities are
+UNMOVED by the swap — recomputed independently with node:crypto; (d) a real
+browser-platform esbuild bundle of every default-platform module in `convex/`,
+which fails loudly if `node:crypto` is ever reintroduced.
+
+Codegen status: `npx convex codegen` CANNOT run in this sandbox (needs
+`CONVEX_DEPLOYMENT` credentials). The manually-edited
+`convex/_generated/api.d.ts` is therefore still unverified against real codegen;
+`npm run typecheck:convex` is clean and the file matches the codegen template and
+the on-disk module set. Deployment-time codegen remains the authoritative check.
+
+Pre-change baseline: 404/404. Post-I1: **408 pass / 0 fail**, both tsc programs clean.
+
 ## R3 tomorrow morning
 
 Premium review target: the whole M4 management-engine candidate.

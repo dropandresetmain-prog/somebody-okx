@@ -13,7 +13,7 @@
 // request (same run + resource class + purpose) wakes Somebody exactly once.
 // The Convex side is appendWakeEvent (by_dedupe) → the graph's observe node.
 
-import { createHash } from "node:crypto";
+import { hash24 } from "./sha256";
 import type { WakeEvent, WakeReason } from "./types";
 
 export type ResourceRequestWakeInput = {
@@ -34,11 +34,9 @@ export type ResourceRequestWakePlan = {
   event: WakeEvent;
 };
 
-// Same hash discipline as intents.ts (sha256 hex, 24 chars). Not random: a
-// replayed request rebuilds a byte-identical eventId.
-function hash24(payload: string): string {
-  return createHash("sha256").update(payload).digest("hex").slice(0, 24);
-}
+// Same hash discipline as intents.ts (sha256 hex, 24 chars, via ./sha256 —
+// runtime-safe, see that file). Not random: a replayed request rebuilds a
+// byte-identical eventId.
 
 export type WorkerResultWakeInput = {
   objectiveKey: string;

@@ -7,7 +7,7 @@
 // replayed wake rebuilds the same option set with the same ids and cannot
 // authorize a phantom option or mint a duplicate effect identity.
 
-import { createHash } from "node:crypto";
+import { hash24 } from "./sha256";
 import { requireCapability, isControlledCapabilityKey } from "../workforce/catalog";
 import { toolPermissionsForCapabilities } from "../workforce/permissions";
 import { evaluateOptionEligibility } from "../sourcing/eligibility";
@@ -59,7 +59,7 @@ export function optionIdFor(input: {
     input.kind,
     input.target,
   ].join("\u0000");
-  return `opt_${createHash("sha256").update(payload).digest("hex").slice(0, 24)}`;
+  return `opt_${hash24(payload)}`;
 }
 
 export type InternalOptionSeed = {
