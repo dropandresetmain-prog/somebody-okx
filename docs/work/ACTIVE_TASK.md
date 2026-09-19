@@ -1,6 +1,6 @@
 # ACTIVE TASK — M5 Web Executive Mission Control
 
-Updated: 19 September 2026. Status: CP7 complete; M5 web frontend acceptance candidate delivered.
+Updated: 20 September 2026. Status: M5 Web frontend FROZEN / ACCEPTED.
 
 ## Goal and recovery
 Build a desktop-first, fixture-only executive management surface. The Objective
@@ -22,7 +22,7 @@ Resume from this ledger and the latest pushed checkpoint, not historical chat.
 - CP4 pushed / HEAD before CP5: `63280ff284650789702519da30e7d36db54560f5`.
 - CP5 pushed / HEAD before CP6: `972ecb4c835da206f8d77402a7855ea9382962e7`.
 - CP6 pushed / HEAD before CP7: `4ea4080c7722f84695ff561e9b70185ca76db13d`.
-- CP7 pushed SHA goes in the next checkpoint note (final ledger entry).
+- CP7 pushed: `fb0055fdcb18fc45ef5d56aac14f88baa8e52e7c` (final frontend candidate).
 - Each commit updates this ledger; each checkpoint MUST be pushed before work
   continues. Record the just-pushed SHA in the next note (no self-referential SHA).
 - M3 historical ledger remains in git at the base above; M3 stays frozen.
@@ -161,9 +161,71 @@ Resume from this ledger and the latest pushed checkpoint, not historical chat.
 - Known pre-existing issue: one 404 on a mascot image asset at runtime (not
   introduced here; does not affect layout or tests).
 
-## Next action / active files
-CP7 final gate: typecheck, full test suite, production build, fixture scenario
-review, confirm no backend wiring, no mobile scope creep. Then final report.
+## Founder acceptance (20 September 2026)
+The founder visually reviewed the M5 Web frontend candidate on 20 September 2026
+and accepted the visual/product direction for the current hackathon implementation.
+
+Accepted candidate SHA: `fb0055fdcb18fc45ef5d56aac14f88baa8e52e7c`
+Accepted surface: M5 Web Executive Mission Control
+Coverage: fixture-driven Web experience only
+Status: Accepted visual/product reference for later M5 backend integration
+
+This acceptance does NOT mean the frontend is production-integrated. Backend
+wiring is intentionally deferred. Mobile is intentionally deferred unless time
+remains later.
+
+## Next milestone: M5 BACKEND INTEGRATION
+Backend integration MUST wait until the backend candidate is explicitly ready.
+
+Expected integration sequence:
+1. Backend finishes management-decision seam
+2. Backend finishes external BUY → M3 integration
+3. Accepted backend candidate / SHA is frozen
+4. Create a fresh integration branch FROM THAT BACKEND CANDIDATE
+5. Bring the accepted M5 Web frontend across
+6. Implement a normalized backend → ObjectiveWorkspaceView adapter/read model
+7. Replace fixtures with real reactive data
+8. Wire founder commands / approvals
+9. Wire truthful provider/payment lifecycle
+10. Verify end-to-end demo flow
+
+Architecture rule: BACKEND ADAPTS TO THE FRONTEND READ-MODEL BOUNDARY.
+Do NOT plan to rewrite React components around raw Convex tables.
+
+Accepted frontend seam:
+  Backend domain truth
+          ↓
+  normalized Objective workspace read model
+          ↓
+  ObjectiveWorkspaceView
+          ↓
+  M5 Web UI
+
+## Integration watch items
+- `SomebodyNow` remains a normalized frontend/read-model concept
+- `AttentionItem` / Needs You remains normalized from approval / ambiguity /
+  blocked / recovery truth
+- Mission Story richer causality requires explicit backend references
+- No Requirement dependency edges should be invented
+- Payment vocabulary remains: prepared → awaiting approval → approved →
+  payment attempted → submitted → settled → result received → verified
+- No product states called `signed` or `finalized`
+- Worker completion != assignment verified != Requirement satisfied !=
+  Objective completion
+- MAKE / BUY / HYBRID autonomous decision runtime may still evolve
+- External BUY → M3 wiring is not part of the accepted frontend branch
+- REUSE / CREATE should remain behind the normalized read-model boundary
+
+Technical watch item:
+The frontend branch moved `ConvexClientProvider` from the root layout to the
+legacy `/` page so `/m5` can stay fixture-only. This was valid for the isolated
+frontend build. During future backend integration, deliberately reassess
+provider scope rather than mechanically preserving or reverting that choice.
+
+## Known cosmetic issues — Park for Later
+Mascot image 404: pre-existing, does not block accepted frontend.
+Revisit condition: if it is visible in the final integrated demo or affects
+production presentation.
 
 ## CP7 evidence (final acceptance gate)
 - Production build (`npm run build`): compiled successfully, TypeScript clean,
@@ -197,6 +259,10 @@ review, confirm no backend wiring, no mobile scope creep. Then final report.
 All checkpoints CP0–CP7 complete and pushed to `qoder/general-session-yeqje6`.
 Desktop-first, fixture-only Executive Mission Control with System X-ray delivered.
 No Convex wiring, no live spend/provider calls, no mobile scope creep.
+
+M5 Web frontend FROZEN / ACCEPTED on 20 September 2026.
+Accepted visual/product reference for later M5 backend integration.
+Next milestone: M5 BACKEND INTEGRATION (waits for backend candidate).
 
 ## Risks
 - Design reference is provisional, not runtime end-to-end evidence.
