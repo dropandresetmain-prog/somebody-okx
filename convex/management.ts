@@ -751,7 +751,55 @@ export function buildConvexManagementPorts(ctx: MutationCtx): ManagementPorts {
         return await noteDispatchDeferred(ctx, state.objectiveKey, requirementKey, at,
           `authorized option ${persisted.authorization.optionId} is not recorded on its decision`);
 
-      const targets = dispatchTargets(persisted.authorization, option);
+      // HYBRID with an external acquisition is causal, not parallel: create the
+      // authorized external intent first, wait for its verified result, then
+      // dispatch the internal worker. This prevents an artifact from being
+      // produced before the evidence it is supposed to use.
+      if (
+        persisted.authorization.kind === "authorized" &&
+        persisted.authorization.strategy === "HYBRID" &&
+        option.external
+      ) {
+        const intentRows = await ctx.db
+          .query("executionIntents")
+          .withIndex("by_objective", (q) =>
+            q.eq("objectiveKey", state.objectiveKey),
+          )
+          .collect();
+        const hybridIntent = intentRows
+          .map((row) => (row as AnyRow).data as ExecutionIntent)
+          .find(
+            (intent) =>
+              intent.requirementKey === requirementKey &&
+              intent.decisionId === persisted.decisionId &&
+              intent.contractRevision === currentContractRevision,
+          );
+
+        if (!hybridIntent) {
+          return await dispatchExternal(
+            ctx,
+            state.objectiveKey,
+            persisted,
+            option,
+            at,
+          );
+        }
+        if (hybridIntent.state !== "verified") {
+          // The reducer's strategyDelivery treats an open HYBRID intent as work
+          // in flight, so this is an idempotent safety guard rather than a spin.
+          return hybridIntent.intentId;
+        }
+      }
+
+      const targets = dispatchTargets(persisted.authorization, option).filter(
+        (target) =>
+          !(
+            persisted.authorization.kind === "authorized" &&
+            persisted.authorization.strategy === "HYBRID" &&
+            target.ok &&
+            target.kind === "external"
+          ),
+      );
       let effectId: string | null = null;
       for (const target of targets) {
         if (!target.ok)
