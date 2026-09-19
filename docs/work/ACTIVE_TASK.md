@@ -1,6 +1,6 @@
 # ACTIVE TASK — M5 Web Executive Mission Control
 
-Updated: 19 September 2026. Status: CP3 complete; evidence/story next.
+Updated: 19 September 2026. Status: CP4 complete; System X-ray next.
 
 ## Goal and recovery
 Build a desktop-first, fixture-only executive management surface. The Objective
@@ -18,7 +18,8 @@ Resume from this ledger and the latest pushed checkpoint, not historical chat.
 - CP0 pushed: `ad36d9b68da2152b06abc91827d58cb168a3da35`.
 - CP1 pushed / HEAD before CP2: `615f10c973a4d893a9e55c394539627c93a31694`.
 - CP2 pushed / HEAD before CP3: `ee6c2dbd3bf9b0fc9c59c71b7e741e7edbd878c2`.
-- CP3 pushed SHA goes in the next checkpoint note.
+- CP3 pushed / HEAD before CP4: `610b15ca421525cfae51721df106cc1afef13b37`.
+- CP4 pushed SHA goes in the next checkpoint note.
 - Each commit updates this ledger; each checkpoint MUST be pushed before work
   continues. Record the just-pushed SHA in the next note (no self-referential SHA).
 - M3 historical ledger remains in git at the base above; M3 stays frozen.
@@ -61,7 +62,7 @@ Resume from this ledger and the latest pushed checkpoint, not historical chat.
 - [x] CP1 frontend contract + deterministic fixtures + invariant tests
 - [x] CP2 mission-control shell and Outcome/Somebody Now hierarchy
 - [x] CP3 workers, grounded decisions, providers, Needs You
-- [ ] CP4 evidence, story, payments, independent completion
+- [x] CP4 evidence, story, payments, independent completion
 - [ ] CP5 optional supported-relationship System X-ray
 - [ ] CP6 responsive/accessibility/visual polish
 - [ ] CP7 frontend acceptance candidate and final gate
@@ -110,9 +111,17 @@ Resume from this ledger and the latest pushed checkpoint, not historical chat.
 - Component tests 6/6 passed; focused component tsc and diff check passed.
 - Browser: alternatives disclose; single approval button advances to approved.
 
+## CP4 evidence
+- Evidence inspection, explicit source refs, artifact v1/v2 history, verified
+  vs received proof, separate completion verdict and pending supporting work.
+- Mission Story shows supplied related records only; chronology is not causality.
+- All eight payment stages displayed; unreached stages cannot look recorded.
+- M5 component + fixture tests 16/16; focused tsc and diff checks passed.
+- No provider APIs, payment reducers, backend writes or automatic playback added.
+
 ## Next action / active files
-CP4: add EvidenceStory.tsx (artifacts, evidence, Mission Story, payment stages,
-independent completion); integrate and extend focused tests/CSS. CP3 verified.
+CP5: build normalized X-ray fixture from explicit reference fields; add optional
+inspection view, node selection and supported-relationship tests. CP4 verified.
 
 ## Risks
 - Design reference is provisional, not runtime end-to-end evidence.

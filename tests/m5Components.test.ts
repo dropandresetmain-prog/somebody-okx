@@ -48,3 +48,26 @@ test("approval is a single explicit bounded action; blocked has no fake action",
   assert.ok(blocked.includes("Paused safely."));
   assert.ok(!blocked.includes("Simulate:"));
 });
+
+test("payment submission, settlement, result receipt and verification have distinct recorded markers", () => {
+  for (const moment of ["submitted", "settled", "result", "verified"]) {
+    const html = renderToStaticMarkup(createElement(FixtureWorkspace, { initialScenario: "launch", initialMoment: moment }));
+    assert.ok(html.includes("One bounded acquisition"));
+    const expected = { submitted: "submitted", settled: "settled", result: "result received", verified: "verified" }[moment];
+    assert.match(html, new RegExp(`aria-current="step"[^]*?<strong>${expected}</strong>`));
+    assert.ok(html.includes("Mission Story"));
+    assert.ok(html.includes("Order does not imply causality."));
+    assert.ok(!html.includes('id="completion-title"'));
+  }
+});
+
+test("accepted completion exposes proof, revision history and uncompleted supporting outcomes", () => {
+  const html = renderToStaticMarkup(createElement(FixtureWorkspace, { initialScenario: "launch", initialMoment: "completed" }));
+  assert.ok(html.includes('id="completion-title"'));
+  assert.ok(html.includes("Still pending / outside scope"));
+  assert.ok(html.includes("No public launch or audience lift is claimed."));
+  assert.ok(html.includes("Version 2"));
+  assert.ok(html.includes("v1 ·"));
+  assert.ok(html.includes('href="#evidence-pack"'));
+  assert.ok(html.includes('id="evidence-pack"'));
+});
