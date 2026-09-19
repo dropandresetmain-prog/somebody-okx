@@ -54,7 +54,7 @@ function modelSafeObservation(observation: WorkerObservation): WorkerObservation
   return {
     ...observation,
     recordedFindings: boundFindings(observation.recordedFindings),
-    acquiredInputs: observation.acquiredInputs.map((input) => ({
+    acquiredInputs: (observation.acquiredInputs ?? []).map((input) => ({
       ...input,
       text: wrapUntrustedContent(
         `external_acquisition:${input.resultEvidenceId}`,
@@ -339,7 +339,7 @@ export async function runWorker(
   );
   const hasResourcePermission =
     contract.allowedToolPermissions.includes("request_resource");
-  const hasAcquiredInputs = observation.acquiredInputs.length > 0;
+  const hasAcquiredInputs = (observation.acquiredInputs ?? []).length > 0;
 
   // The proof obligations, rendered straight from sourceProofs (application
   // truth) rather than from a scenario assumption about how many sources.
