@@ -164,6 +164,7 @@ export const objectiveRecord = v.object({
   candidateAssessments: v.optional(v.array(v.any())),
   marketOfferings: v.optional(v.array(v.any())),
   companyArtifacts: v.optional(v.array(v.any())),
+  acquisitionResults: v.optional(v.array(v.any())),
   // M4 management engine fields — optional so M2 rows keep loading.
   // Storage only; business rules live in lib/management/*.
   management: v.optional(
