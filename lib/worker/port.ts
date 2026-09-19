@@ -86,7 +86,7 @@ export type WorkerObservation = {
   recordedFindings: WorkerObservationFinding[];
   // Only verified external acquisition results are surfaced here. Their text is
   // untrusted provider data and must never be interpreted as instructions.
-  acquiredInputs: WorkerAcquiredInput[];
+  acquiredInputs?: WorkerAcquiredInput[];
   unmetCompletionRequirements: string[];
 };
 
