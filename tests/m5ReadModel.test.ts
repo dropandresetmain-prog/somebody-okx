@@ -438,3 +438,87 @@ test("verification beats stay distinct: produced → received → verified → s
   assert.equal(satisfied.requirements[0].state, "satisfied");
   assert.equal(satisfied.completion.accepted, false); // satisfaction ≠ completion
 });
+
+
+test("M1 simulation: acquired result is visible but payment is never presented as submitted", () => {
+  const base = emptySource();
+  const resultEvidenceId = "sim_result_test";
+  const view = composeObjectiveWorkspace(
+    emptySource({
+      objective: {
+        ...base.objective,
+        acquisitionResults: [
+          {
+            intentId: "intent_1",
+            requirementKey: "req_2",
+            resultEvidenceId,
+            provenance: "simulation",
+            providerId: "2135",
+            serviceId: "newsliquid_twitter_search",
+            resourceClass: "proprietary_data",
+            content:
+              "SIMULATED evidence: founders understand outcome ownership more clearly than generic workflow automation.",
+            responseHash: "a".repeat(64),
+            recordedAt: now,
+            verifiedAt: now,
+          },
+        ],
+        companyArtifacts: [
+          {
+            key: "launch/page-message",
+            label: "Launch message",
+            version: 2,
+            history: [
+              {
+                version: 1,
+                changeNote: "initial",
+                changedAt: now - 1000,
+              },
+              {
+                version: 2,
+                changeNote: "Revised with acquired founder language",
+                changedAt: now,
+                usedAcquisitionEvidenceIds: [resultEvidenceId],
+              },
+            ],
+          },
+        ],
+      },
+      intents: [
+        intent({
+          state: "verified",
+          resultEvidenceId,
+          verificationEvidenceId: "sim_verify_test",
+          target: {
+            providerId: "2135",
+            serviceId: "newsliquid_twitter_search",
+            offeringId: "newsliquid-twitter-search",
+            resourceClass: "proprietary_data",
+          },
+        }),
+      ],
+    }),
+  );
+
+  const external = view.external[0];
+  assert.equal(external.payment.state, "prepared");
+  assert.equal(external.payment.history.length, 1);
+  assert.match(external.boundaryNote, /SIMULATION ONLY/);
+  assert.ok(!view.missionStory.some((event) => event.title === "Payment submitted"));
+  assert.ok(
+    view.missionStory.some(
+      (event) => event.title === "Simulated acquisition boundary executed",
+    ),
+  );
+  assert.ok(
+    view.evidence.some(
+      (evidence) =>
+        evidence.evidenceId === resultEvidenceId &&
+        evidence.origin === "provider_result" &&
+        evidence.state === "verified",
+    ),
+  );
+  assert.deepEqual(view.artifacts[0].versions[1].evidenceRefs, [
+    resultEvidenceId,
+  ]);
+});
