@@ -97,6 +97,10 @@ function makeConvexPort(ctx: ActionCtx, objectiveKey: string, runId: string) {
           ...item,
           text: boundText(item.text),
         })),
+        acquiredInputs: observation.acquiredInputs.map((item) => ({
+          ...item,
+          text: boundText(item.text),
+        })),
       };
     },
     async act(command: Record<string, unknown>) {
@@ -218,9 +222,24 @@ function makeConvexPort(ctx: ActionCtx, objectiveKey: string, runId: string) {
         case "update_company_artifact": {
           const content = String(command.content ?? "");
           const changeNote = String(command.changeNote ?? "");
+          const usedAcquisitionEvidenceIds = Array.isArray(
+            command.usedAcquisitionEvidenceIds,
+          )
+            ? command.usedAcquisitionEvidenceIds
+                .filter((value): value is string => typeof value === "string")
+                .slice(0, 8)
+            : undefined;
           const result = await ctx.runMutation(
             internal.objectives.updateCompanyArtifact,
-            { objectiveKey, runId, content, changeNote },
+            {
+              objectiveKey,
+              runId,
+              content,
+              changeNote,
+              ...(usedAcquisitionEvidenceIds
+                ? { usedAcquisitionEvidenceIds }
+                : {}),
+            },
           );
           return `Company artifact ${result.key} updated to version ${result.version}. Provenance run=${runId}.`;
         }
