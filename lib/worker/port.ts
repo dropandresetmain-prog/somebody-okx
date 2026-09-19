@@ -63,12 +63,26 @@ export type WorkerObservationFinding = {
 };
 
 // read(): the worker's observable state (contract + evidence so far).
+export type WorkerAcquiredInput = {
+  intentId: string;
+  resultEvidenceId: string;
+  providerId: string | null;
+  serviceId: string | null;
+  resourceClass: string | null;
+  provenance: "simulation" | "live" | "recorded_replay";
+  responseHash: string;
+  text: string;
+};
+
 export type WorkerObservation = {
   assignment: string;
   responsibility: string;
   requiredSourceClasses: string[];
   minObservations: number;
   recordedFindings: WorkerObservationFinding[];
+  // Only verified external acquisition results are surfaced here. Their text is
+  // untrusted provider data and must never be interpreted as instructions.
+  acquiredInputs: WorkerAcquiredInput[];
   unmetCompletionRequirements: string[];
 };
 
