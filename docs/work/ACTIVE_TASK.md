@@ -1,6 +1,6 @@
 # ACTIVE TASK — M5 Web Executive Mission Control
 
-Updated: 19 September 2026. Status: CP1 complete; shell next.
+Updated: 19 September 2026. Status: CP2 complete; company/attention next.
 
 ## Goal and recovery
 Build a desktop-first, fixture-only executive management surface. The Objective
@@ -16,7 +16,8 @@ Resume from this ledger and the latest pushed checkpoint, not historical chat.
 - Outcome branch created cleanly from main; suggested feat branch not used
   because this session's authorized destination is the outcome branch above.
 - CP0 pushed: `ad36d9b68da2152b06abc91827d58cb168a3da35`.
-- Current HEAD before CP1 is CP0 above; CP1 SHA goes in the next note.
+- CP1 pushed / HEAD before CP2: `615f10c973a4d893a9e55c394539627c93a31694`.
+- CP2 pushed SHA goes in the next checkpoint note.
 - Each commit updates this ledger; each checkpoint MUST be pushed before work
   continues. Record the just-pushed SHA in the next note (no self-referential SHA).
 - M3 historical ledger remains in git at the base above; M3 stays frozen.
@@ -57,7 +58,7 @@ Resume from this ledger and the latest pushed checkpoint, not historical chat.
 ## Checkpoints
 - [x] CP0 truth + recovery ledger + preserved web references
 - [x] CP1 frontend contract + deterministic fixtures + invariant tests
-- [ ] CP2 mission-control shell and Outcome/Somebody Now hierarchy
+- [x] CP2 mission-control shell and Outcome/Somebody Now hierarchy
 - [ ] CP3 workers, grounded decisions, providers, Needs You
 - [ ] CP4 evidence, story, payments, independent completion
 - [ ] CP5 optional supported-relationship System X-ray
@@ -85,12 +86,23 @@ Resume from this ledger and the latest pushed checkpoint, not historical chat.
 - CP1 files: app/m5/workspace.ts, app/m5/fixtures.ts, tests/m5Fixtures.test.ts.
 - No component, backend, payment behavior or mobile changes.
 
+## CP2 evidence
+- /m5 shell: Objective rail, contract levels, Somebody Now, current Requirement,
+  internal boundary, proof rows and deterministic fixture navigation.
+- Component rendering tests: 4/4 passed (all 24 snapshots); focused component
+  tsc passed; git diff --check passed. No production build/full suite run.
+- Browser: 1440x900 Objective switching passed, zero page errors, no overflow.
+- Browser uses globally available Playwright + /usr/bin/chromium; packaged
+  Playwright browser is absent. localhost works; 127.0.0.1 HMR origin is blocked.
+- /m5 HTTP 200 with expected content; server listening 0.0.0.0:3000; preview called.
+  Gateway/phone reachability not established. Temporary screenshot /tmp/m5-cp2.png.
+- Root provider wrapping moved to existing root page. Its behavior is preserved;
+  new /m5 neither initializes nor calls Convex. Backend source unchanged.
+
 ## Next action / active files
-CP2: add mission-control shell at /m5, scoped CSS and rendering tests.
-Leave existing root workspace behavior intact. Move its Convex provider wrapping
-from global layout to root page so /m5 never initializes Convex.
-Next files: app/m5/{page,MissionControl}.tsx, mission-control.css, app/layout.tsx,
-app/page.tsx, tests/m5Components.test.ts. CP1 is verified; no in-progress edits.
+CP3: company worker cards, decision options, provider boundary and Needs You.
+Add isolated CompanyField.tsx and DecisionAttention.tsx; integrate slots in
+FixtureWorkspace.tsx; extend scoped CSS and component tests. CP2 work verified.
 
 ## Risks
 - Design reference is provisional, not runtime end-to-end evidence.
