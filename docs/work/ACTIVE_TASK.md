@@ -166,8 +166,10 @@ Evidence:
 
 - [x] reconcile ledger against implementation;
 - [x] targeted regression only where seams changed;
-- [ ] checkpoint commit/push;
-- [ ] prepare exact SHA for R3 premium review.
+- [x] checkpoint commit/push;
+- [x] prepare exact SHA for R3 premium review.
+
+R3 REVIEW SHA (exact): `59f75f7` — branch `feat/m4-management-engine`, pushed to origin (572031c..59f75f7). R3 premium review target = the M4 management-engine candidate at this commit.
 
 CP7 evidence (this milestone, all verified before this ledger edit — both `tsc --noEmit` and `tsc -p convex/tsconfig.json` clean; full suite 404 pass / 0 fail; targeted seams below):
 
@@ -236,4 +238,4 @@ No scenario-specific orchestration.
 
 ## Current next action
 
-CP1–CP6 committed and pushed (CP1 `27128d6` + ledger `34a65cb`; CP2 `51b1e13` + ledger `81825cc`; CP3 workforce `df4fdd5`, reducer `dc3a9b7`; CP4 graph + continuation evidence `76fedd5` + ledger `94da7ac`; CP5 adversarial suite `3e8479e`; CP6 external seam + convex-lane defect fixes `c120911`). CP7 implementation is COMPLETE and ledger-reconciled (scenario decoupling, worker REUSE fix, request_resource→wake + scheduler wiring, run-finish→gate proposal, Convex ManagementPorts adapter, api stub; full suite 404/404, both tsc programs clean). Next: stage the exact CP7 files (never `git add .`), checkpoint commit + push, record the exact R3 SHA here, then produce the 19-section completion report. R3 review stays pending — it is NOT tonight.
+CP1–CP6 committed and pushed (CP1 `27128d6` + ledger `34a65cb`; CP2 `51b1e13` + ledger `81825cc`; CP3 workforce `df4fdd5`, reducer `dc3a9b7`; CP4 graph + continuation evidence `76fedd5` + ledger `94da7ac`; CP5 adversarial suite `3e8479e`; CP6 external seam + convex-lane defect fixes `c120911`). CP7 committed and pushed: `59f75f7` (R3 REVIEW SHA; full suite 404/404, both tsc programs clean). REMAINING: 19-section completion report. Terminal status: M4 MANAGEMENT ENGINE IMPLEMENTED — R3 REVIEW PENDING; PAYMENT-BACKED CUTOFF 1 PENDING M3/R2.
