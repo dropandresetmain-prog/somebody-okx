@@ -1323,3 +1323,41 @@ surface. Fail-closed.
 No live payment occurred in this lane. Live X Layer Testnet Cutoff-1 remains
 pending supervised proof. M3/M4/M5 accepted designs were not reopened. No
 mobile work. M6 not started.
+
+## CP5 — exact candidate gate (branch `integration/m5-real-data`)
+
+Candidate: `41359ce` (this ledger commit + gate record follow).
+
+| Check | Command | Result |
+|-------|---------|--------|
+| Root TypeScript | `npm run typecheck` (tsc --noEmit) | PASS (0 errors) |
+| Convex TypeScript | `npm run typecheck:convex` | PASS (0 errors) |
+| Focused read-model tests | `tsx --test tests/m5ReadModel.test.ts` | PASS 15/15 |
+| Convex→M5 seam tests | `tsx --test tests/m5ConvexSeam.test.ts` | PASS 8/8 |
+| Live-surface tests | `tsx --test tests/m5LiveSurface.test.ts` | PASS 5/5 |
+| Production web build | `npm run build` | PASS — routes `/` , `/m5` (dynamic live), `/m5/fixtures` generated |
+| Full suite (once) | `npm test` | 656/657 PASS |
+
+**The single full-suite failure is pre-existing and environmental, NOT a
+regression.** `tests/managementRuntime.test.ts` "every default-platform Convex
+module bundles without node:crypto" invokes the esbuild binary via
+`node <bin>`; this esbuild (0.27.0) ships a native ELF executable, so node
+cannot parse it (`SyntaxError: Invalid or unexpected token` / `ELF`).
+Verified identical failure on the promoted base `b10b7de7` (R3-accepted, before
+any M5 work). Manually re-ran the same esbuild bundling directly against the
+binary for every default-platform module — including the new
+`convex/m5Workspace.ts` — and ALL bundle cleanly on `--platform=browser`. The
+probe's intent (no `node:crypto` in browser bundles) holds; only its invocation
+method is broken in this sandbox. Triage: **Park for Later** (fix the probe to
+call the binary directly, not via `node`); out of M5 scope, do not silently
+repair unrelated legacy test harness here.
+
+## Handoff
+
+M5 real-data integration is code-complete and gate-verified on this branch.
+Pushed work: promotion of `main` (fast-forward) + this integration lane.
+Remaining for the founder/supervised lane: (1) live X Layer Testnet Cutoff-1
+proof; (2) a real public founder-approval command so Needs You can act from
+the product surface; (3) optional: surface M3 `settled` truth into Convex so
+the payment track can render settlement without collapsing the machines.
+No live payment occurred. M6 not started.
