@@ -51,15 +51,33 @@ export type SatisfactionAttempt =
 
 // Proof is checked against facts the application already verified, passed in by
 // the caller. This module never fetches and never trusts a model claim.
+//
+// R3 A5 — identity vocabulary: an application observation has TWO public
+// identities — its evidence id and its stable source identity (`sourceId`).
+// A proof param may name either and both are checkable against the same
+// persisted row. What may NEVER satisfy is a name matching no
+// application-verified row, no matter who wrote the claim.
 export type ProofFacts = {
   // artifactKey → highest version persisted by an accepted run
   artifactVersions: Record<string, number>;
-  // evidence ids the application recorded as origin=application_observation
+  // BOTH the evidence ids and the source ids of rows the application recorded
+  // as origin=application_observation (the A5 note above)
   applicationObservationIds: readonly string[];
   // intent ids whose external result/effect is independently verified
   verifiedIntentIds: readonly string[];
   // founder confirmations recorded, by proof ref
   founderConfirmationRefs: readonly string[];
+};
+
+// The facts a requirement is judged against when the caller has scoped NONE.
+// Empty facts satisfy nothing (every governed proof demands a named, persisted
+// fact), so a missing scope fails the gate CLOSED — R3 A5's rule that absence
+// of evidence is never evidence of absence-of-obligation.
+export const NO_PROOF_FACTS: ProofFacts = {
+  artifactVersions: {},
+  applicationObservationIds: [],
+  verifiedIntentIds: [],
+  founderConfirmationRefs: [],
 };
 
 export function missingProofs(
@@ -103,7 +121,10 @@ export function missingProofs(
       }
     }
   }
-  // A proof may also be satisfied by an explicitly referenced proof id.
+  // R3 A5: a proof is satisfied ONLY by an application-verified fact, never by
+  // a name someone wrote down. `event.proofRefs` is a record of what the
+  // resolution cited, not an input to this decision — if a referenced id is
+  // real, it is in `facts` already; if it is not, the reference proves nothing.
   void event;
   return missing;
 }

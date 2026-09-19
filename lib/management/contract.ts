@@ -9,6 +9,7 @@
 
 import { validateCapabilitySpec } from "./capability";
 import { isSatisfactionStrategy } from "./types";
+import type { ProofFacts } from "./requirements";
 import type { ParsedOutcomeContract, ParsedRequirementProposal } from "./proposals";
 import type {
   OutcomeContract,
@@ -264,6 +265,51 @@ export function bindProofParams(
     return { ...proof, params: { ...proof.params, ...patch } };
   });
   return changed ? { ...requirement, proofs, updatedAt: at } : requirement;
+}
+
+// R3 A5 — "strategy-specific proof params bind at execution time" made real,
+// and bound ONLY from application-verified facts. An unbound obligation
+// (`application_observation` without a named source, `verified_external_*`
+// without a named intent, `founder_confirmation` without a recorded ref) is
+// re-pointed at the smallest, deterministically-ordered id the facts actually
+// contain. This invents nothing: with no facts there is no binding and the
+// obligation stays unmet. It narrows nothing either — a proof already bound
+// to a concrete source keeps that binding, so a caller cannot "re-bind" an
+// unsatisfied proof onto fresher evidence to fake the bar.
+export function bindExecutedProofParams(
+  requirement: Requirement,
+  facts: ProofFacts,
+  at: number,
+): Requirement {
+  const bindings: Record<string, Record<string, string | number>> = {};
+  const observations = [...new Set(facts.applicationObservationIds)].sort();
+  const verifiedIntents = [...new Set(facts.verifiedIntentIds)].sort();
+  const confirmations = [...new Set(facts.founderConfirmationRefs)].sort();
+  for (const proof of requirement.proofs) {
+    switch (proof.proofKind) {
+      case "application_observation": {
+        if (!proof.params.sourceId && !proof.params.evidenceId && observations.length > 0)
+          bindings[proof.proofKey] = { sourceId: observations[0] };
+        break;
+      }
+      case "verified_external_result":
+      case "verified_external_effect": {
+        if (!proof.params.intentId && verifiedIntents.length > 0)
+          bindings[proof.proofKey] = { intentId: verifiedIntents[0] };
+        break;
+      }
+      case "founder_confirmation": {
+        if (!proof.params.confirmationRef && confirmations.length > 0)
+          bindings[proof.proofKey] = { confirmationRef: confirmations[0] };
+        break;
+      }
+      case "company_artifact_version":
+        // artifactKey/minVersion are interpretation-time governance, never
+        // execution facts — there is nothing to bind and nothing to relax.
+        break;
+    }
+  }
+  return bindProofParams(requirement, bindings, at);
 }
 
 // A new contract revision supersedes requirements that cannot carry forward:

@@ -230,7 +230,7 @@ test("a blocked requirement never fakes completion and never stalls a solvable s
     proposal: { proposalId: "prop_1", objectiveKey: "obj_x", contractId: "contract_x", contractRevision: 1, claimedLevelKey: "done_x", rationale: "trust me", proposedAt: at0 },
     contract, currentContractRevision: 1,
     requirements: [blocked, { ...solvable, state: "satisfied", resolution: { resolutionId: "r", acceptedDecisionId: null, acceptedAssignmentId: null, acceptedIntentId: null, proofRefs: [], contractRevision: 1, acceptedAt: at0 } }],
-    satisfiedProofKeys: new Map([["req_solvable", ["p1"]]]),
+    factsByRequirementKey: new Map([["req_solvable", { artifactVersions: {}, applicationObservationIds: ["ev-1"], verifiedIntentIds: [], founderConfirmationRefs: [] }]]),
     unresolvedEffectIds: [], unresolvedResourceIds: [], at: at0,
   });
   assert.equal(verdict.accepted, false);
@@ -482,15 +482,19 @@ test("an ungrounded nonsense objective routes to a decision pass (typed executin
 });
 
 test("a fake 'satisfied' row cannot complete through the gate: the application verified NOTHING, so completion is refused with the proof named", () => {
+  // R3 A5 probe 1 (persisted `state: "satisfied"`, no facts): the row claims
+  // satisfaction AND carries no resolution; the gate gets FACTS, and there
+  // are none. Both lies are named in separate unmet lines.
   const satisfied = req({ state: "satisfied" });
   const verdict = evaluateCompletionGate({
     proposal: { proposalId: "prop_z", objectiveKey: "obj_x", contractId: "contract_x", contractRevision: 1, claimedLevelKey: "done_x", rationale: "the worker said done", proposedAt: at0 },
     contract, currentContractRevision: 1, requirements: [satisfied],
-    satisfiedProofKeys: new Map(),
+    factsByRequirementKey: new Map(),
     unresolvedEffectIds: [], unresolvedResourceIds: [], at: at0,
   });
   assert.equal(verdict.accepted, false);
   assert.ok(verdict.unmet.some((line) => line.includes("proof p1")), verdict.unmet.join("; "));
+  assert.ok(verdict.unmet.some((line) => line.includes("no resolution record")), verdict.unmet.join("; "));
 });
 
 test("the graph is total: 30 consecutive invocations over already-consumed wakes all terminate with coherent typed states", async () => {

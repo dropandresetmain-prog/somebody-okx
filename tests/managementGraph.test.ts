@@ -11,7 +11,7 @@ import assert from "node:assert/strict";
 import { buildManagementGraph, TIMER_DELAYS_MS, type ManagementPorts } from "../lib/management/graph";
 import { deriveAssignmentId } from "../lib/management/dispatch";
 import { runManagerialDecisionPass, type DecisionPassResult } from "../lib/management/decision";
-import { attemptRequirementSatisfaction, type RequirementEvent } from "../lib/management/requirements";
+import { attemptRequirementSatisfaction, type ProofFacts, type RequirementEvent } from "../lib/management/requirements";
 import { evaluateCompletionGate } from "../lib/management/completion";
 import { createBudget, checkBudget, trySpendDecision, recordProgress } from "../lib/management/budget";
 import { bindProofParams, buildOutcomeContract } from "../lib/management/contract";
@@ -237,15 +237,22 @@ function makePorts(world: World): ManagementPorts {
       return false;
     },
     async proposeCompletion(proposal) {
-      const satisfiedProofKeys = new Map<string, string[]>();
-      if (world.requirement.state === "satisfied")
-        satisfiedProofKeys.set(world.requirement.requirementKey, world.requirement.proofs.map((p) => p.proofKey));
+      // R3 A5 shape: the gate consumes FRESH FACTS per requirement, not
+      // proof-key claims. This fake world has exactly one requirement, and
+      // deliverVerified() is the fact — artifact v2 + obs_check recorded.
+      const factsByRequirementKey = new Map<string, ProofFacts>();
+      factsByRequirementKey.set(world.requirement.requirementKey, {
+        artifactVersions: { launch_page: 2 },
+        applicationObservationIds: ["obs_check"],
+        verifiedIntentIds: [],
+        founderConfirmationRefs: [],
+      });
       const verdict = evaluateCompletionGate({
         proposal,
         contract,
         currentContractRevision: contract.revision,
         requirements: [world.requirement],
-        satisfiedProofKeys,
+        factsByRequirementKey,
         unresolvedEffectIds: [],
         unresolvedResourceIds: [],
         at: world.now,

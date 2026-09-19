@@ -272,7 +272,10 @@ function gate(overrides: Partial<CompletionGateInput>): CompletionGateInput {
       supportingPending,
       requirement({ requirementKey: "level_tomorrow", priority: "supporting", state: "superseded" }),
     ],
-    satisfiedProofKeys: new Map([[satisfiedReq.requirementKey, ["artifact_change", "observation"]]]),
+    // R3 A5 — the gate input is FRESH FACTS per requirement, not "proof keys
+    // someone says were satisfied". These are the same application facts the
+    // satisfaction kernel saw.
+    factsByRequirementKey: new Map([[satisfiedReq.requirementKey, fullFacts]]),
     unresolvedEffectIds: [],
     unresolvedResourceIds: [],
     at,
@@ -331,11 +334,14 @@ test("a blocked required requirement routes the rejection to 'blocked', not 'exe
 
 test("gate refuses when a 'satisfied' requirement's proof is stale or its resolution is from an older revision", () => {
   const staleProof = evaluateCompletionGate(
-    gate({ satisfiedProofKeys: new Map([[satisfiedReq.requirementKey, ["artifact_change"]]]) }),
+    // The application verified the artifact bump but NO observation row —
+    // recompute must fail the `observation` obligation even though the row
+    // persists as "satisfied".
+    gate({ factsByRequirementKey: new Map([[satisfiedReq.requirementKey, { ...fullFacts, applicationObservationIds: [] }]]) }),
   );
   assert.equal(staleProof.accepted, false);
   if (staleProof.accepted) return;
-  assert.ok(staleProof.unmet.some((u) => u.includes("proof observation") && u.includes("missing or stale")));
+  assert.ok(staleProof.unmet.some((u) => u.includes("proof observation") && u.includes("no application observation")));
 
   const oldResolution = evaluateCompletionGate(
     gate({
@@ -377,7 +383,7 @@ test("waived required requirement completes without disclosure noise", () => {
     waiver: { reason: "founder authorized", authorizedBy: "founder", at },
   });
   const verdict = evaluateCompletionGate(
-    gate({ requirements: [waived, requirement({ requirementKey: "other", state: "satisfied", resolution: satisfiedReq.resolution }), supportingPending], satisfiedProofKeys: new Map([["other", ["artifact_change", "observation"]]]) }),
+    gate({ requirements: [waived, requirement({ requirementKey: "other", state: "satisfied", resolution: satisfiedReq.resolution }), supportingPending], factsByRequirementKey: new Map([["other", fullFacts]]) }),
   );
   assert.equal(verdict.accepted, true);
   if (!verdict.accepted) return;

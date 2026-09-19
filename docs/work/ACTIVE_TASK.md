@@ -223,7 +223,7 @@ authorized outcome branch; push destination for CP8 evidence).
 | A2 | Graph decides but never dispatches/verifies | Act Now | **SHIPPED** (CP-2 `696e259`; acceptance pending CP-5) |
 | A3 | waiting/blocked zero-delay self-reschedule | Act Now | **SHIPPED** (CP-2 `696e259`; acceptance pending CP-5) |
 | A4 | null spend authority authorizes BUY/HYBRID | Act Now (critical) | **RESOLVED** (`40ed332`, 13 acceptance tests) |
-| A5 | completion-gate proof mismatch + forged satisfaction | Act Now (critical) | in progress |
+| A5 | completion-gate proof mismatch + forged satisfaction | Act Now (critical) | **SHIPPED** (CP-3; recomputing gate + binding + scoping + reconciliation, 9 probes; acceptance pending CP-5) |
 | A6 | M2 growth-spine artifact obligation regression | Act Now | **SHIPPED** (CP-2 `696e259` + CP-2b sibling restore; acceptance pending CP-5) |
 | A7 | scenario coupling in generic M4 control flow | Act Now | in progress (dispatch path scenario-free by construction; runDecisionPass staffing/eligibility literals remain) |
 | I1 | Convex runtime compatibility / node:crypto | Investigate Now | **RESOLVED** (below, `f066c5f`) |
@@ -354,6 +354,67 @@ no-progress reaches `escalated` from storage alone. Fake ports in
 the new ManagementPorts shape. Post-CP-2: **447 pass / 0 fail** (was 441 +
 these 6), `tsc --noEmit` and `typecheck:convex` clean. Post-CP-2b (sibling
 restore + 3 tests): **450 pass / 0 fail**, both typecheck programs clean.
+
+**CP-3 — A5 (critical false-completion closure).** The completion gate can no
+longer be fooled by anything it is *told*; it only accepts what it can *re-derive*.
+
+- Gate recompute (`lib/management/completion.ts`): `CompletionGateInput` takes
+  `factsByRequirementKey: ReadonlyMap<string, ProofFacts>` instead of
+  `satisfiedProofKeys`. For every required requirement the gate reloads the
+  revision and runs `missingProofs(requirement.proofs, facts, …)` itself — a
+  persisted `state:"satisfied"`/resolution is CHECKED against the recompute,
+  never substituted for it. A requirement declaring zero governed proofs fails
+  closed with a message that names the satisfied-claim forgery signature; a
+  `waived` row without `waiver.reason` is refused; `satisfied` with no
+  resolution, or with a resolution against a stale revision, is refused; a
+  missing facts entry falls back to `NO_PROOF_FACTS` (`lib/management/requirements.ts`)
+  so absence fails closed rather than throwing.
+- Fact scoping (`convex/management.ts: readScopedProofFacts`): facts are loaded
+  per requirement AT the current contract revision, through the real delivery
+  rows — assignments matching `requirementKey`+`contractRevision` in
+  dispatched/running/result_submitted/verified state give the scoped run ids;
+  evidence counts only when `origin === "application_observation"` AND its
+  `runId` is in that scope (both `evidenceId` and `sourceId` are collected,
+  because a proof param may name either public identity); intents must carry
+  the requirement key + revision AND be `verified`; artifacts must have a
+  `provenanceRunId` inside scope; `founderConfirmationRefs` is always empty —
+  no production founder-answer seam exists, so ASK_FOUNDER fails closed rather
+  than accepting an unverifiable class.
+- Execution-time binding (`lib/management/contract.ts: bindExecutedProofParams`):
+  proofs attached by `attachGovernedProofs` are created unbound; only
+  application-verified facts bind them (deterministic sorted-first pick), and an
+  already-bound proof is never re-pointed. `recordSatisfactionAttempt` binds
+  from scoped facts, records the attempt against `bound` proofs, and on genuine
+  satisfaction moves the scoped `result_submitted` assignment to `verified` with
+  the full same-transaction bookkeeping (worker history, release, budget spend) —
+  replay lands on the verified row and no-ops legally.
+- Run-fact reconciliation (`convex/management.ts: reconcileAssignmentRunFacts`):
+  production never wrote `result_submitted` when a managed run completed, so the
+  verify path was unreachable from real wakes. At `runManagementPass` entry,
+  each assignment's OWN `runId` is attributed through the aggregate work items:
+  failed run ⇒ failed (+release+spend), stopped+completed ⇒ result_submitted,
+  dispatched+running ⇒ running; every transition consumes its own trigger, so
+  re-passes are idempotent.
+- Rejection durability: a rejected proposal persists as the gate decision row;
+  reducer rule 7a ("gate rejected, no open required rows") walks the objective
+  into recovery_required. No new write authority was invented for this — the
+  existing mechanism already covers it.
+
+Evidence: `tests/managementCompletionGate.test.ts` (9, all on real storage —
+the forgeries are direct row writes, which is exactly what A5 must survive):
+A5-1 ghost proofRefs naming the right proof keys; A5-2 another requirement's
+genuine observation; A5-3 a `model_note` id; A5-4 satisfied against a stale
+revision with live facts; A5-5 empty proof list; A5-6 self-granted waiver;
+A5-7 another requirement's verified intent on a BUY; then the positive pair —
+A5-8 genuine delivery: kernel-bound observation, verify-path bookkeeping
+(assignment verified, worker released, budget `activeAssignments` 0) and the
+gate's recompute ACCEPTS; A5-9 a completed managed run reconciles to
+`result_submitted` at pass entry and still satisfies NOTHING without proof.
+Existing suites migrated to the new gate input (`managementRequirements`,
+`managementGraph`, `managementCutoff2` — the last one now doubles as the
+R3 A5 probe that a fake-satisfied row is refused by BOTH the proof gap and
+the missing resolution). Post-CP-3: **459 pass / 0 fail** (was 450 + these 9),
+both typecheck programs clean.
 
 ## R3 tomorrow morning
 

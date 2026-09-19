@@ -40,6 +40,7 @@ import { createIntentFromAuthorization } from "../lib/management/intents";
 import type { ExternalAuthorityMode } from "../lib/management/authorization";
 import { createWorkerSpec } from "../lib/workforce/workers";
 import { evaluateCompletionGate } from "../lib/management/completion";
+import { bindExecutedProofParams } from "../lib/management/contract";
 import { attemptRequirementSatisfaction } from "../lib/management/requirements";
 import type { ProofFacts, RequirementEvent } from "../lib/management/requirements";
 import { checkBudget } from "../lib/management/budget";
@@ -463,66 +464,55 @@ export function buildConvexManagementPorts(ctx: MutationCtx): ManagementPorts {
       const requirement = requirements.find((r) => r.requirementKey === requirementKey);
       if (!requirement) return false;
 
-      // Build ProofFacts from live Convex
-      const evidenceRows = await ctx.db
-        .query("evidence")
-        .withIndex("by_objectiveKey", (q) => q.eq("objectiveKey", state.objectiveKey))
-        .collect();
-      const applicationObservationIds = evidenceRows
-        .filter((row) => ((row as AnyRow).data as Record<string, unknown>).origin === "application_observation")
-        .map((row) => (row as AnyRow).evidenceId as string);
+      // R3 A5 — the facts the kernel judges are the CURRENT revision's, scoped
+      // through a live delivery (an assignment for this requirement, or an
+      // intent FOR THIS REQUIREMENT). Never "whatever is lying around".
+      const facts = await readScopedProofFacts(ctx, state.objectiveKey, requirement, currentContractRevision);
+      // A wake re-delivery recomputes against the same requirement, which may
+      // now carry bindings from the verification pass BEFORE this one;
+      // re-binding is idempotent (a bound proof is never re-pointed).
+      const bound = bindExecutedProofParams(requirement, facts, at);
 
-      const intentRows = await ctx.db
-        .query("executionIntents")
-        .withIndex("by_objective", (q) => q.eq("objectiveKey", state.objectiveKey))
-        .collect();
-      const verifiedIntentIds = intentRows
-        .filter((row) => ((row as AnyRow).data as ExecutionIntent).state === "verified")
-        .map((row) => (row as AnyRow).intentId as string);
-
-      const objectiveRow = await ctx.db
-        .query("objectives")
-        .withIndex("by_key", (q) => q.eq("key", state.objectiveKey))
-        .unique();
-      const artifactVersions: Record<string, number> = {};
-      if (objectiveRow) {
-        const data = (objectiveRow as AnyRow).data as Record<string, unknown>;
-        const artifacts = (data.companyArtifacts ?? []) as Array<Record<string, unknown>>;
-        for (const artifact of artifacts) {
-          artifactVersions[artifact.key as string] = artifact.version as number;
-        }
-      }
-
-      const facts: ProofFacts = {
-        artifactVersions,
-        applicationObservationIds,
-        verifiedIntentIds,
-        founderConfirmationRefs: [],
-      };
-
-      // Determine event kind
+      // Determine the event from live delivery rows SCOPED to this requirement
+      // and revision. R3 A5: `result_submitted` is not satisfaction, but it IS
+      // the thing the verify pass exists to check — and only the application's
+      // own re-derived facts decide whether it passes. A submitted row whose
+      // proofs recompute gets advanced to `verified` HERE, in the same
+      // transaction that records the resolution; nothing else may.
       const assignmentRows = await ctx.db
         .query("assignments")
         .withIndex("by_objective", (q) => q.eq("objectiveKey", state.objectiveKey))
         .collect();
-      const acceptedAssignment = assignmentRows.find(
-        (row) => {
-          const d = (row as AnyRow).data as Assignment;
-          return d.requirementKey === requirementKey && d.state === "verified";
-        },
-      );
+      const scoped = assignmentRows
+        .map((row) => (row as AnyRow).data as Assignment)
+        .filter(
+          (a) =>
+            a.requirementKey === requirementKey &&
+            a.contractRevision === currentContractRevision,
+        );
+      const verifiedAssignment = scoped.find((a) => a.state === "verified") ?? null;
+      const submittedAssignment = verifiedAssignment
+        ? null
+        : (scoped
+            .filter((a) => a.state === "result_submitted")
+            .sort((a, b) => a.assignmentId.localeCompare(b.assignmentId))[0] ?? null);
+      const acceptedAssignment = verifiedAssignment ?? submittedAssignment;
+      // `verifiedIntentIds` in scoped facts is ALREADY requirement- and
+      // revision-filtered (see readScopedProofFacts) — the sorted first id is
+      // a deterministic pick, never "whatever row came back first".
+      const verifiedIntentId = [...facts.verifiedIntentIds].sort()[0] ?? null;
 
       let event: RequirementEvent;
       if (acceptedAssignment) {
         event = {
           kind: "assignment_verified",
-          assignmentId: (acceptedAssignment as AnyRow).assignmentId as string,
+          assignmentId: acceptedAssignment.assignmentId,
           contractRevision: currentContractRevision,
         };
-      } else if (verifiedIntentIds.length > 0) {
+      } else if (verifiedIntentId) {
         event = {
           kind: "external_result_verified",
-          intentId: verifiedIntentIds[0],
+          intentId: verifiedIntentId,
           contractRevision: currentContractRevision,
         };
       } else {
@@ -533,17 +523,28 @@ export function buildConvexManagementPorts(ctx: MutationCtx): ManagementPorts {
         };
       }
 
+      // The bindings go to storage WHETHER OR NOT the attempt passes: they
+      // restate where the existing obligations point (ids the application
+      // verified), and the completion gate re-derives proof against THIS
+      // revision — carrying a stale claim into a new revision gains nothing.
+      if (bound.proofs.some((proof, index) => proof !== requirement.proofs[index])) {
+        await ctx.runMutation(internal.internal.workforce.putRequirement, {
+          objectiveKey: bound.objectiveKey,
+          requirementKey: bound.requirementKey,
+          data: bound,
+          currentContractRevision,
+        });
+      }
+
       const attempt = attemptRequirementSatisfaction({
-        requirement,
+        requirement: bound,
         event,
         facts,
         resolutionId: `res_${requirementKey}_${at}`,
         acceptedDecisionId: null,
-        acceptedAssignmentId: acceptedAssignment
-          ? ((acceptedAssignment as AnyRow).assignmentId as string)
-          : null,
-        acceptedIntentId: verifiedIntentIds[0] ?? null,
-        proofRefs: [...applicationObservationIds, ...verifiedIntentIds],
+        acceptedAssignmentId: acceptedAssignment ? acceptedAssignment.assignmentId : null,
+        acceptedIntentId: verifiedIntentId,
+        proofRefs: [...facts.applicationObservationIds, ...facts.verifiedIntentIds],
         currentContractRevision,
         at,
       });
@@ -555,6 +556,47 @@ export function buildConvexManagementPorts(ctx: MutationCtx): ManagementPorts {
           data: attempt.requirement,
           currentContractRevision,
         });
+        // The delivery that carried this proof is now application-verified:
+        // the assignment row follows the resolution in the same transaction,
+        // the worker returns to the shelf, and the active-assignment slot is
+        // released. A replay finds `verified` and the kernel no-ops.
+        if (submittedAssignment) {
+          const moved = advanceAssignment(
+            submittedAssignment,
+            "verified",
+            at,
+            { resultSummary: "application-verified against the current revision's proof obligations" },
+          );
+          if (moved.ok) {
+            await ctx.runMutation(internal.internal.workforce.putAssignment, {
+              assignmentId: submittedAssignment.assignmentId,
+              objectiveKey: state.objectiveKey,
+              data: moved.assignment,
+            });
+            await ctx.runMutation(internal.internal.workforce.recordVerifiedAssignment, {
+              workerKey: submittedAssignment.workerKey,
+              record: {
+                assignmentId: submittedAssignment.assignmentId,
+                objectiveKey: state.objectiveKey,
+                requirementKey: submittedAssignment.requirementKey,
+                capabilityKeys: [...submittedAssignment.workContract.capabilityKeys],
+                outcome: "accepted",
+                summary: moved.assignment.resultSummary ?? "verified",
+                at,
+              },
+              at,
+            });
+          }
+          await ctx.runMutation(internal.internal.workforce.releaseWorker, {
+            workerKey: submittedAssignment.workerKey,
+            assignmentId: submittedAssignment.assignmentId,
+            at,
+          });
+          await ctx.runMutation(internal.internal.workforce.applyBudgetSpend, {
+            objectiveKey: state.objectiveKey,
+            spend: { kind: "assignment_finish", requirementKey: null, intentId: null, at },
+          });
+        }
         // The KERNEL's verdict, reported for progress accounting only.
         return true;
       }
@@ -573,14 +615,20 @@ export function buildConvexManagementPorts(ctx: MutationCtx): ManagementPorts {
         };
       }
 
+      // R3 A5 — reload the CURRENT revision fresh and RECOMPUTE every required
+      // proof against scoped application facts. The gate's input is facts, not
+      // the persisted resolutions: a row whose stored `state`/`resolution` says
+      // "satisfied" but whose proofs do not recompute NOW is refused out loud,
+      // and a legitimately satisfied row passes on its proofs, not its prose.
       const requirements = await ports.loadRequirements(proposal.objectiveKey, currentContractRevision);
 
-      // satisfiedProofKeys: from requirement rows' resolutions bound to current revision
-      const satisfiedProofKeys = new Map<string, string[]>();
-      for (const req of requirements) {
-        if (req.resolution && req.resolution.contractRevision === currentContractRevision) {
-          satisfiedProofKeys.set(req.requirementKey, req.resolution.proofRefs);
-        }
+      const factsByRequirementKey = new Map<string, ProofFacts>();
+      for (const requirement of requirements) {
+        if (requirement.contractRevision !== currentContractRevision) continue;
+        factsByRequirementKey.set(
+          requirement.requirementKey,
+          await readScopedProofFacts(ctx, proposal.objectiveKey, requirement, currentContractRevision),
+        );
       }
 
       // Unresolved effects/resources from open executionIntents awaiting M3
@@ -597,11 +645,18 @@ export function buildConvexManagementPorts(ctx: MutationCtx): ManagementPorts {
         contract,
         currentContractRevision,
         requirements,
-        satisfiedProofKeys,
+        factsByRequirementKey,
         unresolvedEffectIds,
         unresolvedResourceIds,
         at,
       });
+
+      // R3 A5 — the rejected verdict is PERSISTED below (the gate decision row)
+      // and the reducer honours it: rule 7a routes "gate rejected with every
+      // required row claiming satisfied" to recovery_required, so a forged
+      // `satisfied` can neither complete the objective nor re-propose. No new
+      // write authority is invented here — the engine only ever READS claims
+      // and re-DERIVES; rejection is loud and durable, never self-healing.
 
       // Persist the verdict: putDecision with decisionId gate_<objectiveKey>_r<revision>
       // Encode verdict+proposal into coarsePlanSummary since the schema validator
@@ -761,6 +816,73 @@ export function buildConvexManagementPorts(ctx: MutationCtx): ManagementPorts {
 
 // ── The scheduled entry point ────────────────────────────────────────────────
 
+// R3 A5 — before a pass reads ANY delivery row, the assignments are reconciled
+// against what the run actually did. `finishRun`/`expireRun` own the runtime
+// aggregate; they must not also own M4 bookkeeping, but until now NOTHING did,
+// so `result_submitted` was unreachable from a real wake: the verify node could
+// only route rows someone hand-placed. Attribution is by run identity (the
+// assignment's own `runId` inside the aggregate's work items), the transitions
+// are exactly the legal ones from the dispatch kernel, and failed bookkeeping
+// releases the worker and the active-assignment slot the same way a failed
+// dispatch does. Reconciling twice is a no-op: each transition consumes the
+// condition that triggered it.
+async function reconcileAssignmentRunFacts(ctx: MutationCtx, objectiveKey: string, at: number): Promise<void> {
+  const row = await ctx.db
+    .query("objectives")
+    .withIndex("by_key", (q) => q.eq("key", objectiveKey))
+    .unique();
+  if (!row) return;
+  const record = (row as AnyRow).data as Record<string, unknown>;
+  const workItems = (record.workItems ?? []) as Array<{
+    state: string;
+    runs: Array<{ id: string; status: string }>;
+  }>;
+
+  const assignmentRows = await ctx.db
+    .query("assignments")
+    .withIndex("by_objective", (q) => q.eq("objectiveKey", objectiveKey))
+    .collect();
+
+  for (const raw of assignmentRows) {
+    const assignment = (raw as AnyRow).data as Assignment;
+    if (assignment.state !== "running" && assignment.state !== "dispatched") continue;
+    if (!assignment.runId) continue;
+    const wi = workItems.find((item) => item.runs.some((run) => run.id === assignment.runId));
+    const run = wi?.runs.find((candidate) => candidate.id === assignment.runId);
+    if (!wi || !run) continue;
+
+    let next: Assignment["state"] | null = null;
+    if (run.status === "failed" || wi.state === "failed") next = "failed";
+    else if (run.status === "stopped" && wi.state === "completed") next = "result_submitted";
+    else if (assignment.state === "dispatched" && run.status === "running") next = "running";
+    if (!next) continue;
+
+    const moved = advanceAssignment(
+      assignment,
+      next,
+      at,
+      next === "failed" ? { resultSummary: `run ${run.id} ended failed; the engine records it, the budget bounds retries` } : {},
+    );
+    if (!moved.ok) continue;
+    await ctx.runMutation(internal.internal.workforce.putAssignment, {
+      assignmentId: assignment.assignmentId,
+      objectiveKey,
+      data: moved.assignment,
+    });
+    if (next === "failed") {
+      await ctx.runMutation(internal.internal.workforce.releaseWorker, {
+        workerKey: assignment.workerKey,
+        assignmentId: assignment.assignmentId,
+        at,
+      });
+      await ctx.runMutation(internal.internal.workforce.applyBudgetSpend, {
+        objectiveKey,
+        spend: { kind: "assignment_finish", requirementKey: null, intentId: null, at },
+      });
+    }
+  }
+}
+
 export const runManagementPass = internalMutation({
   args: {
     objectiveKey: v.string(),
@@ -785,6 +907,13 @@ export const runManagementPass = internalMutation({
 
     const ports = buildConvexManagementPorts(ctx);
     const graph = buildManagementGraph({ ports, now: () => Date.now() });
+
+    // R3 A5 — delivery rows reflect RUN FACTS before the graph reads them, so
+    // the verify node routes real submitted/failed results, not hand-placed
+    // ones. This is bookkeeping-only: it never starts, stops, or re-decides
+    // work, and every transition it makes is one the dispatch kernel already
+    // declared legal.
+    await reconcileAssignmentRunFacts(ctx, args.objectiveKey, Date.now());
 
     const { outcome } = await graph.invoke({
       objectiveKey: args.objectiveKey,
@@ -1103,6 +1232,106 @@ function decodeOptions(summary: string): GroundedOption[] {
   } catch {
     return [];
   }
+}
+
+// ── R3 A5: scoped proof facts ────────────────────────────────────────────────
+//
+// The ONE way the satisfaction kernel and the completion gate learn what is
+// factually provable for a requirement. Everything here names a row the
+// APPLICATION persisted, and everything is SCOPED to this requirement's own
+// live deliveries at the current revision:
+//   - observations: evidence rows whose `origin` the runtime itself wrote,
+//     produced by a run belonging to an assignment FOR THIS REQUIREMENT;
+//   - verified intents: `state === "verified"` rows FOR THIS REQUIREMENT AND
+//     REVISION (only M3 reconciliation may verify an external result);
+//   - artifacts: current versions whose `provenanceRunId` is one of those
+//     scoped runs.
+// An observation from another requirement's delivery can no longer leak into
+// this one's proof, and no id list is ever "everything on the objective".
+// `founderConfirmationRefs` stays empty because no production founder-answer
+// seam exists yet — an ASK_FOUNDER proof therefore fails closed rather than
+// accepting a fabricated ref.
+const PROOF_SCOPED_ASSIGNMENT_STATES: Assignment["state"][] = [
+  "dispatched",
+  "running",
+  "result_submitted",
+  "verified",
+];
+
+async function readScopedProofFacts(
+  ctx: MutationCtx,
+  objectiveKey: string,
+  requirement: Requirement,
+  currentContractRevision: number,
+): Promise<ProofFacts> {
+  const assignmentRows = await ctx.db
+    .query("assignments")
+    .withIndex("by_objective", (q) => q.eq("objectiveKey", objectiveKey))
+    .collect();
+  const deliveries = assignmentRows
+    .map((row) => (row as AnyRow).data as Assignment)
+    .filter(
+      (a) =>
+        a.requirementKey === requirement.requirementKey &&
+        a.contractRevision === currentContractRevision &&
+        PROOF_SCOPED_ASSIGNMENT_STATES.includes(a.state),
+    );
+  const runIds = new Set(
+    deliveries.map((a) => a.runId).filter((id): id is string => typeof id === "string" && id.length > 0),
+  );
+
+  const observationIds: string[] = [];
+  if (runIds.size > 0) {
+    const evidenceRows = await ctx.db
+      .query("evidence")
+      .withIndex("by_objectiveKey", (q) => q.eq("objectiveKey", objectiveKey))
+      .collect();
+    for (const row of evidenceRows) {
+      const data = (row as AnyRow).data as Record<string, unknown>;
+      if (data.origin !== "application_observation") continue;
+      if (!runIds.has(String(data.runId ?? ""))) continue;
+      // R3 A5 vocabulary: both public identities of the same application row.
+      observationIds.push((row as AnyRow).evidenceId as string);
+      observationIds.push(String(data.sourceId ?? ""));
+    }
+  }
+
+  const intentRows = await ctx.db
+    .query("executionIntents")
+    .withIndex("by_objective", (q) => q.eq("objectiveKey", objectiveKey))
+    .collect();
+  const verifiedIntentIds = intentRows
+    .map((row) => (row as AnyRow).data as ExecutionIntent)
+    .filter(
+      (intent) =>
+        intent.requirementKey === requirement.requirementKey &&
+        intent.contractRevision === currentContractRevision &&
+        intent.state === "verified",
+    )
+    .map((intent) => intent.intentId);
+
+  const artifactVersions: Record<string, number> = {};
+  if (runIds.size > 0) {
+    const objectiveRow = await ctx.db
+      .query("objectives")
+      .withIndex("by_key", (q) => q.eq("key", objectiveKey))
+      .unique();
+    if (objectiveRow) {
+      const data = (objectiveRow as AnyRow).data as Record<string, unknown>;
+      const artifacts = (data.companyArtifacts ?? []) as Array<Record<string, unknown>>;
+      for (const artifact of artifacts) {
+        if (runIds.has(String(artifact.provenanceRunId ?? "")))
+          artifactVersions[artifact.key as string] = artifact.version as number;
+      }
+    }
+  }
+
+  return {
+    artifactVersions,
+    applicationObservationIds: observationIds,
+    verifiedIntentIds,
+    founderConfirmationRefs: [],
+  };
 }
 
 async function noteDispatchDeferred(
