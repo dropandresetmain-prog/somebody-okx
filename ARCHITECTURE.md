@@ -1,8 +1,8 @@
 # Somebody × OKX — Architecture
 
-Status: **CANONICAL — Somebody Management Protocol v1 / LangGraph decision locked**  
+Status: **CANONICAL — Somebody Management Protocol v1 / LangGraph decision locked; implemented through integrated M5 baseline**  
 Date: **19 September 2026**  
-Accepted implementation baseline: `main@1fa7962d9ef0d359951d14993834d1d419a5c980`
+Integrated implementation baseline: `main@a9a0b3d31a7125e83fe0771a783ee62cbd96914a`
 
 ## 1. Product architecture
 
@@ -92,10 +92,10 @@ Example:
 
 ```text
 L1 — diagnosed launch issue
-L2 — evidence-backed revision prepared
-L3 — revised launch published + verified      ← minimum completion bar
-L4 — early response measured                  ← may remain pending
-L5 — conversion improvement established       ← later business impact
+L2 — evidence-backed relaunch-ready revision prepared + verified  ← minimum completion bar
+L3 — revised launch published + verified                         ← higher level
+L4 — early response measured                                     ← may remain pending
+L5 — conversion improvement established                          ← later business impact
 ```
 
 Somebody may not call the Objective complete below the minimum completion bar.

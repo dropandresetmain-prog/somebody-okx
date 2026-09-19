@@ -1,6 +1,6 @@
 # Somebody × OKX Dev Day 2026 — Master Plan
 
-Status: **APPROVED — M4 × M3 application integration ACCEPTED by R3; promoted to `main` at `b10b7de7df71a040936c4ec64435fc5498dc3a78`. Live X Layer Testnet Cutoff-1 remains PENDING. Do not reopen M3/M4 architecture.**  
+Status: **APPROVED — R3-accepted M4 × M3 backend and accepted M5 frontend are integrated on current `main` (integration code baseline `a9a0b3d31a7125e83fe0771a783ee62cbd96914a`). Architecture is frozen. FIRST PRODUCT E2E remains unproven and is the next milestone.**
 Build period: **17–25 September 2026**  
 Authoritative repo: `dropandresetmain-prog/somebody-okx`  
 Accepted baseline before M3/M4: `main@1fa7962d9ef0d359951d14993834d1d419a5c980`
@@ -8,8 +8,7 @@ Accepted baseline before M3/M4: `main@1fa7962d9ef0d359951d14993834d1d419a5c980`
 > **R3 acceptance record (do not reopen).** Verdict: *"M4 × M3 PRE-LIVE CANDIDATE ACCEPTED — application path frozen for integration."*
 > Exact accepted code candidate: `88afa084f64d57a0b189811df846d0016ac87e3e`.
 > Docs/freeze head containing it: `b10b7de7df71a040936c4ec64435fc5498dc3a78` (branch `fix/m4-m3-production-driver`).
-> This is **application readiness only**. It does NOT claim: real payment succeeded, provider round-trip proved live, M5 integrated, or demo complete.
-> **Live X Layer Testnet Cutoff-1 has NOT happened and remains pending supervised proof.**
+> The R3 record proves application readiness only. M5 is now integrated, but this still does NOT claim: a useful live provider acquisition succeeded, the first full product E2E completed, or the demo is ready.
 > M3 financial truth and M4 business truth remain distinct machines and must not be collapsed.
 
 ## 1. Goal
@@ -20,7 +19,7 @@ Build the smallest reliable product that proves:
 
 Canonical founder objective:
 
-> **“Our launch isn’t working. Fix it and relaunch today.”**
+> **“Our launch messaging isn’t working. Figure out what’s wrong and get a better relaunch ready. You can spend within the approved limit if it’s justified.”**
 
 The canonical scenario is demo data for a generic engine. It must not become orchestration logic.
 
@@ -152,28 +151,43 @@ No worker-to-worker autonomous creation. Workers request; Somebody staffs.
 
 Persist finite objective-wide limits for worker creation, active assignments, model decisions, retries, time/cost and no-progress detection.
 
-## 8. Hackathon cutoffs
+## 8. Shipping cutoffs
 
-### Cutoff 1 — canonical live demo
+### Cutoff 1A — first product E2E
 
-The canonical objective must causally demonstrate the generic engine:
+Before touching a live provider, prove the integrated product itself:
 
 ```text
 founder objective
 → outcome/requirements
 → internal staffing
 → real bounded MAKE
-→ genuine external requirement
-→ grounded internal/external options
-→ LLM economic recommendation
+→ evidence gap
+→ grounded MAKE / BUY choice
 → deterministic authorization
-→ integrated sandbox/X Layer Testnet transaction
-→ acquired result persisted/verified
-→ internal reaction
-→ later external action
-→ effect verification
-→ truthful objective resolution
+→ deterministic simulated external result
+→ result enters authoritative company state
+→ worker resumes with that result
+→ artifact changes because of it
+→ verification
+→ Requirement satisfaction
+→ truthful Objective completion
+→ visible through M5
 ```
+
+The external boundary may be simulated for this proof. Everything around it must be production code.
+
+### Cutoff 1B — genuine useful acquisition record
+
+Once 1A works, perform one supervised genuine useful OKX acquisition. Capture safe immutable provenance and the real provider result. One successful useful acquisition is sufficient for the release requirement; a second purchase is optional.
+
+NewsLiquid is the preferred first candidate if it fits the payment/provider contract, but provider compatibility is not allowed to block 1A.
+
+### Cutoff 1C — canonical replay demo
+
+Replay the genuine recorded acquisition through the normal external-acquisition boundary while the rest of the workflow runs live. Replay must be explicit and bound to the recorded provider/service/normalized request so unrelated requests cannot consume the fixture.
+
+The canonical submission story ends at a verified relaunch-ready artifact. Public posting may be a higher Outcome Level, but it is not the minimum completion bar for this release.
 
 No `if launch`, `if Newsliquid`, `if xbird`, `if second_purchase` or named-worker orchestration.
 
@@ -183,138 +197,67 @@ Unrelated prompts need structural safety, not universal competence.
 
 Unsupported/infeasible objectives should reach typed waiting, approval_required, blocked, escalated, failed or unsupported states rather than exceptions, infinite loops, fabricated authority or fake completion.
 
-## 9. Remaining milestones to demo
+## 9. Remaining milestones to submission
 
-### M3 / R2 — separate payment lane
+### M6.1 — First Product E2E
 
-M3 continues in its existing lane and is currently affected by an external blocker.
+Immediate priority.
 
-M4 must not duplicate or restart M3.
+Physically run the canonical Objective through the integrated product with a deterministic simulated useful external result. Prove the causal chain:
 
-When accepted, M3 exposes the manager integration contract:
+```text
+Artifact v1
+→ external result E
+→ resumed worker receives E
+→ worker run uses E
+→ Artifact v2 materially changes
+→ verification accepts v2
+→ Objective reaches the minimum completion bar
+```
 
-- stable logical purchase/effect identity;
-- approval and bound live terms;
-- submission/settlement/reconciliation outcomes;
-- result and verification events.
+Do not accept a transaction/result ID with no worker access to the useful content, or an unrelated artifact version bump.
 
-### M4 — Generic Somebody Management Engine
+### M6.2 — Useful Acquisition RECORD
 
-**One long-horizon implementation task. Do not split into M4A/M4B/etc.**
+After M6.1 is green, attempt one genuine useful OKX acquisition.
 
-Internal checkpoints are allowed in `docs/work/ACTIVE_TASK.md`, but they are not separate milestones.
+Capture provider/service, normalized request, request fingerprint, economic/payment identity where available, provider response, response hash, timestamps and provenance. Never retain wallet secrets/signatures/authorization headers.
 
-M4 implements:
+If the preferred provider is fundamentally incompatible, allow at most one narrow substitute of the same resource type before making a release decision.
 
-- LangGraph management loop;
-- persistent Somebody identity;
-- Outcome Contracts / Outcome Levels / minimum completion bar;
-- required/supporting Requirements;
-- strategy/option model;
-- economic MAKE/BUY/HYBRID judgment;
-- LLM proposal + recommendation contracts;
-- deterministic authorization;
-- persistent workforce and real REUSE/CREATE;
-- dynamic semantic capability/tool-contract definition;
-- worker resource/capability requests;
-- event-driven wake/replan;
-- waiting / approval / blocked / escalated / failed / completed semantics;
-- independent Objective completion gate;
-- recovery/idempotent continuation;
-- anti-explosion/no-progress limits;
-- removal of launch/research-specific orchestration;
-- Cutoff 2 robustness;
-- generic external acquisition/effect seam ready for M3.
+### M6.3 — Canonical Replay E2E + Backup Recording
 
-Because M3 is externally blocked, M4 tonight may stop truthfully at the external execution boundary. The final payment-backed Cutoff 1 proof is completed later through the same M4 branch once M3/R2 is accepted. This is not a new milestone.
+Replace the simulated external edge with the recorded genuine acquisition.
 
-### R3 — Premium Management-Engine Review
+Everything else runs through the production workflow and accepted M5 surface. The product must clearly label the external boundary as recorded/replayed rather than live.
 
-Run tomorrow morning after the long-horizon M4 implementation.
+As soon as the full run works, record Backup Demo #1 before polishing minor defects.
 
-Review the integrated management architecture, especially:
+### M6.4 — Demo Hardening / Release Freeze
 
-- LangGraph/Convex authority boundary;
-- requirement/completion semantics;
-- economic counterexamples;
-- REUSE/CREATE behavior;
-- dynamic capability safety;
-- scenario coupling;
-- stale/duplicate wake-ups;
-- retry/recovery;
-- worker explosion/no progress;
-- false completion;
-- unrelated-objective robustness.
+After Backup Demo #1:
 
-Classify every material finding:
+- fix only defects that affect truthfulness, readability, repeatability or the demonstrated flow;
+- implement a safe demo reset that does not restore spent/ambiguous financial authority;
+- preserve immutable recorded acquisition evidence;
+- freeze one exact release candidate.
 
-- Act Now;
-- Investigate Now;
-- Park for Later;
-- Ignore / Accept Risk.
+Park for later unless they become actual blockers:
 
-Fix only blockers within scope.
+- public publishing / xbird;
+- mandatory second purchase;
+- mobile;
+- additional polished scenarios;
+- marketplace breadth;
+- further architecture generalization.
 
-### Finish M4 acceptance when M3 is ready
+### G1 — Promotion / submission gate
 
-Integrate the accepted M3 buyer rail through the generic AuthorizedExecutionIntent/purchase seam.
+Run once on the exact frozen release candidate.
 
-Prove Cutoff 1 causally. Do not add a scenario-specific payment branch.
+Verify focused evidence, typecheck/build, demo reset, canonical replay E2E, UI sanity, recording, repository/submission access and accurate claims.
 
-### M5 — Product Surface + Story Hardening
-
-Show recorded management truth:
-
-- founder objective + success criteria;
-- outcome levels / current minimum bar;
-- worker REUSE/CREATE decision;
-- options considered;
-- economic rationale;
-- approvals/payments/acquired resources;
-- internal reaction;
-- external effects;
-- verification;
-- truthful current outcome and unfinished supporting work.
-
-Main surface shows high-level decisions. Optional deeper trace/graph may expose technical detail for demo/debugging.
-
-The runtime trace generates the story. Do not hardcode “reject FlyBeacon → Newsliquid → xbird”.
-
-Record the first complete backup demo as soon as the full flow works.
-
-### M6 — Release Candidate
-
-Freeze feature expansion.
-
-Require:
-
-- Cutoff 1 demonstrated;
-- Cutoff 2 abuse pass;
-- bounded spend/staffing policies;
-- repeatable reset/setup;
-- provider fallback/substitution documented;
-- accurate evidence/docs;
-- backup recording.
-
-### G1 — Promotion Gate
-
-Run once on the exact M6 candidate SHA.
-
-Use the canonical release gate only once:
-
-- focused evidence still valid;
-- build;
-- typecheck;
-- canonical lint if applicable;
-- deployment;
-- payment prerequisites/testnet funds;
-- provider connectivity;
-- reset;
-- demo-critical E2E;
-- UI sanity;
-- backup demo.
-
-No architecture work at G1.
+No new architecture or feature expansion at G1.
 
 ## 10. Review/test discipline
 
@@ -322,15 +265,14 @@ Use risk-based cumulative testing.
 
 Do not blast the full suite after every checkpoint.
 
-Tonight:
+For each M6 milestone:
 
-- focused changed-behavior tests;
-- directly affected seams;
-- risk-specific persistence/recovery/authority tests when warranted.
+- run focused changed-behavior tests;
+- exercise only directly affected seams;
+- add risk-specific persistence/recovery/authority tests when warranted;
+- preserve still-valid M3/M4/M5 evidence.
 
-Tomorrow R3 reviews the full M4 candidate.
-
-G1 is the one canonical broad promotion gate.
+G1 is the one canonical broad promotion/submission gate.
 
 ## 11. Historical truth
 

@@ -1,6 +1,6 @@
 # Somebody × OKX — Product Spec
 
-Status: **CANONICAL PRODUCT BEHAVIOR — management protocol locked 19 September 2026**
+Status: **CANONICAL PRODUCT BEHAVIOR — management protocol locked; submission scope reconciled to integrated M5 shipping plan**
 
 ## 1. Vision
 
@@ -37,10 +37,10 @@ Example:
 
 ```text
 diagnosed
-→ revised
-→ relaunched + verified      [minimum bar]
-→ response measured          [pending]
-→ conversion improved        [later]
+→ evidence-backed revision prepared
+→ relaunch-ready asset verified      [minimum bar]
+→ publicly relaunched + verified     [higher level]
+→ response measured                  [later]
 ```
 
 The UI must not collapse “published” into “business performance improved”.
@@ -117,23 +117,27 @@ Meaningful events wake Somebody. No state change means no pointless model loop.
 
 Founder objective:
 
-> **“Our launch isn’t working. Fix it and relaunch today.”**
+> **“Our launch messaging isn’t working. Figure out what’s wrong and get a better relaunch ready. You can spend within the approved limit if it’s justified.”**
 
 The expected story is emergent rather than hardcoded:
 
-- define operational success;
+- define operational success and the minimum completion bar;
 - create/reuse internal growth capability;
 - perform real internal work;
 - discover an evidence/resource gap;
 - compare internal/external alternatives;
 - recommend and authorize an external acquisition when justified;
-- execute a real sandbox/testnet payment once M3 is integrated;
-- use the acquired result internally;
-- determine the next need;
-- perform/verify an external relaunch effect;
+- acquire one useful external result;
+- feed the actual useful content back into the worker;
+- revise a persisted/versioned launch artifact because of that evidence;
+- verify the revised relaunch-ready asset;
 - resolve the objective truthfully.
 
-FlyBeacon, Newsliquid and xbird are preferred current demo data/adapters only. They do not define state transitions.
+For the canonical submission, public publication is a higher Outcome Level, not the required completion bar. A second purchase is optional.
+
+The final demo may transparently REPLAY a previously recorded genuine external acquisition for reliability. Replay is allowed only at the external boundary, must preserve provenance, and must be bound to the recorded provider/service/normalized request. The management decisions, worker continuation, artifact revision, verification and completion still run normally.
+
+NewsLiquid is a preferred candidate provider, not orchestration logic or a submission blocker. xbird/public publishing is parked unless the core demo is already frozen.
 
 ## 10. Hackathon Cutoff 2
 

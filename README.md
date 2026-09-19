@@ -10,12 +10,12 @@ One person should be able to operate with the functional reach of a much larger 
 
 Read current truth in this order:
 
-1. [MASTER_PLAN.md](MASTER_PLAN.md) — approved M4-to-demo execution plan.
+1. [MASTER_PLAN.md](MASTER_PLAN.md) — approved shipping plan from integrated M5 to submission.
 2. [ARCHITECTURE.md](ARCHITECTURE.md) — Somebody management protocol and authority boundaries.
 3. [PRODUCT_SPEC.md](PRODUCT_SPEC.md) — product behavior and hackathon acceptance.
 4. [DECISIONS_LOG.md](DECISIONS_LOG.md) — settled decisions and supersessions.
 5. [BUILD_DELTA.md](BUILD_DELTA.md) — implementation/provenance evidence.
-6. [docs/work/ACTIVE_TASK.md](docs/work/ACTIVE_TASK.md) — tonight's M4 long-horizon ledger.
+6. [docs/work/ACTIVE_TASK.md](docs/work/ACTIVE_TASK.md) — current demo-convergence working ledger.
 
 Current code/runtime/schema and newer accepted decisions outrank stale plans.
 
@@ -88,15 +88,41 @@ When internal and external paths are both feasible, both may enter the option se
 
 The LLM performs genuine managerial judgment among permitted options. Deterministic application logic validates eligibility, authority, spend, provider identity, effect identity and completion proof.
 
-## Hackathon acceptance
+## Shipping acceptance
 
-### Cutoff 1 — canonical causal demo
+### Cutoff 1A — first product E2E
 
-> **“Our launch isn’t working. Fix it and relaunch today.”**
+The integrated product must physically complete one canonical Objective through the real management engine and M5 surface. The unreliable external edge may be deterministic/simulated for this first proof.
 
-The supported demo must causally traverse the generic engine, eventually including an integrated sandbox/X Layer Testnet payment when M3 is ready, acquired result, internal reaction, external effect verification and truthful objective resolution.
+Required causal spine:
 
-Provider names are data/adapters, not orchestration branches.
+```text
+Founder objective
+→ Outcome Contract / Requirements
+→ That Guy REUSE / CREATE
+→ real internal work
+→ evidence gap
+→ MAKE / BUY decision
+→ external acquisition boundary
+→ useful result enters company state
+→ That Guy resumes with that result
+→ artifact materially changes
+→ verification
+→ Requirement satisfaction
+→ Objective completion
+```
+
+### Cutoff 1B — one genuine useful acquisition record
+
+After 1A works, perform one supervised genuine useful OKX acquisition and preserve safe provenance for the provider, service, normalized request, economic/payment identity where available, response, hashes and timestamps.
+
+This acquisition is evidence for the submission. It does **not** need to execute live every time the demo runs.
+
+### Cutoff 1C — canonical replay demo
+
+The final canonical demo replays that previously recorded genuine acquisition at the external boundary while the rest of Somebody runs normally. Replay must be explicit, provenance-preserving and bound to the recorded provider/service/request identity.
+
+Public publishing, a mandatory second purchase and mobile are not on the release critical path.
 
 ### Cutoff 2 — founder can mess around
 
@@ -104,15 +130,16 @@ Unrelated objectives may be mediocre, unsupported, blocked or escalated, but mus
 
 ## Current status
 
-- **M0:** complete.
-- **M1 + R1:** accepted.
-- **M2:** accepted on `main@1fa7962d9ef0d359951d14993834d1d419a5c980`.
-- **M3 / R2:** separate payment lane; currently externally blocked. Do not duplicate/restart it from M4.
-- **M4:** one long-horizon task implementing the generic Somebody management engine; payment integration lands later when M3 is accepted.
-- **R3:** premium management-engine review after the long-horizon M4 implementation.
-- **M5:** product surface / story hardening.
-- **M6:** release candidate.
-- **G1:** exact-candidate promotion gate.
+- **M0–M2:** accepted historical foundations.
+- **M3 + M4:** integrated; application/payment boundary accepted by R3. Do not reopen without new material evidence.
+- **M5:** accepted frontend wired to the authoritative normalized read model. Integration code baseline: `a9a0b3d31a7125e83fe0771a783ee62cbd96914a`.
+- **M6.1 — NEXT:** achieve the first complete product E2E with a deterministic simulated external boundary.
+- **M6.2:** record one genuine useful external acquisition.
+- **M6.3:** replay that acquisition through the canonical M5 demo and record Backup Demo #1 immediately.
+- **M6.4:** harden reset/repeatability, freeze the release and fix only demonstrated defects.
+- **G1:** exact-candidate promotion/submission gate.
+
+Still unproven: the first complete E2E, a useful live provider acquisition, and the final canonical recording.
 
 ## Product principle
 

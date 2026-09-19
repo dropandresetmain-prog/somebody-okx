@@ -299,3 +299,28 @@ Hackathon acceptance has two cutoffs:
 **Decision:** default UI shows high-level management truth; optional deeper graph/trace supports demo/debugging.
 
 Do not expose private chain-of-thought. The runtime decision/evidence record, not hidden reasoning, is the product trace.
+
+
+---
+
+## 20 September 2026 — Demo convergence / release scope
+
+**Decision:** the architecture phase is closed for the hackathon release. The R3-accepted M4 × M3 backend and accepted M5 Executive Mission Control are integrated on the M5 code baseline `a9a0b3d31a7125e83fe0771a783ee62cbd96914a`.
+
+The next proof is the **first complete product E2E**, not another subsystem milestone.
+
+Shipping sequence:
+
+1. **M6.1 — First Product E2E:** run the full Somebody workflow with a deterministic simulated useful external result so worker resumption, artifact causality, verification, completion and M5 rendering are proven without provider/payment uncertainty.
+2. **M6.2 — Useful Acquisition RECORD:** perform one genuine useful OKX acquisition and preserve safe immutable provenance/result evidence.
+3. **M6.3 — Canonical Replay E2E:** replay that recorded acquisition at the external boundary while the rest of the product runs normally; record Backup Demo #1 immediately.
+4. **M6.4 — Harden / reset / freeze:** fix only demonstrated defects, make reset repeatable without restoring spend authority, then freeze.
+5. **G1 — Submission gate:** exact-candidate validation, final recording and submission package.
+
+**Decision:** the canonical release minimum completion bar is a **verified relaunch-ready asset**, not public posting. Public publishing may remain a higher Outcome Level.
+
+**Decision:** one useful external acquisition is mandatory for the stronger demo story; a second purchase is not. xbird/public publishing, a mandatory second purchase, mobile, extra provider breadth and further architecture generalization are parked.
+
+**Decision:** the final demo may use **transparent RECORD/REPLAY** for the unreliable external payment/provider boundary. The original acquisition must be genuine, provenance-preserving and bound to the provider/service/normalized request. Replay must not complete the Objective directly: Somebody still makes the decision, ingests the purchased result, resumes the worker, changes the artifact, verifies it and passes the normal completion gate.
+
+This supersedes the earlier release-critical assumption that the canonical mission must include BUY #2/public publication. It does not erase that earlier decision from historical evidence.

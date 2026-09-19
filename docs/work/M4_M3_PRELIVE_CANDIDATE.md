@@ -1,3 +1,5 @@
+> **STATUS: HISTORICAL ACCEPTED R3 EVIDENCE.** The exact candidate `88afa084f64d57a0b189811df846d0016ac87e3e` was accepted by R3 and later incorporated into the integrated M5 baseline on `main@a9a0b3d31a7125e83fe0771a783ee62cbd96914a`. Do not rerun this review absent new material evidence. This document does **not** prove a useful live provider acquisition or a first complete product E2E; those are M6 shipping work.
+
 # M4 × M3 pre-live candidate packet
 
 Date: 20 September 2026  

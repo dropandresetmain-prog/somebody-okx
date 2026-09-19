@@ -1,3 +1,83 @@
+# ACTIVE TASK — DEMO CONVERGENCE / M6
+
+Authoritative integrated code baseline: `main@a9a0b3d31a7125e83fe0771a783ee62cbd96914a`.
+
+## Current truth
+
+- M3 + M4 application/payment boundary: integrated and accepted by R3.
+- M5 Executive Mission Control: visually accepted and wired to the authoritative normalized Convex read model.
+- Production `/m5`: real backend data only; fixtures live separately at `/m5/fixtures`.
+- First complete product E2E: **NOT YET PROVEN**.
+- Genuine useful external provider acquisition: **NOT YET PROVEN**.
+- Final canonical recording: **NOT YET RECORDED**.
+- No live-payment success claim is carried forward merely from subsystem readiness.
+
+## Next milestone — M6.1 First Product E2E
+
+Prove the canonical Objective physically through the integrated product before introducing live provider/payment uncertainty:
+
+```text
+Founder Objective
+→ Outcome Contract / Requirements
+→ That Guy REUSE / CREATE
+→ real internal work
+→ evidence gap
+→ MAKE / BUY decision
+→ deterministic simulated useful external result
+→ authoritative company state
+→ worker resumes with the result
+→ persisted artifact materially changes
+→ verification
+→ Requirement satisfaction
+→ Objective completion
+→ M5 renders the finished story
+```
+
+Acceptance requires causal evidence that the external result content is available to the resumed worker and materially explains the artifact revision. A result ID plus unrelated version bump is insufficient.
+
+## Shipping sequence after M6.1
+
+1. **M6.2 — RECORD:** one supervised genuine useful OKX acquisition; preserve safe immutable provenance/result evidence.
+2. **M6.3 — REPLAY:** replay that exact acquisition through the canonical E2E; record Backup Demo #1 immediately.
+3. **M6.4 — HARDEN / FREEZE:** demo reset, repeatability, truthful UI, only demonstrated defects.
+4. **G1 — SUBMIT:** exact release candidate, final recording, package/access checks, submission.
+
+## Release scope decisions
+
+- Canonical minimum completion bar: **verified relaunch-ready artifact**.
+- Public posting/public relaunch: higher Outcome Level, not release-critical.
+- Mandatory second purchase: parked.
+- xbird: parked.
+- Mobile: parked.
+- Additional provider breadth / new architecture: parked.
+- NewsLiquid: preferred useful-acquisition candidate if compatible; not allowed to block M6.1.
+- Final demo may transparently replay a previously recorded genuine acquisition at the external boundary. Replay must preserve provenance and match the recorded provider/service/request identity.
+
+## Known parked items carried from M5
+
+- public founder-approval action from the M5 surface;
+- M3 `settled` truth surfaced into Convex/M5;
+- first-class artifact→evidence causal refs;
+- pre-existing environmental esbuild bundle-probe harness failure.
+
+Do not reopen these unless they materially block the canonical E2E.
+
+## Working rule
+
+The project has enough architecture. The active question is whether Somebody can complete one real company workflow.
+
+After each meaningful checkpoint record only:
+
+- exact SHA;
+- what now works;
+- evidence;
+- remaining blocker;
+- whether founder action is required.
+
+---
+
+# HISTORICAL TASK LEDGER
+
 # ACTIVE TASK — M4 Generic Somebody Management Engine
 
 ## LOCAL M4 × M3 PRODUCTION DRIVER — CP1 (in progress)
