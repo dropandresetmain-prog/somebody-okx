@@ -8,9 +8,11 @@ import { runM3ProductionDriver, type M3DriverStore } from "../lib/management/m3P
 import type { ExecutionIntent } from "../lib/management/types";
 import type { M3BuyerRailDeps } from "../lib/management/m3BuyerRail";
 import { FilePurchaseLedger, type PurchaseLedger } from "../lib/payment/purchaseLedger";
+import { FilePreviewLedger } from "../lib/payment/previewLedger";
 import type { PurchaseRecord } from "../lib/payment/types";
 import { createPurchase } from "../lib/payment/purchase";
 import { prepareApprovedPurchase } from "../lib/payment/supervisedPurchase";
+import { prepareFounderVisiblePreview } from "../lib/payment/supervisedPreparation";
 import { handoffApprovedPurchaseToM3 } from "../lib/management/m3BuyerRail";
 import { FileFounderConfirmationLedger, persistFounderConfirmation } from "../lib/payment/supervisedDriverAdapter";
 import { createLocalProductionComposition } from "../lib/payment/localProductionComposition";
@@ -160,5 +162,59 @@ test("D7 runtime: the concrete local production composition constructs without n
   } finally {
     if (previous === undefined) delete process.env.M3_BUYER_ADDRESS;
     else process.env.M3_BUYER_ADDRESS = previous;
+  }
+});
+
+test("D7-D14: preview handles may refresh for identical terms but every material challenge mutation is refused before execution", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "m3-driver-preview-"));
+  try {
+    const challenge = { x402Version: 2, resource: { url: "/paid" }, accepts: [{ scheme: "exact", network: "eip155:1952", asset: "0xasset", amount: "10000", payTo: "0xrecipient", resource: "/paid", maxTimeoutSeconds: 60, extra: { name: "USDT0", version: "1" } }] };
+    const previews = new FilePreviewLedger(path.join(root, "previews.json"));
+    const purchase = createPurchase({ id: intent.intentId, objectiveKey: intent.objectiveKey, resourceNeedId: intent.requirementKey, offeringId: intent.target.offeringId!, idempotencyKey: intent.idempotencyKey, at });
+    const prepared = prepareFounderVisiblePreview({ intent, purchase, challengeBody: challenge, railConfig: { allowedNetworks: ["eip155:1952"], maxSpend: "10000" }, previews, at });
+    assert.equal(prepared.purchase.state, "approved");
+    // Payment handles are founder-visible only. A different one with matching
+    // terms is legal and changes no financial identity or approval.
+    const refreshed = previews.put(purchase.id, { ...prepared.preview, paymentId: "different-preview-handle", acquiredAt: at + 1 });
+    assert.equal(refreshed.paymentId, "different-preview-handle");
+
+    const mutations: Array<[string, Record<string, unknown>]> = [
+      ["amount", { amount: "10001" }], ["asset", { asset: "0xother" }], ["network", { network: "eip155:1" }],
+      ["recipient", { payTo: "0xother" }], ["resource", { resource: "/other" }], ["timeout", { maxTimeoutSeconds: 61 }],
+      ["EIP-712 domain", { extra: { name: "USDT1", version: "1" } }],
+    ];
+    for (const [name, mutation] of mutations) {
+      const isolated = new FilePreviewLedger(path.join(root, `${name}.json`));
+      const fresh = createPurchase({ id: `${intent.intentId}_${name}`, objectiveKey: intent.objectiveKey, resourceNeedId: intent.requirementKey, offeringId: intent.target.offeringId!, idempotencyKey: `${intent.idempotencyKey}_${name}`, at });
+      const changed = { ...challenge, accepts: [{ ...challenge.accepts[0], ...mutation }] };
+      const changedIntent = { ...intent, intentId: fresh.id, idempotencyKey: fresh.idempotencyKey };
+      if (name === "network") {
+        assert.throws(() => prepareFounderVisiblePreview({ intent: changedIntent, purchase: fresh, challengeBody: changed, railConfig: { allowedNetworks: ["eip155:1952"], maxSpend: "10000" }, previews: isolated, at }), /allowed networks/);
+      } else {
+        const baseline = prepareFounderVisiblePreview({ intent: changedIntent, purchase: fresh, challengeBody: challenge, railConfig: { allowedNetworks: ["eip155:1952"], maxSpend: "10000" }, previews: isolated, at });
+        const changedTerms = name === "amount"
+          ? { maxAmountRequired: "10001" }
+          : name === "EIP-712 domain"
+            ? { eip712: { name: "USDT1", version: "1" } }
+            : mutation;
+        assert.throws(() => isolated.put(fresh.id, { ...baseline.preview, terms: { ...baseline.preview.terms, ...changedTerms } }), /immutable/, `${name} must not replace the stored preview terms`);
+      }
+    }
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("D20-D23: a restart from attempted, submitted, settled, result_received, or verified never reaches the executor again", async () => {
+  const states: PurchaseRecord["state"][] = ["payment_attempted", "submitted", "settled", "result_received", "verified"];
+  for (const state of states) {
+    const backing = store({ ...intent, state: state === "payment_attempted" ? "awaiting_m3" : state === "submitted" || state === "settled" ? "handed_off" : state === "result_received" ? "result_recorded" : "verified" });
+    const purchases = new MemoryPurchases();
+    purchases.put({ ...createPurchase({ id: intent.intentId, objectiveKey: intent.objectiveKey, resourceNeedId: intent.requirementKey, offeringId: intent.target.offeringId!, idempotencyKey: intent.idempotencyKey, at }), state, boundTerms: state === "payment_attempted" ? null : { scheme: "exact", network: "eip155:1952", asset: "0xasset", maxAmountRequired: "10000", payTo: "0xrecipient", resource: "/paid", eip712: { name: "USDT0", version: "1" }, maxTimeoutSeconds: 60 }, approval: null });
+    let executorCalls = 0;
+    const deps = rail();
+    deps.executor = { kind: "test_scaffold", async executeApprovedPayment() { executorCalls += 1; return { submitted: true, transactionHash: "0x" + "1".repeat(64) }; } };
+    await assert.rejects(() => runM3ProductionDriver("execute", intent.intentId, { store: backing, purchases, rail: deps, executionAuthorized: true }), /refusing execution|not awaiting_m3/);
+    assert.equal(executorCalls, 0, `${state} restart cannot call executor again`);
   }
 });

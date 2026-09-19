@@ -101,6 +101,13 @@ export async function runM3ProductionDriver(
   const existing = deps.purchases.get(intent.intentId);
   const at = (deps.now ?? Date.now)();
 
+  // A named durable purchase is not a general-purpose execution voucher. Only
+  // the M4 state explicitly waiting for M3 may be prepared or sent to the
+  // executor; post-submit, verified, failed and recovery states are read-only.
+  if ((mode === "prepare" || mode === "execute") && intent.state !== "awaiting_m3") {
+    throw new Error(`refusing ${mode}: M4 intent is ${intent.state}, not awaiting_m3`);
+  }
+
   if (mode === "inspect" || mode === "reconcile") {
     return {
       mode, intent, purchase: existing, events: [], changed: false, stale,

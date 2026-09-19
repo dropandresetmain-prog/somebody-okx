@@ -16,8 +16,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { readdirSync, readFileSync, existsSync } from "node:fs";
+import { readdirSync, readFileSync, existsSync, mkdtempSync, rmSync } from "node:fs";
 import { execFileSync } from "node:child_process";
+import os from "node:os";
 import path from "node:path";
 
 import { sha256Hex, hash24, identityMaterial } from "../lib/management/sha256";
@@ -125,38 +126,43 @@ function convexModules(dir: string): string[] {
   return out;
 }
 
-const esbuildBin = path.join(REPO, "node_modules", ".bin", "esbuild");
+const esbuildBin = path.join(REPO, "node_modules", "esbuild", "bin", "esbuild");
 
 test(
   "every default-platform Convex module bundles without node:crypto",
   { skip: existsSync(esbuildBin) ? false : "esbuild not installed" },
   () => {
+    const outputDir = mkdtempSync(path.join(os.tmpdir(), "convex-browser-bundle-"));
     const modules = convexModules(path.join(REPO, "convex"));
     assert.ok(modules.length >= 6, "expected to find the convex module tree");
     const checked: string[] = [];
-    for (const file of modules) {
-      const source = readFileSync(file, "utf8");
+    try {
+      for (const file of modules) {
+        const source = readFileSync(file, "utf8");
       // A module that declares "use node" runs on the Node platform, where
       // node:crypto is legitimate. Only default-platform modules are at risk.
-      const usesNodePlatform = /^\s*["']use node["']/.test(source);
-      const declaresFunctions = /\b(internalMutation|internalQuery|internalAction|mutation|query|action)\s*\(/.test(source);
-      if (usesNodePlatform || !declaresFunctions) continue;
-      checked.push(path.relative(REPO, file));
+        const usesNodePlatform = /^\s*["']use node["']/.test(source);
+        const declaresFunctions = /\b(internalMutation|internalQuery|internalAction|mutation|query|action)\s*\(/.test(source);
+        if (usesNodePlatform || !declaresFunctions) continue;
+        checked.push(path.relative(REPO, file));
       // externalising node builtins would mask the defect, so nothing is
       // external: an unresolvable node:crypto must fail the bundle.
-      assert.doesNotThrow(
-        () =>
-          execFileSync(
-            esbuildBin,
-            [file, "--bundle", "--platform=browser", "--format=esm", "--log-level=silent", "--outfile=/dev/null"],
-            { cwd: REPO, encoding: "utf8", stdio: ["ignore", "ignore", "pipe"] },
-          ),
-        `${path.relative(REPO, file)} cannot bundle on the Convex default (browser) platform`,
+        assert.doesNotThrow(
+          () =>
+            execFileSync(
+              process.execPath,
+              [esbuildBin, file, "--bundle", "--platform=browser", "--format=esm", "--log-level=silent", `--outfile=${path.join(outputDir, `${checked.length}.js`)}`],
+              { cwd: REPO, encoding: "utf8", stdio: ["ignore", "ignore", "pipe"] },
+            ),
+          `${path.relative(REPO, file)} cannot bundle on the Convex default (browser) platform`,
+        );
+      }
+      assert.ok(
+        checked.includes(path.join("convex", "management.ts")),
+        "convex/management.ts must be covered by this probe",
       );
+    } finally {
+      rmSync(outputDir, { recursive: true, force: true });
     }
-    assert.ok(
-      checked.includes(path.join("convex", "management.ts")),
-      "convex/management.ts must be covered by this probe",
-    );
   },
 );

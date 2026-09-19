@@ -1,5 +1,4 @@
 /** Concrete, Node-only local composition. Construction performs no payment I/O. */
-import path from "node:path";
 import { decodePaymentRequiredHeader } from "./challenge";
 import { FilePaymentExecutionAuthority, resolvePaymentExecutionLedgerPath } from "./executionAuthority";
 import { verifyM3ProtectedResult } from "./m3Seller";
@@ -15,6 +14,22 @@ function required(name: string): string {
   return value;
 }
 
+/** Node-only, non-financial dependencies for preview and confirmation commands. */
+export function createLocalPreviewComposition(applicationRoot: string): {
+  merchantEndpoint: string;
+  railConfig: M3BuyerRailDeps["railConfig"];
+  fetchChallenge: () => Promise<unknown>;
+  confirmations: FileFounderConfirmationLedger;
+} {
+  const merchantEndpoint = process.env.M3_MERCHANT_URL ?? "http://127.0.0.1:4021/m3/paid-ping";
+  return {
+    merchantEndpoint,
+    railConfig: { allowedNetworks: [XLAYER_TESTNET_NETWORK], maxSpend: process.env.M3_MAX_SPEND ?? "10000" },
+    fetchChallenge: () => fetchChallenge(merchantEndpoint),
+    confirmations: new FileFounderConfirmationLedger(resolveFounderConfirmationLedgerPath(applicationRoot)),
+  };
+}
+
 async function fetchChallenge(endpoint: string): Promise<unknown> {
   const response = await fetch(endpoint, { redirect: "manual", signal: AbortSignal.timeout(20_000) });
   if (response.status !== 402) throw new Error(`expected HTTP 402 challenge, got ${response.status}`);
@@ -28,11 +43,11 @@ async function fetchChallenge(endpoint: string): Promise<unknown> {
  * explicitly sets M4_M3_EXECUTION_ENABLED=true after founder confirmation.
  */
 export function createLocalProductionComposition(applicationRoot: string): Pick<M3ProductionDriverDeps, "rail" | "railForPurchase" | "supervisedSubmit" | "executionAuthorized"> {
-  const merchantEndpoint = process.env.M3_MERCHANT_URL ?? "http://127.0.0.1:4021/m3/paid-ping";
+  const preview = createLocalPreviewComposition(applicationRoot);
+  const { merchantEndpoint, confirmations } = preview;
   const payer = required("M3_BUYER_ADDRESS");
   const authority = new FilePaymentExecutionAuthority(resolvePaymentExecutionLedgerPath(applicationRoot));
-  const confirmations = new FileFounderConfirmationLedger(resolveFounderConfirmationLedgerPath(applicationRoot));
-  const config = { allowedNetworks: [XLAYER_TESTNET_NETWORK], maxSpend: process.env.M3_MAX_SPEND ?? "10000" };
+  const config = preview.railConfig;
   const settlementReaderForPurchase = (purchase: PurchaseRecord): M3BuyerRailDeps["settlementReader"] => ({
     async readSettlement(transactionHash) {
       if (!purchase.boundTerms) throw new Error("durable purchase has no bound terms");

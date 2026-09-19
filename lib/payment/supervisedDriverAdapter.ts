@@ -6,6 +6,7 @@ import {
   OfficialSignOnlyReplayExecutor,
   paymentTermsEqual,
   type FounderPaymentConfirmation,
+  type PreviewQuote,
 } from "./onchainOsExecutor";
 import { authorizeFreshExecutionQuote, confirmApprovedPurchaseTerms } from "./supervisedPurchase";
 import type { PaymentExecutionAuthority } from "./executionAuthority";
@@ -33,6 +34,15 @@ export class FileFounderConfirmationLedger implements ConfirmationLedger {
     return ledger.confirmations.find((item) => item.purchaseId === purchaseId) ?? null;
   }
   put(confirmation: FounderPaymentConfirmation): FounderPaymentConfirmation {
+    const lock = `${this.file}.lock`;
+    let descriptor: number;
+    try {
+      fs.mkdirSync(path.dirname(this.file), { recursive: true });
+      descriptor = fs.openSync(lock, "wx");
+    } catch {
+      throw new Error(`M3 founder confirmation ledger is busy: ${this.file}`);
+    }
+    try {
     fs.mkdirSync(path.dirname(this.file), { recursive: true });
     const ledger = fs.existsSync(this.file)
       ? JSON.parse(fs.readFileSync(this.file, "utf8")) as { version?: number; confirmations?: FounderPaymentConfirmation[] }
@@ -45,14 +55,21 @@ export class FileFounderConfirmationLedger implements ConfirmationLedger {
     fs.writeFileSync(temp, JSON.stringify(ledger, null, 2), "utf8");
     fs.renameSync(temp, this.file);
     return structuredClone(confirmation);
+    } finally {
+      fs.closeSync(descriptor!);
+      fs.unlinkSync(lock);
+    }
   }
 }
 
 /** Called only after the founder has seen the safe preview terms. */
 export function persistFounderConfirmation(input: {
-  purchase: PurchaseRecord; previewBody: unknown; confirmationId: string; merchantEndpoint: string; confirmedAt: number; confirmations: ConfirmationLedger;
+  purchase: PurchaseRecord; preview?: PreviewQuote; previewBody?: unknown; confirmationId: string; merchantEndpoint: string; confirmedAt: number; confirmations: ConfirmationLedger;
 }): FounderPaymentConfirmation {
-  const preview = buildQuoteFromChallenge(input.previewBody, `preview_${input.purchase.id}_${input.confirmedAt}`, input.confirmedAt);
+  if ((input.preview === undefined) === (input.previewBody === undefined)) {
+    throw new Error("provide exactly one safe PreviewQuote or preview challenge body");
+  }
+  const preview = input.preview ?? buildQuoteFromChallenge(input.previewBody, `preview_${input.purchase.id}_${input.confirmedAt}`, input.confirmedAt);
   return input.confirmations.put(confirmApprovedPurchaseTerms({ purchase: input.purchase, preview, confirmationId: input.confirmationId, merchantEndpoint: input.merchantEndpoint, confirmedAt: input.confirmedAt }));
 }
 

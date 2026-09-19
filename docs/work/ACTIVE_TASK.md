@@ -91,6 +91,34 @@ is **Act Now**.
   Composition construction test performs no fetch, signing, executor call, or
   chain operation.
 
+### CP5 local preview/confirmation completion — 20 September 2026
+
+- The local production CLI now exposes the complete safe supervised setup path:
+  `prepare` creates/reuses one M3 purchase identity; `preview` fetches only a
+  402 challenge, binds exact permitted M3 terms, and stores a safe
+  founder-visible preview; `confirm --confirmation-id` persists only the exact
+  Purchase/Approval/terms confirmation. `execute` remains separately gated and
+  was not enabled or invoked in this work.
+- Preview data is M3-owned and durable in `.m3-preview-quotes.json`; it omits
+  signing requirements and all wallet/credential material. Different local
+  preview payment handles are permitted only when all material terms are equal.
+  A changed amount, asset, network, recipient, resource, timeout, or EIP-712
+  domain is refused before execution. Confirmation and purchase files take an
+  exclusive local lock and use atomic replacement, so concurrent conflicting
+  authority writes fail closed.
+- Driver preparation/execution now requires M4 `awaiting_m3`, closing the path
+  where an already handed-off, result-recorded, or verified intent might be
+  sent toward the executor after a restart.
+- Focused evidence: 161/161 pass across production driver, M4×M3 seam,
+  lifecycle, confirmation/quote, authority, reconciliation, settlement,
+  write/wake, completion, and actual Convex management seams. Root and Convex
+  TypeScript are clean. The Windows Convex browser-bundle probe was corrected
+  to execute esbuild through Node and a temporary writable output directory.
+- **Next:** inspect exact diff, commit/push the local-driver completion
+  checkpoint, freeze a code SHA, run the canonical broad gate once, then give
+  that exact SHA to an independent read-only R3 reviewer. No live payment,
+  signing, submission, provider replay, or paid request has occurred.
+
 No live payment occurred in this CP1 work.
 
 > **M4 × M3 INTEGRATION (this branch `integration/m4-m3`).** This ledger now covers the
