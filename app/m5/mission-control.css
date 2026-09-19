@@ -150,6 +150,8 @@
 .mc-attention-clear { display: flex; gap: 10px; margin-top: 16px; font-size: 12px; }
 .mc-attention-clear > .icon { color: var(--verified); }
 .mc-attention-clear p { margin-top: 6px; font-size: 11px; color: var(--ink-3); line-height: 1.6; }
+.mc-xray-toggle { margin-top: 20px; border-top: 1px solid var(--line); padding-top: 14px; font-size: 12px; }
+.mc-xray-toggle > summary { color: var(--ink-2); font-weight: 550; padding: 6px 0; }
 .mc-evidence { padding: 20px 0; border-top: 1px solid var(--line); }
 .mc-evidence .mc-section-heading h2 { font-size: 20px; }
 .mc-evidence-item { padding: 14px 0; border-bottom: 1px solid var(--line); scroll-margin-top: 20px; }

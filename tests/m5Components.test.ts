@@ -3,7 +3,9 @@ import assert from "node:assert/strict";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { FixtureWorkspace } from "../app/m5/FixtureWorkspace";
-import { fixtureScenarios } from "../app/m5/fixtures";
+import { SystemXray } from "../app/m5/SystemXray";
+import { fixtureScenarios, selectFixture } from "../app/m5/fixtures";
+import { buildXray } from "../app/m5/xray";
 
 for (const scenario of fixtureScenarios) test(`${scenario.id}: every snapshot renders without a provider or runtime`, () => {
   for (const snapshot of scenario.snapshots) {
@@ -70,4 +72,40 @@ test("accepted completion exposes proof, revision history and uncompleted suppor
   assert.ok(html.includes("v1 ·"));
   assert.ok(html.includes('href="#evidence-pack"'));
   assert.ok(html.includes('id="evidence-pack"'));
+});
+
+test("System X-ray renders explicit nodes and relationships without invented causality", () => {
+  const shellHtml = renderToStaticMarkup(createElement(FixtureWorkspace, { initialScenario: "launch", initialMoment: "completed" }));
+  assert.ok(shellHtml.includes("System X-ray · secondary inspection"));
+  const { snapshot } = selectFixture("launch", "completed");
+  const xray = buildXray(snapshot.view);
+  const html = renderToStaticMarkup(createElement(SystemXray, { xray }));
+  assert.ok(html.includes("System X-ray"));
+  assert.ok(html.includes("no inferred causality"));
+  assert.ok(html.includes("No live backend — fixture data only"));
+  assert.ok(html.includes("proof for"));
+  assert.ok(html.includes("assigned to"));
+  assert.ok(html.includes("accepts"));
+  assert.ok(!html.includes("depends_on"));
+  assert.ok(!html.includes("depends on"));
+  assert.ok(!html.includes(">causes<"));
+  assert.ok(!html.includes(">observe<"));
+  assert.ok(!html.includes(">reduce<"));
+  assert.ok(!html.includes(">decide<"));
+  assert.ok(!html.includes(">settle<"));
+});
+
+test("X-ray node IDs match stable fixture IDs and relationships reference only known nodes", () => {
+  for (const scenarioId of ["launch", "partner", "supplier"]) {
+    const { snapshot } = selectFixture(scenarioId, undefined);
+    const xray = buildXray(snapshot.view);
+    const nodeIds = new Set(xray.nodes.map(n => n.id));
+    assert.ok(nodeIds.has(snapshot.view.objective.objectiveKey));
+    for (const rel of xray.relationships) {
+      assert.ok(nodeIds.has(rel.from), `Dangling from: ${rel.from}`);
+      assert.ok(nodeIds.has(rel.to), `Dangling to: ${rel.to}`);
+    }
+    const allowedLabels = ["defines", "requires", "assigned_to", "addresses", "selects", "authorizes", "provided_by", "proof_for", "accepts"];
+    assert.ok(xray.relationships.every(r => allowedLabels.includes(r.label)));
+  }
 });

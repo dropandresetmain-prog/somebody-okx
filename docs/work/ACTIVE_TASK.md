@@ -1,6 +1,6 @@
 # ACTIVE TASK — M5 Web Executive Mission Control
 
-Updated: 19 September 2026. Status: CP4 complete; System X-ray next.
+Updated: 19 September 2026. Status: CP5 complete; visual/responsive polish next.
 
 ## Goal and recovery
 Build a desktop-first, fixture-only executive management surface. The Objective
@@ -19,7 +19,8 @@ Resume from this ledger and the latest pushed checkpoint, not historical chat.
 - CP1 pushed / HEAD before CP2: `615f10c973a4d893a9e55c394539627c93a31694`.
 - CP2 pushed / HEAD before CP3: `ee6c2dbd3bf9b0fc9c59c71b7e741e7edbd878c2`.
 - CP3 pushed / HEAD before CP4: `610b15ca421525cfae51721df106cc1afef13b37`.
-- CP4 pushed SHA goes in the next checkpoint note.
+- CP4 pushed / HEAD before CP5: `63280ff284650789702519da30e7d36db54560f5`.
+- CP5 pushed SHA goes in the next checkpoint note.
 - Each commit updates this ledger; each checkpoint MUST be pushed before work
   continues. Record the just-pushed SHA in the next note (no self-referential SHA).
 - M3 historical ledger remains in git at the base above; M3 stays frozen.
@@ -63,7 +64,7 @@ Resume from this ledger and the latest pushed checkpoint, not historical chat.
 - [x] CP2 mission-control shell and Outcome/Somebody Now hierarchy
 - [x] CP3 workers, grounded decisions, providers, Needs You
 - [x] CP4 evidence, story, payments, independent completion
-- [ ] CP5 optional supported-relationship System X-ray
+- [x] CP5 optional supported-relationship System X-ray
 - [ ] CP6 responsive/accessibility/visual polish
 - [ ] CP7 frontend acceptance candidate and final gate
 
@@ -119,9 +120,31 @@ Resume from this ledger and the latest pushed checkpoint, not historical chat.
 - M5 component + fixture tests 16/16; focused tsc and diff checks passed.
 - No provider APIs, payment reducers, backend writes or automatic playback added.
 
+## CP5 evidence
+- X-ray is built by a pure `buildXray(view)` function (app/m5/xray.ts) from
+  explicit reference fields only: defines, requires, assigned_to, addresses,
+  selects, authorizes, provided_by, proof_for, accepts. No dependency edges,
+  no inferred causality, no LangGraph-style nodes.
+- Secondary inspection lives behind a `<details>` disclosure in the right rail;
+  collapsed by default so it never competes with the primary mission view.
+- Rendered tables: nodes (kind badge, label, stable ID, detail), relationships
+  (from → label → to, both ends must resolve to known node IDs), runtime facts.
+- Runtime facts state "No live backend — fixture data only"; note states
+  "explicit references only · no inferred causality".
+- Two delegated subagents produced xray.ts, SystemXray.tsx, xray.css; primary
+  integrated into FixtureWorkspace, page.tsx CSS import, and tests.
+- M5 tests 18/18 passed (8 fixture invariants + 10 component/X-ray). Full tsc
+  --noEmit passed.
+- Browser (1440x900, /usr/bin/chromium): toggle opens, 23 relationship/node
+  rows + 3 runtime facts rendered, zero page errors. Initial horizontal
+  overflow (scrollWidth 1499) traced to X-ray fact grid and fixed with
+  minmax(0,·) columns + word wrapping; re-verified scrollWidth 1440, no
+  element extends past viewport. Screenshot /tmp/m5-cp5-xray.png (temporary).
+
 ## Next action / active files
-CP5: build normalized X-ray fixture from explicit reference fields; add optional
-inspection view, node selection and supported-relationship tests. CP4 verified.
+CP6: visual + responsive + accessibility polish (delegate: responsive audit,
+spacing/typography pass, reduced motion, focus states, CSS cleanup). Then CP7
+final gate: typecheck, tests, build, fixture scenarios, no backend wiring.
 
 ## Risks
 - Design reference is provisional, not runtime end-to-end evidence.
