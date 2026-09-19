@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert";
-import { parse402Challenge, bindTermsToApproval } from "../lib/payment/challenge";
+import { isValidMaxTimeoutSeconds, parse402Challenge, bindTermsToApproval } from "../lib/payment/challenge";
 import type { PaymentApproval } from "../lib/payment/types";
 
 describe("402 Challenge Parsing and Binding", () => {
@@ -43,6 +43,32 @@ describe("402 Challenge Parsing and Binding", () => {
       assert.strictEqual(terms[0].eip712.name, "USDC_TEST");
       assert.strictEqual(terms[0].eip712.version, "1");
       assert.strictEqual(terms[0].maxTimeoutSeconds, 300);
+    });
+
+    it("normalizes the current x402 v2 amount field", () => {
+      const currentWireShape = {
+        x402Version: 2,
+        accepts: [{
+          ...mockChallengeBody.accepts[0],
+          amount: "10000",
+          maxAmountRequired: undefined,
+        }],
+      };
+      const terms = parse402Challenge(currentWireShape);
+      assert.strictEqual(terms.length, 1);
+      assert.strictEqual(terms[0].maxAmountRequired, "10000");
+    });
+
+    it("rejects an entry when amount aliases conflict", () => {
+      const conflicting = {
+        x402Version: 2,
+        accepts: [{
+          ...mockChallengeBody.accepts[0],
+          amount: "9999",
+          maxAmountRequired: "10000",
+        }],
+      };
+      assert.deepStrictEqual(parse402Challenge(conflicting), []);
     });
 
     it("throws if x402Version missing", () => {
@@ -100,6 +126,18 @@ describe("402 Challenge Parsing and Binding", () => {
       };
       const terms = parse402Challenge(bodyWithAllMalformed);
       assert.strictEqual(terms.length, 0);
+    });
+
+    it("accepts positive integer seconds and rejects non-finite, non-positive, or fractional values", () => {
+      assert.equal(isValidMaxTimeoutSeconds(1), true);
+      for (const invalid of [0, -1, 0.5, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+        assert.equal(isValidMaxTimeoutSeconds(invalid), false);
+        const challenge = {
+          ...mockChallengeBody,
+          accepts: [{ ...mockChallengeBody.accepts[0], maxTimeoutSeconds: invalid }],
+        };
+        assert.deepEqual(parse402Challenge(challenge), []);
+      }
     });
   });
 
@@ -161,6 +199,23 @@ describe("402 Challenge Parsing and Binding", () => {
       
       const intent = bindTermsToApproval(terms, highAmountApproval);
       assert.strictEqual(intent.state, "ready_to_sign");
+    });
+
+    it("compares atomic amounts exactly beyond JavaScript safe integers", () => {
+      const terms = {
+        ...parse402Challenge(mockChallengeBody)[0],
+        maxAmountRequired: "9007199254740993",
+      };
+      const approval = { ...mockApproval, approvedMaxAmount: "9007199254740992" };
+      assert.throws(() => bindTermsToApproval(terms, approval), /Amount exceeds approval/);
+    });
+
+    it("rejects non-atomic amount formats", () => {
+      const terms = {
+        ...parse402Challenge(mockChallengeBody)[0],
+        maxAmountRequired: "0.01",
+      };
+      assert.throws(() => bindTermsToApproval(terms, mockApproval), /atomic units/);
     });
 
     it("dynamically binds challenge values", () => {

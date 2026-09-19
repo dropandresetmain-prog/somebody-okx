@@ -7,6 +7,18 @@ import type {
   BoundPaymentIntent,
 } from "./types";
 
+/** Decode the x402 v2 PAYMENT-REQUIRED header emitted by the official seller SDK. */
+export function decodePaymentRequiredHeader(value: string): unknown {
+  if (!/^[A-Za-z0-9+/]*={0,2}$/.test(value)) {
+    throw new Error("PAYMENT-REQUIRED header is not valid base64");
+  }
+  try {
+    return JSON.parse(Buffer.from(value, "base64").toString("utf8")) as unknown;
+  } catch {
+    throw new Error("PAYMENT-REQUIRED header is not valid JSON");
+  }
+}
+
 /**
  * Parse a 402 challenge response body into normalized payment terms.
  * 
@@ -34,11 +46,13 @@ export function parse402Challenge(body: unknown): NormalizedChallengeTerms[] {
     throw new Error("Challenge must include accepts as an array");
   }
 
+  const resourceUrl = readTopLevelResourceUrl(obj.resource);
+
   const results: NormalizedChallengeTerms[] = [];
 
   for (const entry of obj.accepts) {
     try {
-      const normalized = normalizeChallengeEntry(entry);
+      const normalized = normalizeChallengeEntry(entry, resourceUrl);
       results.push(normalized);
     } catch (err) {
       // Malformed entry — skip it (fail-closed: we don't throw, just skip)
@@ -57,7 +71,7 @@ export function parse402Challenge(body: unknown): NormalizedChallengeTerms[] {
  * @returns Normalized challenge terms
  * @throws if any required field is missing or malformed
  */
-function normalizeChallengeEntry(entry: unknown): NormalizedChallengeTerms {
+function normalizeChallengeEntry(entry: unknown, topLevelResourceUrl?: string): NormalizedChallengeTerms {
   if (typeof entry !== "object" || entry === null) {
     throw new Error("Challenge entry must be an object");
   }
@@ -68,13 +82,19 @@ function normalizeChallengeEntry(entry: unknown): NormalizedChallengeTerms {
   const scheme = requireString(e, "scheme");
   const network = requireString(e, "network");
   const asset = requireString(e, "asset");
-  const maxAmountRequired = requireString(e, "maxAmountRequired");
+  const maxAmountRequired = requireNormalizedAmount(e);
   const payTo = requireString(e, "payTo");
-  const resource = requireString(e, "resource");
+  const resource =
+    typeof e.resource === "string" && e.resource.length > 0
+      ? e.resource
+      : topLevelResourceUrl;
+  if (!resource) throw new Error("resource must be a non-empty string");
 
-  // Required number field
-  if (typeof e.maxTimeoutSeconds !== "number") {
-    throw new Error("maxTimeoutSeconds must be a number");
+  // The official core schema requires a positive number. The official EVM
+  // signer then adds it to a Unix-second integer and converts the result to
+  // uint256, so finite positive integer seconds are the interoperable domain.
+  if (!isValidMaxTimeoutSeconds(e.maxTimeoutSeconds)) {
+    throw new Error("maxTimeoutSeconds must be a finite positive integer number of seconds");
   }
   const maxTimeoutSeconds = e.maxTimeoutSeconds;
 
@@ -96,6 +116,52 @@ function normalizeChallengeEntry(entry: unknown): NormalizedChallengeTerms {
     eip712: { name, version },
     maxTimeoutSeconds,
   };
+}
+
+export function isValidMaxTimeoutSeconds(value: unknown): value is number {
+  return typeof value === "number"
+    && Number.isFinite(value)
+    && Number.isInteger(value)
+    && value > 0;
+}
+
+function readTopLevelResourceUrl(value: unknown): string | undefined {
+  if (typeof value === "string" && value.length > 0) return value;
+  if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+    const url = (value as Record<string, unknown>).url;
+    if (typeof url === "string" && url.length > 0) return url;
+  }
+  return undefined;
+}
+
+/**
+ * Normalize the amount field across the two OKX/x402 wire shapes we have
+ * authoritative evidence for:
+ * - the Sep-17 live Mock Merchant used `maxAmountRequired`;
+ * - current x402 v2 / OKX seller docs use `amount`.
+ *
+ * If a response supplies both, they must agree exactly. A mismatch is a
+ * challenge mutation and the entry is rejected rather than guessing which
+ * value the signer will use.
+ */
+function requireNormalizedAmount(obj: Record<string, unknown>): string {
+  const legacy = obj.maxAmountRequired;
+  const standard = obj.amount;
+
+  const legacyValue =
+    typeof legacy === "string" && legacy.length > 0 ? legacy : undefined;
+  const standardValue =
+    typeof standard === "string" && standard.length > 0 ? standard : undefined;
+
+  if (legacyValue && standardValue && legacyValue !== standardValue) {
+    throw new Error("Conflicting amount and maxAmountRequired values");
+  }
+
+  const value = legacyValue ?? standardValue;
+  if (!value) {
+    throw new Error("Challenge entry must include amount or maxAmountRequired");
+  }
+  return value;
 }
 
 /**
@@ -153,13 +219,10 @@ export function bindTermsToApproval(
     );
   }
 
-  // Verify amount is within approved bounds (decimal comparison)
-  const requiredAmount = parseFloat(terms.maxAmountRequired);
-  const approvedAmount = parseFloat(approval.approvedMaxAmount);
-
-  if (isNaN(requiredAmount) || isNaN(approvedAmount)) {
-    throw new Error("Amount values must be valid decimal numbers");
-  }
+  // x402 amounts are atomic integer units. Floating-point comparison would
+  // silently lose precision for larger token amounts, widening spend bounds.
+  const requiredAmount = parseAtomicAmount(terms.maxAmountRequired, "terms");
+  const approvedAmount = parseAtomicAmount(approval.approvedMaxAmount, "approval");
 
   if (requiredAmount > approvedAmount) {
     throw new Error(
@@ -175,6 +238,13 @@ export function bindTermsToApproval(
     boundAt: boundAt ?? 0,
     state: "ready_to_sign",
   };
+}
+
+export function parseAtomicAmount(value: string, source: string): bigint {
+  if (!/^(0|[1-9][0-9]*)$/.test(value)) {
+    throw new Error(`${source} amount must be a non-negative integer in atomic units`);
+  }
+  return BigInt(value);
 }
 
 /**

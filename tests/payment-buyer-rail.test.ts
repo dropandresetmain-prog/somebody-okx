@@ -110,6 +110,26 @@ describe("Buyer Rail", () => {
         /No valid payment terms/
       );
     });
+
+    it("selects exact even when the merchant lists a deferred scheme first", () => {
+      const deferredFirst = {
+        ...mockChallengeBody,
+        accepts: [
+          { ...mockChallengeBody.accepts[0], scheme: "aggr_deferred" },
+          mockChallengeBody.accepts[0],
+        ],
+      };
+      const prepared = preparePayment(deferredFirst, mockApproval, mockConfig);
+      assert.strictEqual(prepared.terms.scheme, "exact");
+    });
+
+    it("refuses a challenge with no fixed-price exact scheme", () => {
+      const noExact = {
+        ...mockChallengeBody,
+        accepts: [{ ...mockChallengeBody.accepts[0], scheme: "aggr_deferred" }],
+      };
+      assert.throws(() => preparePayment(noExact, mockApproval, mockConfig), /No supported exact/);
+    });
   });
 
   describe("executeSignedPayment", () => {
@@ -279,7 +299,7 @@ describe("Buyer Rail", () => {
       );
     });
 
-    it("allows retry from failed state", () => {
+    it("requires reconciliation evidence before retry planning from failed state", () => {
       const purchase = createPurchase({
         id: "purchase-1",
         objectiveKey: "objective-1",
@@ -289,9 +309,12 @@ describe("Buyer Rail", () => {
       });
 
       const failed = updatePurchaseState(purchase, "failed");
-      
-      const allowed = planRetry(failed, []);
-      assert.strictEqual(allowed, true);
+
+      assert.throws(
+        () => planRetry(failed, []),
+        /without reconciliation proof/,
+      );
+      assert.strictEqual(planRetry(failed, [], "expired authorization; no settlement observed"), true);
     });
 
     it("prevents double-pay: same idempotencyKey already submitted", () => {
@@ -315,7 +338,7 @@ describe("Buyer Rail", () => {
       const failed = updatePurchaseState(purchase2, "failed");
 
       assert.throws(
-        () => planRetry(failed, [submitted]),
+        () => planRetry(failed, [submitted], "reconciled-unsettled"),
         /Cannot retry.*idempotency key.*already used.*submitted/
       );
     });
@@ -341,7 +364,7 @@ describe("Buyer Rail", () => {
       const failed = updatePurchaseState(purchase2, "failed");
 
       assert.throws(
-        () => planRetry(failed, [settled]),
+        () => planRetry(failed, [settled], "reconciled-unsettled"),
         /Cannot retry.*idempotency key.*already used.*settled/
       );
     });
@@ -469,7 +492,11 @@ describe("Buyer Rail", () => {
         TestScaffoldPaymentExecutor,
         OfficialSigningPendingExecutor,
       } = await import("../lib/payment/buyerRail");
-      const prepared = preparePayment(mockChallengeBody, mockApproval, mockConfig, "intent-exec");
+       const prepared = {
+         ...preparePayment(mockChallengeBody, mockApproval, mockConfig, "intent-exec"),
+         purchaseId: "purchase-scaffold",
+         idempotencyKey: "idem-scaffold",
+       };
       const scaffold = new TestScaffoldPaymentExecutor();
       assert.strictEqual(scaffold.kind, "test_scaffold");
       const result = await executeApprovedPayment(prepared, scaffold);

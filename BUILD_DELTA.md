@@ -688,6 +688,43 @@ provider names render as verbatim data. Status pill surfaces
 `npx tsc -p convex/tsconfig.json --noEmit` → clean; `npx next build` → success.
 Scenario-coupling audit and invariant review: `docs/work/INVARIANT_REVIEW.md`.
 
+### 3.10 M3 payment integration preflight hardening (18 Sep 2026)
+
+Branch `feat/m3-live-payment`. This is **not M3 acceptance** and no new payment
+was attempted during this audit. Full evidence/matrix:
+`docs/work/M3_PAYMENT_PREFLIGHT.md`; chronological live evidence remains in
+`docs/work/M3_LIVE_SESSION.md`.
+
+New OKX-project work after Attempts A/B/C:
+
+- normalized current x402 v2 `amount` and the Sep-17 live
+  `maxAmountRequired` wire shape, rejecting conflicting aliases;
+- safe Onchain OS CLI failure envelope capture without persisting raw stderr or
+  signing/session material;
+- source-proven quote-expiry and HPKE decrypt failures classified as
+  definitely pre-submission; unknown CLI failures remain ambiguous and
+  reconciliation-only;
+- post-submission failure can no longer collapse into a retryable local
+  `failed` state; failed-purchase retry planning now requires explicit
+  reconciliation evidence;
+- independent X Layer Testnet settlement readback verifies chain id, successful
+  receipt, and exact approved ERC-20 Transfer token/payer/recipient/amount.
+
+External research also established:
+- current upstream source/tag is 4.6.2 vs 4.6.1 used in the live attempts;
+- core signing path is unchanged across those two versions;
+- upstream Windows issue #50 documents the same HPKE error from stale OS
+  credential state paired with fresh session metadata;
+- current official Mock Merchant docs describe USD₮0 while Sep-17 live runtime
+  challenged for USDC_TEST, so a fresh read-only quote and token/facilitator
+  compatibility check are mandatory before signing.
+
+**Current status: NO-GO before next signed payment.** Outstanding gates are
+local focused tests/typecheck on the exact branch head, supported CLI/login
+recovery, personal + safe EIP-712 signing canaries, fresh merchant quote,
+exact-token balance/funding check, and resolution of the current merchant asset
+against the supported payment rail.
+
 ## 4. Planned / Not Yet Built
 
 Everything in this section is **not implemented** until repository evidence moves it into Section 3.

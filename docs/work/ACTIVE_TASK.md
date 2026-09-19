@@ -1,5 +1,206 @@
 # ACTIVE TASK — M4 Generic Somebody Management Engine
 
+> **M4 × M3 INTEGRATION (this branch `integration/m4-m3`).** This ledger now covers the
+> integration of the closed M4 CP8 management engine with the frozen accepted M3 buyer
+> rail. Both sides' historical evidence is preserved below unchanged: the M3
+> disposition block (frozen, accepted) first, then the M4 CP8 ledger. The integration
+> checkpoints, merge SHA, focused evidence, remaining live-local proof, and R3 status
+> are recorded in the **M4 × M3 INTEGRATION LEDGER** section appended near the end.
+
+---
+
+## M3 FROZEN DISPOSITION (historical — preserved unchanged from main@37afaa5)
+
+Status: **M3 ACCEPTED / PROMOTED / FROZEN — M4 (`feat/m4-management-engine`) is the active lane**
+Updated: **19 September 2026**
+
+## M3 FINAL DISPOSITION (authoritative; supersedes "review pending" / "do not promote" prose below)
+
+M3 ACCEPTED / FROZEN FOR HACKATHON SCOPE.
+
+R2: **PASS WITH PARKED / ACCEPTED RISKS**
+
+Park for Later:
+- stale ledger lock recovery
+- global npm shim
+
+Ignore / Accept Risk for M3:
+- persist `authorization.from` for a more formally complete `(from, nonce)` authorization identity
+  (R2.2 already binds settlement to the retained EIP-3009 authorization identity; judged sufficient for demo scope)
+
+NO MORE M3 PAYMENT FIXERS unless materially new evidence appears.
+NO MORE LIVE M3 PAYMENT required for promotion.
+
+Historical evidence below is preserved unchanged. M3 remains the single payment
+execution/settlement authority; M4 orchestrates and hands authorized acquisition
+intents to the M3 rail without duplicating payment state.
+
+## CURRENT M3 CONTROLLED SELLER CHECKPOINT
+
+Branch: `feat/m3-live-payment` at the R2.2 final-fixer candidate SHA recorded below.
+R2 fixer implementation candidate: `ebc4278` (`Harden M3 payment execution safety`).
+R2.1 fixer implementation candidate: `16600bdac9e9925e6120bd4d6d92bb4464ff6fc5`
+(`Close R2.1 payment replay gaps`).
+R2.2 final payment-safety implementation candidate: `bfbd539597c1affeaea8b2af92465267ee956cf3`
+(`Bind settlement to signed authorization`). The final review candidate is this
+implementation checkpoint plus the docs reconciliation below.
+
+Implemented the narrow controlled seller at `GET /m3/paid-ping` using the official
+OKX TypeScript seller SDK (`@okxweb3/x402-core`, `@okxweb3/x402-evm`,
+`@okxweb3/x402-express`). The seller is loopback-only on `http://127.0.0.1:4021`,
+Testnet-only (`eip155:1952`), uses the current SDK USDT0 Testnet asset, and binds
+the recipient only from `M3_SELLER_RECEIVER_ADDRESS`. Credentials remain env-only.
+
+The buyer now accepts the official x402 v2 top-level `resource` plus
+`PAYMENT-REQUIRED` header while preserving the existing legacy amount shim and
+single sign/replay, no-redirect, no-retry, no-secret-persistence boundaries.
+
+Focused seller and buyer seam tests pass, including unpaid 402 shape, Testnet and
+recipient binding, wrong-network/host rejection, top-level resource parsing,
+loopback origin/path freeze, secret redaction, and durable single-attempt behavior.
+
+The controlled M3 live payment succeeded on 18–19 September 2026 and remains the
+accepted live evidence:
+- purchase `purchase-m3-1789769056615`;
+- transaction `0x7d1d639910471bc573a45d7e1d1d4bea1afe081a3dc59862703251fdc3e8660d`;
+- X Layer Testnet block `41310643`, receipt status `1`;
+- exact 0.01 USD₮0 (`10000` atomic units), buyer → seller;
+- controlled `GET /m3/paid-ping` returned HTTP 200 and the protected result;
+- independent ERC-20 Transfer readback matched exactly; application reached verified.
+
+R2 found payment-safety blockers in purchase identity, durable exactly-once
+authority, endpoint freezing, protected-result verification, settlement binding,
+string redaction, and timeout validation. This fixer pass addressed those blockers
+with focused tests. M3 is **not promoted** until the next R2 review passes. Do not
+run another live payment unless the reviewer specifically determines it is necessary.
+
+R2.1 closed the two remaining payment-safety gaps without reopening the broader R2
+scope:
+- the M3 payment ledger is resolved from the application/module location, never
+  from `process.cwd()` or a per-invocation override; separate launch directories
+  therefore share one durable authority;
+- installed `@okxweb3/x402-evm` inspection confirmed native EIP-3009/Permit2
+  nonces, but this official Onchain OS adapter does not retain a verifiable
+  nonce-to-transaction linkage, so settlement now requires an independently
+  fetched receipt-block timestamp no more than 120 seconds older than the durable
+  execution claim; the weak `SettlementReader` adapter fails closed.
+
+R2.1 verification: local TypeScript check and 139 focused payment tests pass;
+no additional live payment was run. The repository remains review-gated and must
+not be promoted yet.
+
+R2.2 replaced temporal settlement association with protocol-native EIP-3009
+linkage. The installed OKX/x402 path and the accepted historical X Layer
+transaction were independently inspected as direct `transferWithAuthorization`
+calls. The durable attempt now stores only the safe authorization identity
+(`authorizationKind`, nonce, `validAfter`, `validBefore`) before merchant replay;
+the verifier fetches `eth_getTransactionByHash` and decodes the installed x402
+EIP-3009 ABI, requiring the current nonce, payer, recipient, amount, validity
+window, token target, and X Layer chain before exact receipt verification. The
+120-second block freshness check remains defense-in-depth only. Missing or
+malformed authorization identity, calldata, target, or nonce fails closed.
+
+The historical live transaction can be decoded and contains an EIP-3009 nonce,
+but the pre-R2.2 attempt did not durably retain that nonce, so the old evidence
+does not retroactively prove current execution-attempt linkage. No new live
+payment was performed. Final R2 review is still required; do not promote.
+
+---
+
+## M3 PAYMENT SAFETY FIXER CHECKPOINT
+
+Audit date: **18 September 2026**. Full matrix and local preflight:
+`docs/work/M3_PAYMENT_PREFLIGHT.md`.
+
+Application hardening on `feat/m3-live-payment` now also:
+- accepts current `amount` and historical `maxAmountRequired` x402 shapes
+  without accepting disagreement;
+- classifies source-proven quote/HPKE failures as pre-submission while keeping
+  unknown CLI failures ambiguous;
+- forces post-submission failures and failed-purchase retries through explicit
+  reconciliation evidence;
+- independently verifies X Layer chain/receipt + exact ERC-20 Transfer terms;
+- persists a pre-sign execution claim in the application-owned payment ledger;
+- binds final signing to purchase and approval identities plus one canonical
+  merchant endpoint;
+- requires the controlled M3 protected-result contract before `verified`.
+
+No additional payment command was run during this fixer pass. The existing live
+evidence remains relied upon because these changes harden application-owned
+authority, validation, persistence, and readback seams without changing the TEE
+signing protocol, network, asset, recipient, amount, or facilitator interaction.
+Do not merge M3 to main.
+
+---
+
+## M2 ACCEPTED — live runtime proof (fix/m2-live-acceptance)
+
+Deployment: `clean-tapir-151` (`dropandreset-main/somebody-okx`). Provider: `openrouter` / `openai/gpt-5.6-terra`.
+
+**Live positive proof** — objective `obj_1789721537926_1a4a97`, run `run_1789721544165_y7d26u`:
+
+- founder objective → server planner → `growth_launch_operations` MAKE;
+- real Agent/Runner; company record `launch/context` + public web observation;
+- artifact `launch/page-message` v1→**v2** (`provenanceRunId` = run id);
+- `request_resource` → ResourceNeed `need_1789721567496_o2ez3v` (`proprietary_data`, provider-agnostic purpose);
+- OKX discovery adapter attempted live CLI (unavailable in Convex cloud Node) → **explicit snapshot fallback** with `fallbackReason=live_cli_unavailable_or_failed`;
+- candidates assessed; Newsliquid `newsliquid_twitter_search` selected BUY (`dec_1789721567496_9nypj6`);
+- need `buy_pending`; objective **`waiting_for_resource`**; **no payment/spend state**;
+- UI Mission section renders needs/candidates/waiting.
+
+**M1 compatibility:** accepted M1 objective `obj_1789659986103_l9gomb` still loads (`completed`, plan present).
+
+**Corrections in this pass:** official `onchainos` 4.6.1 discovery finding + adapter; M3 `PaymentExecutor` boundary (test scaffold ≠ production signing).
+
+**Gate (once):** focused M2/M1 tests pass; root + Convex `tsc` clean; `next build` clean.
+
+Accepted integration tip before promotion: see git SHA on `fix/m2-live-acceptance` / `main` after promotion.
+
+---
+
+## OVERNIGHT RUN LEDGER (superseded by M2 ACCEPTED above; kept for provenance)
+
+Integration branch: `qoder/general-session-fk5qjv`
+Base / CHECKPOINT A0 (M2 branch reconciled with origin/main): `72321ed8e78c8b366a46df5fe56ddb2e81ef5386`
+Frozen contracts: `docs/work/M2_SHARED_CONTRACT.md` @ `d61bfcf1083f80c8737b4058930f352f82bc00dc`
+CHECKPOINT 1 (lanes A+B+C+M3 integrated, 228/228 tests, root+convex tsc clean): `9ed74856b6fd52c6000e392a33cdc60b293b21f8`
+CHECKPOINT 2 (orchestration seam + canonical M2 dry-engine proof + M4 adapters, 244/244): `16a3b159b58496029137548c085c69454bbde130`
+CHECKPOINT 3 (BUY≠failure waiting_for_resource lifecycle, 247/247): `f2ddc7363a1d8f286116219fd95b3e0cd6b44666`
+CHECKPOINT 4 (generic read-model/UI prep, 255/255): `281a8a9b6ea1a29a5bb6196ffdd08c603029b0f7`
+CHECKPOINT 5 (scenario-coupling audit + invariant review + next build pass): `a0f93793a734a7e8f8d918fdce9f22ebe9129915`
+
+FINAL OVERNIGHT STATUS:
+- M2 IMPLEMENTATION COMPLETE — LIVE ACCEPTANCE PENDING (no Convex deployment/model creds in this environment; canonical chain proven deterministically offline in tests/canonicalM2.test.ts).
+- M3 IMPLEMENTATION READY — LIVE TESTNET SIGN/PAY ACCEPTANCE PENDING (rail stops at READY_TO_SIGN; nothing signed/submitted/spent).
+- M4 PROVIDER ADAPTERS READY — LIVE PROVIDER EXECUTION PENDING (fixture-driven; no paid calls).
+- UI/read-model prep complete for multi-step mission states.
+- Full evidence: BUILD_DELTA.md §3.8; audit: docs/work/INVARIANT_REVIEW.md.
+- Full suite 255/255; root+convex typecheck clean; next build clean.
+
+Morning founder actions (smallest path to acceptance):
+1. `npx convex dev` on a fresh deployment + set LIVE_AI_ENABLED/AI_MODEL/provider key → run the canonical objective live → M2 live acceptance.
+2. At READY_TO_SIGN: provide an explicit testnet wallet + approval bounds in a supervised session → sign Mock Merchant challenge on X Layer Testnet (eip155:1952) → M3 live acceptance → then R2 review.
+3. Supervised Newsliquid testnet purchase + xbird publish with demo X creds → M4 live → R3 review.
+4. Optional: confirm an official OKX discovery CLI/library exists and swap it behind MarketDiscovery.
+
+Lane branches (all pushed, remote==local verified by PRIMARY):
+- Lane A resource-need: `lane/a-resource-need` @ `c8cc432` (13/13) — ResourceNeed + SourcingDecisionRecord primitives.
+- Lane B market-discovery: `lane/b-market-discovery` @ `44a9c73` (14/14) — discovery iface, verified registry DATA, candidate assessment. FINDING: no official OKX programmatic discovery primitive confirmed → snapshot is primary behind replaceable MarketDiscovery interface.
+- Lane C artifact/growth-worker: `lane/c-artifact-growth-worker` @ `b672e97` (artifact 8/8, worker/workforce regression 24/24) — CompanyArtifact + growth capability + request_resource/update_company_artifact tools. GAP: tests/growthWorker.test.ts not produced (behavior verified by PRIMARY throwaway probe).
+- Lane M3 buyer-rail: `lane/m3-buyer-rail` @ `b05e117` (72/72) — 402 dynamic binding, purchase records, retry/reconcile, READY_TO_SIGN, secret boundary. PRIMARY reconstructed lost lib/payment/types.ts (concurrent-checkout casualty) and fixed test fixtures.
+
+INCIDENT: all child agents shared ONE working tree → concurrent `git checkout` contaminated branches (Lane A commit landed on lane/m3, Lane B dup on lane/c, remote lane/m3 held mixed commit 8bd777d). PRIMARY stood children down, salvaged files to /tmp/salvage, reconstructed each lane in isolated worktrees, force-with-lease corrected lane/m3. No remote corruption on integration branch. LESSON: do not spawn multiple writer children into the shared tree; PRIMARY owns all git from now.
+
+Discovery finding (Lane B): no supported official OKX programmatic discovery API confirmed this pass; `agent asp-match/search/service-list` CLI surface not verifiable as a runtime dependency. Snapshot fallback is PRIMARY path; live CLI integration is founder-gated. Registry DATA holds FlyBeacon/Newsliquid/xbird service→ResourceClass mappings.
+
+Next PRIMARY actions (safe order §33): wire ResourceNeed/CompanyArtifact/purchase persistence into Convex schema + objectives.ts + objectiveRunner.ts; add `waiting_for_resource` lifecycle (BUY is not failure); seed canonical launch artifact DATA; wire discovery+assessment seam per need; then read-model/UI (Lane D), provider adapters (Lane M4), invariant review (Lane E). STOP at READY_TO_SIGN / any founder-auth boundary.
+
+Boundaries NOT crossed and will not be: no wallet/signing/tx-submit/spend, no founder X creds, no publish, no paid provider call, no mainnet.
+
+---
+
+## M4 CP8 LEDGER (historical — preserved unchanged from qoder/general-session-1dclny@99df92d)
+
 Status: **ACTIVE — one long-horizon M4 task**  
 Updated: **19 September 2026**  
 Repository: `dropandresetmain-prog/somebody-okx`

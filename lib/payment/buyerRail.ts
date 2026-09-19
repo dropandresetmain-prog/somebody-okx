@@ -13,7 +13,7 @@ import type {
   PaymentExecutor,
   PaymentSubmissionResult,
 } from "./types";
-import { parse402Challenge, bindTermsToApproval } from "./challenge";
+import { parse402Challenge, bindTermsToApproval, parseAtomicAmount } from "./challenge";
 import { assertIdempotencyDistinct } from "./purchase";
 
 export type { PaymentExecutor, PaymentSubmissionResult };
@@ -34,6 +34,9 @@ export function detect402(response: { status: number; body: unknown }): boolean 
 export type PreparedPayment = {
   intent: BoundPaymentIntent;
   terms: NormalizedChallengeTerms;
+  /** Set by the supervised purchase wrapper; required for production execution. */
+  purchaseId?: string;
+  idempotencyKey?: string;
   state: "ready_to_sign";
 };
 
@@ -61,8 +64,12 @@ export function preparePayment(
     throw new Error("No valid payment terms found in 402 challenge");
   }
 
-  // Select first scheme (in production, could implement scheme selection logic)
-  const terms = allTerms[0];
+  // M3 only authorizes exact, fixed-price payments. Never let a changed
+  // merchant ordering silently select an unsupported/deferred scheme.
+  const terms = allTerms.find((candidate) => candidate.scheme === "exact");
+  if (!terms) {
+    throw new Error("No supported exact payment terms found in 402 challenge");
+  }
 
   // Validate network is allowed
   if (!config.allowedNetworks.includes(terms.network)) {
@@ -72,12 +79,8 @@ export function preparePayment(
   }
 
   // Validate amount is within spend limit
-  const requiredAmount = parseFloat(terms.maxAmountRequired);
-  const maxSpend = parseFloat(config.maxSpend);
-
-  if (isNaN(requiredAmount) || isNaN(maxSpend)) {
-    throw new Error("Invalid amount values");
-  }
+  const requiredAmount = parseAtomicAmount(terms.maxAmountRequired, "terms");
+  const maxSpend = parseAtomicAmount(config.maxSpend, "rail maximum");
 
   if (requiredAmount > maxSpend) {
     throw new Error(
@@ -149,13 +152,22 @@ export async function executeApprovedPayment(
   if (!prepared.intent.approval) {
     throw new Error("Cannot execute payment without explicit approval");
   }
+  if (!prepared.purchaseId || !prepared.idempotencyKey) {
+    throw new Error("Cannot execute payment without a durable purchase identity");
+  }
   return executor.executeApprovedPayment({
+    purchaseId: prepared.purchaseId,
+    idempotencyKey: prepared.idempotencyKey,
     intentId: prepared.intent.intentId,
+    scheme: prepared.terms.scheme,
     network: prepared.terms.network,
     asset: prepared.terms.asset,
     amount: prepared.terms.maxAmountRequired,
     payTo: prepared.terms.payTo,
     resource: prepared.terms.resource,
+    eip712Name: prepared.terms.eip712.name,
+    eip712Version: prepared.terms.eip712.version,
+    maxTimeoutSeconds: prepared.terms.maxTimeoutSeconds,
     approvalId: prepared.intent.approval.approvalId,
   });
 }
@@ -175,12 +187,18 @@ export class TestScaffoldPaymentExecutor implements PaymentExecutor {
   ) {}
 
   async executeApprovedPayment(input: {
+    purchaseId: string;
+    idempotencyKey: string;
     intentId: string;
+    scheme: string;
     network: string;
     asset: string;
     amount: string;
     payTo: string;
     resource: string;
+    eip712Name: string;
+    eip712Version: string;
+    maxTimeoutSeconds: number;
     approvalId: string;
   }): Promise<PaymentSubmissionResult> {
     const payload = {
@@ -240,8 +258,8 @@ export class OfficialSigningPendingExecutor implements PaymentExecutor {
  * Plan retry for a failed purchase.
  * 
  * Rules:
- * - Refuses to retry from submitted/uncertain/reconciliation_required (must reconcile first)
- * - Allows retry only from failed state
+ * - Refuses ambiguous/submitted states outright
+ * - A failed state is not itself retry authority; explicit reconciliation proof is required
  * - Prevents double-pay: same idempotencyKey + already submitted/settled → refuse
  * 
  * @param purchase - The purchase to retry
@@ -252,6 +270,7 @@ export class OfficialSigningPendingExecutor implements PaymentExecutor {
 export function planRetry(
   purchase: PurchaseRecord,
   existingPurchases: PurchaseRecord[],
+  reconciliationProof?: string,
 ): boolean {
   // Refuse to retry from ambiguous states
   if (
@@ -264,11 +283,16 @@ export function planRetry(
     );
   }
 
-  // Allow retry only from failed
+  // A local "failed" label is not proof that no payment landed. The caller
+  // must provide evidence from the reconciliation lane before a retry can even
+  // be planned.
   if (purchase.state !== "failed") {
     throw new Error(
-      `Can only retry purchase in failed state; current state is ${purchase.state}`,
+      `Can only retry a reconciled failed purchase; current state is ${purchase.state}`,
     );
+  }
+  if (!reconciliationProof?.trim()) {
+    throw new Error("Cannot retry failed purchase without reconciliation proof");
   }
 
   // Check for double-pay: same idempotencyKey + already submitted/settled

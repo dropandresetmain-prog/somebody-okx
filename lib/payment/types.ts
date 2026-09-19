@@ -163,6 +163,26 @@ export type Signer = {
 };
 
 /**
+ * Safe subset of the official CLI response retained for reconciliation.
+ * Authorization headers, signatures, and session material are intentionally
+ * excluded even when the CLI returns additional fields.
+ */
+export type SafeOfficialPaymentResponse = {
+  ok: boolean | null;
+  /** Safe top-level CLI error text; never raw stderr or signing material. */
+  topLevelError?: unknown;
+  /** Process exit code for diagnostics. null means the process did not exit normally. */
+  exitCode?: number | null;
+  data: {
+    status?: unknown;
+    txHash?: unknown;
+    decodedReceipt?: unknown;
+    result?: unknown;
+    error?: unknown;
+  } | null;
+};
+
+/**
  * Production-facing payment execution boundary.
  *
  * The application owns: purchase identity, spend approval, approved
@@ -175,19 +195,28 @@ export type Signer = {
 export type PaymentSubmissionResult = {
   submitted: boolean;
   transactionHash?: string;
+  /** Durable application-owned execution attempt, safe to persist. */
+  executionAttemptId?: string;
   paymentPayloadRef?: string;
   note?: string;
+  safeResponse?: SafeOfficialPaymentResponse;
 };
 
 export type PaymentExecutor = {
   readonly kind: "official_onchainos" | "test_scaffold";
   executeApprovedPayment(input: {
+    purchaseId: string;
+    idempotencyKey: string;
     intentId: string;
+    scheme: string;
     network: string;
     asset: string;
     amount: string;
     payTo: string;
     resource: string;
+    eip712Name: string;
+    eip712Version: string;
+    maxTimeoutSeconds: number;
     approvalId: string;
   }): Promise<PaymentSubmissionResult>;
 };
