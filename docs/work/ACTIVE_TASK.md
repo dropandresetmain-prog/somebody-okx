@@ -219,13 +219,13 @@ authorized outcome branch; push destination for CP8 evidence).
 
 | # | Finding | Class | Status |
 |---|---------|-------|--------|
-| A1 | Founder Objective never enters M4 engine | Act Now | **SHIPPED** (CP-2 `696e259`; acceptance pending CP-5) |
-| A2 | Graph decides but never dispatches/verifies | Act Now | **SHIPPED** (CP-2 `696e259`; acceptance pending CP-5) |
-| A3 | waiting/blocked zero-delay self-reschedule | Act Now | **SHIPPED** (CP-2 `696e259`; acceptance pending CP-5) |
+| A1 | Founder Objective never enters M4 engine | Act Now | **SHIPPED** (CP-2 `696e259`; accepted at CP-5) |
+| A2 | Graph decides but never dispatches/verifies | Act Now | **SHIPPED** (CP-2 `696e259`; accepted at CP-5) |
+| A3 | waiting/blocked zero-delay self-reschedule | Act Now | **SHIPPED** (CP-2 `696e259`; accepted at CP-5) |
 | A4 | null spend authority authorizes BUY/HYBRID | Act Now (critical) | **RESOLVED** (`40ed332`, 13 acceptance tests) |
-| A5 | completion-gate proof mismatch + forged satisfaction | Act Now (critical) | **SHIPPED** (CP-3; recomputing gate + binding + scoping + reconciliation, 9 probes; acceptance pending CP-5) |
-| A6 | M2 growth-spine artifact obligation regression | Act Now | **SHIPPED** (CP-2 `696e259` + CP-2b sibling restore; acceptance pending CP-5) |
-| A7 | scenario coupling in generic M4 control flow | Act Now | **SHIPPED** (CP-4; capabilities are model-proposed via parseStrategyProposal + validateCapabilityKeys; the `["growth_launch_operations"]`/`["update_company_artifact"]` literals and hardcoded resource-class arrays are gone from runDecisionPass; acceptance pending CP-5) |
+| A5 | completion-gate proof mismatch + forged satisfaction | Act Now (critical) | **SHIPPED** (CP-3; recomputing gate + binding + scoping + reconciliation, 9 probes; accepted at CP-5) |
+| A6 | M2 growth-spine artifact obligation regression | Act Now | **SHIPPED** (CP-2 `696e259` + CP-2b sibling restore; accepted at CP-5) |
+| A7 | scenario coupling in generic M4 control flow | Act Now | **SHIPPED** (CP-4; capabilities are model-proposed via parseStrategyProposal + validateCapabilityKeys; the `["growth_launch_operations"]`/`["update_company_artifact"]` literals and hardcoded resource-class arrays are gone from runDecisionPass; accepted at CP-5) |
 | I1 | Convex runtime compatibility / node:crypto | Investigate Now | **RESOLVED** (below, `f066c5f`) |
 | I2 | model call cannot run inside a mutation | Investigate Now | **RESOLVED** (CP-4; `setManagementRecommender`/`_recommender` deleted; the decision pass is now the durable begin(port)→proposeDecision(action)→applyDecision(mutation) chain, mirroring interpretation; authority only in applyDecision) |
 | I3 | no economic facts / discovery + $1 default | Investigate Now | **RESOLVED** (CP-4; grounding wired via buildDecisionPassInput → createSnapshotDiscovery + VERIFIED_SERVICE_REGISTRY through the CP-3 grounding kernels; `discovered: []` is gone, so BUY is reachable; prices carry "provider_quote" provenance or stay null — no invented values; the "$1" was DEFAULT_BUDGET_LIMITS.maxExternalSpendUsd, a budget ceiling, and remains one) |
@@ -488,6 +488,39 @@ attempts retained; replay after apply is a no-op with exactly one wake row;
 non-launch objective authorizes with zero "growth_launch_operations" anywhere in
 persisted rows). Post-CP-4: **482 pass / 0 fail** (was 459 + these 23), both
 typecheck programs clean.
+
+**CP-5 — ACCEPTANCE (production loop closed).**
+`tests/managementProductionLoop.test.ts` (11 tests) runs the whole engine
+through REAL Convex seams on the convex-test harness — no faked ports, no
+injected recommenders, no network: model steps are represented by calling
+applyInterpretation/applyDecision with raw payloads, which is exactly what the
+production actions forward (all authority lives in the mutations).
+
+The positive whole-loop test: submit → applyInterpretation (contract +
+semantic requirements + objective_submitted wake) → runManagementPass
+(decide-begin reserves) → applyDecision (MAKE authorized via deterministic
+option id, decision row + bound requirement + decision_applied wake) →
+runManagementPass (dispatch: worker reserved, assignment created) → run facts
+reconcile (workItems run "running" → "stopped"/"completed") + one scoped
+application_observation → verify (requirement satisfied through the
+recomputing kernel) → propose → gate ACCEPTS → objective state "completed"
+with the accepted completion_proposal row and control note.
+
+The 10 negative proofs: N1 forged satisfaction (invented proofRefs) refused by
+the recomputing gate; N2 monetary BUY with NO founder grant cannot authorize
+and writes no intent; N3 stale contract revision → apply rejected, reservation
+cleared; N4 hallucinated option id → typed refusal persisted; N5 garbage
+interpretation → typed refusal, no contract row; N6 completed run with no
+evidence satisfies NOTHING; N7 replayed apply after terminal → refused, exactly
+one decision wake row (dedupe); N8 ungoverned capability proposal → refusal,
+zero effect rows; N9 decision ceiling (attempts ≥ 3) → begin reserves nothing;
+N10 post-refusal retry is bounded — reducer re-routes to decide_requirement,
+attempt counter increments, no timer storm, and a retry with the correct
+eligible option id then AUTHORIZES (the ceiling, not a self-wake loop, is the
+outer guard).
+
+Full gates at the final candidate: **493 pass / 0 fail** (was 482 + these 11);
+`tsc --noEmit` and `tsc -p convex/tsconfig.json` both clean.
 
 ## R3 tomorrow morning
 
