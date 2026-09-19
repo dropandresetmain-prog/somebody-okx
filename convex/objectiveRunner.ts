@@ -852,7 +852,12 @@ async function interpretWithOpenAI(input: {
           "priority 'required' (a completion gate) or 'supporting' (valuable but",
           "not blocking). When in doubt use 'required' — downgrading a gate is",
           "the one mistake that lets work look finished while it is not.",
-          'Shape: {"contract":{"intent":string,"levels":[{"levelKey":string,',
+          "Use stable keys req_01, req_02, ... in causal dependency order. If",
+          "the outcome depends on evidence the company does not control, make",
+          "availability of that evidence its own required truth BEFORE the",
+          "final controlled artifact/output that depends on it. Do not choose",
+          "MAKE/BUY/provider here; requirements state truths, not strategies.",
+          'Shape: {"contract":{"intent":string,"levels":[{"levelKey":string,'
           '"order":number,"statement":string,"label":string}],',
           '"minimumCompletionBar":string,"ambiguities":[{"question":string,',
           '"materiality":"material"|"ordinary","resolution":string}]},',
