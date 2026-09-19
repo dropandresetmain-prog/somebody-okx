@@ -778,3 +778,52 @@ No scenario-specific orchestration.
 ## Current next action
 
 CP1–CP6 committed and pushed (CP1 `27128d6` + ledger `34a65cb`; CP2 `51b1e13` + ledger `81825cc`; CP3 workforce `df4fdd5`, reducer `dc3a9b7`; CP4 graph + continuation evidence `76fedd5` + ledger `94da7ac`; CP5 adversarial suite `3e8479e`; CP6 external seam + convex-lane defect fixes `c120911`). CP7 committed and pushed: `59f75f7` (R3 REVIEW SHA; full suite 404/404, both tsc programs clean). REMAINING: 19-section completion report. Terminal status: M4 MANAGEMENT ENGINE IMPLEMENTED — R3 REVIEW PENDING; PAYMENT-BACKED CUTOFF 1 PENDING M3/R2.
+
+---
+
+# M4 × M3 INTEGRATION LEDGER (branch `integration/m4-m3`)
+
+Status: **CLOUD APPLICATION SEAM PROVEN — READY FOR LOCAL SUPERVISED X LAYER TESTNET CUTOFF-1 EXECUTION AND R3 RECHECK.**
+Updated: **19 September 2026**
+Repository: `dropandresetmain-prog/somebody-okx`
+Scope: connect the closed M4 CP8 management engine to the frozen accepted M3 buyer rail through ONE application-owned seam, prove the seam rigorously in cloud with injected deterministic fakes, and leave ONE exact pushed candidate for a later supervised LOCAL X Layer Testnet execution. NO live payment, wallet, signing, private-key handling, blockchain submission, or real provider purchase was performed in cloud.
+
+## Exact lineage (verified against origin before any edit)
+
+- M4 CP8 source base: `99df92d3eb7900bf951bf02800d58a1c67c8684c` (`99df92d`, branch `qoder/general-session-1dclny`).
+- M3 frozen main: `37afaa5a7cd0aa82a30c63ce6795c48d34f04d07` (`37afaa5`).
+- Merge base: `1fa7962d9ef0d359951d14993834d1d419a5c980`.
+- Integration branch `integration/m4-m3` created from `99df92d`, then merged frozen `37afaa5`.
+
+## Integration checkpoints (each committed + pushed to `integration/m4-m3`)
+
+| CP | Commit | Content | Gate |
+|----|--------|---------|------|
+| CP1 | `79815d95cd4f08d5846788b9b0eb3b3acc8ff5b4` | `--no-ff` merge frozen M3 (`37afaa5`) into M4 CP8 (`99df92d`); parents both preserved. `package.json` union (M4 `@langchain/langgraph` + M3 `@okxweb3/x402-*`/express; devDeps `convex-test` + `@types/express`; script `m3:seller`). `package-lock.json` REGENERATED via `npm install` (not spliced). 3 overlapping files (`package.json`, `package-lock.json`, `docs/work/ACTIVE_TASK.md`). | Level 1: merge clean, no conflict markers, root + convex tsc 0, `npm test` green |
+| CP2+CP3 | `8abf902…` | `lib/management/m3BuyerRail.ts` (the seam) + `tests/m4m3IntegrationSeam.test.ts` (P1–P10 + SEAM). Intent↔Purchase identity, approval binding, fail-closed hand-off (CP2); one-step payment/settlement/result/verification observation, deduped wakes, reconciliation-not-retry (CP3). | Level 2/3: 17/17 pass; root tsc 0; convex tsc 0 |
+| CP4 | `848db1e…` | Production-style whole-loop SIMULATED cut-off trace (positive: intent→verified→Requirement satisfied in 3 distinct observations; negative: rejected verification → failed, no satisfaction), driven through `runPurchaseLifecycle`. Labelled **CLOUD INTEGRATION PROOF / SIMULATED FINANCIAL EXECUTION**. | Level 4 (this file): 19/19 pass; root tsc 0; convex tsc 0 |
+| CP5 | (this ledger) | Integration ledger appended; historical M3 + M4 evidence preserved unchanged above. | docs only |
+
+## The seam (one file, `lib/management/m3BuyerRail.ts`)
+
+- **Two machines, never collapsed.** M4 owns business truth (`ExecutionIntentState`: authorized/awaiting_m3/handed_off/result_recorded/verified/failed/reconciliation_required). M3 owns payment truth (`PaymentState`: prepared→…→submitted→settled→result_received→verified|failed|uncertain|reconciliation_required). The seam drives the REAL M3 functions (`parse402Challenge`, `createPurchase`, `prepareApprovedPurchase`→`preparePayment`/`bindTermsToApproval`, `executeApprovedPayment`, `lifecycle.transition`) and maps each M3 change onto M4 events through M4's OWN kernels (`advanceIntent`/`applyRailEvent`/`planWakeForRailEvent`). M4 observes M3 and records business consequence; it never re-decides payment and never adopts M3's enum. No invented signed/confirmed/finalized states.
+- **Identity derived, never regenerated.** `PurchaseRecord.id=intentId`, `.objectiveKey`, `.resourceNeedId=requirementKey`, `.offeringId=target.offeringId`, `.idempotencyKey`. Replay rebuilds byte-identical identity (P2); M3's durable execution-authority ledger (`.m3-payment-execution-ledger.json`) remains the single financial exactly-once authority — M4 creates NO parallel Convex purchase store.
+- **Fail-closed spend authority (A4 preserved).** `mayHandOffExternally` gates the hand-off: a monetary BUY/HYBRID with no bound founder `spendApprovalId` creates NO purchase and reaches NO executor (P1); `external_disabled` never hands off (P1b). M4 authorization ≠ M3 payment approval — the injected `PaymentApprovalFactory` binds the founder authority to the LIVE 402 terms.
+- **Live challenge authoritative.** `preparePayment` validates the live terms against the approval bounds + rail config; an M4 quote never overrides them. Out-of-bound amount and wrong-network (mainnet) challenges are refused BEFORE signing (SEAM tests).
+- **submitted ≠ settled ≠ result_received ≠ verified.** `observePurchase` is a resumable ONE-STEP-PER-CALL observer: each fact is a distinct observation produced at a distinct time by a distinct wake (P3/P4/P5/P6). A settled-but-unretrievable provider result is a REST (do NOT repay), not a failure.
+- **Reconciliation, never blind retry.** An ambiguous PAYMENT execution (possible submission + missing/ambiguous response, incl. `OfficialPaymentAmbiguousError`) → `reconciliation_required` + `recovery_event` wake (P7/P7b); a source-proven pre-submission failure is `failed` and the M3 record is stamped `failed` (P7c). `planRetry` stays M3's sole retry gate (P8). Stale contract revision cannot satisfy a newer Requirement (P9). Duplicate events/wakes dedupe to one logical result with no duplicate satisfaction (P10).
+- **Wake vocabulary reused, deduped.** `provider_result`, `verification_result`, `recovery_event` (+ existing `approval_resolved`, `resource_acquired`) all carry stable event-identity dedupe keys.
+
+## Runtime boundary (material finding, corrected this pass)
+
+The seam transitively imports `node:child_process` via `supervisedPurchase.ts` → `onchainOsExecutor.ts` (which spawns `onchainos payment pay`). Therefore the seam is **Node-runtime application code for the supervised LOCAL lane**, NOT a Convex function and NOT bundleable at esbuild `platform:browser`. It MUST NOT be imported from `convex/*.ts`. This matches the existing production shape: `convex/management.ts` imports only the pure M4 kernels, and `dispatchExternal` deliberately leaves a BUY intent resting in `awaiting_m3` (the hand-off is I/O and cannot run inside a mutation). The production hand-off is driven from a Node lane — exactly as `scripts/m3-live-purchase.ts` already drives `executeApprovedPayment` — reading the durable ExecutionIntent + M3 PurchaseRecord, calling this seam, and writing the resulting M4 events back. The seam header was corrected to state this boundary truthfully (an earlier draft wrongly claimed browser/Convex safety).
+
+## Cloud proof vs. remaining live-local proof
+
+PROVEN IN CLOUD (simulated, injected fakes only at M3's own DI boundary; every artifact labelled; a fake result is never marked live): the full ordered pipeline authorized intent → hand-off → submitted → settled → result_received → verified → Somebody re-evaluates → Requirement satisfied, plus every negative (no-grant, out-of-bounds, wrong-network, rejected verification, ambiguous→reconciliation, stale revision, duplicate/replay).
+
+NOT PROVEN IN CLOUD and REQUIRED LOCALLY (supervised X Layer Testnet, founder machine): a real 402 challenge fetch; real wallet/TEE sign-only execution via M3's `OfficialSignOnlyReplayExecutor`; real blockchain submission + settlement readback; a real provider paid-response + independent ERC-20 Transfer readback verification; the resulting live Causal Cutoff-1 trace. These are deliberately OUT OF SCOPE for cloud and must NOT be simulated as live.
+
+## R3 status
+
+R3 recheck was NOT performed this pass (explicitly out of scope). The prior R3 verdict (M4 not accepted; seam not ready; Cutoff 1 not proven) stands and is superseded only by a future supervised R3 recheck of this integration candidate. This pass does NOT claim: live Cutoff 1 proven, real payment executed, M4 accepted, or M5 integrated. M5 (frozen frontend) was not touched.
