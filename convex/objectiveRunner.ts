@@ -24,9 +24,11 @@ import {
   M1_ROLE_REQUIREMENTS,
   RESOURCE_CLASS_VALUES,
   planObjectiveWithModel,
-  selectRoleKeyForRequest,
+  roleKeyForGrantedPermissions,
+  validatePlannerProposal,
 } from "../lib/objective/planner";
 import { listControlledCapabilityKeys } from "../lib/workforce/catalog";
+import { toolPermissionsForCapabilities } from "../lib/workforce/permissions";
 import { runWorker } from "../lib/worker/runtime";
 import { providerConfiguration } from "../lib/worker/modelSelection";
 import type { ModelNoteInput } from "../lib/worker/port";
@@ -39,6 +41,10 @@ import type {
   WorkContract,
 } from "../lib/objective/types";
 import { sourceResourceNeed } from "../lib/objective/orchestration";
+import {
+  planWakeForResourceRequest,
+  planWakeForWorkerResult,
+} from "../lib/management/wakes";
 import { createOkxDiscovery } from "../lib/market/okxDiscovery";
 import { createLocalOnchainosRunner } from "../lib/market/okxCliBridge";
 import { VERIFIED_SERVICE_REGISTRY } from "../lib/market/registryData";
@@ -268,10 +274,39 @@ function makeConvexPort(ctx: ActionCtx, objectiveKey: string, runId: string) {
             },
           );
 
+          // CP7 integration: the persisted need WAKES Somebody. Locked decision
+          // 9 — the worker requests; Somebody resolves. The request is DATA
+          // (a pointer to the need), never authority: the M2 sourcing seam above
+          // recorded what was discovered, and the wake is only the signal that
+          // a new/unresolved resource need exists for the manager to replan.
+          // appendWakeEvent dedupes by dedupeKey, so a redelivered request
+          // wakes Somebody exactly once.
+          const wake = planWakeForResourceRequest({
+            objectiveKey,
+            runId,
+            resourceClass,
+            purpose,
+            needId: persisted.needId,
+            at: now,
+          });
+          await ctx.runMutation(internal.internal.workforce.appendWakeEvent, {
+            eventId: wake.eventId,
+            objectiveKey,
+            dedupeKey: wake.dedupeKey,
+            data: wake.event,
+          });
+          // Wake-scheduler wiring: the stored event schedules Somebody's
+          // management pass (idempotent — the pass re-reads the wakeEvents
+          // cursor, so a duplicate scheduling folds into the same pass).
+          await ctx.scheduler.runAfter(0, internal.management.runManagementPass, {
+            objectiveKey,
+            reason: wake.reason,
+          });
+
           const sourceKind =
             sourced.offerings[0]?.source.kind ?? "none";
           const selected = sourced.selectedOffering?.offeringId ?? "none";
-          return `Resource need ${persisted.needId} persisted (created=${persisted.created}, status=${persisted.needStatus}, decision=${persisted.decision ?? "n/a"}, discovery=${sourceKind}, selected=${selected}). Application owns sourcing; worker cannot pay or fulfill.`;
+          return `Resource need ${persisted.needId} persisted (created=${persisted.created}, status=${persisted.needStatus}, decision=${persisted.decision ?? "n/a"}, discovery=${sourceKind}, selected=${selected}). Somebody has been woken to resolve it; the worker cannot pay or fulfill.`;
         }
         default:
           throw new Error(
@@ -299,15 +334,25 @@ export const proposePlan = internalAction({
   }),
   handler: async (_ctx, args) => {
     const configuration = providerConfiguration(process.env);
-    const roleKey = selectRoleKeyForRequest(args.request);
-    const role = M1_ROLE_REQUIREMENTS[roleKey];
+    // NO keyword routing. The model proposes a capability set against a
+    // scenario-NEUTRAL prompt; the role is then DERIVED from the validated
+    // capability envelope's granted permissions (roleKeyForGrantedPermissions),
+    // exactly as the durable mutation re-derives it. Prompting with a
+    // pre-chosen role would reintroduce the scenario coupling M4 removes.
     const proposal = await proposePlanWithOpenAI({
       configuration,
       request: args.request,
-      roleKey: role.roleKey,
     });
-    // Fail fast on the same deterministic rules the mutation will re-apply.
-    // The returned proposal stays the one the model actually produced.
+    // Derive the role from what the proposal actually grants, then fail fast on
+    // the same deterministic rules the mutation will re-apply. A derived role
+    // still enforces its evidence-class requirements (a growth envelope with
+    // only update_company_artifact still fails for missing read permissions),
+    // so the satisfiability check keeps its teeth.
+    const grantedPermissions = toolPermissionsForCapabilities(
+      validatePlannerProposal(proposal).capabilityKeys,
+    );
+    const roleKey = roleKeyForGrantedPermissions(grantedPermissions);
+    const role = M1_ROLE_REQUIREMENTS[roleKey];
     await planObjectiveWithModel({
       request: args.request,
       role,
@@ -325,9 +370,8 @@ type PlanningConfiguration = ReturnType<typeof providerConfiguration>;
 async function proposePlanWithOpenAI(input: {
   configuration: PlanningConfiguration;
   request: string;
-  roleKey: string;
 }): Promise<PlannerProposal> {
-  const { configuration, request, roleKey } = input;
+  const { configuration, request } = input;
   const client = new OpenAI({
     apiKey: configuration.apiKey,
     baseURL: configuration.baseURL,
@@ -341,7 +385,6 @@ async function proposePlanWithOpenAI(input: {
         role: "system",
         content: [
           "You plan one bounded internal assignment for a company manager.",
-          `Target role: ${roleKey}.`,
           "Reply with JSON only, matching the given schema.",
           "capabilityKeys and requiredResourceClasses must come from the",
           "vocabulary stated in the user message. Never propose spend,",
@@ -357,10 +400,12 @@ async function proposePlanWithOpenAI(input: {
           `Allowed capability keys: ${listControlledCapabilityKeys().join(", ")}`,
           `Allowed resource classes: ${RESOURCE_CLASS_VALUES.join(", ")}`,
           "",
-          "Propose the smallest capability set that can satisfy the role.",
-          roleKey === "GROWTH_ROLE"
-            ? "For a growth/launch role include growth_launch_operations so the worker can update a company artifact and request a missing resource."
-            : "For a research role the capability set must make BOTH internal company-record evidence AND public web evidence obtainable.",
+          "Propose the smallest capability set that can satisfy the objective.",
+          // Scenario-neutral guidance: describe what a capability set must be
+          // ABLE to observe/produce, never a named scenario or role script. The
+          // application derives the role from the granted permissions after the
+          // proposal is validated; the model is not told a role to hit.
+          "Select capabilities only from the allowed keys above. If the objective needs evidence from BOTH internal company records and the public web, include capabilities that grant both. If it needs to mutate a controlled company artifact, include a capability that grants that tool. Do not over-select.",
           'Shape: {"capabilityKeys":string[],"responsibility":string,','"requiredResourceClasses":string[]}',
         ].join("\n"),
       },
@@ -443,6 +488,43 @@ export const executeWorker = internalAction({
     ctx,
     args,
   ): Promise<{ completed: boolean; unmet: string[] }> => {
+    // CP7 integration: finishRun is the run's terminus. A finished run is
+    // NEVER satisfaction (lib/management/requirements refuses
+    // assignment_run_finished) — the wake only hands Somebody a pointer so the
+    // engine can re-decide (verify → propose → independent completion gate).
+    // appendWakeEvent dedupes by dedupeKey, so a redelivered finish wakes
+    // Somebody exactly once.
+    const finishWithWake = async (input: {
+      failed?: boolean;
+      failureReason?: string;
+    }): Promise<{ completed: boolean; unmet: string[] }> => {
+      const result = await ctx.runMutation(internal.objectives.finishRun, {
+        objectiveKey: args.objectiveKey,
+        runId: args.runId,
+        ...input,
+      });
+      const wake = planWakeForWorkerResult({
+        objectiveKey: args.objectiveKey,
+        runId: args.runId,
+        failed: input.failed === true,
+        spineCompleted: result.completed,
+        at: Date.now(),
+      });
+      await ctx.runMutation(internal.internal.workforce.appendWakeEvent, {
+        eventId: wake.eventId,
+        objectiveKey: args.objectiveKey,
+        dedupeKey: wake.dedupeKey,
+        data: wake.event,
+      });
+      // Wake-scheduler wiring: the run's terminal state schedules Somebody's
+      // management pass; the gate, not this wake, decides completion.
+      await ctx.scheduler.runAfter(0, internal.management.runManagementPass, {
+        objectiveKey: args.objectiveKey,
+        reason: wake.reason,
+      });
+      return result;
+    };
+
     const row = await ctx.runQuery(internal.objectives.getObjectiveInternal, {
       objectiveKey: args.objectiveKey,
     });
@@ -456,10 +538,7 @@ export const executeWorker = internalAction({
         now: Date.now(),
       })
     ) {
-      return ctx.runMutation(internal.objectives.finishRun, {
-        objectiveKey: args.objectiveKey,
-        runId: args.runId,
-      });
+      return finishWithWake({});
     }
 
     const contract: WorkContract = record.workItems[0].contract;
@@ -491,10 +570,8 @@ export const executeWorker = internalAction({
     } finally {
       clearTimeout(timer);
     }
-    return ctx.runMutation(internal.objectives.finishRun, {
-      objectiveKey: args.objectiveKey,
-      runId: args.runId,
-      ...(failureReason ? { failed: true, failureReason } : {}),
-    });
+    return finishWithWake(
+      failureReason ? { failed: true, failureReason } : {},
+    );
   },
 });

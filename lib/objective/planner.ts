@@ -123,18 +123,23 @@ export const M1_ROLE_REQUIREMENTS: Record<string, RoleObservationRequirement> = 
   },
 };
 
-/** Heuristic role selection from the founder objective text (application-owned). */
-export function selectRoleKeyForRequest(request: string): "RESEARCH_ROLE" | "GROWTH_ROLE" {
-  const text = request.toLowerCase();
-  if (
-    text.includes("launch") ||
-    text.includes("relaunch") ||
-    text.includes("growth") ||
-    text.includes("convert")
-  ) {
-    return "GROWTH_ROLE";
-  }
-  return "RESEARCH_ROLE";
+/**
+ * Role is DERIVED from the validated capability envelope's granted permission
+ * set — never from a keyword scan of the founder's request text.
+ *
+ * The M2 `selectRoleKeyForRequest` scanned the request for "launch"/"growth"/
+ * "convert" and pinned a scenario script; that coupled the runtime to scenario
+ * vocabulary. The generic engine selects the role policy purely by which tool
+ * permissions the CONTROLLED capabilities grant: an envelope that can mutate an
+ * owned company artifact is the growth class, otherwise the research class.
+ * This is the single authority — both the Convex spine and the planner action
+ * import it, so role derivation can never diverge between them.
+ */
+export function roleKeyForGrantedPermissions(
+  grantedPermissions: readonly string[],
+): "RESEARCH_ROLE" | "GROWTH_ROLE" {
+  const granted = new Set(grantedPermissions);
+  return granted.has("update_company_artifact") ? "GROWTH_ROLE" : "RESEARCH_ROLE";
 }
 
 // ── Server-side planning seam (contract §7) ─────────────────────────────────

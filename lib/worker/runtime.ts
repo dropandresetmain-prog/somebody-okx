@@ -318,9 +318,62 @@ export async function runWorker(
     ...WORKFLOW_TOOLS.map((name) => buildWorkflowTool(name)),
   ];
 
-  const isGrowth = contract.allowedToolPermissions.includes(
+  // GENERIC, contract-derived prompt. There is NO scenario/role branch here:
+  // everything the worker is told is a property of the WorkContract it was
+  // bound to (its proof requirements, its permission envelope). Scenario data
+  // — which company records exist, which capability is "growth" — lives in the
+  // domain modules and reaches the worker only through `contract.assignment`,
+  // `observation.responsibility` and the tool surface, never through a
+  // hard-coded execution script in the runtime.
+  const hasArtifactPermission = contract.allowedToolPermissions.includes(
     "update_company_artifact",
   );
+  const hasResourcePermission =
+    contract.allowedToolPermissions.includes("request_resource");
+
+  // The proof obligations, rendered straight from sourceProofs (application
+  // truth) rather than from a scenario assumption about how many sources.
+  const proofLines = contract.sourceProofs
+    .map(
+      (proof) =>
+        `- ${proof.sourceClass}: at least ${proof.minDistinctSources} distinct application-observed source(s).`,
+    )
+    .join("\n");
+
+  // Tool affordances the contract actually grants, described generically.
+  const toolLines: string[] = [];
+  if (hasArtifactPermission)
+    toolLines.push(
+      "- update_company_artifact applies a bounded, versioned change to a controlled company artifact; the application records provenance. Only call it when the assignment requires mutating an owned artifact.",
+    );
+  if (hasResourcePermission)
+    toolLines.push(
+      "- request_resource proposes a missing resource the application should acquire. You cannot choose a provider, mark a resource fulfilled, pay, or invoke a provider; the application owns sourcing.",
+    );
+  if (toolLines.length === 0)
+    toolLines.push(
+      "- You have no artifact-mutation or resource-request tools for this assignment; observe, record, and report only.",
+    );
+
+  // A generic, bounded work order derived from the contract. It names the
+  // source CLASSES to satisfy, never scenario-specific record refs or counts.
+  // Step numbers are assigned by push order so the list stays coherent.
+  const orderSteps: string[] = [
+    `Read the internal company records relevant to the assignment with read_company_record until every required company_record source is satisfied.`,
+    `Read distinct public HTTPS pages relevant to the assignment with read_public_web until every required public_web source is satisfied. Re-reading one page twice does not count as distinct.`,
+  ];
+  if (hasArtifactPermission)
+    orderSteps.push(
+      `If the assignment requires it, call update_company_artifact with a real, versioned change and a changeNote.`,
+    );
+  if (hasResourcePermission)
+    orderSteps.push(
+      `If owned resources are insufficient, call request_resource for the missing resource class; do not invent a provider name.`,
+    );
+  orderSteps.push(
+    `submit_result with the structured evaluation, then request_completion.`,
+  );
+  const orderLines = orderSteps.map((step, index) => `${index + 1}. ${step}`);
 
   const workerInstructions = `You are "${contract.workerKey}", a bounded internal worker assembled by Somebody for one assignment.
 
@@ -332,24 +385,15 @@ ${observation.responsibility}
 
 REQUIRED PROOF before the application will accept completion:
 - At least ${contract.minObservations} distinct observations recorded via tools, covering every required source class: ${contract.requiredSourceClasses.join(", ")}.
+${proofLines}
 - "company_record" observations come from internal company records via read_company_record.
-- "public_web" observations come from real public pages via read_public_web. You must obtain DISTINCT public sources; re-reading one page twice does not count.
+- "public_web" observations come from real public pages via read_public_web.
 - Record what each source actually shows with record_finding; include the source label and url/recordRef. record_finding stores a model-authored NOTE, not proof — only application-fetched observations count toward proof.
-${isGrowth ? `- You MUST call update_company_artifact with a real rewrite of the launch message (version must advance).
-- After the artifact change, call request_resource with resourceClass "proprietary_data" for privileged social intelligence if still needed. Do not invent a provider name.
-` : ""}- Then submit_result with the structured evaluation, and finally request_completion.
+${toolLines.join("\n")}
+- Then submit_result with the structured evaluation, and finally request_completion.
 
-REQUIRED EXECUTION ORDER:
-${isGrowth
-    ? `1. First call read_company_record with recordRef "launch/context".
-2. Then call read_public_web for one distinct public HTTPS page relevant to founder/launch messaging.
-3. Call update_company_artifact with improved headline/message content and a changeNote.
-4. Call request_resource for proprietary_data social intelligence (purpose = why founders' own words are needed).
-5. Submit the structured result, then request completion.`
-    : `1. First call read_company_record with recordRef "partnerships/evaluation-criteria".
-2. Then call read_public_web for exactly two distinct public HTTPS pages relevant to the target.
-3. Do not create a record_finding unless it materially helps the final evaluation; notes never count as proof.
-4. Submit the structured result, then request completion.`}
+WORK ORDER (satisfy the proof above; adapt to the assignment):
+${orderLines.join("\n")}
 
 RULES:
 - Work serially: one tool call at a time, and re-read the observation after each tool.

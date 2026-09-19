@@ -118,7 +118,7 @@ Evidence:
 - [x] supported CREATE reason path; (availability + parallelism reasons proven; unsupported paths return typed `no_staffing_possible` with blockers.)
 - [x] dynamic semantic CapabilitySpec/tool-contract definition; (`addDynamicCapability` runs `validateCapabilitySpec` and writes NOTHING on failure — persistence test proves the negative.)
 - [x] no dynamic real-world authority invention; (`authorize_external_spend` / any externalAuthority primitive rejected by the validator; worker→worker creation asserted structurally impossible in the staffing test.)
-- [ ] capability/resource request returns through Somebody; (kernels + wake plumbing exist; the `request_resource` tool call-site rewiring from the M2 sourcing seam to a `worker_resource_request` wake is CP7 integration work.)
+- [x] capability/resource request returns through Somebody; (CP7: `request_resource` persists the sourced need, then `planWakeForResourceRequest` (lib/management/wakes.ts — sha256-24 eventId, dedupeKey `resource_request:<obj>:<run>:<class>:<purpose>`) emits a `worker_resource_request` wake through the SHIPPED `appendWakeEvent` and schedules `internal.management.runManagementPass` — Somebody resolves; the worker cannot pay or fulfill. Round-trip proven on the real handler in `tests/managementWakesPersistence.test.ts`.)
 - [x] objective-wide worker/assignment limits. (`applyBudgetSpend` delegates every counter to lib/management/budget.ts — no arithmetic in storage; `countObjectiveWorkers` + maxWorkersCreated/maxActiveAssignments enforced; `model_call` given its own pure helper `trySpendModelCall` so the 40-decision and 60-model-call ceilings stay independent.)
 
 Evidence:
@@ -164,11 +164,23 @@ Evidence:
 
 ### Checkpoint 7 — tonight completion
 
-- [ ] reconcile ledger against implementation;
-- [ ] targeted regression only where seams changed;
-- [ ] no production payment/provider claims;
+- [x] reconcile ledger against implementation;
+- [x] targeted regression only where seams changed;
 - [ ] checkpoint commit/push;
 - [ ] prepare exact SHA for R3 premium review.
+
+CP7 evidence (this milestone, all verified before this ledger edit — both `tsc --noEmit` and `tsc -p convex/tsconfig.json` clean; full suite 404 pass / 0 fail; targeted seams below):
+
+- scenario coupling REMOVED from the runtime: `selectRoleKeyForRequest` deleted; role is now DERIVED from the validated capability envelope's granted permissions via `roleKeyForGrantedPermissions` (lib/objective/planner.ts, single authority; convex/objectives.ts imports it — no duplication). The generic execution-order prompt (lib/worker/runtime.ts) is contract-derived: tool lines from granted permissions, order lines from the assignment, proof lines from `contract.sourceProofs` — no "launch"/"growth"/"convert" vocabulary, no permission-keyword branches.
+- persistent workforce REUSE fix (the M2 empty-inventory defect): planObjective reads the real `workers` Convex table as the `resolveWorker` inventory and persists newly created workers (`upsert` semantics via the workers table), so an existing capable+available worker is genuinely reused across objectives.
+- growth completion extras removed: readWorkerObservation's artifact-bump/resource-need pushes and finishRun's isGrowthContract artifact-bump extra deleted from the spine; the obligation is expressed as governed proof kinds checked by the independent completion gate.
+- `request_resource` → `worker_resource_request` wake + wake-scheduler wiring: planWakeForResourceRequest → shipped `appendWakeEvent` (dedupe by dedupeKey) → `ctx.scheduler.runAfter(0, internal.management.runManagementPass)`.
+- run completion → wake + gate proposal path: `finishWithWake` (convex/objectiveRunner.ts) wraps finishRun and emits `planWakeForWorkerResult` (`worker_result`/`worker_failure`, dedupeKey per run+reason) then schedules the management pass; finishRun no longer asserts completion — it records a `completion_proposed` controlNote (M4-managed rows keep state "executing"; M2-legacy rows keep the historical spine transition so canonical M2 evidence is untouched); the independent gate decides.
+- production Convex-backed ManagementPorts adapter: convex/management.ts `buildConvexManagementPorts` implements all 17 ports over the SHIPPED workforce mutations/queries (fresh read per call — reload rule; no caching), `runManagementPass` internalMutation is the wake entry point that invokes `buildManagementGraph` once per wake, and `setManagementRecommender` is the injected recommendation seam defaulting to a deterministic non-model recommender (recommend returns null ⇒ typed refusal). External authority is `m3_unavailable` — the truthful resting state; NO production payment/provider claims.
+- generated API stub completed: convex/_generated/api.d.ts gained the `management` and `internal/workforce` module entries (codegen is offline-gated; the stub matches the folder→path mapping and typechecks).
+- stale-draft housekeeping: /data/workspace/worktrees/cp3-workforce and branch wp/cp3-workforce removed after verifying every flagged file was byte-identical to the branch or a superseded older draft (branch was merged; deleted at 81825cc).
+
+Regression evidence (only seams that changed): tests/managementWakesPersistence.test.ts 4 pass (wake determinism, pointer-not-payload refs, shipped appendWakeEvent dedupe round-trips); tests/managementFinishGate.test.ts 5 pass (completion proposed, never asserted; M4-managed vs M2-legacy branches); tests/managementAdapterPersistence.test.ts 6 pass (ports over real handlers, run-finished refusal, no-contract gate rejection, typed planning outcome); targeted set 160 pass incl. canonical M2 (75), runLifecycle/objective, graph/cutoff2/intents-persistence/workforce persistence; full suite 404/404.
 
 ## R3 tomorrow morning
 
@@ -224,4 +236,4 @@ No scenario-specific orchestration.
 
 ## Current next action
 
-CP1–CP6 committed and pushed (CP1 `27128d6` + ledger `34a65cb`; CP2 `51b1e13` + ledger `81825cc`; CP3 workforce `df4fdd5`, reducer `dc3a9b7`; CP4 graph + continuation evidence `76fedd5` + ledger `94da7ac`; CP5 adversarial suite `3e8479e`; CP6 external seam + convex-lane defect fixes `c120911`). Next: Checkpoint 7 — scenario-coupling removal + runtime integration: convex/objectives.ts:332 `resolveWorker({inventory: []})` → `listWorkers`; strip `selectRoleKeyForRequest` from the generic path; generalize the lib/worker/runtime.ts:321-352 execution-order prompt; remove growth completion extras and role-keyed prompts; `request_resource` → `worker_resource_request` wake; wake-scheduler wiring; finishRun completion inference → completion-gate proposal path. Then ledger reconciliation, 19-section completion report, exact R3 SHA.
+CP1–CP6 committed and pushed (CP1 `27128d6` + ledger `34a65cb`; CP2 `51b1e13` + ledger `81825cc`; CP3 workforce `df4fdd5`, reducer `dc3a9b7`; CP4 graph + continuation evidence `76fedd5` + ledger `94da7ac`; CP5 adversarial suite `3e8479e`; CP6 external seam + convex-lane defect fixes `c120911`). CP7 implementation is COMPLETE and ledger-reconciled (scenario decoupling, worker REUSE fix, request_resource→wake + scheduler wiring, run-finish→gate proposal, Convex ManagementPorts adapter, api stub; full suite 404/404, both tsc programs clean). Next: stage the exact CP7 files (never `git add .`), checkpoint commit + push, record the exact R3 SHA here, then produce the 19-section completion report. R3 review stays pending — it is NOT tonight.

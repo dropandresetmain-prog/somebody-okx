@@ -8,10 +8,14 @@
  * @module
  */
 
+import type * as workforce from "./internal/workforce.js";
+import type * as management from "../management.js";
+import type * as managementValidators from "../managementValidators.js";
 import type * as objectiveArgs from "../objectiveArgs.js";
 import type * as objectiveRunner from "../objectiveRunner.js";
 import type * as objectiveValidators from "../objectiveValidators.js";
 import type * as objectives from "../objectives.js";
+import type * as workforceGuards from "../workforceGuards.js";
 import type * as workforceValidators from "../workforceValidators.js";
 
 import type {
@@ -21,10 +25,14 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  "internal/workforce": typeof workforce;
+  management: typeof management;
+  managementValidators: typeof managementValidators;
   objectiveArgs: typeof objectiveArgs;
   objectiveRunner: typeof objectiveRunner;
   objectiveValidators: typeof objectiveValidators;
   objectives: typeof objectives;
+  workforceGuards: typeof workforceGuards;
   workforceValidators: typeof workforceValidators;
 }>;
 

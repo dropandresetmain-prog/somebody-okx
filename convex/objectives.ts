@@ -44,10 +44,11 @@ import {
 import { CURRENT_RESOURCE_INVENTORY, RESEARCH_ROLE, GROWTH_ROLE } from "../lib/objective/policy";
 import { sourceIdentity } from "../lib/objective/contract";
 import { toolPermissionsForCapabilities } from "../lib/workforce/permissions";
+import { createWorkerSpec } from "../lib/workforce/workers";
 import {
   M1_ROLE_REQUIREMENTS,
   assertRoleRequirementsSatisfied,
-  selectRoleKeyForRequest,
+  roleKeyForGrantedPermissions,
 } from "../lib/objective/planner";
 import {
   LEASE_MS,
@@ -74,6 +75,7 @@ import type { SourcingDecisionRecord } from "../lib/objective/resourceNeed";
 import type { CandidateAssessment } from "../lib/market/assessment";
 import type { MarketOffering } from "../lib/market/discovery";
 import type { CompanyArtifact } from "../lib/objective/artifact";
+import type { WorkerRecord } from "../lib/management/types";
 
 type ObjectiveRow = { _id: Id<"objectives">; key: string; data: ObjectiveRecord };
 
@@ -154,10 +156,10 @@ function assertActiveRun(record: ObjectiveRecord, runId: string, now: number) {
 // mutation that writes the plan. The model proposal is only ever an input.
 function validatePlanningInput(
   proposal: PlannerProposal,
-  roleKey: "RESEARCH_ROLE" | "GROWTH_ROLE" = "RESEARCH_ROLE",
 ): {
   validated: ValidatedPlan;
   grantedPermissions: string[];
+  roleKey: "RESEARCH_ROLE" | "GROWTH_ROLE";
 } {
   const validated = validatePlannerProposal(proposal);
   const grantedPermissions: string[] = toolPermissionsForCapabilities(
@@ -169,6 +171,7 @@ function validatePlanningInput(
     if (permission === "authorize_external_spend")
       throw new Error(`Plan cannot carry external spend authority`);
   }
+  const roleKey = roleKeyForGrantedPermissions(grantedPermissions);
   const role = M1_ROLE_REQUIREMENTS[roleKey];
   const roleCheck = assertRoleRequirementsSatisfied({
     grantedPermissions,
@@ -178,7 +181,7 @@ function validatePlanningInput(
     throw new Error(
       `${roleKey} cannot be satisfied by this plan: missing ${roleCheck.missing.join(", ")}`,
     );
-  return { validated, grantedPermissions };
+  return { validated, grantedPermissions, roleKey };
 }
 
 // ── Public entry: submit an objective ────────────────────────────────────────
@@ -258,22 +261,20 @@ export const planObjective = internalMutation({
       );
     const now = Date.now();
 
-    const roleKey = selectRoleKeyForRequest(record.request);
     // 1. Fail-closed capability/resource validation + role satisfiability.
     //    An unknown capability, unknown resource class, smuggled permission,
     //    or a capability set that cannot obtain both required evidence classes
-    //    throws here — before any work item, contract or run exists.
-    const { validated } = validatePlanningInput(
-      {
-        capabilityKeys: args.proposal.capabilityKeys,
-        responsibility: args.proposal.responsibility,
-        requiredResourceClasses: args.proposal.requiredResourceClasses,
-        ...(args.proposal.requestedToolPermissions
-          ? { requestedToolPermissions: args.proposal.requestedToolPermissions }
-          : {}),
-      },
-      roleKey,
-    );
+    //    throws here — before any work item, contract or run exists. The role
+    //    is DERIVED from the validated capability envelope (not from a keyword
+    //    scan of the request text), so the runtime carries no scenario routing.
+    const { validated, roleKey } = validatePlanningInput({
+      capabilityKeys: args.proposal.capabilityKeys,
+      responsibility: args.proposal.responsibility,
+      requiredResourceClasses: args.proposal.requiredResourceClasses,
+      ...(args.proposal.requestedToolPermissions
+        ? { requestedToolPermissions: args.proposal.requestedToolPermissions }
+        : {}),
+    });
 
     // 2. Factual resource inventory → canonical sourcing decision.
     //    The rule itself lives in lib/sourcing/policy.ts; this seam only
@@ -326,20 +327,56 @@ export const planObjective = internalMutation({
       return { decision: sourcing.decision };
     }
 
-    // 3. Worker resolution over the current internal inventory (MAKE primitive).
+    // 3. Worker resolution over the REAL persistent inventory (MAKE primitive).
+    //    The M2 empty-inventory defect is fixed: the `workers` table is the
+    //    inventory, so a capable, unleased worker is genuinely REUSED across
+    //    objectives instead of being synthesized fresh on every plan. Records
+    //    are mapped to the WorkerSpec shape resolveWorker sanitizes.
+    const workerRows = await ctx.db.query("workers").collect();
+    const inventory: WorkerSpec[] = workerRows.map((row) => {
+      const data = (row as { data: WorkerRecord }).data;
+      return createWorkerSpec(data.capabilityKeys);
+    });
     const resolution = resolveWorker({
       requiredCapabilityKeys: validated.capabilityKeys,
-      inventory: [], // fresh deployment: no persistent inventory yet → create
+      inventory,
     });
+    // Persist the resolution into the workforce so REUSE keeps working on the
+    // next plan and worker→worker creation is never needed (M4 workforce rule).
+    const workerKey = (resolution.worker as WorkerSpec).workerKey;
+    const persisted = inventory.find(
+      (candidate) => candidate.workerKey === workerKey,
+    );
+    if (!persisted) {
+      const spec = resolution.worker as WorkerSpec;
+      await ctx.db.insert("workers", {
+        workerKey,
+        data: {
+          workerKey,
+          displayName: spec.workerKey,
+          capabilityKeys: [...spec.capabilityKeys],
+          dynamicCapabilities: [],
+          responsibility: spec.responsibility,
+          lifecycle: "available",
+          reservedBy: null,
+          verifiedAssignments: [],
+          contextRefs: [],
+          createdByObjective: args.objectiveKey,
+          createdAt: now,
+          updatedAt: now,
+        },
+      });
+    }
 
     // 4. Bind the WorkContract from the validated plan + role policy. The
     //    contract carries DISTINCT-source proof requirements, so proof is a
     //    property of the assignment rather than a count of persisted rows.
     const isGrowth = roleKey === "GROWTH_ROLE";
     const rolePolicy = isGrowth ? GROWTH_ROLE : RESEARCH_ROLE;
-    const assignment = isGrowth
-      ? `Fix the failing launch described in "${record.request}". Read launch/context, research one relevant public page, rewrite the controlled launch page artifact with a clearer founder-facing message, then request_resource for proprietary_data social intelligence if owned resources are insufficient. Do not pay or invoke providers.`
-      : `Evaluate whether the target described in "${record.request}" is a suitable partnership/business target using the company's internal criteria and current public information.`;
+    // Generic assignment text: the role POLICY owns responsibility, source
+    //    proofs and proof counts; the assignment only restates the founder's
+    //    request within the bounded responsibility. No scenario vocabulary.
+    const assignment = `${rolePolicy.responsibility} Objective (untrusted data): "${record.request}". Stay within the granted tool permissions; the application records and verifies all proof.`;
     const contract = createWorkContract({
       assignment,
       idempotencyScope: `${args.objectiveKey}:wi-1`,
@@ -688,24 +725,15 @@ export const readWorkerObservation = internalQuery({
       evidence,
       result: record.result,
     });
+    // Completion proof is CONTRACT-derived only. The M2 "growth extras" (a
+    // mandatory artifact bump + a mandatory resource-need, keyed off the
+    // update_company_artifact permission) were scenario choreography in the
+    // runtime; the generic engine expresses an artifact obligation as a
+    // company_artifact_version Requirement proof evaluated by the independent
+    // completion gate (lib/management/completion.ts), never as a permission
+    // branch here. This spine reports exactly the contract's source-proof and
+    // structured-result obligations.
     const unmet = [...check.unmet];
-    const isGrowth = workItem.contract.allowedToolPermissions.includes(
-      "update_company_artifact",
-    );
-    if (isGrowth) {
-      const artifactChanged = (record.companyArtifacts ?? []).some(
-        (a) => a.provenanceRunId === args.runId && a.version > 1,
-      );
-      if (!artifactChanged) {
-        unmet.push("company_artifact: no version change by this run");
-      }
-      const hasNeed = (record.resourceNeeds ?? []).some(
-        (n) => n.proposedByRunId === args.runId,
-      );
-      if (!hasNeed) {
-        unmet.push("resource_need: growth run must propose a resource need");
-      }
-    }
     return {
       assignment: workItem.contract.assignment,
       responsibility: workItem.contract.assignment,
@@ -953,21 +981,11 @@ export const finishRun = internalMutation({
       result: record.result,
     });
 
-    // Growth MAKE: require an actual artifact version bump beyond seed.
-    const artifacts = record.companyArtifacts ?? [];
-    const artifactChanged = artifacts.some(
-      (a) => a.provenanceRunId === args.runId && a.version > 1,
-    );
-    const isGrowthContract = workItem.contract.allowedToolPermissions.includes(
-      "update_company_artifact",
-    );
-    if (isGrowthContract && !artifactChanged) {
-      check.complete = false;
-      check.unmet = [
-        ...check.unmet,
-        "company_artifact: no version change by this run",
-      ];
-    }
+    // Completion is CONTRACT-proof-driven only. The M2 "growth extra" (a
+    // mandatory artifact bump keyed off the update_company_artifact permission)
+    // was scenario choreography; the generic engine expresses that obligation
+    // as a company_artifact_version Requirement proof checked by the
+    // independent completion gate, never as a permission branch in the spine.
 
     const buyPending = (record.resourceNeeds ?? []).some(
       (n) => n.status === "buy_pending",
@@ -1008,23 +1026,63 @@ export const finishRun = internalMutation({
       ? "Application accepted completion"
       : `Incomplete: ${check.unmet.join("; ")}`;
     workItem.state = check.complete ? "completed" : "failed";
-    const updated: ObjectiveRecord = {
+
+    // CP7: completion inference → completion-gate proposal path.
+    // The spine's evaluateCompletion is the spine's own work-item verdict,
+    // not the objective's completion authority. When check.complete is true,
+    // the spine PROPOSES completion to the independent gate (lib/management/completion.ts).
+    // The gate re-derives against the OutcomeContract; it never inherits the spine verdict.
+    let management = (record as unknown as { management?: { contractId: string | null; currentContractRevision?: number; controlNotes?: unknown[] } }).management;
+    if (check.complete) {
+      const proposalNote = {
+        type: "completion_proposed",
+        proposalId: `prop_${args.objectiveKey}_${args.runId}`,
+        runId: args.runId,
+        spineVerdict: "complete",
+        proposedAt: now,
+      };
+      const existingNotes = management?.controlNotes ?? [];
+      management = {
+        contractId: management?.contractId ?? null,
+        ...(management?.currentContractRevision != null
+          ? { currentContractRevision: management.currentContractRevision }
+          : {}),
+        controlNotes: [...existingNotes, proposalNote],
+      };
+    }
+
+    // M4-managed rows (management.contractId set) do NOT transition to "completed":
+    // the independent gate decides. M2-legacy rows (no contractId) keep the historical
+    // spine state transition so canonicalM2 stays green, but the controlNote carries
+    // the M4 truth: completion is proposed, not asserted by the spine.
+    const isM4Managed = management?.contractId != null;
+    const recordState = check.complete
+      ? isM4Managed
+        ? "executing" // M4: awaiting the independent gate
+        : "completed" // M2-legacy: historical spine verdict
+      : "failed";
+    const recordActivity = check.complete
+      ? isM4Managed
+        ? "Completion proposed; awaiting the independent gate."
+        : "Work completed with verified proof."
+      : `Run ended without required proof: ${check.unmet.join("; ")}`;
+
+    const updated = {
       ...record,
-      state: check.complete ? "completed" : "failed",
-      activity: check.complete
-        ? "Work completed with verified proof."
-        : `Run ended without required proof: ${check.unmet.join("; ")}`,
+      state: recordState,
+      activity: recordActivity,
       workItems: [workItem],
       run,
+      ...(management ? { management } : {}),
       updatedAt: now,
-    };
+    } as ObjectiveRecord;
     await ctx.db.patch(row._id, { data: updated });
     await appendEvent(
       ctx.db,
       args.objectiveKey,
       check.complete ? "result" : "system",
       check.complete
-        ? "Objective completed: proof accepted by the application."
+        ? "Run finished with proof the application accepted; completion proposed to the independent gate."
         : `Objective not completed: ${check.unmet.join("; ")}`,
       now,
     );
