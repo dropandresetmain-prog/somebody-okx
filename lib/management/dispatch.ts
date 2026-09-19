@@ -297,8 +297,11 @@ export function dispatchTargets(
 //
 // The reducer's "authorized but undelivered" rule needs to know what DELIVERED
 // means for each strategy, and it must not be a scenario-specific guess: MAKE
-// needs an assignment, BUY needs an intent, HYBRID needs BOTH. Anything less and
-// a half-dispatched hybrid would read as "work in flight" forever.
+// needs an assignment, BUY needs an intent. HYBRID is deliberately two-phase
+// when it contains an external acquisition: an OPEN external intent counts as
+// delivered work-in-flight so the reducer waits; only after that intent is
+// VERIFIED does the missing internal assignment become dispatchable. This keeps
+// the internal worker downstream of acquired evidence instead of racing it.
 //
 // A FAILED or SUPERSEDED row does not count: it is history, not delivery. That is
 // what makes a bounded retry possible at all — and the retry itself is capped by
@@ -341,7 +344,26 @@ export function strategyDelivery(
     return hasIntent ? { delivered: true } : { delivered: false, missing: "intent" };
   if (strategy === "HYBRID") {
     if (hasAssignment && hasIntent) return { delivered: true };
-    return { delivered: false, missing: hasAssignment ? "intent" : hasIntent ? "assignment" : "both" };
+    const hasVerifiedIntent = facts.intentStates.includes("verified");
+    const hasOpenIntent = facts.intentStates.some(
+      (state) =>
+        state === "authorized" ||
+        state === "handed_off" ||
+        state === "awaiting_m3" ||
+        state === "result_recorded",
+    );
+    // External phase is genuinely in flight. Report the strategy as delivered
+    // for reducer purposes so rule 10 waits on the intent instead of dispatching
+    // the internal half early.
+    if (!hasAssignment && hasOpenIntent) return { delivered: true };
+    // Once external evidence is verified, the internal half becomes the next
+    // missing effect and may be dispatched on the verification wake.
+    if (!hasAssignment && hasVerifiedIntent)
+      return { delivered: false, missing: "assignment" };
+    return {
+      delivered: false,
+      missing: hasAssignment ? "intent" : "both",
+    };
   }
   // WAIT / ASK_FOUNDER / BLOCK commit no execution; null is an undecided row.
   return { delivered: true };
