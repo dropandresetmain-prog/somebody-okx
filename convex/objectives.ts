@@ -723,6 +723,22 @@ export const readWorkerObservation = internalQuery({
         recordRef: v.optional(v.string()),
       }),
     ),
+    acquiredInputs: v.array(
+      v.object({
+        intentId: v.string(),
+        resultEvidenceId: v.string(),
+        providerId: v.union(v.string(), v.null()),
+        serviceId: v.union(v.string(), v.null()),
+        resourceClass: v.union(v.string(), v.null()),
+        provenance: v.union(
+          v.literal("simulation"),
+          v.literal("live"),
+          v.literal("recorded_replay"),
+        ),
+        responseHash: v.string(),
+        text: v.string(),
+      }),
+    ),
     unmetCompletionRequirements: v.array(v.string()),
   }),
   handler: async (ctx, args) => {
@@ -739,6 +755,38 @@ export const readWorkerObservation = internalQuery({
       result: record.result,
     });
     const unmet = [...check.unmet];
+
+    // Only acquisition payloads whose corresponding M4 intent is VERIFIED may
+    // enter a worker's observation. The objective aggregate stores the useful
+    // content; the intent state remains the authority boundary.
+    const intentRows = await ctx.db
+      .query("executionIntents")
+      .withIndex("by_objective", (q) => q.eq("objectiveKey", args.objectiveKey))
+      .collect();
+    const verifiedById = new Map(
+      intentRows
+        .map((intentRow) => intentRow.data as import("../lib/management/types").ExecutionIntent)
+        .filter((intent) => intent.state === "verified")
+        .map((intent) => [intent.intentId, intent] as const),
+    );
+    const acquiredInputs = (record.acquisitionResults ?? [])
+      .filter((result) => {
+        const intent = verifiedById.get(result.intentId);
+        return intent?.resultEvidenceId === result.resultEvidenceId;
+      })
+      .map((result) => ({
+        intentId: result.intentId,
+        resultEvidenceId: result.resultEvidenceId,
+        providerId: result.providerId,
+        serviceId: result.serviceId,
+        resourceClass: result.resourceClass,
+        provenance: result.provenance,
+        responseHash: result.responseHash,
+        // Keep provider payload bounded on the model-facing observation. The
+        // stored result remains the durable source; this is only context.
+        text: result.content.slice(0, 2000),
+      }));
+
     // M2-legacy obligation: growth contracts (those granted update_company_artifact)
     // require an actual artifact version bump beyond the seed AND a resource-need
     // proposal from this run (the M2 canonical loop is how external acquisition
@@ -783,6 +831,7 @@ export const readWorkerObservation = internalQuery({
         ...(item.url ? { url: item.url } : {}),
         ...(item.recordRef ? { recordRef: item.recordRef } : {}),
       })),
+      acquiredInputs,
       unmetCompletionRequirements: unmet,
     };
   },
@@ -797,6 +846,7 @@ export const updateCompanyArtifact = internalMutation({
     runId: v.string(),
     content: v.string(),
     changeNote: v.string(),
+    usedAcquisitionEvidenceIds: v.optional(v.array(v.string())),
   },
   returns: v.object({ key: v.string(), version: v.number() }),
   handler: async (ctx, args) => {
@@ -809,11 +859,53 @@ export const updateCompanyArtifact = internalMutation({
       throw new Error("No company artifact seeded for this objective");
     }
     const idx = 0;
+
+    // If this objective already has verified acquired inputs, a later artifact
+    // mutation must explicitly disclose which result evidence it used. That
+    // turns the causal chain into application-validated state rather than UI
+    // narration: a worker cannot cite a fabricated or unverified provider result.
+    const verifiedResults = record.acquisitionResults ?? [];
+    const claimedIds = [...new Set(args.usedAcquisitionEvidenceIds ?? [])];
+    if (verifiedResults.length > 0 && claimedIds.length === 0) {
+      throw new Error(
+        "Artifact update after acquisition requires usedAcquisitionEvidenceIds",
+      );
+    }
+    for (const evidenceId of claimedIds) {
+      const acquired = verifiedResults.find(
+        (result) => result.resultEvidenceId === evidenceId,
+      );
+      if (!acquired) {
+        throw new Error(
+          `Artifact update cites unknown acquisition evidence: ${evidenceId}`,
+        );
+      }
+      const intentRow = await ctx.db
+        .query("executionIntents")
+        .withIndex("by_intentId", (q) => q.eq("intentId", acquired.intentId))
+        .unique();
+      const intent = intentRow?.data as
+        | import("../lib/management/types").ExecutionIntent
+        | undefined;
+      if (
+        !intent ||
+        intent.state !== "verified" ||
+        intent.resultEvidenceId !== evidenceId
+      ) {
+        throw new Error(
+          `Artifact update cites acquisition evidence that is not currently verified: ${evidenceId}`,
+        );
+      }
+    }
+
     const next = applyArtifactChange(artifacts[idx], {
       content: args.content,
       changeNote: args.changeNote,
       runId: args.runId,
       at: now,
+      ...(claimedIds.length > 0
+        ? { usedAcquisitionEvidenceIds: claimedIds }
+        : {}),
     });
     artifacts[idx] = next;
     const updated: ObjectiveRecord = {
@@ -827,7 +919,12 @@ export const updateCompanyArtifact = internalMutation({
       ctx.db,
       args.objectiveKey,
       "evidence",
-      `Artifact ${next.key} updated to version ${next.version} by ${args.runId}`,
+      [
+        `Artifact ${next.key} updated to version ${next.version} by ${args.runId}`,
+        claimedIds.length > 0
+          ? `; used verified acquisition evidence ${claimedIds.join(", ")}`
+          : "",
+      ].join(""),
       now,
     );
     return { key: next.key, version: next.version };
