@@ -64,6 +64,9 @@ export type DecisionPassReads = {
   creationAllowed: boolean;
   budget: ObjectiveBudget | null;
   grant: SpendGrantRead;
+  // Fresh objective-owned artifact selected by the storage adapter. Optional so
+  // pure callers with no controlled artifact keep their existing behavior.
+  artifactKeyForInternalProof?: string | null;
   at: number;
   // Deterministic, stable per (objective, requirement, revision, attempt) so a
   // replay rebuilds the same decision row identity.
@@ -152,16 +155,15 @@ export async function buildDecisionPassInput(
         factsForOffering: () => EMPTY_FACTS as EconomicFacts,
       };
 
-  // artifactKeyForInternalProof: the governed internal proof this requirement
-  // declares, if any (unchanged discipline — read from the requirement, not
-  // assumed). A non-launch requirement simply carries none.
-  let artifactKeyForInternalProof: string | null = null;
-  for (const proof of requirement.proofs) {
-    if (proof.proofKind === "company_artifact_version" && proof.params.artifactKey) {
-      artifactKeyForInternalProof = String(proof.params.artifactKey);
-      break;
-    }
-  }
+  // A fresh semantic Requirement starts proof-free. Once the model proposes an
+  // internal capability that can mutate company state, bind proof to the actual
+  // controlled artifact read from the objective. This prevents "worker said
+  // done" from satisfying artifact-producing work without a version change.
+  const artifactKeyForInternalProof = requiredPermissions.includes(
+    "update_company_artifact",
+  )
+    ? (reads.artifactKeyForInternalProof ?? null)
+    : null;
 
   const grant = reads.grant;
   const budget = reads.budget;
@@ -211,7 +213,7 @@ export async function buildDecisionPassInput(
       decisionId: reads.decisionId,
       spendAuthorityUsd: grant ? grant.limitUsd : null,
       spendApprovalId: grant ? grant.approvalId : null,
-      externalAuthority: "m3_unavailable",
+      externalAuthority: "m3_available_bounded",
       waiverRequested: false,
     },
   };
