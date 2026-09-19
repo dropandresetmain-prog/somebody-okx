@@ -1,9 +1,16 @@
 # Somebody × OKX Dev Day 2026 — Master Plan
 
-Status: **APPROVED — M4 management architecture locked 19 September 2026**  
+Status: **APPROVED — M4 × M3 application integration ACCEPTED by R3; promoted to `main` at `b10b7de7df71a040936c4ec64435fc5498dc3a78`. Live X Layer Testnet Cutoff-1 remains PENDING. Do not reopen M3/M4 architecture.**  
 Build period: **17–25 September 2026**  
 Authoritative repo: `dropandresetmain-prog/somebody-okx`  
 Accepted baseline before M3/M4: `main@1fa7962d9ef0d359951d14993834d1d419a5c980`
+
+> **R3 acceptance record (do not reopen).** Verdict: *"M4 × M3 PRE-LIVE CANDIDATE ACCEPTED — application path frozen for integration."*
+> Exact accepted code candidate: `88afa084f64d57a0b189811df846d0016ac87e3e`.
+> Docs/freeze head containing it: `b10b7de7df71a040936c4ec64435fc5498dc3a78` (branch `fix/m4-m3-production-driver`).
+> This is **application readiness only**. It does NOT claim: real payment succeeded, provider round-trip proved live, M5 integrated, or demo complete.
+> **Live X Layer Testnet Cutoff-1 has NOT happened and remains pending supervised proof.**
+> M3 financial truth and M4 business truth remain distinct machines and must not be collapsed.
 
 ## 1. Goal
 

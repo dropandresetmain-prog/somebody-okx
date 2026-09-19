@@ -1003,3 +1003,13 @@ NOT PROVEN IN CLOUD and REQUIRED LOCALLY (supervised X Layer Testnet, founder ma
 ## R3 status
 
 R3 recheck was NOT performed this pass (explicitly out of scope). The prior R3 verdict (M4 not accepted; seam not ready; Cutoff 1 not proven) stands and is superseded only by a future supervised R3 recheck of this integration candidate. This pass does NOT claim: live Cutoff 1 proven, real payment executed, M4 accepted, or M5 integrated. M5 (frozen frontend) was not touched.
+
+## R3 ACCEPTANCE + PROMOTION TO MAIN (supersedes the section above)
+
+**M4 + M3 application integration accepted by R3.** Verdict: *"M4 × M3 PRE-LIVE CANDIDATE ACCEPTED — application path frozen for integration."*
+
+- Exact accepted code candidate: `88afa084f64d57a0b189811df846d0016ac87e3e`.
+- Docs/freeze head: `b10b7de7df71a040936c4ec64435fc5498dc3a78` (branch `fix/m4-m3-production-driver`).
+- Promotion: `main` fast-forwarded from `37afaa5a7cd0aa82a30c63ce6795c48d34f04d07` to `b10b7de7df71a040936c4ec64435fc5498dc3a78` (pure ancestry, 42 commits, no merge/squash/rewrite; gate not rerun because the reviewed code candidate itself did not change).
+- **Live X Layer Testnet Cutoff-1 remains pending.** No real payment success is claimed; no provider round-trip is proven live; M5 is not integrated by this record; the demo is not complete.
+- Do NOT reopen M3 or M4 architecture. Future work proceeds from promoted `main` only.
