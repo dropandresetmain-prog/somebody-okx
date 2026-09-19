@@ -36,6 +36,9 @@ export type M3ProductionDriverDeps = {
   store: M3DriverStore;
   purchases: PurchaseLedger;
   rail: M3BuyerRailDeps;
+  /** Builds the real observation rail from the durable purchase, avoiding a
+   * process-local payment handle after restart. */
+  railForPurchase?: (purchase: PurchaseRecord) => M3BuyerRailDeps;
   now?: () => number;
   /** Explicit future supervised authority. Defaults false and is never inferred. */
   executionAuthorized?: boolean;
@@ -137,7 +140,7 @@ export async function runM3ProductionDriver(
   }
 
   if (!existing) throw new Error("refusing observation: no durable M3 purchase exists; use prepare or a separately authorized execute pass");
-  const result = await observePurchase(intent, existing, deps.rail);
+  const result = await observePurchase(intent, existing, deps.railForPurchase?.(existing) ?? deps.rail);
   await persist(deps, intent, result, at);
   return { mode, intent: result.intent, purchase: result.purchase, events: result.events, changed: result.purchase !== existing || result.intent !== intent || result.events.length > 0, stale, reconciliationRequired: result.reconciliationRequired, detail: result.detail };
 }

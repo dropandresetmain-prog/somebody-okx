@@ -13,6 +13,7 @@ import { createPurchase } from "../lib/payment/purchase";
 import { prepareApprovedPurchase } from "../lib/payment/supervisedPurchase";
 import { handoffApprovedPurchaseToM3 } from "../lib/management/m3BuyerRail";
 import { FileFounderConfirmationLedger, persistFounderConfirmation } from "../lib/payment/supervisedDriverAdapter";
+import { createLocalProductionComposition } from "../lib/payment/localProductionComposition";
 
 const at = 1960000000000;
 const intent: ExecutionIntent = {
@@ -145,5 +146,19 @@ test("D4-D6/D20: durable confirmation is purchase-and-approval-bound; payment_at
     assert.equal(result.intent.state, "reconciliation_required");
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("D7 runtime: the concrete local production composition constructs without network, wallet, or executor invocation", () => {
+  const previous = process.env.M3_BUYER_ADDRESS;
+  process.env.M3_BUYER_ADDRESS = "0x1111111111111111111111111111111111111111";
+  try {
+    const composition = createLocalProductionComposition(path.resolve(process.cwd()));
+    assert.equal(composition.executionAuthorized, false, "real execution is disabled unless a future supervised pass explicitly enables it");
+    assert.equal(composition.rail.executor.kind, "official_onchainos");
+    assert.ok(composition.railForPurchase);
+  } finally {
+    if (previous === undefined) delete process.env.M3_BUYER_ADDRESS;
+    else process.env.M3_BUYER_ADDRESS = previous;
   }
 });

@@ -75,6 +75,22 @@ is **Act Now**.
   TypeScript clean. This remains simulated/injected evidence only; no live
   financial operation occurred.
 
+### CP4 concrete local composition — 20 September 2026
+
+- `observe`/`execute` now construct the concrete local composition by default:
+  file-ledger authorities, durable confirmation reader, Convex bridge, fresh
+  challenge machinery, `OfficialSignOnlyReplayExecutor` wrapper, exact X Layer
+  settlement reader, protected-result verifier, and M4 writeback. A custom
+  adapter remains an explicit reviewed override, not a missing production
+  dependency.
+- Standard successful signed replay results are recovered from the staged safe
+  result; the fallback refuses to issue another signed provider replay. Real
+  execution remains explicitly disabled unless a later supervised session sets
+  `M4_M3_EXECUTION_ENABLED=true` after founder confirmation.
+- Focused seam/driver suite: 24/24 pass; root and Convex TypeScript clean.
+  Composition construction test performs no fetch, signing, executor call, or
+  chain operation.
+
 No live payment occurred in this CP1 work.
 
 > **M4 × M3 INTEGRATION (this branch `integration/m4-m3`).** This ledger now covers the

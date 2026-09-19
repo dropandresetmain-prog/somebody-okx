@@ -12,6 +12,7 @@ import { ConvexHttpClient } from "convex/browser";
 
 import { runM3ProductionDriver, type DriverMode, type M3DriverStore, type M3ProductionDriverDeps } from "../lib/management/m3ProductionDriver";
 import { FilePurchaseLedger, resolvePurchaseLedgerPath } from "../lib/payment/purchaseLedger";
+import { createLocalProductionComposition } from "../lib/payment/localProductionComposition";
 import type { M3BuyerRailDeps } from "../lib/management/m3BuyerRail";
 
 type SupervisedAdapter = { build(): Promise<Pick<M3ProductionDriverDeps, "rail" | "executionAuthorized" | "supervisedSubmit">> };
@@ -75,13 +76,18 @@ async function main() {
       });
     },
   };
-  let supplied: Pick<M3ProductionDriverDeps, "rail" | "executionAuthorized" | "supervisedSubmit"> = { rail: unavailableRail(), executionAuthorized: false };
-  if (adapterModule) supplied = await (await import(adapterModule) as SupervisedAdapter).build();
   const applicationRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+  // inspect/prepare/reconcile require no payment configuration. observe/execute
+  // use the concrete production composition by default; an explicit adapter is
+  // retained only for a separately reviewed deployment-specific override.
+  let supplied: Pick<M3ProductionDriverDeps, "rail" | "railForPurchase" | "executionAuthorized" | "supervisedSubmit"> = { rail: unavailableRail(), executionAuthorized: false };
+  if (mode === "observe" || mode === "execute") supplied = createLocalProductionComposition(applicationRoot);
+  if (adapterModule) supplied = await (await import(adapterModule) as SupervisedAdapter).build();
   const result = await runM3ProductionDriver(mode, intentId, {
     store,
     purchases: new FilePurchaseLedger(resolvePurchaseLedgerPath(applicationRoot)),
     rail: supplied.rail,
+    railForPurchase: supplied.railForPurchase,
     executionAuthorized: supplied.executionAuthorized === true,
     supervisedSubmit: supplied.supervisedSubmit,
   });

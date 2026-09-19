@@ -71,7 +71,7 @@ class FreshQuoteExecutor implements PaymentExecutor {
 /** Creates a supervised submit port; construction is safe and never invokes onchainos. */
 export function createSupervisedSubmit(config: {
   confirmations: ConfirmationLedger; merchantEndpoint: string; fetchChallenge: () => Promise<unknown>; executionAuthority: PaymentExecutionAuthority;
-  settlementReader: M3BuyerRailDeps["settlementReader"]; paidRequestSender: M3BuyerRailDeps["paidRequestSender"]; verifyResult: M3BuyerRailDeps["verifyResult"]; railConfig: RailConfig; now?: () => number;
+  settlementReaderForPurchase: (purchase: PurchaseRecord) => M3BuyerRailDeps["settlementReader"]; paidRequestSender: M3BuyerRailDeps["paidRequestSender"]; verifyResult: M3BuyerRailDeps["verifyResult"]; railConfig: RailConfig; now?: () => number;
 }): (input: { intent: ExecutionIntent; purchase: PurchaseRecord; persistPaymentAttempt: (purchase: PurchaseRecord) => Promise<void> }) => Promise<SeamResult> {
   const now = config.now ?? Date.now;
   return async (input) => {
@@ -86,7 +86,7 @@ export function createSupervisedSubmit(config: {
         return paymentTermsEqual(candidate, input.purchase.boundTerms) ? input.purchase.approval : null;
       },
       executor: new FreshQuoteExecutor(input.purchase, confirmation, config.merchantEndpoint, config.fetchChallenge, config.executionAuthority, now),
-      settlementReader: config.settlementReader, paidRequestSender: config.paidRequestSender, verifyResult: config.verifyResult,
+      settlementReader: config.settlementReaderForPurchase(input.purchase), paidRequestSender: config.paidRequestSender, verifyResult: config.verifyResult,
     };
     return handoffApprovedPurchaseToM3({ ...input, deps: rail });
   };
