@@ -39,6 +39,13 @@ export type M3ProductionDriverDeps = {
   now?: () => number;
   /** Explicit future supervised authority. Defaults false and is never inferred. */
   executionAuthorized?: boolean;
+  /** Production-only path: consumes the durable approved purchase and records
+   * payment_attempted before it may invoke an executor. */
+  supervisedSubmit?: (input: {
+    intent: ExecutionIntent;
+    purchase: PurchaseRecord;
+    persistPaymentAttempt: (purchase: PurchaseRecord) => Promise<void>;
+  }) => Promise<SeamResult>;
 };
 
 export type M3ProductionDriverResult = {
@@ -115,7 +122,16 @@ export async function runM3ProductionDriver(
     if (existing && !["prepared", "awaiting_approval", "approved"].includes(existing.state)) {
       throw new Error(`refusing execution: durable M3 purchase is already ${existing.state}; reconcile or observe, never repay`);
     }
-    const result = await handoffIntentToM3(intent, deps.rail);
+    const result = await (deps.supervisedSubmit
+      ? (() => {
+          if (!existing) throw new Error("supervised execution requires a durable approved purchase");
+          return deps.supervisedSubmit({
+            intent,
+            purchase: existing,
+            persistPaymentAttempt: async (attempted) => { deps.purchases.put(attempted); },
+          });
+        })()
+      : handoffIntentToM3(intent, deps.rail));
     await persist(deps, intent, result, at);
     return { mode, intent: result.intent, purchase: result.purchase, events: result.events, changed: true, stale, reconciliationRequired: result.reconciliationRequired, detail: result.detail };
   }

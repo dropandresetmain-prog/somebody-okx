@@ -14,7 +14,7 @@ import { runM3ProductionDriver, type DriverMode, type M3DriverStore, type M3Prod
 import { FilePurchaseLedger, resolvePurchaseLedgerPath } from "../lib/payment/purchaseLedger";
 import type { M3BuyerRailDeps } from "../lib/management/m3BuyerRail";
 
-type SupervisedAdapter = { build(): Promise<Pick<M3ProductionDriverDeps, "rail" | "executionAuthorized">> };
+type SupervisedAdapter = { build(): Promise<Pick<M3ProductionDriverDeps, "rail" | "executionAuthorized" | "supervisedSubmit">> };
 const modes = new Set<DriverMode>(["inspect", "prepare", "execute", "observe", "reconcile"]);
 
 function parse(): { mode: DriverMode; intentId: string; adapterModule: string | null } {
@@ -75,7 +75,7 @@ async function main() {
       });
     },
   };
-  let supplied: Pick<M3ProductionDriverDeps, "rail" | "executionAuthorized"> = { rail: unavailableRail(), executionAuthorized: false };
+  let supplied: Pick<M3ProductionDriverDeps, "rail" | "executionAuthorized" | "supervisedSubmit"> = { rail: unavailableRail(), executionAuthorized: false };
   if (adapterModule) supplied = await (await import(adapterModule) as SupervisedAdapter).build();
   const applicationRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
   const result = await runM3ProductionDriver(mode, intentId, {
@@ -83,6 +83,7 @@ async function main() {
     purchases: new FilePurchaseLedger(resolvePurchaseLedgerPath(applicationRoot)),
     rail: supplied.rail,
     executionAuthorized: supplied.executionAuthorized === true,
+    supervisedSubmit: supplied.supervisedSubmit,
   });
   // Deliberately safe summary: it contains no authorization, signature, token,
   // challenge body, raw provider result, or wallet material.

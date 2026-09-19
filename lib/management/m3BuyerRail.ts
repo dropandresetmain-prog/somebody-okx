@@ -84,7 +84,7 @@
 import { parse402Challenge } from "../payment/challenge";
 import { createPurchase } from "../payment/purchase";
 import { prepareApprovedPurchase } from "../payment/supervisedPurchase";
-import { executeApprovedPayment } from "../payment/buyerRail";
+import { executeApprovedPayment, type PreparedPayment } from "../payment/buyerRail";
 import { transition, initial } from "../payment/lifecycle";
 import type {
   PaymentApproval,
@@ -470,6 +470,66 @@ export async function handoffIntentToM3(
     terminal: false,
     detail: `M3 submitted tx ${submission.transactionHash}; M4 intent handed_off — awaiting settlement/result observations (submitted ≠ settled ≠ acquired)`,
   };
+}
+
+/**
+ * Supervised variant for the production driver. Unlike the historic hand-off,
+ * it consumes the already durable M3-approved purchase rather than rebuilding
+ * it from a new challenge. The caller must durably record `payment_attempted`
+ * before this function reaches the executor; a restart thereafter is therefore
+ * reconciliation/observation only, never a new execution attempt.
+ */
+export async function handoffApprovedPurchaseToM3(input: {
+  intent: ExecutionIntent;
+  purchase: PurchaseRecord;
+  deps: M3BuyerRailDeps;
+  persistPaymentAttempt: (purchase: PurchaseRecord) => Promise<void>;
+}): Promise<SeamResult> {
+  const { intent, deps } = input;
+  const now = deps.now ?? (() => Date.now());
+  const events: HandoffEvent[] = [];
+  const identity = purchaseIdentityFromIntent(intent);
+  if (
+    input.purchase.id !== identity.id || input.purchase.objectiveKey !== identity.objectiveKey
+    || input.purchase.resourceNeedId !== identity.resourceNeedId || input.purchase.offeringId !== identity.offeringId
+    || input.purchase.idempotencyKey !== identity.idempotencyKey
+  ) throw new Error("durable M3 purchase identity does not match the persisted M4 intent");
+  if (!mayHandOffExternally(intent.strategy, deps.mode, { spendApprovalId: intent.terms.approvalId, priceUsd: intent.terms.priceUsd })) {
+    return { handedOff: false, purchase: input.purchase, intent, events, reconciliationRequired: false, submission: null, m3State: input.purchase.state, resting: true, terminal: false, detail: "M4 founder authority no longer permits M3 execution" };
+  }
+  if (input.purchase.state !== "approved" || !input.purchase.boundTerms || !input.purchase.approval) {
+    throw new Error(`supervised execution requires a durable approved M3 purchase, got ${input.purchase.state}`);
+  }
+  if (intent.terms.approvalId !== input.purchase.approval.approvalId) throw new Error("M4 founder approval identity does not match the durable M3 approval");
+  const prepared: PreparedPayment = {
+    intent: { intentId: intent.intentId, terms: input.purchase.boundTerms, approval: input.purchase.approval, boundAt: input.purchase.updatedAt, state: "ready_to_sign" },
+    terms: input.purchase.boundTerms, purchaseId: input.purchase.id, idempotencyKey: input.purchase.idempotencyKey, state: "ready_to_sign",
+  };
+  let lifecycle = initial();
+  lifecycle = driveLifecycle(lifecycle, { type: "request_approval", requestedBy: "m4-production-driver", reason: "durable supervised purchase" });
+  lifecycle = driveLifecycle(lifecycle, { type: "grant_approval", grantedBy: input.purchase.approval.approver, approvalId: input.purchase.approval.approvalId });
+  lifecycle = driveLifecycle(lifecycle, { type: "attempt_payment", paymentId: input.purchase.id });
+  const attempted: PurchaseRecord = { ...input.purchase, state: lifecycle.state, updatedAt: now() };
+  try {
+    await input.persistPaymentAttempt(attempted);
+  } catch (error) {
+    return failSeam(intent, input.purchase, events, now(), `payment attempt could not be durably recorded before executor invocation: ${describe(error)}`);
+  }
+  let submission: PaymentSubmissionResult;
+  try {
+    submission = await executeApprovedPayment(prepared, deps.executor);
+  } catch (error) {
+    if (isAmbiguous(error)) return reconcileSeam(intent, attempted, events, now(), `payment execution is ambiguous (possible submission): ${describe(error)} — reconciliation required, no retry`);
+    return failSeam(intent, attempted, events, now(), `payment execution failed before submission: ${describe(error)} — no payment landed`);
+  }
+  if (!submission.submitted || !submission.transactionHash) {
+    if (isAmbiguousResult(submission)) return reconcileSeam(intent, attempted, events, now(), `payment submission is ambiguous (no transaction hash): ${describe(submission.note ?? submission.safeResponse)} — reconciliation required, no retry`);
+    return failSeam(intent, attempted, events, now(), `payment was not submitted: ${describe(submission.note ?? "executor returned submitted=false")} — no payment landed`);
+  }
+  lifecycle = driveLifecycle(lifecycle, { type: "submit_payment", transactionHash: submission.transactionHash });
+  const moved = advanceIntent(intent, "handed_off", now(), { eventId: `evt_handoff_${submission.transactionHash}`, note: `handed to M3 buyer rail; submitted tx ${submission.transactionHash} (submitted ≠ settled ≠ acquired)` });
+  const submittedPurchase: PurchaseRecord = { ...attempted, state: lifecycle.state, receipt: { transactionHash: submission.transactionHash }, updatedAt: now() };
+  return { handedOff: true, purchase: submittedPurchase, intent: moved.ok ? moved.intent : intent, events, reconciliationRequired: false, submission, m3State: lifecycle.state, resting: true, terminal: false, detail: `M3 submitted tx ${submission.transactionHash}; M4 intent handed_off — awaiting settlement/result observations (submitted ≠ settled ≠ acquired)` };
 }
 
 /**

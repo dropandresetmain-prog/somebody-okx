@@ -9,6 +9,10 @@ import type { ExecutionIntent } from "../lib/management/types";
 import type { M3BuyerRailDeps } from "../lib/management/m3BuyerRail";
 import { FilePurchaseLedger, type PurchaseLedger } from "../lib/payment/purchaseLedger";
 import type { PurchaseRecord } from "../lib/payment/types";
+import { createPurchase } from "../lib/payment/purchase";
+import { prepareApprovedPurchase } from "../lib/payment/supervisedPurchase";
+import { handoffApprovedPurchaseToM3 } from "../lib/management/m3BuyerRail";
+import { FileFounderConfirmationLedger, persistFounderConfirmation } from "../lib/payment/supervisedDriverAdapter";
 
 const at = 1960000000000;
 const intent: ExecutionIntent = {
@@ -112,6 +116,33 @@ test("D5: a fresh process-facing M3 purchase ledger instance reloads the same st
     first.put(purchase);
     const restarted = new FilePurchaseLedger(file);
     assert.deepEqual(restarted.get(prepared.intentId), purchase);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("D4-D6/D20: durable confirmation is purchase-and-approval-bound; payment_attempted persists before ambiguous executor return", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "m3-driver-confirmation-"));
+  try {
+    const challenge = { x402Version: 2, resource: { url: "/paid" }, accepts: [{ scheme: "exact", network: "eip155:1952", asset: "0xasset", amount: "10000", payTo: "0xrecipient", resource: "/paid", maxTimeoutSeconds: 60, extra: { name: "USDT0", version: "1" } }] };
+    const purchase = createPurchase({ id: intent.intentId, objectiveKey: intent.objectiveKey, resourceNeedId: intent.requirementKey, offeringId: intent.target.offeringId!, idempotencyKey: intent.idempotencyKey, at });
+    const approval = { approver: "founder", approvalId: intent.terms.approvalId!, approvedMaxAmount: "10000", approvedNetwork: "eip155:1952", approvedAsset: "0xasset", approvedPayTo: "0xrecipient", approvedAt: at };
+    const approved = prepareApprovedPurchase({ purchase, approval, challengeBody: challenge, config: { allowedNetworks: ["eip155:1952"], maxSpend: "10000" }, intentId: intent.intentId, at }).purchase;
+    const confirmations = new FileFounderConfirmationLedger(path.join(root, "confirmations.json"));
+    const confirmation = persistFounderConfirmation({ purchase: approved, previewBody: challenge, confirmationId: "confirm_driver", merchantEndpoint: "http://127.0.0.1:4021/paid", confirmedAt: at, confirmations });
+    assert.equal(new FileFounderConfirmationLedger(path.join(root, "confirmations.json")).get(approved.id)?.approvalId, approval.approvalId, "restart reloads safe confirmation authority");
+    assert.throws(() => confirmations.put({ ...confirmation, approvalId: "another" }), /immutable/);
+
+    let attempted: PurchaseRecord | null = null;
+    const ambiguousRail: M3BuyerRailDeps = {
+      ...rail(), mode: "m3_available_bounded",
+      executor: { kind: "test_scaffold", async executeApprovedPayment() { const error = new Error("lost response"); error.name = "OfficialPaymentAmbiguousError"; throw error; } },
+    };
+    const result = await handoffApprovedPurchaseToM3({ intent, purchase: approved, deps: ambiguousRail, persistPaymentAttempt: async (value) => { attempted = value; } });
+    assert.ok(attempted, "payment_attempted must be persisted before executor reachability");
+    assert.equal((attempted as PurchaseRecord).state, "payment_attempted", "attempt fact is durable before executor may reach a merchant");
+    assert.equal(result.purchase?.state, "reconciliation_required");
+    assert.equal(result.intent.state, "reconciliation_required");
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

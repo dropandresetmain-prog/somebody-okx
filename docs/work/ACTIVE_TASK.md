@@ -47,6 +47,23 @@ is **Act Now**.
   `OfficialSignOnlyReplayExecutor`. No product decision or credential is
   required for that code work; no real executor was invoked during the audit.
 
+### CP2 supervised-seam repair — 20 September 2026
+
+- Added `handoffApprovedPurchaseToM3`: a Node-only M4×M3 seam that consumes
+  the durable *approved* purchase, confirms the fixed Intent↔Purchase identity,
+  and writes `payment_attempted` through the driver ledger callback BEFORE an
+  executor can run. Restart from that boundary cannot execute again; it must
+  reconcile/observe the durable M3 execution authority.
+- Added a safe confirmation ledger and supervised adapter building blocks. The
+  adapter reloads immutable confirmation identity, requires it to match the
+  durable purchase/approval, obtains a fresh quote only inside its executor
+  wrapper, and delegates material-term/freshness checks to frozen M3 kernels
+  before constructing `OfficialSignOnlyReplayExecutor`.
+- Focused proof now passes 4/4: confirmation survives a fresh ledger instance,
+  confirmation replacement is refused, and an injected ambiguous executor sees
+  durable `payment_attempted` before the M4/M3 reconciliation transition.
+  Root and Convex TypeScript remain clean. No real executor was called.
+
 No live payment occurred in this CP1 work.
 
 > **M4 × M3 INTEGRATION (this branch `integration/m4-m3`).** This ledger now covers the
