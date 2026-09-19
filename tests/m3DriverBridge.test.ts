@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 
-import { apply } from "../convex/m3Driver";
+import { apply, snapshot } from "../convex/m3Driver";
 import { canonicalM3DriverFact, type M3DriverFact } from "../lib/management/m3DriverFacts";
 import type { ExecutionIntent } from "../lib/management/types";
 
@@ -14,7 +14,9 @@ function sign(fact: M3DriverFact): string {
   return createHmac("sha256", key).update(canonicalM3DriverFact(fact)).digest("hex");
 }
 
-function fixture(currentRevision = 1): { ctx: unknown; current: () => ExecutionIntent } {
+function fixture(currentRevision = 1, grant: { data: Record<string, unknown> } | null = {
+  data: { approvalId: "approval", objectiveKey: "obj_bridge", limitUsd: 1, grantedAt: at, revokedAt: null, note: "test" },
+}): { ctx: unknown; current: () => ExecutionIntent } {
   let intent: ExecutionIntent = {
     intentId: "int_bridge", idempotencyKey: "idem_bridge", objectiveKey: "obj_bridge", requirementKey: "req_bridge", contractRevision: 1,
     decisionId: "dec_bridge", kind: "external_acquisition", strategy: "BUY", target: { offeringId: "offer", providerId: null, serviceId: null, resourceClass: null, endpointRef: null },
@@ -29,6 +31,7 @@ function fixture(currentRevision = 1): { ctx: unknown; current: () => ExecutionI
         if (table === "objectives") return one({ _id: "objective-row" });
         if (table === "outcomeContracts") return one({ _id: "contract-row", revision: currentRevision });
         if (table === "requirements") return one({ _id: "requirement-row", data: { contractRevision: currentRevision } });
+        if (table === "founderSpendGrants") return one(grant);
         if (table === "wakeEvents") return one(null);
         throw new Error(`unexpected table ${table}`);
       },
@@ -45,6 +48,31 @@ type Handler = { _handler: (ctx: unknown, args: Record<string, unknown>) => Prom
 async function invoke(ctx: unknown, fact: M3DriverFact, attestation = sign(fact)): Promise<unknown> {
   return (apply as unknown as Handler)._handler(ctx, { ...fact, evidenceId: fact.evidenceId ?? undefined, attestation, driverToken: token });
 }
+
+async function readSnapshot(ctx: unknown): Promise<{ founderSpendApprovalCurrent: boolean }> {
+  return (snapshot as unknown as Handler)._handler(ctx, { intentId: "int_bridge", driverToken: token }) as Promise<{ founderSpendApprovalCurrent: boolean }>;
+}
+
+test("R3: governed snapshot validates only the intent's exact current founder spend grant", async () => {
+  const previousToken = process.env.M4_M3_DRIVER_TOKEN;
+  process.env.M4_M3_DRIVER_TOKEN = token;
+  try {
+    const cases: Array<[string, { data: Record<string, unknown> } | null, boolean]> = [
+      ["missing", null, false],
+      ["another approval", { data: { approvalId: "other", objectiveKey: "obj_bridge", limitUsd: 1, grantedAt: at, revokedAt: null, note: "test" } }, false],
+      ["another objective", { data: { approvalId: "approval", objectiveKey: "obj_other", limitUsd: 1, grantedAt: at, revokedAt: null, note: "test" } }, false],
+      ["revoked", { data: { approvalId: "approval", objectiveKey: "obj_bridge", limitUsd: 1, grantedAt: at, revokedAt: at + 1, note: "test" } }, false],
+      ["insufficient", { data: { approvalId: "approval", objectiveKey: "obj_bridge", limitUsd: 0.5, grantedAt: at, revokedAt: null, note: "test" } }, false],
+      ["valid exact grant", { data: { approvalId: "approval", objectiveKey: "obj_bridge", limitUsd: 1, grantedAt: at, revokedAt: null, note: "test" } }, true],
+    ];
+    for (const [name, grant, expected] of cases) {
+      const result = await readSnapshot(fixture(1, grant).ctx);
+      assert.equal(result.founderSpendApprovalCurrent, expected, name);
+    }
+  } finally {
+    if (previousToken === undefined) delete process.env.M4_M3_DRIVER_TOKEN; else process.env.M4_M3_DRIVER_TOKEN = previousToken;
+  }
+});
 
 test("R3: the actual Convex bridge refuses a bearer-token-only forged verification sequence", async () => {
   const previousToken = process.env.M4_M3_DRIVER_TOKEN;

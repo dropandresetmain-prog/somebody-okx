@@ -4,7 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { runM3ProductionDriver, type M3DriverStore } from "../lib/management/m3ProductionDriver";
+import { assertCurrentFounderSpendAuthority, runM3ProductionDriver, type DriverSnapshot, type M3DriverStore } from "../lib/management/m3ProductionDriver";
 import type { ExecutionIntent } from "../lib/management/types";
 import type { M3BuyerRailDeps } from "../lib/management/m3BuyerRail";
 import { FilePurchaseLedger, type PurchaseLedger } from "../lib/payment/purchaseLedger";
@@ -33,11 +33,11 @@ class MemoryPurchases implements PurchaseLedger {
   put(purchase: PurchaseRecord) { this.rows.set(purchase.id, structuredClone(purchase)); return purchase; }
 }
 
-function store(initial = intent): M3DriverStore & { writes: number; current: ExecutionIntent } {
+function store(initial = intent, founderSpendApprovalCurrent = true): M3DriverStore & { writes: number; current: ExecutionIntent } {
   return {
     writes: 0,
     current: structuredClone(initial),
-    async read(id) { return id === this.current.intentId ? { intent: this.current, objectiveExists: true, contractCurrent: true, requirementCurrent: true } : null; },
+    async read(id) { return id === this.current.intentId ? { intent: this.current, objectiveExists: true, contractCurrent: true, requirementCurrent: true, founderSpendApprovalCurrent } : null; },
     async write(change) {
       assert.equal(change.expectedIntent.updatedAt, this.current.updatedAt, "driver writes against the fresh authoritative intent");
       this.current = change.nextIntent;
@@ -101,7 +101,7 @@ test("D1-D11: exact persisted awaiting_m3 intent runs one simulated purchase, re
 
 test("D14: stale business authority rejects a new execution but permits read-only reconciliation", async () => {
   const stale = store();
-  stale.read = async (id) => id === intent.intentId ? { intent: stale.current, objectiveExists: true, contractCurrent: false, requirementCurrent: false } : null;
+  stale.read = async (id) => id === intent.intentId ? { intent: stale.current, objectiveExists: true, contractCurrent: false, requirementCurrent: false, founderSpendApprovalCurrent: true } : null;
   const deps = rail();
   await assert.rejects(() => runM3ProductionDriver("prepare", intent.intentId, { store: stale, purchases: new MemoryPurchases(), rail: deps }), /stale/);
   const reconciled = await runM3ProductionDriver("reconcile", intent.intentId, { store: stale, purchases: new MemoryPurchases(), rail: deps });
@@ -122,6 +122,38 @@ test("D5: a fresh process-facing M3 purchase ledger instance reloads the same st
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
+});
+
+test("R3: the exact current founder spend grant is mandatory before every pre-submission authority opening, but never blocks financial observation", async () => {
+  const invalidSnapshot: DriverSnapshot = {
+    intent, objectiveExists: true, contractCurrent: true, requirementCurrent: true, founderSpendApprovalCurrent: false,
+  };
+  for (const operation of ["prepare", "preview", "confirm", "execute"] as const) {
+    assert.throws(() => assertCurrentFounderSpendAuthority(invalidSnapshot, operation), /exact founder spend grant/);
+  }
+  const invalid = store(intent, false);
+  await assert.rejects(() => runM3ProductionDriver("prepare", intent.intentId, { store: invalid, purchases: new MemoryPurchases(), rail: rail() }), /exact founder spend grant/);
+  await assert.rejects(() => runM3ProductionDriver("execute", intent.intentId, { store: invalid, purchases: new MemoryPurchases(), rail: rail(), executionAuthorized: true }), /exact founder spend grant/);
+
+  const afterSubmission = store({ ...intent, state: "handed_off" }, false);
+  const purchases = new MemoryPurchases();
+  purchases.put({
+    ...createPurchase({ id: intent.intentId, objectiveKey: intent.objectiveKey, resourceNeedId: intent.requirementKey, offeringId: intent.target.offeringId!, idempotencyKey: intent.idempotencyKey, at }),
+    state: "submitted",
+    boundTerms: { scheme: "exact", network: "eip155:1952", asset: "0xasset", maxAmountRequired: "10000", payTo: "0xrecipient", resource: "/paid", eip712: { name: "USDT0", version: "1" }, maxTimeoutSeconds: 60 },
+  });
+  const observation = await runM3ProductionDriver("observe", intent.intentId, { store: afterSubmission, purchases, rail: rail() });
+  assert.equal(observation.purchase?.state, "reconciliation_required", "revocation after submission never suppresses a necessary financial observation; an incomplete durable receipt is conservatively reconciled");
+  const reconciliation = await runM3ProductionDriver("reconcile", intent.intentId, { store: afterSubmission, purchases, rail: rail() });
+  assert.equal(reconciliation.changed, false, "reconciliation remains read-only after a grant revocation");
+});
+
+test("R3: the production CLI has no adapter override and its execute/observe path is the concrete local composition", () => {
+  const source = fs.readFileSync(path.resolve(process.cwd(), "scripts/m4-m3-production-driver.ts"), "utf8");
+  assert.doesNotMatch(source, /adapter-module/);
+  assert.doesNotMatch(source, /await import\(/);
+  assert.match(source, /mode === "observe" \|\| mode === "execute"\) supplied = createLocalProductionComposition\(applicationRoot\)/);
+  assert.match(source, /tests inject dependencies[\s\S]{0,100}library driver seam/);
 });
 
 test("D4-D6/D20: durable confirmation is purchase-and-approval-bound; payment_attempted persists before ambiguous executor return", async () => {

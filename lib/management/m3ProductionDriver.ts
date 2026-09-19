@@ -18,6 +18,8 @@ export type DriverSnapshot = {
   requirementCurrent: boolean;
   contractCurrent: boolean;
   objectiveExists: boolean;
+  /** Exact named M4 grant remains a current authority for this intent's price. */
+  founderSpendApprovalCurrent: boolean;
 };
 
 export type M3DriverWrite = {
@@ -108,6 +110,23 @@ function assertTarget(snapshot: DriverSnapshot, mode: DriverMode): void {
   }
 }
 
+/**
+ * New payment authority must be tied to the exact grant selected when the
+ * intent was created. This boolean is computed by the governed M4 snapshot;
+ * it is deliberately not inferred from another currently-active grant.
+ *
+ * Financial observation is excluded. Revocation after a possible submission
+ * cannot erase the duty to discover and reconcile the financial truth.
+ */
+export function assertCurrentFounderSpendAuthority(
+  snapshot: DriverSnapshot,
+  operation: "prepare" | "preview" | "confirm" | "execute",
+): void {
+  if (!snapshot.founderSpendApprovalCurrent) {
+    throw new Error(`refusing ${operation}: the exact founder spend grant named by this intent is missing, revoked, cross-objective, or insufficient`);
+  }
+}
+
 async function persist(
   deps: M3ProductionDriverDeps,
   expectedIntent: ExecutionIntent,
@@ -172,6 +191,10 @@ export async function runM3ProductionDriver(
   // executor; post-submit, verified, failed and recovery states are read-only.
   if ((mode === "prepare" || mode === "execute") && intent.state !== "awaiting_m3") {
     throw new Error(`refusing ${mode}: M4 intent is ${intent.state}, not awaiting_m3`);
+  }
+
+  if (mode === "prepare" || mode === "execute") {
+    assertCurrentFounderSpendAuthority(snapshot, mode);
   }
 
   if (mode === "inspect" || mode === "reconcile") {

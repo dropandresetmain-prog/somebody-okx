@@ -3,15 +3,16 @@
  *
  * Usage: npx tsx scripts/m4-m3-production-driver.ts <inspect|prepare|execute|observe|reconcile> --intent-id <intentId>
  *
- * `execute` is fail-closed unless a separately reviewed supervised adapter is
- * supplied. This fixer never enables it and never invokes a wallet/CLI pay.
+ * `execute` is fail-closed until the concrete local composition has current
+ * M4 authority plus durable M3 approval and confirmation. This CLI never
+ * exposes a runtime adapter override or invokes a wallet/CLI pay by itself.
  */
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createHmac } from "node:crypto";
 import { ConvexHttpClient } from "convex/browser";
 
-import { runM3ProductionDriver, type DriverMode, type M3DriverStore, type M3ProductionDriverDeps } from "../lib/management/m3ProductionDriver";
+import { assertCurrentFounderSpendAuthority, runM3ProductionDriver, type DriverMode, type M3DriverStore, type M3ProductionDriverDeps } from "../lib/management/m3ProductionDriver";
 import { FilePurchaseLedger, resolvePurchaseLedgerPath } from "../lib/payment/purchaseLedger";
 import { FilePreviewLedger, resolvePreviewLedgerPath } from "../lib/payment/previewLedger";
 import { createLocalPreviewComposition, createLocalProductionComposition } from "../lib/payment/localProductionComposition";
@@ -20,26 +21,33 @@ import { persistFounderConfirmation } from "../lib/payment/supervisedDriverAdapt
 import { canonicalM3DriverFact, type M3DriverFact } from "../lib/management/m3DriverFacts";
 import type { M3BuyerRailDeps } from "../lib/management/m3BuyerRail";
 
-type SupervisedAdapter = { build(): Promise<Pick<M3ProductionDriverDeps, "rail" | "executionAuthorized" | "supervisedSubmit">> };
 const modes = new Set<DriverMode>(["inspect", "prepare", "execute", "observe", "reconcile"]);
 type CliMode = DriverMode | "preview" | "confirm";
 
-function parse(): { mode: CliMode; intentId: string; adapterModule: string | null; confirmationId: string | null } {
+function parse(): { mode: CliMode; intentId: string; confirmationId: string | null } {
   const [mode, ...rest] = process.argv.slice(2);
-  const intentIndex = rest.indexOf("--intent-id");
-  const adapterIndex = rest.indexOf("--adapter-module");
-  const confirmationIndex = rest.indexOf("--confirmation-id");
-  if ((!modes.has(mode as DriverMode) && mode !== "preview" && mode !== "confirm") || intentIndex < 0 || !rest[intentIndex + 1]) {
-    throw new Error("usage: <inspect|prepare|preview|confirm|execute|observe|reconcile> --intent-id <intentId> [--confirmation-id <founder-confirmation-id>] [--adapter-module <absolute-module-path>]");
+  const values = new Map<string, string>();
+  for (let index = 0; index < rest.length; index += 1) {
+    const option = rest[index];
+    if (option !== "--intent-id" && option !== "--confirmation-id") throw new Error(`unknown CLI option: ${option}`);
+    const value = rest[index + 1];
+    if (!value || value.startsWith("--")) throw new Error(`${option} requires a value`);
+    if (values.has(option)) throw new Error(`duplicate CLI option: ${option}`);
+    values.set(option, value);
+    index += 1;
   }
-  if (mode === "confirm" && (confirmationIndex < 0 || !rest[confirmationIndex + 1])) {
+  const intentId = values.get("--intent-id") ?? null;
+  const confirmationId = values.get("--confirmation-id") ?? null;
+  if ((!modes.has(mode as DriverMode) && mode !== "preview" && mode !== "confirm") || !intentId) {
+    throw new Error("usage: <inspect|prepare|preview|confirm|execute|observe|reconcile> --intent-id <intentId> [--confirmation-id <founder-confirmation-id>]");
+  }
+  if (mode === "confirm" && !confirmationId) {
     throw new Error("confirm requires --confirmation-id <founder-confirmation-id> after the founder reviews the stored safe preview terms");
   }
   return {
     mode: mode as CliMode,
-    intentId: rest[intentIndex + 1],
-    adapterModule: adapterIndex >= 0 ? rest[adapterIndex + 1] ?? null : null,
-    confirmationId: confirmationIndex >= 0 ? rest[confirmationIndex + 1] ?? null : null,
+    intentId,
+    confirmationId,
   };
 }
 
@@ -53,7 +61,7 @@ function unavailableRail(): M3BuyerRailDeps {
 }
 
 async function main() {
-  const { mode, intentId, adapterModule, confirmationId } = parse();
+  const { mode, intentId, confirmationId } = parse();
   const url = process.env.CONVEX_URL;
   const driverToken = process.env.M4_M3_DRIVER_TOKEN;
   if (!url || !driverToken) throw new Error("CONVEX_URL and M4_M3_DRIVER_TOKEN must be set; values are never printed");
@@ -114,6 +122,7 @@ async function main() {
     if (!snapshot.objectiveExists || !snapshot.contractCurrent || !snapshot.requirementCurrent) {
       throw new Error("refusing preview/confirmation: intent is stale or its authoritative M4 context no longer exists");
     }
+    assertCurrentFounderSpendAuthority(snapshot, mode);
     if (mode === "preview") {
       const prepared = await runM3ProductionDriver("prepare", intentId, { store, purchases, rail: unavailableRail() });
       if (!prepared.purchase) throw new Error("durable purchase preparation unexpectedly returned no purchase");
@@ -152,11 +161,10 @@ async function main() {
     return;
   }
   // inspect/prepare/reconcile require no payment configuration. observe/execute
-  // use the concrete production composition by default; an explicit adapter is
-  // retained only for a separately reviewed deployment-specific override.
+  // always use the concrete production composition; tests inject dependencies
+  // at the library driver seam rather than changing this executable path.
   let supplied: Pick<M3ProductionDriverDeps, "rail" | "railForPurchase" | "executionAuthorized" | "supervisedSubmit"> = { rail: unavailableRail(), executionAuthorized: false };
   if (mode === "observe" || mode === "execute") supplied = createLocalProductionComposition(applicationRoot);
-  if (adapterModule) supplied = await (await import(adapterModule) as SupervisedAdapter).build();
   const result = await runM3ProductionDriver(mode, intentId, {
     store,
     purchases,

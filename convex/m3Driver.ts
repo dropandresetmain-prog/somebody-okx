@@ -7,6 +7,7 @@ import { advanceIntent, applyRailEvent } from "../lib/management/intents";
 import { canonicalM3DriverFact, type M3DriverFact } from "../lib/management/m3DriverFacts";
 import { vExecutionIntent } from "./managementValidators";
 import type { ExecutionIntent, WakeEvent, WakeReason } from "../lib/management/types";
+import type { FounderSpendGrant } from "./internal/workforce";
 
 const vDriverEvent = v.union(
   v.literal("submitted"),
@@ -57,6 +58,7 @@ export const snapshot = query({
     objectiveExists: v.boolean(),
     contractCurrent: v.boolean(),
     requirementCurrent: v.boolean(),
+    founderSpendApprovalCurrent: v.boolean(),
   })),
   handler: async (ctx, args) => {
     authorize(args.driverToken);
@@ -72,11 +74,27 @@ export const snapshot = query({
     const requirement = await ctx.db.query("requirements")
       .withIndex("by_objectiveRequirement", (q) => q.eq("objectiveKey", intent.objectiveKey).eq("requirementKey", intent.requirementKey))
       .unique();
+    const approvalId = intent.terms.approvalId;
+    const grantRow = approvalId === null ? null : await ctx.db.query("founderSpendGrants")
+      .withIndex("by_approvalId", (q) => q.eq("approvalId", approvalId))
+      .unique();
+    const grant = grantRow?.data as FounderSpendGrant | undefined;
+    // A live grant is a pre-submission authority only. Its exact stable id,
+    // Objective, revocation state, and dollar limit must still cover this
+    // intent; a different active grant can never substitute for it.
+    const founderSpendApprovalCurrent = approvalId === null
+      ? intent.terms.priceUsd === null || intent.terms.priceUsd <= 0
+      : grant?.approvalId === approvalId
+        && grant.objectiveKey === intent.objectiveKey
+        && grant.revokedAt === null
+        && intent.terms.priceUsd !== null
+        && grant.limitUsd >= intent.terms.priceUsd;
     return {
       intent,
       objectiveExists: objective !== null,
       contractCurrent: contract?.revision === intent.contractRevision,
       requirementCurrent: (requirement?.data as { contractRevision?: number } | undefined)?.contractRevision === intent.contractRevision,
+      founderSpendApprovalCurrent,
     };
   },
 });
