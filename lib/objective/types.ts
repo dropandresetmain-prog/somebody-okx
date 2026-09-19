@@ -119,6 +119,22 @@ export type WorkItem = {
   runs: WorkerRun[];
 };
 
+export type ExternalAcquisitionResult = {
+  intentId: string;
+  requirementKey: string;
+  contractRevision: number;
+  resultEvidenceId: string;
+  provenance: "simulation" | "live" | "recorded_replay";
+  providerId: string | null;
+  serviceId: string | null;
+  offeringId: string | null;
+  resourceClass: string | null;
+  content: string;
+  responseHash: string;
+  recordedAt: number;
+  verifiedAt: number;
+};
+
 export type ObjectiveRecord = {
   key: string;
   request: string;
@@ -139,6 +155,10 @@ export type ObjectiveRecord = {
   }[];
   marketOfferings?: import("../market/discovery").MarketOffering[];
   companyArtifacts?: import("./artifact").CompanyArtifact[];
+  // Useful external results that have passed the application/M3 verification
+  // boundary. Provider content is untrusted DATA; workers may observe it but it
+  // never carries instructions or authority.
+  acquisitionResults?: ExternalAcquisitionResult[];
 };
 
 // ── Evidence ─────────────────────────────────────────────────────────────────
