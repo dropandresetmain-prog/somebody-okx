@@ -1,6 +1,6 @@
 # ACTIVE TASK — M5 Web Executive Mission Control
 
-Updated: 19 September 2026. Status: CP2 complete; company/attention next.
+Updated: 19 September 2026. Status: CP3 complete; evidence/story next.
 
 ## Goal and recovery
 Build a desktop-first, fixture-only executive management surface. The Objective
@@ -17,7 +17,8 @@ Resume from this ledger and the latest pushed checkpoint, not historical chat.
   because this session's authorized destination is the outcome branch above.
 - CP0 pushed: `ad36d9b68da2152b06abc91827d58cb168a3da35`.
 - CP1 pushed / HEAD before CP2: `615f10c973a4d893a9e55c394539627c93a31694`.
-- CP2 pushed SHA goes in the next checkpoint note.
+- CP2 pushed / HEAD before CP3: `ee6c2dbd3bf9b0fc9c59c71b7e741e7edbd878c2`.
+- CP3 pushed SHA goes in the next checkpoint note.
 - Each commit updates this ledger; each checkpoint MUST be pushed before work
   continues. Record the just-pushed SHA in the next note (no self-referential SHA).
 - M3 historical ledger remains in git at the base above; M3 stays frozen.
@@ -59,7 +60,7 @@ Resume from this ledger and the latest pushed checkpoint, not historical chat.
 - [x] CP0 truth + recovery ledger + preserved web references
 - [x] CP1 frontend contract + deterministic fixtures + invariant tests
 - [x] CP2 mission-control shell and Outcome/Somebody Now hierarchy
-- [ ] CP3 workers, grounded decisions, providers, Needs You
+- [x] CP3 workers, grounded decisions, providers, Needs You
 - [ ] CP4 evidence, story, payments, independent completion
 - [ ] CP5 optional supported-relationship System X-ray
 - [ ] CP6 responsive/accessibility/visual polish
@@ -99,10 +100,19 @@ Resume from this ledger and the latest pushed checkpoint, not historical chat.
 - Root provider wrapping moved to existing root page. Its behavior is preserved;
   new /m5 neither initializes nor calls Convex. Backend source unchanged.
 
+## CP3 evidence
+- CompanyField: persistent That Guys, CREATE/REUSE rationale, reservations,
+  distinct assignment/result state; providers remain outside internal boundary.
+- Decisions: explicit selected strategy, authority, grounded fact provenance;
+  rejected MAKE/BUY/HYBRID alternatives and historical decisions in disclosures.
+- Needs You: bounded amount + resource + authority; only explicit simulation
+  approves. Blocked fixture offers guidance, no fake retry or automatic action.
+- Component tests 6/6 passed; focused component tsc and diff check passed.
+- Browser: alternatives disclose; single approval button advances to approved.
+
 ## Next action / active files
-CP3: company worker cards, decision options, provider boundary and Needs You.
-Add isolated CompanyField.tsx and DecisionAttention.tsx; integrate slots in
-FixtureWorkspace.tsx; extend scoped CSS and component tests. CP2 work verified.
+CP4: add EvidenceStory.tsx (artifacts, evidence, Mission Story, payment stages,
+independent completion); integrate and extend focused tests/CSS. CP3 verified.
 
 ## Risks
 - Design reference is provisional, not runtime end-to-end evidence.
