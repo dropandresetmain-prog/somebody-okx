@@ -1,6 +1,6 @@
 # ACTIVE TASK — M5 Web Executive Mission Control
 
-Updated: 19 September 2026. Status: CP5 complete; visual/responsive polish next.
+Updated: 19 September 2026. Status: CP6 complete; final acceptance gate next.
 
 ## Goal and recovery
 Build a desktop-first, fixture-only executive management surface. The Objective
@@ -20,7 +20,8 @@ Resume from this ledger and the latest pushed checkpoint, not historical chat.
 - CP2 pushed / HEAD before CP3: `ee6c2dbd3bf9b0fc9c59c71b7e741e7edbd878c2`.
 - CP3 pushed / HEAD before CP4: `610b15ca421525cfae51721df106cc1afef13b37`.
 - CP4 pushed / HEAD before CP5: `63280ff284650789702519da30e7d36db54560f5`.
-- CP5 pushed SHA goes in the next checkpoint note.
+- CP5 pushed / HEAD before CP6: `972ecb4c835da206f8d77402a7855ea9382962e7`.
+- CP6 pushed SHA goes in the next checkpoint note.
 - Each commit updates this ledger; each checkpoint MUST be pushed before work
   continues. Record the just-pushed SHA in the next note (no self-referential SHA).
 - M3 historical ledger remains in git at the base above; M3 stays frozen.
@@ -65,7 +66,7 @@ Resume from this ledger and the latest pushed checkpoint, not historical chat.
 - [x] CP3 workers, grounded decisions, providers, Needs You
 - [x] CP4 evidence, story, payments, independent completion
 - [x] CP5 optional supported-relationship System X-ray
-- [ ] CP6 responsive/accessibility/visual polish
+- [x] CP6 responsive/accessibility/visual polish
 - [ ] CP7 frontend acceptance candidate and final gate
 
 ## Completed evidence
@@ -141,10 +142,27 @@ Resume from this ledger and the latest pushed checkpoint, not historical chat.
   minmax(0,·) columns + word wrapping; re-verified scrollWidth 1440, no
   element extends past viewport. Screenshot /tmp/m5-cp5-xray.png (temporary).
 
+## CP6 evidence
+- Delegated to one subagent (CSS-first polish, no copy/component text changes).
+  Result: 2 files, +9/-2 lines, all CSS. No global theme tokens redefined.
+- mission-control.css: `:focus-visible` outline (orange, 55% mix) on summary/
+  button/a/select; `overflow-wrap: break-word` on `.mc-layout`; `prefers-reduced-motion`
+  kill-switch scoped to `.mc-root` (matches xray.css pattern).
+- xray.css: `.mc-xray-count` color ink-3 → ink-2 for small-text AA contrast.
+- Viewport audit 1920/1440/1280/1100 (Playwright + /usr/bin/chromium): zero
+  horizontal overflow at every width, zero page errors, X-ray toggle closed by
+  default at all widths. Keyboard-Tab test confirmed the focus-visible outline
+  actually renders (3px solid orange) — not just a declared rule.
+- Independent verification by primary: M5 tests 18/18, tsc --noEmit clean,
+  git diff --check clean, browser re-audit at all 4 widths.
+- Deliberately unchanged: existing `@media (max-width:680px)` rules (no mobile
+  scope creep), app/globals.css, all visible copy, no new animations.
+- Known pre-existing issue: one 404 on a mascot image asset at runtime (not
+  introduced here; does not affect layout or tests).
+
 ## Next action / active files
-CP6: visual + responsive + accessibility polish (delegate: responsive audit,
-spacing/typography pass, reduced motion, focus states, CSS cleanup). Then CP7
-final gate: typecheck, tests, build, fixture scenarios, no backend wiring.
+CP7 final gate: typecheck, full test suite, production build, fixture scenario
+review, confirm no backend wiring, no mobile scope creep. Then final report.
 
 ## Risks
 - Design reference is provisional, not runtime end-to-end evidence.
