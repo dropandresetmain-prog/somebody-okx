@@ -175,7 +175,13 @@ export function buildXray(view: ObjectiveWorkspaceView): SystemXrayFixture {
   const runtime: SystemXrayFixture["runtime"] = [
     { label: "Provenance", value: view.provenance },
     { label: "Snapshot count", value: String(view.missionStory.length) },
-    { label: "Backend", value: "No live backend — fixture data only" },
+    {
+      label: "Backend",
+      value:
+        view.provenance === "backend_query"
+          ? "Convex authoritative read model (getObjectiveWorkspaceV2)"
+          : "No live backend — fixture data only",
+    },
   ];
 
   return { nodes, relationships, runtime };
