@@ -140,6 +140,9 @@ export type PurchaseRecord = {
   boundTerms: NormalizedChallengeTerms | null;
   approval: PaymentApproval | null;
   receipt: { transactionHash: string; settledAt?: number } | null;
+  /** Safe protected response received with the signed replay. It is staged
+   * until independent settlement; no authorization/header is retained. */
+  stagedProviderResult?: unknown;
   result: unknown | null;
   verified: boolean;
   createdAt: number;

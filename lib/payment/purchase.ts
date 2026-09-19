@@ -40,6 +40,7 @@ export function createPurchase(params: {
     boundTerms: null,
     approval: null,
     receipt: null,
+    stagedProviderResult: undefined,
     result: null,
     verified: false,
     createdAt: params.at ?? 0,

@@ -64,6 +64,17 @@ is **Act Now**.
   durable `payment_attempted` before the M4/M3 reconciliation transition.
   Root and Convex TypeScript remain clean. No real executor was called.
 
+### CP3 response-recovery repair — 20 September 2026
+
+- A successful official signed replay can return a safe protected result before
+  independent settlement is observable. That safe result is now staged on the
+  durable submitted M3 purchase (never an authorization/header), then consumed
+  only by the separate settled→result_received observation. Restart therefore
+  does not need a second signed replay merely to recover the provider result.
+- Existing M4×M3 seam and driver suites pass 23/23 with root and Convex
+  TypeScript clean. This remains simulated/injected evidence only; no live
+  financial operation occurred.
+
 No live payment occurred in this CP1 work.
 
 > **M4 × M3 INTEGRATION (this branch `integration/m4-m3`).** This ledger now covers the

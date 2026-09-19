@@ -61,6 +61,7 @@ export type PaymentExecutionAuthority = {
   recordSettled(attemptId: string, at?: number): void;
   recordVerified(attemptId: string, at?: number): void;
   getAttempt(attemptId: string): PaymentExecutionAttempt | undefined;
+  getAttemptForPurchase(purchaseId: string): PaymentExecutionAttempt | undefined;
   getAuthorizationIdentity(attemptId: string): PaymentAuthorizationIdentity;
   getSettlementBinding(
     attemptId: string,
@@ -278,6 +279,11 @@ export class FilePaymentExecutionAuthority implements PaymentExecutionAuthority 
 
   getAttempt(attemptId: string): PaymentExecutionAttempt | undefined {
     const attempt = readLedger(this.ledgerFile).attempts.find((candidate) => candidate.attemptId === attemptId);
+    return attempt ? cloneAttempt(attempt) : undefined;
+  }
+
+  getAttemptForPurchase(purchaseId: string): PaymentExecutionAttempt | undefined {
+    const attempt = readLedger(this.ledgerFile).attempts.find((candidate) => candidate.purchaseId === purchaseId);
     return attempt ? cloneAttempt(attempt) : undefined;
   }
 

@@ -456,6 +456,7 @@ export async function handoffIntentToM3(
     ...boundPurchase,
     state: lc.state,
     receipt: { transactionHash: submission.transactionHash },
+    ...(submission.safeResponse?.data?.result !== undefined ? { stagedProviderResult: submission.safeResponse.data.result } : {}),
   };
 
   return {
@@ -528,7 +529,7 @@ export async function handoffApprovedPurchaseToM3(input: {
   }
   lifecycle = driveLifecycle(lifecycle, { type: "submit_payment", transactionHash: submission.transactionHash });
   const moved = advanceIntent(intent, "handed_off", now(), { eventId: `evt_handoff_${submission.transactionHash}`, note: `handed to M3 buyer rail; submitted tx ${submission.transactionHash} (submitted ≠ settled ≠ acquired)` });
-  const submittedPurchase: PurchaseRecord = { ...attempted, state: lifecycle.state, receipt: { transactionHash: submission.transactionHash }, updatedAt: now() };
+  const submittedPurchase: PurchaseRecord = { ...attempted, state: lifecycle.state, receipt: { transactionHash: submission.transactionHash }, ...(submission.safeResponse?.data?.result !== undefined ? { stagedProviderResult: submission.safeResponse.data.result } : {}), updatedAt: now() };
   return { handedOff: true, purchase: submittedPurchase, intent: moved.ok ? moved.intent : intent, events, reconciliationRequired: false, submission, m3State: lifecycle.state, resting: true, terminal: false, detail: `M3 submitted tx ${submission.transactionHash}; M4 intent handed_off — awaiting settlement/result observations (submitted ≠ settled ≠ acquired)` };
 }
 
@@ -653,7 +654,13 @@ export async function observePurchase(
       return reconcileSeam(currentIntent, currentPurchase, events, now(),
         "settled purchase is missing bound resource/transaction needed to retrieve the provider result — reconciliation required, no retry");
     }
-    const paid = await deps.paidRequestSender.sendWithPayment(resource, transactionHash);
+    // The official signed replay may already have returned a safe protected
+    // response. It is staged durably with the submitted purchase, but becomes
+    // an M3 `result_received` fact only after independent settlement. This
+    // avoids a second signed replay after process restart.
+    const paid = currentPurchase.stagedProviderResult !== undefined
+      ? { success: true, result: currentPurchase.stagedProviderResult }
+      : await deps.paidRequestSender.sendWithPayment(resource, transactionHash);
     if (!paid.success || paid.result === undefined) {
       // Payment DID settle, so this is a gap in RESULT retrieval, NOT payment
       // ambiguity. Truthful REST at settled: do NOT repay, wait for the
