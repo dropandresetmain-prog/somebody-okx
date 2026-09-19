@@ -1,6 +1,6 @@
 # ACTIVE TASK — M5 Web Executive Mission Control
 
-Updated: 19 September 2026. Status: CP6 complete; final acceptance gate next.
+Updated: 19 September 2026. Status: CP7 complete; M5 web frontend acceptance candidate delivered.
 
 ## Goal and recovery
 Build a desktop-first, fixture-only executive management surface. The Objective
@@ -21,7 +21,8 @@ Resume from this ledger and the latest pushed checkpoint, not historical chat.
 - CP3 pushed / HEAD before CP4: `610b15ca421525cfae51721df106cc1afef13b37`.
 - CP4 pushed / HEAD before CP5: `63280ff284650789702519da30e7d36db54560f5`.
 - CP5 pushed / HEAD before CP6: `972ecb4c835da206f8d77402a7855ea9382962e7`.
-- CP6 pushed SHA goes in the next checkpoint note.
+- CP6 pushed / HEAD before CP7: `4ea4080c7722f84695ff561e9b70185ca76db13d`.
+- CP7 pushed SHA goes in the next checkpoint note (final ledger entry).
 - Each commit updates this ledger; each checkpoint MUST be pushed before work
   continues. Record the just-pushed SHA in the next note (no self-referential SHA).
 - M3 historical ledger remains in git at the base above; M3 stays frozen.
@@ -67,7 +68,7 @@ Resume from this ledger and the latest pushed checkpoint, not historical chat.
 - [x] CP4 evidence, story, payments, independent completion
 - [x] CP5 optional supported-relationship System X-ray
 - [x] CP6 responsive/accessibility/visual polish
-- [ ] CP7 frontend acceptance candidate and final gate
+- [x] CP7 frontend acceptance candidate and final gate
 
 ## Completed evidence
 - Clean source worktree; HEAD, branches, recent M3/M4/design commits inspected.
@@ -163,6 +164,39 @@ Resume from this ledger and the latest pushed checkpoint, not historical chat.
 ## Next action / active files
 CP7 final gate: typecheck, full test suite, production build, fixture scenario
 review, confirm no backend wiring, no mobile scope creep. Then final report.
+
+## CP7 evidence (final acceptance gate)
+- Production build (`npm run build`): compiled successfully, TypeScript clean,
+  all 5 routes generated. /m5 builds as a dynamic server-rendered route.
+- Full test suite (`npm test`): 359/359 pass (includes the 18 M5 tests).
+- `npx tsc --noEmit`: clean. `git diff --check`: clean.
+- Delegated read-only audit (Grep/Read, no writes) over app/m5 + tests:
+  all 8 acceptance criteria PASS —
+  (1) no backend wiring: only `import type { PaymentState }` from
+  lib/payment/types; zero convex/fetch/env reads in app/m5.
+  (2) fixture honesty: no Math.random/Date.now; numeric epoch-ms via Date.UTC;
+  stable string IDs; fixture labels rendered.
+  (3) payment vocabulary: exactly the 8 allowed states; zero signed/finalized.
+  (4) no invented causality: no requirement→requirement edges; explicit
+  "Order does not imply causality" disclaimer; structural X-ray labels only.
+  (5) worker done / assignment verified / requirement satisfied / objective
+  completed kept distinct across snapshots.
+  (6) launch 16 moments, partner 7, supplier 1 blocked; blocked supplier has
+  action=null — no fake retry/approval.
+  (7) mobile scope: only CSS media queries, no separate mobile components/routes.
+  (8) no dead code: zero TODO/FIXME/console.log; all exports consumed.
+- Live /m5 re-verified over dev server (0.0.0.0:3000): renders "Fixture
+  workspace · not live", "Somebody now", "System X-ray · secondary inspection",
+  "MAKE / BUY / HYBRID", "Mission Story". Preview surfaced earlier at CP2.
+- CP7 introduced no code changes; this checkpoint records the gate results only.
+- One pre-existing mascot image 404 observed at runtime (cosmetic, present since
+  before CP6, does not affect layout, build, or tests). Left unchanged to avoid
+  unrelated scope.
+
+## Final state
+All checkpoints CP0–CP7 complete and pushed to `qoder/general-session-yeqje6`.
+Desktop-first, fixture-only Executive Mission Control with System X-ray delivered.
+No Convex wiring, no live spend/provider calls, no mobile scope creep.
 
 ## Risks
 - Design reference is provisional, not runtime end-to-end evidence.
