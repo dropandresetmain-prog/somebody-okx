@@ -219,17 +219,17 @@ authorized outcome branch; push destination for CP8 evidence).
 
 | # | Finding | Class | Status |
 |---|---------|-------|--------|
-| A1 | Founder Objective never enters M4 engine | Act Now | in progress |
-| A2 | Graph decides but never dispatches/verifies | Act Now | in progress |
-| A3 | waiting/blocked zero-delay self-reschedule | Act Now | in progress |
-| A4 | null spend authority authorizes BUY/HYBRID | Act Now (critical) | in progress |
+| A1 | Founder Objective never enters M4 engine | Act Now | **SHIPPED** (CP-2 `696e259`; acceptance pending CP-5) |
+| A2 | Graph decides but never dispatches/verifies | Act Now | **SHIPPED** (CP-2 `696e259`; acceptance pending CP-5) |
+| A3 | waiting/blocked zero-delay self-reschedule | Act Now | **SHIPPED** (CP-2 `696e259`; acceptance pending CP-5) |
+| A4 | null spend authority authorizes BUY/HYBRID | Act Now (critical) | **RESOLVED** (`40ed332`, 13 acceptance tests) |
 | A5 | completion-gate proof mismatch + forged satisfaction | Act Now (critical) | in progress |
-| A6 | M2 growth-spine artifact obligation regression | Act Now | in progress |
-| A7 | scenario coupling in generic M4 control flow | Act Now | in progress |
-| I1 | Convex runtime compatibility / node:crypto | Investigate Now | **RESOLVED** (below) |
-| I2 | model call cannot run inside a mutation | Investigate Now | in progress |
-| I3 | no economic facts / discovery + $1 default | Investigate Now | in progress |
-| I4 | concurrent passes after dispatch | Investigate Now | folded into A2 dispatch idempotency |
+| A6 | M2 growth-spine artifact obligation regression | Act Now | **SHIPPED** (CP-2 `696e259` + CP-2b sibling restore; acceptance pending CP-5) |
+| A7 | scenario coupling in generic M4 control flow | Act Now | in progress (dispatch path scenario-free by construction; runDecisionPass staffing/eligibility literals remain) |
+| I1 | Convex runtime compatibility / node:crypto | Investigate Now | **RESOLVED** (below, `f066c5f`) |
+| I2 | model call cannot run inside a mutation | Investigate Now | half-resolved: interpretation chain is mutation→action→mutation (`696e259`); recommendation seam still module-global |
+| I3 | no economic facts / discovery + $1 default | Investigate Now | in progress (grounding kernels built + unit-proven; wiring into runDecisionPass pending) |
+| I4 | concurrent passes after dispatch | Investigate Now | **SHIPPED** as dispatch idempotency (stable identity + replay guards + reservation fencing, CP-2) |
 
 ### CP8 evidence
 
@@ -272,6 +272,88 @@ Codegen status: `npx convex codegen` CANNOT run in this sandbox (needs
 the on-disk module set. Deployment-time codegen remains the authoritative check.
 
 Pre-change baseline: 404/404. Post-I1: **408 pass / 0 fail**, both tsc programs clean.
+
+**A4 — RESOLVED (`40ed332`; supersedes the CP7 checkpoint claim).** Founder spend
+grants fail closed: authorization of a monetary BUY/HYBRID requires a named,
+persisted grant record (`spendApprovalId` threaded decision → authorization →
+intent → hand-off predicate); `mayHandOffExternally` refuses a monetary intent
+without one. 13 acceptance tests in `tests/managementSpendAuthority.test.ts`.
+
+**CP-2 — A1 + A2 + A3 + A6 + I4 (`696e259`).** The production loop is connected;
+no new architecture was added — the existing kernels got their missing seams.
+
+- A1: `submitObjective → beginInterpretation (mutation, reserves the attempt) →
+  proposeInterpretation (action — the ONLY model call in the chain) →
+  applyInterpretation (mutation; re-parses raw output through the bounded parsers,
+  persists Outcome Contract + semantic Requirements + `management.contractId`,
+  appends the dedupe-keyed `objective_submitted` wake, schedules the first pass)`.
+  A rejected interpretation leaves the objective untouched with a typed cursor;
+  the durable `interpretationStatus` makes replay idempotent. Model never
+  authoritative.
+- A2: `lib/management/dispatch.ts` (new kernel, ~330 lines) owns stable effect
+  identities (`deriveAssignmentId`/`deriveRunId`/idempotency scope — pure
+  functions of the AUTHORIZED decision row), the legal assignment lifecycle,
+  permission-derived proof obligations (`proofSourceClassesFor` /
+  `observationProofObligations` — the WorkContract's proof surface follows the
+  authorized option's governed envelope, never a scenario template),
+  `dispatchTargets` (MAKE→internal, BUY→external, HYBRID→both) and
+  `strategyDelivery` (failed/superseded ≠ delivered). The reducer's dead
+  `dispatch` action now has rule 9 ("authorized but not delivered", ahead of
+  activeWork), rule 8b routes unverified results to the previously-dead verify
+  node, and the graph routes on `continuation.reducerAction` instead of the
+  never-true `lastNode === "decide"` test. The adapter port
+  `dispatchRequirement` reads the persisted authorized decision (never
+  re-decides), decodes the authorized option from the decision row itself, and
+  runs MAKE through `startManagedRun` → the EXISTING bounded runtime
+  (`executeWorker`/`finishRun`/`expireRun`); BUY writes one intent resting in
+  `awaiting_m3` — `attemptHandoff` deliberately NOT called, no production buyer
+  rail exists. Undeliverable dispatches write a typed `dispatch_deferred` control
+  note and stop; a failed/superseded effect row never replays as success (retry
+  requires a fresh authorization, bounded by the attempt ceiling).
+- A3: `scheduleWake(runAfter(0))` is gone from the settle node. `scheduleTimer`
+  throws on a zero delay, holds at most ONE outstanding wake per logical
+  condition (`timerState` reads the dedupe ledger), numbers re-arms by sequence,
+  and its `timeout` wake is a SELF wake. Quiescent `waiting`/`blocked`/
+  `approval_required` resume on meaningful wakes; the only timers are a 5-min
+  lease watchdog while internal work is genuinely in flight, a 15-min
+  no-eligible-path re-check, and a 60-min founder reminder. `settleNode` records
+  PERSISTED progress via `applyPassProgress` → `recordProgress`: progress is read
+  from facts the nodes produced (materialWake / authorization / effectId /
+  verified / gate-accepted), so an idle objective walks into the finite
+  no-progress ceiling in three timer-free cycles. Control notes are bounded
+  (identity-replace + 40-row ceiling). One wake may act through
+  decide→dispatch→verify→propose (`MAX_CONTINUE_CYCLES = 3`, and only while the
+  last cycle actually produced something) — every cycle still consumes the
+  persisted decision/model-call ceilings.
+- A6: the M2 legacy artifact-change obligation is restored behind
+  `isM4Managed` (contractId-boundary predicate) in both finish paths;
+  `tests/m2LegacyObligations.test.ts` proves growth runs still must change
+  an artifact and M4 rows are judged by the gate instead. The sibling
+  `resource_need: growth run must propose a resource need` obligation from
+  `572031c` is now RESTORED as well — settled by git archaeology: baseline
+  `1fa7962:convex/objectives.ts:706` carried BOTH checks in
+  `readWorkerObservation`, while `finishRun` carried only the artifact rule.
+  The sibling is therefore reinstated inside the existing `if (!isM4Managed)`
+  growth block in `readWorkerObservation` only (not `finishRun`), and three
+  new tests pin sibling-reported, sibling-discharged (`proposedByRunId`
+  matches the run), and M4-exempt.
+- I4: no new pass machinery was invented — one active pass per objective holds
+  via the run lease (startManagedRun defers while a different run holds it), the
+  reservation fence (`canAcceptReservation` replays only the same assignmentId),
+  and find-before-write guards on both effect rows.
+
+Evidence: `tests/managementDispatchPersistence.test.ts` (6) drives the SHIPPED
+adapter ports and internal mutations on real storage: MAKE ⇒ exactly one
+assignment + reserved worker + run row + budget charges, and two replayed wakes
+add ZERO rows; BUY ⇒ one `awaiting_m3` intent with the grant identity and the
+truthful boundary note, no run/worker side-effects; HYBRID ⇒ both halves; the
+no-decision case ⇒ loud deferral, zero writes, zero budget spend; timer
+one-outstanding-per-condition + sequence re-arm after consumption; persisted
+no-progress reaches `escalated` from storage alone. Fake ports in
+`tests/managementGraph.test.ts` / `tests/managementCutoff2.test.ts` updated to
+the new ManagementPorts shape. Post-CP-2: **447 pass / 0 fail** (was 441 +
+these 6), `tsc --noEmit` and `typecheck:convex` clean. Post-CP-2b (sibling
+restore + 3 tests): **450 pass / 0 fail**, both typecheck programs clean.
 
 ## R3 tomorrow morning
 

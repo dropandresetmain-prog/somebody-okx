@@ -438,3 +438,112 @@ test("A6: readWorkerObservation reports artifact obligation in unmet requirement
     "readWorkerObservation reports artifact obligation",
   );
 });
+
+// ── Test 6: the SIBLING baseline obligation is restored too (M2@1fa7962 had
+// BOTH checks in readWorkerObservation; the CP8 restore initially carried only
+// the artifact one). ──────────────────────────────────────────────────────────
+
+test("A6: readWorkerObservation reports the resource_need sibling obligation (M2-legacy)", async () => {
+  const t = convexTest(schema, modules);
+  const seededArtifact = createArtifact({
+    key: "launch",
+    objectiveKey: "test-growth-obj-1",
+    label: "Launch page",
+    content: "Initial launch content",
+    runId: "seed",
+    at: now - 1000,
+  });
+  // Artifact ALREADY changed by run-1, but the run proposed no resource need:
+  // only the sibling check can still hold this row open.
+  const v2 = applyArtifactChange(seededArtifact, {
+    content: "Improved launch content",
+    changeNote: "Improved messaging",
+    runId: "run-1",
+    at: now,
+  });
+  const record = createGrowthObjective({ companyArtifacts: [v2] });
+  await seedObjective(t, record);
+  await seedEvidence(t, "test-growth-obj-1", "run-1");
+
+  const result = await t.query(async (ctx) =>
+    callQuery(readWorkerObservation, ctx, {
+      objectiveKey: "test-growth-obj-1",
+      runId: "run-1",
+    }),
+  ) as { unmetCompletionRequirements: string[] };
+
+  assert.ok(
+    result.unmetCompletionRequirements.some((msg) => msg.includes("resource_need: growth run must propose a resource need")),
+    "readWorkerObservation reports the resource-need sibling obligation",
+  );
+  assert.ok(
+    !result.unmetCompletionRequirements.some((msg) => msg.includes("company_artifact")),
+    "the artifact obligation is satisfied and must not appear",
+  );
+});
+
+test("A6: a run that proposed its resource need clears the sibling obligation", async () => {
+  const t = convexTest(schema, modules);
+  const seededArtifact = createArtifact({
+    key: "launch",
+    objectiveKey: "test-growth-obj-1",
+    label: "Launch page",
+    content: "Initial launch content",
+    runId: "seed",
+    at: now - 1000,
+  });
+  const v2 = applyArtifactChange(seededArtifact, {
+    content: "Improved launch content",
+    changeNote: "Improved messaging",
+    runId: "run-1",
+    at: now,
+  });
+  const record = createGrowthObjective({
+    companyArtifacts: [v2],
+    resourceNeeds: [{ proposedByRunId: "run-1" }],
+  } as unknown as ObjectiveRecord);
+  await seedObjective(t, record);
+  await seedEvidence(t, "test-growth-obj-1", "run-1");
+
+  const result = await t.query(async (ctx) =>
+    callQuery(readWorkerObservation, ctx, {
+      objectiveKey: "test-growth-obj-1",
+      runId: "run-1",
+    }),
+  ) as { unmetCompletionRequirements: string[] };
+
+  assert.ok(
+    !result.unmetCompletionRequirements.some((msg) => msg.includes("resource_need")),
+    "the proposed need discharges the sibling obligation",
+  );
+});
+
+test("A6: M4-managed rows are exempt from the readWorkerObservation legacy obligations", async () => {
+  const t = convexTest(schema, modules);
+  const seededArtifact = createArtifact({
+    key: "launch",
+    objectiveKey: "test-growth-obj-1",
+    label: "Launch page",
+    content: "Initial launch content",
+    runId: "seed",
+    at: now - 1000,
+  });
+  const record = createGrowthObjective({
+    companyArtifacts: [seededArtifact],
+    management: { contractId: "contract-1", currentContractRevision: 1, controlNotes: [] },
+  } as unknown as ObjectiveRecord);
+  await seedObjective(t, record);
+  await seedEvidence(t, "test-growth-obj-1", "run-1");
+
+  const result = await t.query(async (ctx) =>
+    callQuery(readWorkerObservation, ctx, {
+      objectiveKey: "test-growth-obj-1",
+      runId: "run-1",
+    }),
+  ) as { unmetCompletionRequirements: string[] };
+
+  assert.ok(
+    !result.unmetCompletionRequirements.some((msg) => /company_artifact|resource_need/.test(msg)),
+    "M4-managed: neither legacy obligation applies (the gate decides)",
+  );
+});

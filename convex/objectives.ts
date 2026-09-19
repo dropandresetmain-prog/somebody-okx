@@ -740,9 +740,11 @@ export const readWorkerObservation = internalQuery({
     });
     const unmet = [...check.unmet];
     // M2-legacy obligation: growth contracts (those granted update_company_artifact)
-    // require an actual artifact version bump beyond the seed. This is the historical
-    // M2 completion rule, preserved behind the legacy boundary so M4-managed rows
-    // are evaluated by the independent gate, not this spine predicate.
+    // require an actual artifact version bump beyond the seed AND a resource-need
+    // proposal from this run (the M2 canonical loop is how external acquisition
+    // gets discovered at all). This is the historical M2 completion rule,
+    // preserved behind the legacy boundary so M4-managed rows are evaluated by
+    // the independent gate, not this spine predicate.
     const isM4Managed = (record as unknown as { management?: { contractId: string | null } }).management?.contractId != null;
     if (!isM4Managed) {
       const isGrowth = workItem.contract.allowedToolPermissions.includes(
@@ -754,6 +756,12 @@ export const readWorkerObservation = internalQuery({
         );
         if (!artifactChanged) {
           unmet.push("company_artifact: no version change by this run");
+        }
+        const hasNeed = (record.resourceNeeds ?? []).some(
+          (n) => n.proposedByRunId === args.runId,
+        );
+        if (!hasNeed) {
+          unmet.push("resource_need: growth run must propose a resource need");
         }
       }
     }
