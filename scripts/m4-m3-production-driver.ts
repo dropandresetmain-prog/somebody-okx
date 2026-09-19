@@ -8,6 +8,7 @@
  */
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { createHmac } from "node:crypto";
 import { ConvexHttpClient } from "convex/browser";
 
 import { runM3ProductionDriver, type DriverMode, type M3DriverStore, type M3ProductionDriverDeps } from "../lib/management/m3ProductionDriver";
@@ -16,6 +17,7 @@ import { FilePreviewLedger, resolvePreviewLedgerPath } from "../lib/payment/prev
 import { createLocalPreviewComposition, createLocalProductionComposition } from "../lib/payment/localProductionComposition";
 import { prepareFounderVisiblePreview } from "../lib/payment/supervisedPreparation";
 import { persistFounderConfirmation } from "../lib/payment/supervisedDriverAdapter";
+import { canonicalM3DriverFact, type M3DriverFact } from "../lib/management/m3DriverFacts";
 import type { M3BuyerRailDeps } from "../lib/management/m3BuyerRail";
 
 type SupervisedAdapter = { build(): Promise<Pick<M3ProductionDriverDeps, "rail" | "executionAuthorized" | "supervisedSubmit">> };
@@ -76,15 +78,23 @@ async function main() {
         : next.state === "reconciliation_required" ? "reconciliation_required"
         : previous.state === "result_recorded" ? "verification_failed"
         : "pre_submission_failed";
-      await bridge.mutation("m3Driver:apply", {
+      const fact: M3DriverFact = {
         intentId: next.intentId,
         expectedUpdatedAt: previous.updatedAt,
         eventKind,
         eventId: next.lastEventId ?? `m3_driver_${next.intentId}_${change.at}`,
         dedupeKey: event?.dedupeKey ?? `intent:${next.intentId}:submitted:${next.lastEventId ?? change.at}`,
-        evidenceId: eventKind === "provider_result" ? next.resultEvidenceId ?? undefined : eventKind.startsWith("verification") ? next.verificationEvidenceId ?? undefined : undefined,
+        evidenceId: eventKind === "provider_result" ? next.resultEvidenceId ?? null : eventKind.startsWith("verification") ? next.verificationEvidenceId ?? null : null,
         note: next.boundaryNote,
         at: change.at,
+      };
+      const attestationKey = process.env.M4_M3_FACT_ATTESTATION_KEY;
+      if (!attestationKey) throw new Error("M4_M3_FACT_ATTESTATION_KEY is required to attest a financial M3 fact for Convex writeback");
+      const attestation = createHmac("sha256", attestationKey).update(canonicalM3DriverFact(fact)).digest("hex");
+      await bridge.mutation("m3Driver:apply", {
+        ...fact,
+        evidenceId: fact.evidenceId ?? undefined,
+        attestation,
         driverToken,
       });
     },

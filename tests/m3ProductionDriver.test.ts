@@ -218,3 +218,31 @@ test("D20-D23: a restart from attempted, submitted, settled, result_received, or
     assert.equal(executorCalls, 0, `${state} restart cannot call executor again`);
   }
 });
+
+test("R3: a failed governed M4 writeback leaves a durable outbox that restart observation replays without re-verifying or paying", async () => {
+  const backing = store({ ...intent, state: "result_recorded", updatedAt: at + 10 });
+  let rejectWrite = true;
+  backing.write = async (change) => {
+    if (rejectWrite) throw new Error("simulated Convex interruption");
+    assert.equal(change.expectedIntent.updatedAt, backing.current.updatedAt);
+    backing.current = change.nextIntent;
+    backing.writes += 1;
+  };
+  const purchases = new MemoryPurchases();
+  purchases.put({
+    ...createPurchase({ id: intent.intentId, objectiveKey: intent.objectiveKey, resourceNeedId: intent.requirementKey, offeringId: intent.target.offeringId!, idempotencyKey: intent.idempotencyKey, at }),
+    state: "result_received", result: { simulated: true },
+  });
+  let verifierCalls = 0;
+  const deps = rail();
+  deps.verifyResult = () => { verifierCalls += 1; return { verified: true, verificationProof: "simulated proof" }; };
+  await assert.rejects(() => runM3ProductionDriver("observe", intent.intentId, { store: backing, purchases, rail: deps }), /interruption/);
+  const stranded = purchases.get(intent.intentId) as PurchaseRecord & { pendingM4Sync?: unknown };
+  assert.equal(stranded.state, "verified");
+  assert.ok(stranded.pendingM4Sync, "the exact M4 transition is durable with the financial fact");
+  rejectWrite = false;
+  const resumed = await runM3ProductionDriver("observe", intent.intentId, { store: backing, purchases, rail: deps });
+  assert.equal(resumed.intent.state, "verified");
+  assert.equal((purchases.get(intent.intentId) as PurchaseRecord & { pendingM4Sync?: unknown }).pendingM4Sync, undefined);
+  assert.equal(verifierCalls, 1, "restart delivers the outbox instead of running verification again");
+});

@@ -1513,7 +1513,7 @@ async function readScopedProofFacts(
     .query("executionIntents")
     .withIndex("by_objective", (q) => q.eq("objectiveKey", objectiveKey))
     .collect();
-  const verifiedIntentIds = intentRows
+  const verifiedIntents = intentRows
     .map((row) => (row as AnyRow).data as ExecutionIntent)
     .filter(
       (intent) =>
@@ -1521,6 +1521,12 @@ async function readScopedProofFacts(
         intent.contractRevision === currentContractRevision &&
         intent.state === "verified",
     )
+    ;
+  const verifiedExternalResultIntentIds = verifiedIntents
+    .filter((intent) => intent.kind === "external_acquisition")
+    .map((intent) => intent.intentId);
+  const verifiedExternalEffectIntentIds = verifiedIntents
+    .filter((intent) => intent.kind === "external_effect")
     .map((intent) => intent.intentId);
 
   const artifactVersions: Record<string, number> = {};
@@ -1542,7 +1548,9 @@ async function readScopedProofFacts(
   return {
     artifactVersions,
     applicationObservationIds: observationIds,
-    verifiedIntentIds,
+    verifiedIntentIds: verifiedExternalResultIntentIds,
+    verifiedExternalResultIntentIds,
+    verifiedExternalEffectIntentIds,
     founderConfirmationRefs: [],
   };
 }

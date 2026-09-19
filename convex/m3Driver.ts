@@ -4,6 +4,7 @@ import { v } from "convex/values";
 import { query, mutation } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { advanceIntent, applyRailEvent } from "../lib/management/intents";
+import { canonicalM3DriverFact, type M3DriverFact } from "../lib/management/m3DriverFacts";
 import { vExecutionIntent } from "./managementValidators";
 import type { ExecutionIntent, WakeEvent, WakeReason } from "../lib/management/types";
 
@@ -19,6 +20,30 @@ const vDriverEvent = v.union(
 function authorize(driverToken: string): void {
   const expected = process.env.M4_M3_DRIVER_TOKEN;
   if (!expected || driverToken !== expected) throw new Error("M4×M3 local driver is not authorized");
+}
+
+function hex(bytes: Uint8Array): string {
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function constantTimeEqual(left: string, right: string): boolean {
+  let difference = left.length ^ right.length;
+  const length = Math.max(left.length, right.length);
+  for (let index = 0; index < length; index += 1) {
+    difference |= (left.charCodeAt(index) || 0) ^ (right.charCodeAt(index) || 0);
+  }
+  return difference === 0;
+}
+
+/** A bearer token opens the bridge; a distinct M3-held key attests one exact
+ * observed financial fact. The public bridge must never treat a token alone as
+ * proof of settlement, provider result, or verification. */
+async function assertFactAttestation(fact: M3DriverFact, attestation: string): Promise<void> {
+  const key = process.env.M4_M3_FACT_ATTESTATION_KEY;
+  if (!key) throw new Error("M4×M3 fact attestation key is not configured");
+  const cryptoKey = await crypto.subtle.importKey("raw", new TextEncoder().encode(key), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const signature = await crypto.subtle.sign("HMAC", cryptoKey, new TextEncoder().encode(canonicalM3DriverFact(fact)));
+  if (!constantTimeEqual(hex(new Uint8Array(signature)), attestation)) throw new Error("M4×M3 fact attestation is invalid");
 }
 
 /** Reads one exact durable effect and its current M4 business context. */
@@ -69,11 +94,17 @@ export const apply = mutation({
     evidenceId: v.optional(v.string()),
     note: v.string(),
     at: v.number(),
+    attestation: v.string(),
     driverToken: v.string(),
   },
   returns: v.object({ changed: v.boolean(), duplicate: v.boolean(), state: v.string(), stale: v.boolean() }),
   handler: async (ctx, args) => {
     authorize(args.driverToken);
+    await assertFactAttestation({
+      intentId: args.intentId, expectedUpdatedAt: args.expectedUpdatedAt,
+      eventKind: args.eventKind, eventId: args.eventId, dedupeKey: args.dedupeKey,
+      evidenceId: args.evidenceId ?? null, note: args.note, at: args.at,
+    }, args.attestation);
     const row = await ctx.db.query("executionIntents")
       .withIndex("by_intentId", (q) => q.eq("intentId", args.intentId)).unique();
     if (!row) throw new Error(`execution intent not found: ${args.intentId}`);
@@ -89,7 +120,10 @@ export const apply = mutation({
       .unique();
     const stale = contract?.revision !== intent.contractRevision
       || (requirement?.data as { contractRevision?: number } | undefined)?.contractRevision !== intent.contractRevision;
-    if (args.eventKind === "submitted" && stale) throw new Error("stale intent may not begin M3 execution");
+    // The executor was gated against a current revision before it became
+    // reachable. A later revision may not erase a submitted financial fact;
+    // it remains reconcilable, while the existing proof kernels keep it from
+    // satisfying the newer requirement.
 
     let moved;
     let reason: WakeReason | null = null;

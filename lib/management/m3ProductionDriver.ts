@@ -62,6 +62,43 @@ export type M3ProductionDriverResult = {
   reconciliationRequired: boolean;
 };
 
+// The financial ledger is durable before M4 is written. If a process loses the
+// Convex response after that write, this small outbox preserves the exact M4
+// transition to retry on a later observation. It is deliberately stored with
+// the purchase rather than inferred from a terminal state: inference could
+// manufacture an evidence id or erase a stale-write conflict.
+type PendingM4Sync = M3DriverWrite;
+type DurablePurchase = PurchaseRecord & { pendingM4Sync?: PendingM4Sync };
+
+function withoutPendingSync(purchase: DurablePurchase): PurchaseRecord {
+  const { pendingM4Sync: _pending, ...clean } = purchase;
+  return clean;
+}
+
+async function flushPendingM4Sync(
+  deps: M3ProductionDriverDeps,
+  snapshot: DriverSnapshot,
+  purchase: DurablePurchase,
+): Promise<{ intent: ExecutionIntent; purchase: PurchaseRecord; events: HandoffEvent[]; delivered: boolean } | null> {
+  const pending = purchase.pendingM4Sync;
+  if (!pending) return null;
+  // The earlier write may have committed but the process died before clearing
+  // this local outbox. Recognize that exact terminal intent without replaying
+  // a non-idempotent write.
+  if (snapshot.intent.updatedAt === pending.nextIntent.updatedAt && snapshot.intent.lastEventId === pending.nextIntent.lastEventId) {
+    const clean = withoutPendingSync(purchase);
+    deps.purchases.put(clean);
+    return { intent: snapshot.intent, purchase: clean, events: pending.events, delivered: true };
+  }
+  if (snapshot.intent.updatedAt !== pending.expectedIntent.updatedAt || snapshot.intent.lastEventId !== pending.expectedIntent.lastEventId) {
+    throw new Error("M3 financial fact has an unresolved M4 synchronization conflict; reconcile business state before any further driver action");
+  }
+  await deps.store.write(pending);
+  const clean = withoutPendingSync(purchase);
+  deps.purchases.put(clean);
+  return { intent: pending.nextIntent, purchase: clean, events: pending.events, delivered: true };
+}
+
 function assertTarget(snapshot: DriverSnapshot, mode: DriverMode): void {
   if (!snapshot.objectiveExists) throw new Error("refusing M3 driver: objective no longer exists");
   if (!snapshot.requirementCurrent || !snapshot.contractCurrent) {
@@ -77,9 +114,17 @@ async function persist(
   result: SeamResult,
   at: number,
 ): Promise<void> {
-  if (result.purchase) deps.purchases.put(result.purchase);
-  if (result.intent !== expectedIntent || result.events.length > 0) {
-    await deps.store.write({ expectedIntent, nextIntent: result.intent, events: result.events, at });
+  const needsM4Write = result.intent !== expectedIntent || result.events.length > 0;
+  const pending = needsM4Write ? { expectedIntent, nextIntent: result.intent, events: result.events, at } : null;
+  if (result.purchase) {
+    deps.purchases.put((pending ? { ...result.purchase, pendingM4Sync: pending } : result.purchase) as PurchaseRecord);
+  }
+  if (pending) {
+    await deps.store.write(pending);
+    // Clear the outbox only after Convex acknowledges the governed transition.
+    // A crash before this clear is harmless: the restart recognizes the exact
+    // already-written intent and clears it without generating a new fact.
+    if (result.purchase) deps.purchases.put(withoutPendingSync({ ...result.purchase, pendingM4Sync: pending }));
   }
 }
 
@@ -98,8 +143,27 @@ export async function runM3ProductionDriver(
   assertTarget(snapshot, mode);
   const stale = !snapshot.requirementCurrent || !snapshot.contractCurrent;
   const intent = snapshot.intent;
-  const existing = deps.purchases.get(intent.intentId);
+  const existing = deps.purchases.get(intent.intentId) as DurablePurchase | null;
   const at = (deps.now ?? Date.now)();
+
+  if (existing?.pendingM4Sync) {
+    if (mode === "inspect" || mode === "reconcile") {
+      return {
+        mode, intent, purchase: existing, events: [], changed: false, stale,
+        reconciliationRequired: existing.state === "reconciliation_required" || existing.state === "uncertain",
+        detail: "durable M3 fact awaits governed M4 writeback; observe will replay the exact outbox and never execute again",
+      };
+    }
+    if (mode !== "observe") throw new Error("M3 financial fact awaits governed M4 writeback; observe before any prepare or execute command");
+    const flushed = await flushPendingM4Sync(deps, snapshot, existing);
+    if (flushed) {
+      return {
+        mode, intent: flushed.intent, purchase: flushed.purchase, events: flushed.events,
+        changed: flushed.delivered, stale, reconciliationRequired: false,
+        detail: "durable M3 fact replayed through governed M4 writeback; no financial action occurred",
+      };
+    }
+  }
 
   // A named durable purchase is not a general-purpose execution voucher. Only
   // the M4 state explicitly waiting for M3 may be prepared or sent to the

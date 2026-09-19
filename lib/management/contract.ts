@@ -283,7 +283,8 @@ export function bindExecutedProofParams(
 ): Requirement {
   const bindings: Record<string, Record<string, string | number>> = {};
   const observations = [...new Set(facts.applicationObservationIds)].sort();
-  const verifiedIntents = [...new Set(facts.verifiedIntentIds)].sort();
+  const verifiedResults = [...new Set(facts.verifiedExternalResultIntentIds ?? facts.verifiedIntentIds)].sort();
+  const verifiedEffects = [...new Set(facts.verifiedExternalEffectIntentIds ?? [])].sort();
   const confirmations = [...new Set(facts.founderConfirmationRefs)].sort();
   for (const proof of requirement.proofs) {
     switch (proof.proofKind) {
@@ -292,10 +293,14 @@ export function bindExecutedProofParams(
           bindings[proof.proofKey] = { sourceId: observations[0] };
         break;
       }
-      case "verified_external_result":
+      case "verified_external_result": {
+        if (!proof.params.intentId && verifiedResults.length > 0)
+          bindings[proof.proofKey] = { intentId: verifiedResults[0] };
+        break;
+      }
       case "verified_external_effect": {
-        if (!proof.params.intentId && verifiedIntents.length > 0)
-          bindings[proof.proofKey] = { intentId: verifiedIntents[0] };
+        if (!proof.params.intentId && verifiedEffects.length > 0)
+          bindings[proof.proofKey] = { intentId: verifiedEffects[0] };
         break;
       }
       case "founder_confirmation": {

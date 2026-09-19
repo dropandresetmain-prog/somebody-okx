@@ -65,6 +65,10 @@ export type ProofFacts = {
   applicationObservationIds: readonly string[];
   // intent ids whose external result/effect is independently verified
   verifiedIntentIds: readonly string[];
+  /** Acquisition/result facts and external-effect facts are deliberately
+   * separate: paying for a resource cannot prove a later business effect. */
+  verifiedExternalResultIntentIds?: readonly string[];
+  verifiedExternalEffectIntentIds?: readonly string[];
   // founder confirmations recorded, by proof ref
   founderConfirmationRefs: readonly string[];
 };
@@ -103,10 +107,18 @@ export function missingProofs(
         break;
       }
       case "verified_external_result":
+      {
+        const intent = String(proof.params.intentId ?? "");
+        const verifiedResults = facts.verifiedExternalResultIntentIds ?? facts.verifiedIntentIds;
+        if (!intent || !verifiedResults.includes(intent))
+          missing.push(`${proof.proofKey}: external result ${intent || "(unspecified)"} not independently verified`);
+        break;
+      }
       case "verified_external_effect": {
         const intent = String(proof.params.intentId ?? "");
-        if (!intent || !facts.verifiedIntentIds.includes(intent))
-          missing.push(`${proof.proofKey}: external ${proof.proofKind === "verified_external_effect" ? "effect" : "result"} ${intent || "(unspecified)"} not independently verified`);
+        const verifiedEffects = facts.verifiedExternalEffectIntentIds ?? [];
+        if (!intent || !verifiedEffects.includes(intent))
+          missing.push(`${proof.proofKey}: external effect ${intent || "(unspecified)"} not independently verified`);
         break;
       }
       case "founder_confirmation": {

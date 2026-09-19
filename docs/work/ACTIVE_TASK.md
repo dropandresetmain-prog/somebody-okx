@@ -119,6 +119,25 @@ is **Act Now**.
   that exact SHA to an independent read-only R3 reviewer. No live payment,
   signing, submission, provider replay, or paid request has occurred.
 
+### CP6 R3 blocker repair — 20 September 2026
+
+- Independent R3 against `fe56db1` correctly failed on three Act Now defects:
+  bearer-token-only M3 facts could forge verified M4 state, a failed Convex
+  write could strand a durable verified purchase before Somebody resumed, and
+  an acquisition proof could bind an external-effect obligation.
+- Repairs add a separate `M4_M3_FACT_ATTESTATION_KEY` HMAC envelope for each
+  exact M3 fact (the bearer bridge token alone is no longer proof), a durable
+  per-purchase M4 outbox that replays the exact governed transition before any
+  later observation, and separate result/effect verified-intent fact sets.
+  Attested pre-revision financial facts remain reportable, but stale facts still
+  cannot satisfy a newer Requirement.
+- New direct regressions invoke the actual Convex bridge handler with a forged
+  bearer-token sequence, interrupt governed writeback then restart, report a
+  pre-revision submission, and attempt to satisfy an effect with acquisition
+  evidence. Focused repair evidence: 39/39 pass; root and Convex TypeScript
+  clean. Next: commit/push, freeze a new SHA, rerun the exact broad gate, then
+  commission a NEW independent R3 review of that new SHA.
+
 No live payment occurred in this CP1 work.
 
 > **M4 × M3 INTEGRATION (this branch `integration/m4-m3`).** This ledger now covers the
