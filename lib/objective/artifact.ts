@@ -8,6 +8,9 @@ export type CompanyArtifactVersion = {
   changedByRunId: string;
   changedAt: number;
   changeNote: string; // ≤ 500 chars, why this version differs
+  // Verified external acquisition evidence explicitly used to produce this
+  // version. Empty/absent for revisions created before any acquisition exists.
+  usedAcquisitionEvidenceIds?: string[];
 };
 
 export type CompanyArtifact = {
@@ -66,7 +69,13 @@ export function createArtifact(input: {
 
 export function applyArtifactChange(
   artifact: CompanyArtifact,
-  input: { content: string; changeNote: string; runId: string; at: number },
+  input: {
+    content: string;
+    changeNote: string;
+    runId: string;
+    at: number;
+    usedAcquisitionEvidenceIds?: string[];
+  },
 ): CompanyArtifact {
   if (input.content.length > MAX_CONTENT_CHARS)
     throw new Error(`applyArtifactChange content exceeds ${MAX_CONTENT_CHARS} chars`);
@@ -87,6 +96,9 @@ export function applyArtifactChange(
     changedByRunId: input.runId,
     changedAt: input.at,
     changeNote: input.changeNote,
+    ...(input.usedAcquisitionEvidenceIds && input.usedAcquisitionEvidenceIds.length > 0
+      ? { usedAcquisitionEvidenceIds: [...new Set(input.usedAcquisitionEvidenceIds)] }
+      : {}),
   };
   return {
     ...artifact,
