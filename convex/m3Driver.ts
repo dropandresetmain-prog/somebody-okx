@@ -218,6 +218,59 @@ export const apply = mutation({
 });
 
 
+// Operator-only lookup for the one current M1 simulation candidate. This is
+// setup/inspection tooling, not product authority; it cannot mutate an intent.
+export const simulationCandidate = query({
+  args: {
+    objectiveKey: v.string(),
+    operatorToken: v.string(),
+  },
+  returns: v.union(
+    v.null(),
+    v.object({
+      intentId: v.string(),
+      providerId: v.union(v.string(), v.null()),
+      serviceId: v.union(v.string(), v.null()),
+      offeringId: v.union(v.string(), v.null()),
+      resourceClass: v.union(v.string(), v.null()),
+      state: v.string(),
+      priceUsd: v.union(v.number(), v.null()),
+    }),
+  ),
+  handler: async (ctx, args) => {
+    authorizeDemoOperator(args.operatorToken);
+    const rows = await ctx.db
+      .query("executionIntents")
+      .withIndex("by_objective", (q) => q.eq("objectiveKey", args.objectiveKey))
+      .collect();
+    const candidates = rows
+      .map((row) => row.data as ExecutionIntent)
+      .filter(
+        (intent) =>
+          intent.state === "authorized" &&
+          intent.kind === "external_acquisition" &&
+          intent.target.resourceClass ===
+            CANONICAL_SIMULATED_SOCIAL_RESULT.resourceClass,
+      )
+      .sort(
+        (left, right) =>
+          left.createdAt - right.createdAt ||
+          left.intentId.localeCompare(right.intentId),
+      );
+    const intent = candidates[0];
+    if (!intent) return null;
+    return {
+      intentId: intent.intentId,
+      providerId: intent.target.providerId,
+      serviceId: intent.target.serviceId,
+      offeringId: intent.target.offeringId,
+      resourceClass: intent.target.resourceClass,
+      state: intent.state,
+      priceUsd: intent.terms.priceUsd,
+    };
+  },
+});
+
 /**
  * M1 ONLY — deterministic simulated external acquisition boundary.
  *
