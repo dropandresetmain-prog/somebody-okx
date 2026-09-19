@@ -121,7 +121,10 @@ export type SystemXrayFixture = {
 };
 
 export type ObjectiveWorkspaceView = {
-  provenance: "frontend_fixture";
+  // "frontend_fixture" = authored demo snapshots (tests/storybook only).
+  // "backend_query" = composed from authoritative Convex rows by
+  // lib/m5/workspaceModel.ts. Production /m5 accepts only "backend_query".
+  provenance: "frontend_fixture" | "backend_query";
   objective: { objectiveKey: string; title: string; request: string; state: ObjectiveState; createdAt: number; updatedAt: number };
   somebodyNow: SomebodyNow;
   outcome: {

@@ -9,6 +9,7 @@
  */
 
 import type * as workforce from "./internal/workforce.js";
+import type * as m5Workspace from "../m5Workspace.js";
 import type * as management from "../management.js";
 import type * as managementValidators from "../managementValidators.js";
 import type * as objectiveArgs from "../objectiveArgs.js";
@@ -26,6 +27,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   "internal/workforce": typeof workforce;
+  m5Workspace: typeof m5Workspace;
   management: typeof management;
   managementValidators: typeof managementValidators;
   objectiveArgs: typeof objectiveArgs;
