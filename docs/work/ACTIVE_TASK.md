@@ -1224,3 +1224,102 @@ No Convex wiring, no live spend/provider calls, no mobile scope creep.
 - Live selection/economics and BUY→M3 remain explicitly unwired.
 - Brand fonts may need network access at build; report actual evidence.
 - No permitted blocking agent tool is available; primary performs focused work.
+
+---
+
+# ACTIVE TASK — M5 REAL-DATA INTEGRATION (lane `integration/m5-real-data`)
+
+Updated: 20 September 2026. Base: promoted `main` (R3-accepted backend, docs
+commit `a37f015`). Frontend source integrated: frozen accepted implementation
+`fb0055fdcb18fc45ef5d56aac14f88baa8e52e7c` (merged `855147b`, only conflict was
+this ledger; both histories preserved).
+
+## Integration architecture (locked)
+
+```text
+Convex authoritative domain truth
+  → lib/m5/workspaceModel.ts (pure composer, ONE normalized read model)
+  → convex/m5Workspace.ts :: getObjectiveWorkspaceV2(objectiveKey) (single reactive query)
+  → app/m5/LiveWorkspace.tsx (selects Objective, renders)
+  → accepted M5 Executive Mission Control (visuals unchanged)
+```
+
+React is NOT the join layer. Fixtures are preserved at `/m5/fixtures`
+(provider-free route group) and in tests; production `/m5` reads only Convex.
+
+## ConvexClientProvider scope decision
+
+Narrowest correct structure: `app/m5/(live)/layout.tsx` wraps ONLY the live
+mission-control route group. Not the old root-layout provider (would wrap every
+surface); not the fixture-era page-level placement (production is real now).
+The fixture route group `app/m5/(fixture)` has no provider by design.
+
+## Derivations (all from persisted truth; nothing invented)
+
+- **SomebodyNow**: derived per query from objective row state + latest
+  `control_state` note (M4 quiescent states live there), pending_approval
+  notes, intent states, assignment states. Never persisted; no LangGraph node
+  names exposed.
+- **AttentionItem**: only from `pending_approval` control notes,
+  `reconciliation_required` intents, blocked requirements, escalated /
+  recovery_required states. Spend ceilings shown only when a live
+  `founderSpendGrants` row bounds them; otherwise null (no invented amount).
+- **Mission Story**: one event per persisted row/transition with stable ids
+  (objective, contract_interpreted, requirement, resolution, decision,
+  assignment dispatch/result, intent prepare/submit/result/verify, evidence,
+  artifact versions). relatedIds are explicit references; no timestamp-derived
+  causality. Row-derived ids make duplicate wakes idempotent.
+- **System X-ray**: real ids/edges only (objective, contract, requirement,
+  worker, assignment, decision, provider, intent, evidence). No Requirement
+  dependency edges exist or are invented. Secondary surface; unchanged design.
+- **Payment**: Convex holds M4 intent truth only; the M3 ledger stays with the
+  Node driver. Payment view is DERIVED: authorized/awaiting_m3 → no payment
+  fact; handed_off → submitted; result_recorded → result_received; verified →
+  verified. `settled` is never rendered from Convex truth; signed/confirmed/
+  finalized never appear. Quote vs grant limit labelled by provenance.
+- **Workers**: REUSE/CREATE from persisted `createdByObjective`; verified
+  history only from `outcome: "accepted"` records. result_submitted ≠ verified
+  ≠ satisfied ≠ completed preserved at every seam.
+- **Stale revisions**: satisfaction/assignment rows below the current contract
+  revision render as active/superseded — history, never current state.
+
+## Commands audit (accepted M5 interactions)
+
+1. Objective list/selection/navigation — read-only — WIRED
+   (`objectives.listObjectives` + `?objective=` deep link).
+2. Needs You "approve" — NO public backend command exists (approval resolution
+   and spend-grant binding live in the supervised lane) — rendered truthfully
+   WITHOUT a working button; no faked success.
+3. Fixture demo controls ("Simulate…", moment picker) — fixture lane only;
+   not rendered in production.
+No frontend execution API was invented; no payment can execute from this
+surface. Fail-closed.
+
+## Checkpoints
+
+| CP | Commit | Content |
+|----|--------|---------|
+| CP1 | `a6a5d2f` | Normalized read model (`lib/m5/workspaceModel.ts`, `convex/m5Workspace.ts`) + 15 focused tests incl. the 12 required negative/truth proofs |
+| CP2+CP3 | `d80dea4` | Frozen frontend merged onto promoted main; provider scope resolved; `/m5` live-wired; fixtures moved out of production runtime |
+| CP4 | `c21c187` | 8 Convex→M5 seam tests + 5 live-surface integration tests |
+| CP5 | (this ledger + final gate) | Candidate gate + handoff |
+
+## Findings / triage (this lane)
+
+- **Act Now (resolved in-lane)**: none outstanding.
+- **Investigate Now**: none.
+- **Park for Later**: (a) a real public founder-approval command so Needs You
+  can resolve `pending_approval` from the product surface — requires backend
+  authority design, deliberately not invented here; (b) M3 payment ledger
+  rows surfacing `settled` truth into Convex — today the UI truthfully never
+  claims settled from Convex data; (c) artifact→evidence refs are not
+  persisted, so ProofLinks on artifacts show none (truthful empty).
+- **Ignore / Accept Risk**: mission-story assignment "dispatched" events use
+  objective createdAt as the timestamp when the assignment row lacks its own
+  dispatch time (row has createdAt; ordering may be approximate). Cosmetic.
+
+## Boundaries restated
+
+No live payment occurred in this lane. Live X Layer Testnet Cutoff-1 remains
+pending supervised proof. M3/M4/M5 accepted designs were not reopened. No
+mobile work. M6 not started.
