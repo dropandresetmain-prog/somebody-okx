@@ -88,6 +88,9 @@ export const getObjectiveWorkspaceV2 = query({
         state: record.state,
         result: record.result ?? null,
         companyArtifacts: (record as { companyArtifacts?: SourceObjectiveRow["companyArtifacts"] }).companyArtifacts ?? [],
+        acquisitionResults:
+          (record as { acquisitionResults?: SourceObjectiveRow["acquisitionResults"] })
+            .acquisitionResults ?? [],
         management: (record as { management?: SourceObjectiveRow["management"] }).management,
       },
       contract,
