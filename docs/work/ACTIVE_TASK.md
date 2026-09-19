@@ -1,5 +1,35 @@
 # ACTIVE TASK — M4 Generic Somebody Management Engine
 
+## LOCAL M4 × M3 PRODUCTION DRIVER — CP1 (in progress)
+
+Updated: 20 September 2026. This local branch is a clean worktree at
+`fix/m4-m3-production-driver`, based on integration tip
+`75ac30b00799cd08cea562908af7aceccfc15f13` (last code candidate
+`e0cdf42b765c642a429ae53822ce882d3c2ca292`). The reported missing Node driver
+is **Act Now**.
+
+- CP1 adds a Node-only orchestration core for an explicitly named `intentId`, a
+  durable M3-owned `PurchaseRecord` companion ledger, and a narrow Convex bridge
+  that replays named M3 facts through the existing M4 intent transition kernel.
+  Convex does not import the Node buyer rail and does not become a second
+  financial store.
+- The driver modes are `inspect`, `prepare`, `execute`, `observe`, and
+  `reconcile`. `prepare` persists only stable M3 purchase identity. `inspect`
+  and `reconcile` are read-only. `execute` is disabled unless a separately
+  reviewed supervised adapter explicitly enables it; this checkpoint did not
+  invoke an executor, wallet, signing command, provider request, or payment.
+- Focused deterministic proof: `tests/m3ProductionDriver.test.ts` passes 3/3,
+  covering exact intent selection, restart reload of the durable purchase,
+  fail-closed execution, one-fact observation order, settled-without-result,
+  and stale execution refusal with reconciliation still readable. Root and
+  Convex TypeScript checks are clean.
+- **Act Now:** complete and review the supervised local dependency adapter that
+  supplies M3's fresh execution quote and founder confirmation to the existing
+  `OfficialSignOnlyReplayExecutor`. It must preserve preview-versus-execution
+  quote semantics; CP1 deliberately does not synthesize that confirmation.
+
+No live payment occurred in this CP1 work.
+
 > **M4 × M3 INTEGRATION (this branch `integration/m4-m3`).** This ledger now covers the
 > integration of the closed M4 CP8 management engine with the frozen accepted M3 buyer
 > rail. Both sides' historical evidence is preserved below unchanged: the M3
