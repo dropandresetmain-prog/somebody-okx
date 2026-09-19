@@ -58,6 +58,7 @@ import {
 import { providerConfiguration } from "../lib/worker/modelSelection";
 import {
   CANONICAL_LAUNCH_ARTIFACT,
+  CANONICAL_OBJECTIVE_REQUEST,
 } from "../lib/objective/seedData";
 import { createArtifact, applyArtifactChange } from "../lib/objective/artifact";
 import type { ResourceClass } from "../lib/workforce/types";
@@ -155,6 +156,19 @@ function assertActiveRun(record: ObjectiveRecord, runId: string, now: number) {
   if (!fence.ok) throw new Error(fence.reason);
 }
 
+function authorizeDemoOperator(operatorToken: string): void {
+  const expected = process.env.SOMEBODY_DEMO_OPERATOR_TOKEN;
+  if (!expected) throw new Error("M1 demo operator token is not configured");
+  let difference = expected.length ^ operatorToken.length;
+  const length = Math.max(expected.length, operatorToken.length);
+  for (let index = 0; index < length; index += 1) {
+    difference |=
+      (expected.charCodeAt(index) || 0) ^
+      (operatorToken.charCodeAt(index) || 0);
+  }
+  if (difference !== 0) throw new Error("M1 demo operator is not authorized");
+}
+
 // Deterministic planning validation, authoritative because it runs inside the
 // mutation that writes the plan. The model proposal is only ever an input.
 function validatePlanningInput(
@@ -188,6 +202,89 @@ function validatePlanningInput(
 }
 
 // ── Public entry: submit an objective ────────────────────────────────────────
+
+// Setup-only entry for the canonical M1 convergence run. This is NOT a product
+// shortcut: it seeds pre-existing company context (artifact v1) and a bounded
+// founder spend grant, then enters the exact same interpretation/management
+// engine as a normal objective. It never chooses a provider, strategy, worker or
+// result, and it never performs an external action.
+export const setupCanonicalDemoObjective = mutation({
+  args: {
+    operatorToken: v.string(),
+    spendLimitUsd: v.number(),
+    request: v.optional(v.string()),
+  },
+  returns: v.object({
+    key: v.string(),
+    approvalId: v.string(),
+    spendLimitUsd: v.number(),
+  }),
+  handler: async (ctx, args) => {
+    authorizeDemoOperator(args.operatorToken);
+    if (!(args.spendLimitUsd > 0) || args.spendLimitUsd > 5) {
+      throw new Error(
+        "Canonical demo spend limit must be positive and no more than $5",
+      );
+    }
+
+    const request = (args.request ?? CANONICAL_OBJECTIVE_REQUEST).trim();
+    if (request.length < 8)
+      throw new Error("Describe the objective in at least 8 characters");
+    if (request.length > 2000)
+      throw new Error("Objective is not bounded (max 2000 characters)");
+
+    const now = Date.now();
+    const key = `obj_${now}_${Math.random().toString(36).slice(2, 8)}`;
+    const approvalId = `demo_grant_${key}`;
+    const record: ObjectiveRecord = {
+      key,
+      request,
+      createdAt: now,
+      updatedAt: now,
+      state: "received",
+      activity:
+        "Objective received with seeded company context; management interpretation pending.",
+      plan: null,
+      workItems: [],
+      run: null,
+      result: null,
+      companyArtifacts: [
+        createArtifact({
+          key: CANONICAL_LAUNCH_ARTIFACT.key,
+          objectiveKey: key,
+          label: CANONICAL_LAUNCH_ARTIFACT.label,
+          content: CANONICAL_LAUNCH_ARTIFACT.initialContent,
+          runId: "seed",
+          at: now,
+        }),
+      ],
+      acquisitionResults: [],
+    };
+
+    await ctx.db.insert("objectives", { key, data: record });
+    await ctx.runMutation(internal.internal.workforce.putSpendGrant, {
+      approvalId,
+      objectiveKey: key,
+      limitUsd: args.spendLimitUsd,
+      at: now,
+      note:
+        "Founder-approved M1 demo acquisition bound. This grants M4 decision authority only; it is not a payment or transaction.",
+    });
+    await appendEvent(
+      ctx.db,
+      key,
+      "system",
+      `M1 demo setup: Objective received with launch artifact v1 and founder spend bound ${args.spendLimitUsd.toFixed(2)}. No external action occurred.`,
+      now,
+    );
+
+    await ctx.scheduler.runAfter(0, internal.management.beginInterpretation, {
+      objectiveKey: key,
+      at: now,
+    });
+    return { key, approvalId, spendLimitUsd: args.spendLimitUsd };
+  },
+});
 
 export const submitObjective = mutation({
   args: { request: vObjectiveRequest },
