@@ -2,7 +2,8 @@
 
 Date: 20 September 2026  
 Superseded first code candidate: `fe56db17e9275a7967778c091b5599b0d41d570d` (R3 FAIL; repaired below)  
-Exact replacement code candidate: `c6ed849f9a18d5d4b926701023f89c2b1dd289fc`  
+Superseded replacement candidate: `c6ed849f9a18d5d4b926701023f89c2b1dd289fc` (R3 repair follow-up)  
+Exact final code candidate: `fcf7a1ad42100d52a2a07ac900a50edcafde7e99`  
 Branch: `fix/m4-m3-production-driver`
 
 ## Lineage and boundary
@@ -71,6 +72,11 @@ Branch: `fix/m4-m3-production-driver`
   saved transition before any new observation and never reruns verification or
   execution. Attested submitted facts remain reportable after an M4 revision
   changes, while satisfaction remains revision-scoped.
+- The attestation key must be non-empty and distinct from the bearer bridge
+  token; both the CLI preflight and Convex bridge reject a reused secret before
+  any execute/observe path. The outbox uses the M4 kernel transition timestamp,
+  so a committed write whose acknowledgement is lost is recognized and cleared
+  on restart rather than raising a synchronization conflict.
 
 ## Evidence
 
@@ -80,8 +86,10 @@ Branch: `fix/m4-m3-production-driver`
 - R3 repair regressions: 39/39 pass, including actual bridge rejection of a
   bearer-token-only forged sequence, interrupted writeback/restart delivery,
   stale financial reporting, and acquisition-versus-effect proof separation.
-- Exact replacement candidate final gate (run once on this SHA):
-  - `npm test` — exit 0, 606 pass / 0 fail.
+- Follow-up R3 repair regressions: 13/13 pass, including equal-secret rejection
+  and committed-but-unacknowledged writeback recovery.
+- Exact final candidate gate (run once on this SHA):
+  - `npm test` — exit 0, 608 pass / 0 fail.
   - `npx tsc --noEmit` equivalent local compiler invocation with
     `--incremental false` — exit 0.
   - `npx tsc -p convex/tsconfig.json` equivalent local compiler invocation with
@@ -101,7 +109,7 @@ and does not invoke the executor.
 
 ## Review request
 
-R3 must inspect **exactly** `c6ed849f9a18d5d4b926701023f89c2b1dd289fc`, assume
+R3 must inspect **exactly** `fcf7a1ad42100d52a2a07ac900a50edcafde7e99`, assume
 an unsafe duplicate-spend or fake-truth path until disproven, and classify every
 material finding as Act Now, Investigate Now, Park for Later, or Ignore / Accept
 Risk. The reviewer is read-only and must not run a payment path.
