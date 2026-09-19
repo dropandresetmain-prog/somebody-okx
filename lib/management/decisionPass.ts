@@ -1,0 +1,218 @@
+// R3 CP-4 (A7 + I2 + I3) — the SHARED, pure decision-input builder.
+//
+// The decision pass is split begin → propose(action) → apply(mutation) exactly
+// like interpretation, because a Convex mutation cannot make the production
+// model call. That split only stays honest if BOTH the action (which discovers,
+// proposes capabilities, and recommends) and the mutation (which reloads fresh
+// truth, revalidates, reauthorizes, and dispatches) build the *same*
+// DecisionPassInput from the *same* raw proposal. If they drifted, the eligible
+// option ids the model chose among would not be the ids the mutation re-checks,
+// and authorization would silently disagree with recommendation.
+//
+// So this module is the single place that turns
+//   (fresh Convex reads) + (a raw model strategy proposal) + (a recommend fn)
+// into a DecisionPassInput. It is deterministic and zero-network:
+//   - capabilities come from the model-proposed `desiredCapabilities`, parsed by
+//     parseStrategyProposal and governed by validateCapabilityKeys (A7 — the
+//     hardcoded ["growth_launch_operations"] literal is gone);
+//   - resource classes are DERIVED from those capabilities and from the factual
+//     controlled inventory (I3 — the hardcoded eligibility arrays are gone);
+//   - external grounding comes from createSnapshotDiscovery() over the static
+//     VERIFIED_SERVICE_REGISTRY + SNAPSHOT_OFFERINGS (I3 — `discovered: []` made
+//     a genuine BUY unreachable; this is snapshot data, NOT the onchainos binary).
+//
+// It grants NO authority and writes NO truth: authority is stage-4
+// reauthorization inside runManagerialDecisionPass, which the mutation runs
+// against fresh Convex truth. The action calls this too, but only to surface
+// eligible options to the model and capture its RAW recommendation.
+
+import { parseStrategyProposal } from "./proposals";
+import { validateCapabilityKeys } from "../workforce/catalog";
+import { toolPermissionsForCapabilities } from "../workforce/permissions";
+import {
+  buildGroundingContext,
+  controlledResourceClassesFor,
+  requiredResourceClassesFor,
+} from "./grounding";
+import { EMPTY_FACTS } from "./options";
+import { createSnapshotDiscovery } from "../market/snapshotDiscovery";
+import { VERIFIED_SERVICE_REGISTRY } from "../market/registryData";
+import { CURRENT_RESOURCE_INVENTORY } from "../objective/policy";
+import { RESOURCE_CLASSES } from "../workforce/catalog";
+import type { ResourceClass } from "../workforce/types";
+import type { DecisionPassInput } from "./decision";
+import type {
+  EconomicFacts,
+  ObjectiveBudget,
+  OutcomeContract,
+  Requirement,
+  WorkerRecord,
+} from "./types";
+
+// The founder spend grant, read structurally so this lib module never imports
+// from convex/. `null` means NO authority (fails closed in the kernel, R3 A4).
+export type SpendGrantRead = { limitUsd: number; approvalId: string } | null;
+
+// Everything the builder needs that must be read FRESH from Convex by the caller
+// (an action via ctx.runQuery, a mutation via ctx.runQuery/ctx.db). Grouped so
+// both callers pass identical values and cannot drift.
+export type DecisionPassReads = {
+  contract: OutcomeContract;
+  currentContractRevision: number;
+  requirement: Requirement;
+  inventory: readonly WorkerRecord[];
+  creationAllowed: boolean;
+  budget: ObjectiveBudget | null;
+  grant: SpendGrantRead;
+  at: number;
+  // Deterministic, stable per (objective, requirement, revision, attempt) so a
+  // replay rebuilds the same decision row identity.
+  decisionId: string;
+};
+
+export type BuildDecisionPassInputResult =
+  | { ok: true; input: DecisionPassInput }
+  // A raw strategy proposal that does not parse is a typed refusal BEFORE the
+  // kernel runs: no capabilities, no options, no model recommendation. The
+  // caller (the action) forwards this to applyDecision so the mutation persists
+  // the refusal from fresh truth; it is never silently defaulted.
+  | { ok: false; errors: string[] };
+
+// The FULL ResourceClass union (catalog-owned DATA), not the capability-derived
+// RESOURCE_CLASS_VALUES: no controlled capability requires an external class, so
+// validating a model-proposed needsExternalResourceClass against capability
+// requirements would make every genuine BUY unreachable (the exact I3 defect).
+const knownResourceClasses = new Set<string>(RESOURCE_CLASSES.map((r) => r.class));
+
+function isKnownResourceClass(value: string | null): value is ResourceClass {
+  return value !== null && knownResourceClasses.has(value);
+}
+
+// Build the DecisionPassInput both the action and the mutation use. `recommend`
+// is the ONLY non-deterministic part and is supplied by the caller:
+//   - the action passes a fn that calls the model and returns its RAW output;
+//   - the mutation passes `async () => storedRawRecommendation` so the kernel
+//     revalidates the stored selection against freshly-recomputed eligible ids.
+export async function buildDecisionPassInput(
+  reads: DecisionPassReads,
+  rawStrategyProposal: unknown,
+  recommend: (eligible: readonly import("./types").GroundedOption[]) => Promise<unknown>,
+): Promise<BuildDecisionPassInputResult> {
+  const { contract, currentContractRevision, requirement } = reads;
+
+  // ── A7: capabilities are model-PROPOSED then GOVERNED, never hardcoded ──────
+  const parsedProposal = parseStrategyProposal(rawStrategyProposal);
+  if (!parsedProposal.ok)
+    return { ok: false, errors: parsedProposal.errors };
+
+  const { accepted } = validateCapabilityKeys(parsedProposal.value.desiredCapabilities);
+  // accepted may be empty (the model proposed only ungoverned keys). That is a
+  // legitimate, meaningful state: no internal option can be built, so only an
+  // external path (or WAIT/ASK/BLOCK) can win. It is NOT defaulted to a launch
+  // capability — that hardcoded literal is exactly what A7 removes.
+  const requiredCapabilityKeys = accepted;
+  const requiredPermissions = toolPermissionsForCapabilities(requiredCapabilityKeys);
+
+  // ── I3: resource classes are DERIVED, never hardcoded arrays ────────────────
+  const requiredResourceClasses = requiredResourceClassesFor(requiredCapabilityKeys);
+  const controlledResourceClasses = controlledResourceClassesFor(CURRENT_RESOURCE_INVENTORY);
+
+  // The external class to discover for: the proposal's declared need when it is
+  // a known class, else the first required class the company does not control.
+  const missing = requiredResourceClasses.filter(
+    (resource) => !controlledResourceClasses.includes(resource),
+  );
+  const proposedExternal = parsedProposal.value.needsExternalResourceClass;
+  const externalClass: ResourceClass | null = isKnownResourceClass(proposedExternal)
+    ? (proposedExternal as ResourceClass)
+    : missing.length > 0
+      ? (missing[0] as ResourceClass)
+      : null;
+
+  // ── I3: grounding from the static snapshot registry — zero network ──────────
+  // createSnapshotDiscovery() reads SNAPSHOT_OFFERINGS + VERIFIED_SERVICE_REGISTRY
+  // (application-owned DATA). It never spawns the onchainos binary; that is
+  // createOkxDiscovery()'s default runner, deliberately avoided here.
+  const grounding = externalClass
+    ? buildGroundingContext({
+        registry: VERIFIED_SERVICE_REGISTRY,
+        discovered: await createSnapshotDiscovery().discover({
+          resourceClass: externalClass,
+          taskDescription: `${requirement.title} ${requirement.mustBeTrue}`.slice(0, 400),
+        }),
+        requiredResourceClass: externalClass,
+        at: reads.at,
+        // No live internal-cost measurement exists; UNKNOWN facts are honest and
+        // the kernel/eligibility treat null as unknown, never as zero.
+        internalFacts: EMPTY_FACTS as EconomicFacts,
+      })
+    : {
+        discovered: [],
+        internalFacts: EMPTY_FACTS as EconomicFacts,
+        factsForOffering: () => EMPTY_FACTS as EconomicFacts,
+      };
+
+  // artifactKeyForInternalProof: the governed internal proof this requirement
+  // declares, if any (unchanged discipline — read from the requirement, not
+  // assumed). A non-launch requirement simply carries none.
+  let artifactKeyForInternalProof: string | null = null;
+  for (const proof of requirement.proofs) {
+    if (proof.proofKind === "company_artifact_version" && proof.params.artifactKey) {
+      artifactKeyForInternalProof = String(proof.params.artifactKey);
+      break;
+    }
+  }
+
+  const grant = reads.grant;
+  const budget = reads.budget;
+
+  return {
+    ok: true,
+    input: {
+      objectiveKey: contract.objectiveKey,
+      contract,
+      currentContractRevision,
+      requirementKey: requirement.requirementKey,
+      requirementTitle: requirement.title,
+      mustBeTrue: requirement.mustBeTrue,
+      priority: requirement.priority,
+      artifactKeyForInternalProof,
+      staffing: {
+        objectiveKey: contract.objectiveKey,
+        requirementKey: requirement.requirementKey,
+        requiredCapabilityKeys,
+        requiredPermissions,
+        expectedHoldMs: 60 * 60 * 1000,
+        now: reads.at,
+        neededContextRefs: [],
+        parallelismNeeded: 1,
+        specializationNeeded: false,
+        inventory: reads.inventory,
+        creationAllowed: reads.creationAllowed,
+      },
+      grounding,
+      eligibilityFacts: {
+        requiredResourceClasses,
+        controlledResourceClasses,
+        deadlineAt: null,
+        now: reads.at,
+        estimatedMinutes: null,
+        requiresMandatoryProof: true,
+        proofAvailable: true,
+        workerAvailable: null,
+        // R3 A4: founder authority is READ, never assumed. null fails closed.
+        spendAuthorityUsd: grant ? grant.limitUsd : null,
+        budgetRemainingUsd: budget
+          ? budget.limits.maxExternalSpendUsd - budget.used.externalSpendCommittedUsd
+          : 0,
+      },
+      recommend,
+      at: reads.at,
+      decisionId: reads.decisionId,
+      spendAuthorityUsd: grant ? grant.limitUsd : null,
+      spendApprovalId: grant ? grant.approvalId : null,
+      externalAuthority: "m3_unavailable",
+      waiverRequested: false,
+    },
+  };
+}

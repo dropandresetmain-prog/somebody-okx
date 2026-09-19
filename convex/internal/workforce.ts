@@ -5,6 +5,7 @@
 "use strict";
 
 import { v } from "convex/values";
+import { internal } from "../_generated/api";
 import { internalMutation, internalQuery } from "../_generated/server";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
@@ -674,6 +675,65 @@ type AnyDecisionData = {
   at: number;
   decisionId: string;
 };
+
+// R3 CP-4 — one bundled fresh read of everything the decision pass needs, so the
+// proposeDecision ACTION and the applyDecision MUTATION see IDENTICAL truth and
+// cannot drift. It is a pure read (no effects): latest contract + its revision,
+// the requirements at that revision, the live worker inventory, the objective's
+// budget and creation allowance, and the founder spend grant (null = no
+// authority). Both callers cast this into lib/management/decisionPass's
+// DecisionPassReads; keeping the reads in ONE query is what makes the action's
+// eligible-option preview and the mutation's reauthorization agree.
+export const readDecisionContext = internalQuery({
+  args: { objectiveKey: v.string(), requirementKey: v.string() },
+  returns: v.any(),
+  handler: async (ctx, args): Promise<unknown> => {
+    const contractRows = await ctx.db
+      .query("outcomeContracts")
+      .withIndex("by_objective", (q) => q.eq("objectiveKey", args.objectiveKey))
+      .collect();
+    if (contractRows.length === 0) return null;
+    const latestContract = contractRows.reduce((max, row) =>
+      (row as { revision: number }).revision > (max as { revision: number }).revision ? row : max,
+    );
+    const currentContractRevision = (latestContract as { revision: number }).revision;
+    const contract = (latestContract as { data: unknown }).data;
+
+    const requirementRows = await ctx.db
+      .query("requirements")
+      .withIndex("by_objectiveRequirement", (q) =>
+        q.eq("objectiveKey", args.objectiveKey).eq("requirementKey", args.requirementKey),
+      )
+      .collect();
+    const requirement =
+      requirementRows
+        .map((row) => (row as { data: { contractRevision: number } }).data)
+        .find((data) => data.contractRevision === currentContractRevision) ?? null;
+    if (!requirement) return null;
+
+    const inventory = (await ctx.runQuery(internal.internal.workforce.listWorkers, {})) as WorkerRecord[];
+    const workerCount = (await ctx.runQuery(internal.internal.workforce.countObjectiveWorkers, {
+      objectiveKey: args.objectiveKey,
+    })) as number;
+    const budget = (await ctx.runQuery(internal.internal.workforce.readBudget, {
+      objectiveKey: args.objectiveKey,
+    })) as ObjectiveBudget | null;
+    const creationAllowed = budget ? workerCount < budget.limits.maxWorkersCreated : true;
+    const grant = (await ctx.runQuery(internal.internal.workforce.activeSpendGrant, {
+      objectiveKey: args.objectiveKey,
+    })) as FounderSpendGrant | null;
+
+    return {
+      contract,
+      currentContractRevision,
+      requirement,
+      inventory,
+      creationAllowed,
+      budget,
+      grant: grant ? { limitUsd: grant.limitUsd, approvalId: grant.approvalId } : null,
+    };
+  },
+});
 
 // ── Timer bookkeeping (R3 A3) ───────────────────────────────────────────────
 //

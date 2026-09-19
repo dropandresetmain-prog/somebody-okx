@@ -24,10 +24,12 @@ import type { Id } from "./_generated/dataModel";
 import { buildManagementGraph } from "../lib/management/graph";
 import type { ManagementPorts } from "../lib/management/graph";
 import { runManagerialDecisionPass } from "../lib/management/decision";
+import { buildDecisionPassInput } from "../lib/management/decisionPass";
+import type { DecisionPassReads } from "../lib/management/decisionPass";
 import type { DecisionPassResult } from "../lib/management/decision";
 import type { FounderSpendGrant } from "./internal/workforce";
 import { interpretObjective } from "../lib/management/interpretation";
-import { planWakeForInterpretation, planWakeForTimer } from "../lib/management/wakes";
+import { planWakeForDecision, planWakeForInterpretation, planWakeForTimer } from "../lib/management/wakes";
 import {
   advanceAssignment,
   buildAssignmentContract,
@@ -44,7 +46,6 @@ import { bindExecutedProofParams } from "../lib/management/contract";
 import { attemptRequirementSatisfaction } from "../lib/management/requirements";
 import type { ProofFacts, RequirementEvent } from "../lib/management/requirements";
 import { checkBudget } from "../lib/management/budget";
-import { EMPTY_FACTS } from "../lib/management/options";
 import type {
   Assignment,
   BudgetVerdict,
@@ -63,16 +64,27 @@ import type {
   WorkerRecord,
 } from "../lib/management/types";
 
-// ── Module-level recommendation seam ─────────────────────────────────────────
-// Default null → runDecisionPass passes recommend: async () => null.
-// parseManagerialRecommendation(null) returns {ok:false} → typed refusal.
-
-type RecommenderFn = (eligible: readonly GroundedOption[]) => Promise<unknown>;
-let _recommender: RecommenderFn | null = null;
-
-export function setManagementRecommender(fn: RecommenderFn | null): void {
-  _recommender = fn;
-}
+// ── R3 I2 — the recommendation seam is DURABLE, not module-global ────────────
+//
+// A Convex MUTATION cannot perform a production model call, so a module-global
+// injected recommender (`_recommender`) only ever existed while one process
+// happened to hold it — with it null, every production decision pass parsed
+// `null` into a typed refusal and could never authorize anything. The decision
+// pass is therefore split exactly like interpretation into a durable three-step:
+//
+//   beginDecision (the runDecisionPass port below, in mutation context)
+//       reserves the pass identity (pending cursor + deterministic decisionId)
+//       and schedules the action; it grants NO authority and returns null.
+//   proposeDecision (action, "use node") — the ONLY step that talks to a model.
+//       It discovers (zero-network snapshot), proposes capabilities, and
+//       recommends among eligible options; it returns RAW proposal data.
+//   applyDecision (mutation) — reloads fresh truth, re-runs the pure kernel with
+//       the stored raw recommendation, deterministically revalidates and
+//       reauthorizes, persists, dispatches idempotently, and wakes the loop.
+//
+// Malformed output, an outage, or a hallucinated option therefore all land as
+// typed refusals persisted on the objective — never as authority granted in an
+// action, and never as an exception that corrupts state.
 
 // ── Row shape helpers (loose reads — the schema carries the real types) ──────
 
@@ -82,6 +94,15 @@ type AnyRow = { _id: unknown; [k: string]: unknown };
 // the decision pass and the dispatch seam share the SAME truth instead of
 // repeating a string literal (and so nobody "fixes" one without the other).
 const EXTERNAL_AUTHORITY_MODE: ExternalAuthorityMode = "m3_unavailable";
+
+// R3 CP-4 — cumulative per-requirement ceiling on decision attempts. The begin
+// step (runDecisionPass port) refuses to schedule another proposeDecision action
+// once this many attempts have been recorded for a requirement, so a model that
+// keeps producing unusable output cannot be re-scheduled forever. Mirrors
+// BEGIN_INTERPRETATION_CEILING. applyDecision resets a requirement's count on a
+// SUCCESSFUL authorization (a genuine later re-decision stays possible) and
+// leaves it in place on a refusal (the storm guard).
+export const BEGIN_DECISION_CEILING = 3;
 
 // ── Bounded control notes (R3 A3, persistence side) ─────────────────────────
 //
@@ -296,7 +317,18 @@ export function buildConvexManagementPorts(ctx: MutationCtx): ManagementPorts {
       });
     },
 
-    async runDecisionPass(state: GraphState, _ports: ManagementPorts, at: number): Promise<DecisionPassResult | null> {
+    // R3 CP-4 (I2/A7/I3) — the decision pass is the BEGIN step of a durable
+    // three-step chain, NOT a synchronous model call. A Convex mutation cannot
+    // make the production model call, so this port reserves the pass identity
+    // (pending cursor + deterministic requestId) and schedules the ONLY model
+    // step (proposeDecision, an action). It grants NO authority and returns null:
+    // the authoritative decision is produced by applyDecision (a mutation) which
+    // reloads fresh truth, re-runs the pure kernel against the stored raw
+    // recommendation, revalidates, reauthorizes, persists, and wakes this loop to
+    // dispatch. The wake re-enters runManagementPass; by then the decision row
+    // exists and the reducer routes to dispatch. This is the exact interpretation
+    // pattern (beginInterpretation → proposeInterpretation → applyInterpretation).
+    async runDecisionPass(state: GraphState, _ports: ManagementPorts, _at: number): Promise<DecisionPassResult | null> {
       if (!state.focusRequirementKey) return null;
 
       const { contract, currentContractRevision } = await ports.loadContract(state.objectiveKey);
@@ -306,154 +338,78 @@ export function buildConvexManagementPorts(ctx: MutationCtx): ManagementPorts {
       const requirement = requirements.find((r) => r.requirementKey === state.focusRequirementKey);
       if (!requirement) return null;
 
-      // Staffing: live inventory + creation allowed per budget worker ceiling
-      const inventory = (await ctx.runQuery(internal.internal.workforce.listWorkers, {})) as WorkerRecord[];
-      const workerCount = (await ctx.runQuery(internal.internal.workforce.countObjectiveWorkers, { objectiveKey: state.objectiveKey })) as number;
-      const budget = (await ctx.runQuery(internal.internal.workforce.readBudget, { objectiveKey: state.objectiveKey })) as ObjectiveBudget | null;
-      const creationAllowed = budget ? workerCount < budget.limits.maxWorkersCreated : true;
+      const row = await ctx.db
+        .query("objectives")
+        .withIndex("by_key", (q) => q.eq("key", state.objectiveKey))
+        .unique();
+      if (!row) return null;
+      const data = (row as AnyRow).data as Record<string, unknown>;
+      const mgmt = (data.management ?? {}) as Record<string, unknown>;
+      const pending = mgmt.pendingDecision as
+        | { requestId: string; requirementKey: string; contractRevision: number; attempts: number }
+        | null
+        | undefined;
 
-      // artifactKeyForInternalProof: derive from the requirement's governed proofs
-      let artifactKeyForInternalProof: string | null = null;
-      for (const proof of requirement.proofs) {
-        if (proof.proofKind === "company_artifact_version" && proof.params.artifactKey) {
-          artifactKeyForInternalProof = String(proof.params.artifactKey);
-          break;
-        }
-      }
+      // One action in flight per (requirement, revision): a replayed wake finds
+      // the reservation and does NOT schedule a second model call. This is what
+      // makes the begin step idempotent, mirroring beginInterpretation's pending
+      // cursor. A terminal applyDecision clears pendingDecision, so a later
+      // genuine re-decision (new revision, or a fresh wake after a refusal was
+      // cleared) can begin again.
+      if (
+        pending &&
+        pending.requirementKey === requirement.requirementKey &&
+        pending.contractRevision === currentContractRevision
+      )
+        return null;
 
-      // grounding.discovered: [] — live registry discovery is the CP2 sourcing seam and arrives as data
-      //
-      // R3 A4 — founder spend authority is READ, never assumed. No live grant
-      // record ⇒ `null`, which the kernel treats as NO authority (fail closed),
-      // not as an unlimited ceiling. The persisted budget ceiling stays a
-      // separate, engine-side self-limit: `budgetRemainingUsd` measures the
-      // objective's committed spend, `spendAuthorityUsd` measures what the
-      // founder actually permitted.
-      const grant = (await ctx.runQuery(internal.internal.workforce.activeSpendGrant, {
+      // Cumulative, per-requirement ceiling: attempts are counted across
+      // revisions and NEVER reset, so a model that keeps producing unusable
+      // output cannot be re-scheduled forever. This is the decision analogue of
+      // BEGIN_INTERPRETATION_CEILING and the outer guard against a decide storm.
+      const attemptsMap = (mgmt.decisionAttempts ?? {}) as Record<string, number>;
+      const cumulative = attemptsMap[requirement.requirementKey] ?? 0;
+      if (cumulative >= BEGIN_DECISION_CEILING) return null;
+
+      // The requestId IS the reservation: derived from objective + requirement +
+      // revision + attempt, so it is stable across a replayed delivery of the
+      // same attempt and can never collide with a later one. The decisionId the
+      // mutation will persist is likewise deterministic (no timestamp), so a
+      // re-apply rebuilds the same decision row.
+      const requestId = `decide_${state.objectiveKey}_${requirement.requirementKey}_r${currentContractRevision}_a${cumulative + 1}`;
+      await ctx.db.patch(row._id, {
+        data: {
+          ...data,
+          management: {
+            ...mgmt,
+            contractId: (mgmt.contractId as string | null) ?? null,
+            pendingDecision: {
+              requestId,
+              requirementKey: requirement.requirementKey,
+              contractRevision: currentContractRevision,
+              attempts: cumulative + 1,
+            },
+            decisionAttempts: { ...attemptsMap, [requirement.requirementKey]: cumulative + 1 },
+          },
+        },
+      } as never);
+
+      // Durable continuation of the chain. The reservation is written BEFORE this
+      // is scheduled, so a pass that dies between the two leaves a `pending`
+      // cursor rather than a silent gap, and a replayed wake cannot reserve twice.
+      // The action reloads contract + requirement + budget + grant from fresh
+      // truth; only lightweight identity is passed here.
+      await ctx.scheduler.runAfter(0, internal.objectiveRunner.proposeDecision, {
         objectiveKey: state.objectiveKey,
-      })) as FounderSpendGrant | null;
-      const result = await runManagerialDecisionPass({
-        objectiveKey: state.objectiveKey,
-        contract,
-        currentContractRevision,
+        requestId,
         requirementKey: requirement.requirementKey,
-        requirementTitle: requirement.title,
-        mustBeTrue: requirement.mustBeTrue,
-        priority: requirement.priority,
-        artifactKeyForInternalProof,
-        staffing: {
-          objectiveKey: state.objectiveKey,
-          requirementKey: requirement.requirementKey,
-          requiredCapabilityKeys: ["growth_launch_operations"],
-          requiredPermissions: ["update_company_artifact"],
-          expectedHoldMs: 60 * 60 * 1000,
-          now: at,
-          neededContextRefs: [],
-          parallelismNeeded: 1,
-          specializationNeeded: false,
-          inventory,
-          creationAllowed,
-        },
-        grounding: {
-          // Live registry discovery is the CP2 sourcing seam and arrives as data;
-          // until then, no external offerings are discovered.
-          discovered: [],
-          internalFacts: EMPTY_FACTS,
-          factsForOffering: () => EMPTY_FACTS,
-        },
-        eligibilityFacts: {
-          requiredResourceClasses: ["llm_reasoning", "public_web", "ordinary_compute", "company_records", "company_tools"],
-          controlledResourceClasses: ["llm_reasoning", "public_web", "ordinary_compute", "company_records", "company_tools"],
-          deadlineAt: null,
-          now: at,
-          estimatedMinutes: null,
-          requiresMandatoryProof: true,
-          proofAvailable: true,
-          workerAvailable: null,
-          spendAuthorityUsd: grant ? grant.limitUsd : null,
-          budgetRemainingUsd: budget
-            ? budget.limits.maxExternalSpendUsd - budget.used.externalSpendCommittedUsd
-            : 0,
-        },
-        recommend: _recommender
-          ? async (eligible) => _recommender!(eligible)
-          : async () => null,
-        at,
-        decisionId: `dec_${state.objectiveKey}_${requirement.requirementKey}_${at}`,
-        // R3 A4/I3 — persisted founder spend authority. `null` fails closed:
-        // a monetary BUY/HYBRID cannot be authorized (and therefore cannot be
-        // handed to the rail) until a founder grant record exists. Neither
-        // value is invented here; both are read from storage.
-        spendAuthorityUsd: grant ? grant.limitUsd : null,
-        spendApprovalId: grant ? grant.approvalId : null,
-        externalAuthority: EXTERNAL_AUTHORITY_MODE,
-        waiverRequested: false,
+        contractRevision: currentContractRevision,
       });
-
-      return result;
+      return null;
     },
 
     async persistDecision(result: DecisionPassResult, at: number): Promise<void> {
-      const { decision, boundRequirement, options, recommendation } = result;
-
-      // Encode extra data into coarsePlanSummary as JSON since the schema validator
-      // doesn't allow extra fields in the data column
-      const extraData = {
-        options,
-        boundRequirement,
-        recommendation,
-      };
-      const decisionData = {
-        ...decision,
-        coarsePlanSummary: JSON.stringify({
-          original: decision.coarsePlanSummary,
-          extra: extraData,
-        }),
-      };
-
-      await ctx.runMutation(internal.internal.workforce.putDecision, {
-        objectiveKey: decision.objectiveKey,
-        decisionId: decision.decisionId,
-        data: decisionData,
-      });
-
-      // If bound requirement, persist it with currentContractRevision for stale-downsert protection
-      if (boundRequirement) {
-        await ctx.runMutation(internal.internal.workforce.putRequirement, {
-          objectiveKey: boundRequirement.objectiveKey,
-          requirementKey: boundRequirement.requirementKey,
-          data: boundRequirement,
-          currentContractRevision: boundRequirement.contractRevision,
-        });
-      }
-
-      // If authorization requires approval, append a pending-approval control note
-      if (result.authorization.kind === "approval_required") {
-        const row = await ctx.db
-          .query("objectives")
-          .withIndex("by_key", (q) => q.eq("key", decision.objectiveKey))
-          .unique();
-        if (row) {
-          const data = (row as AnyRow).data as Record<string, unknown>;
-          const mgmt = (data.management ?? {}) as Record<string, unknown>;
-          const notes = [...((mgmt.controlNotes ?? []) as Array<Record<string, unknown>>)];
-          notes.push({
-            type: "pending_approval",
-            question: result.authorization.question,
-            at,
-          });
-          await ctx.db.patch(row._id, {
-            data: {
-              ...data,
-              management: {
-                ...mgmt,
-                contractId: (mgmt.contractId as string | null) ?? null,
-                controlNotes: notes,
-              },
-            },
-          } as any);
-        }
-      }
+      await persistDecisionRow(ctx, result, at);
     },
 
     async recordSatisfactionAttempt(state: GraphState, requirementKey: string, at: number): Promise<boolean> {
@@ -812,6 +768,77 @@ export function buildConvexManagementPorts(ctx: MutationCtx): ManagementPorts {
   };
 
   return ports;
+}
+
+// R3 CP-4 — the single decision writer, shared by the graph's persistDecision
+// port and by applyDecision. Extracted so the durable apply path and the in-graph
+// path can never drift in HOW a decision row is stored: options + bound
+// requirement + recommendation are encoded into coarsePlanSummary (the schema
+// carries no extra columns), the bound requirement is upserted with its own
+// contractRevision for stale-downsert protection, and an approval_required
+// authorization appends ONE pending_approval control note.
+async function persistDecisionRow(
+  ctx: MutationCtx,
+  result: DecisionPassResult,
+  at: number,
+): Promise<void> {
+  const { decision, boundRequirement, options, recommendation } = result;
+
+  // Encode extra data into coarsePlanSummary as JSON since the schema validator
+  // doesn't allow extra fields in the data column.
+  const extraData = { options, boundRequirement, recommendation };
+  const decisionData = {
+    ...decision,
+    coarsePlanSummary: JSON.stringify({
+      original: decision.coarsePlanSummary,
+      extra: extraData,
+    }),
+  };
+
+  await ctx.runMutation(internal.internal.workforce.putDecision, {
+    objectiveKey: decision.objectiveKey,
+    decisionId: decision.decisionId,
+    data: decisionData,
+  });
+
+  // If bound requirement, persist it with currentContractRevision for
+  // stale-downsert protection.
+  if (boundRequirement) {
+    await ctx.runMutation(internal.internal.workforce.putRequirement, {
+      objectiveKey: boundRequirement.objectiveKey,
+      requirementKey: boundRequirement.requirementKey,
+      data: boundRequirement,
+      currentContractRevision: boundRequirement.contractRevision,
+    });
+  }
+
+  // If authorization requires approval, append a pending-approval control note.
+  if (result.authorization.kind === "approval_required") {
+    const row = await ctx.db
+      .query("objectives")
+      .withIndex("by_key", (q) => q.eq("key", decision.objectiveKey))
+      .unique();
+    if (row) {
+      const data = (row as AnyRow).data as Record<string, unknown>;
+      const mgmt = (data.management ?? {}) as Record<string, unknown>;
+      const notes = [...((mgmt.controlNotes ?? []) as Array<Record<string, unknown>>)];
+      notes.push({
+        type: "pending_approval",
+        question: result.authorization.question,
+        at,
+      });
+      await ctx.db.patch(row._id, {
+        data: {
+          ...data,
+          management: {
+            ...mgmt,
+            contractId: (mgmt.contractId as string | null) ?? null,
+            controlNotes: notes,
+          },
+        },
+      } as never);
+    }
+  }
 }
 
 // ── The scheduled entry point ────────────────────────────────────────────────
@@ -1203,6 +1230,192 @@ export const beginInterpretation = internalMutation({
 function notesOfType(existing: unknown, type: string): Array<Record<string, unknown>> {
   const notes = Array.isArray(existing) ? (existing as Array<Record<string, unknown>>) : [];
   return notes.filter((note) => note.type === type);
+}
+
+// R3 CP-4 (I2/A7/I3) — the APPLY step of the decision chain, and the ONLY place
+// a decision is authorized and persisted.
+//
+// It receives RAW model output from proposeDecision (a strategy proposal + a
+// recommendation) and nothing else. It then:
+//   1. validates the requestId against the reservation the begin step wrote, and
+//      rejects it if the contract revision has moved (STALE action output can
+//      never authorize against a truth that no longer holds);
+//   2. RELOADS fresh Convex truth via readDecisionContext — contract, revision,
+//      requirement, inventory, budget, grant;
+//   3. RE-RUNS the pure kernel runManagerialDecisionPass against that fresh truth
+//      with `recommend: async () => rawRecommendation`, so parseManagerialRecommendation
+//      validates the stored selectedOptionId against FRESHLY-recomputed eligible
+//      option ids. The model never grants authority; deterministic reauthorization
+//      (stage 4) does, from current truth. A hallucinated or stale option is a
+//      typed refusal here, not a dispatch.
+//   4. persists via the SAME writer the graph uses (persistDecisionRow);
+//   5. clears the pending reservation, appends the decision wake, and schedules
+//      the next runManagementPass so the reducer routes to dispatch idempotently.
+//
+// An outage or an unusable proposal therefore lands exactly like interpretation:
+// a typed refusal persisted on the objective, never an exception, never authority
+// granted in the action.
+export const applyDecision = internalMutation({
+  args: {
+    objectiveKey: v.string(),
+    requestId: v.string(),
+    rawStrategyProposal: v.any(),
+    rawRecommendation: v.any(),
+    at: v.number(),
+  },
+  returns: v.union(
+    v.object({
+      ok: v.literal(true),
+      decisionId: v.string(),
+      authorized: v.boolean(),
+      strategy: v.union(v.string(), v.null()),
+    }),
+    v.object({ ok: v.literal(false), reason: v.string() }),
+  ),
+  handler: async (ctx, args) => {
+    const row = await ctx.db
+      .query("objectives")
+      .withIndex("by_key", (q) => q.eq("key", args.objectiveKey))
+      .unique();
+    if (!row) return { ok: false as const, reason: "objective row missing" };
+
+    const data = (row as AnyRow).data as Record<string, unknown>;
+    const mgmt = (data.management ?? {}) as Record<string, unknown>;
+    const pending = mgmt.pendingDecision as
+      | { requestId: string; requirementKey: string; contractRevision: number; attempts: number }
+      | null
+      | undefined;
+
+    // Stale/foreign action output is rejected before any truth is written. The
+    // reservation is the identity: an apply whose requestId does not match the
+    // one begin wrote (a redelivery after a newer begin, or a forged call) cannot
+    // authorize anything.
+    if (!pending || pending.requestId !== args.requestId)
+      return { ok: false as const, reason: "no matching pending decision reservation (stale or already applied)" };
+
+    // Reload FRESH truth. The action's reads are not trusted: authority is
+    // derived from what is true NOW.
+    const reads = (await ctx.runQuery(internal.internal.workforce.readDecisionContext, {
+      objectiveKey: args.objectiveKey,
+      requirementKey: pending.requirementKey,
+    })) as DecisionPassReads | null;
+
+    // Clear the reservation on EVERY terminal path so the begin step can run
+    // again for a genuine re-decision; the cumulative decisionAttempts ceiling
+    // (persisted separately) is what stops a refusal from becoming a storm.
+    const clearPending = async (extra: Record<string, unknown> = {}): Promise<void> => {
+      await ctx.db.patch(row._id, {
+        data: {
+          ...data,
+          management: { ...mgmt, contractId: (mgmt.contractId as string | null) ?? null, pendingDecision: null, ...extra },
+        },
+      } as never);
+    };
+
+    // Reject stale action output: the contract revision the begin step reserved
+    // against must still be current. If it moved, the grounded options the model
+    // saw no longer exist at this revision.
+    if (!reads || reads.currentContractRevision !== pending.contractRevision) {
+      await clearPending();
+      return { ok: false as const, reason: "contract revision moved since the decision pass began; action output is stale" };
+    }
+
+    const decisionId = `dec_${args.objectiveKey}_${pending.requirementKey}_r${pending.contractRevision}_a${pending.attempts}`;
+
+    // Re-run the pure kernel from fresh truth. `recommend` replays the stored
+    // RAW recommendation; parseManagerialRecommendation validates it against the
+    // eligible ids recomputed HERE, and stage-4 reauthorization is the only thing
+    // that can grant authority. An unusable proposal is a typed refusal.
+    const built = await buildDecisionPassInput(
+      { ...reads, at: args.at, decisionId },
+      args.rawStrategyProposal,
+      async () => args.rawRecommendation,
+    );
+
+    if (!built.ok) {
+      // The proposal did not even parse: persist a typed refusal decision row so
+      // the read model shows WHY nothing was authorized, then clear + wake.
+      await ctx.db.insert("objectiveEvents", {
+        objectiveKey: args.objectiveKey,
+        data: {
+          at: args.at,
+          kind: "decision",
+          text: `decision refused for ${pending.requirementKey}: strategy proposal unusable (${built.errors.slice(0, 4).join("; ").slice(0, 300)})`,
+        },
+      });
+      await clearPending();
+      await scheduleDecisionWake(ctx, args.objectiveKey, decisionId, false, args.at);
+      return { ok: false as const, reason: built.errors.join("; ").slice(0, 400) };
+    }
+
+    const result = await runManagerialDecisionPass(built.input);
+    await persistDecisionRow(ctx, result, args.at);
+
+    const authorized = result.authorization.kind === "authorized";
+
+    // On a SUCCESSFUL authorization, reset this requirement's attempt count so a
+    // genuine later re-decision stays possible; on a refusal, leave it so the
+    // cumulative ceiling (BEGIN_DECISION_CEILING) eventually stops re-asking.
+    const attemptsMap = { ...((mgmt.decisionAttempts ?? {}) as Record<string, number>) };
+    if (authorized) delete attemptsMap[pending.requirementKey];
+
+    await clearPending({ decisionAttempts: attemptsMap });
+
+    await ctx.db.insert("objectiveEvents", {
+      objectiveKey: args.objectiveKey,
+      data: {
+        at: args.at,
+        kind: "decision",
+        text: authorized
+          ? `decision for ${pending.requirementKey} authorized ${result.decision.strategy} via ${result.decision.optionId}; dispatch may proceed`
+          : `decision for ${pending.requirementKey} not authorized: ${summarizeDecisionAuthorization(result)}`,
+      },
+    });
+
+    // Durable wake + continuation: the reducer, on the next pass, reads the
+    // persisted authorized decision and routes to dispatch (idempotent on stable
+    // identity). This is the decision analogue of applyInterpretation's wake.
+    await scheduleDecisionWake(ctx, args.objectiveKey, decisionId, authorized, args.at);
+
+    return {
+      ok: true as const,
+      decisionId,
+      authorized,
+      strategy: result.decision.strategy,
+    };
+  },
+});
+
+// Append the decision wake (deduped by decision identity) and schedule the next
+// management pass. The wake is a POINTER to the decision row; it carries no
+// payload and grants no authority — the reducer re-reads business state.
+async function scheduleDecisionWake(
+  ctx: MutationCtx,
+  objectiveKey: string,
+  managerDecisionId: string,
+  authorized: boolean,
+  at: number,
+): Promise<void> {
+  const wake = planWakeForDecision({ objectiveKey, managerDecisionId, authorized, at });
+  await ctx.runMutation(internal.internal.workforce.appendWakeEvent, {
+    eventId: wake.eventId,
+    objectiveKey,
+    dedupeKey: wake.dedupeKey,
+    data: wake.event,
+  });
+  await ctx.scheduler.runAfter(0, internal.management.runManagementPass, {
+    objectiveKey,
+    reason: "decision_applied",
+  });
+}
+
+// A short, non-secret summary of why a decision was not authorized, for the
+// event trail. Never invents authority; reads the kernel's own verdict.
+function summarizeDecisionAuthorization(result: DecisionPassResult): string {
+  const authorization = result.authorization;
+  if (authorization.kind === "refused") return authorization.detail.slice(0, 240);
+  if (authorization.kind === "approval_required") return `founder approval required: ${authorization.question.slice(0, 200)}`;
+  return "not authorized";
 }
 
 // ── R3 A2: the dispatch seam's helpers ──────────────────────────────────────

@@ -527,6 +527,7 @@ export const vWakeReason = v.union(
   v.literal("provider_result"),
   v.literal("resource_acquired"),
   v.literal("verification_result"),
+  v.literal("decision_applied"),
   v.literal("timeout"),
   v.literal("recovery_event"),
   v.literal("no_progress"),

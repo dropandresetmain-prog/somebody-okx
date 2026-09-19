@@ -557,6 +557,7 @@ export type WakeReason =
   | "provider_result"
   | "resource_acquired"
   | "verification_result"
+  | "decision_applied"
   | "timeout"
   | "recovery_event"
   | "no_progress";

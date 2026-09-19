@@ -225,10 +225,10 @@ authorized outcome branch; push destination for CP8 evidence).
 | A4 | null spend authority authorizes BUY/HYBRID | Act Now (critical) | **RESOLVED** (`40ed332`, 13 acceptance tests) |
 | A5 | completion-gate proof mismatch + forged satisfaction | Act Now (critical) | **SHIPPED** (CP-3; recomputing gate + binding + scoping + reconciliation, 9 probes; acceptance pending CP-5) |
 | A6 | M2 growth-spine artifact obligation regression | Act Now | **SHIPPED** (CP-2 `696e259` + CP-2b sibling restore; acceptance pending CP-5) |
-| A7 | scenario coupling in generic M4 control flow | Act Now | in progress (dispatch path scenario-free by construction; runDecisionPass staffing/eligibility literals remain) |
+| A7 | scenario coupling in generic M4 control flow | Act Now | **SHIPPED** (CP-4; capabilities are model-proposed via parseStrategyProposal + validateCapabilityKeys; the `["growth_launch_operations"]`/`["update_company_artifact"]` literals and hardcoded resource-class arrays are gone from runDecisionPass; acceptance pending CP-5) |
 | I1 | Convex runtime compatibility / node:crypto | Investigate Now | **RESOLVED** (below, `f066c5f`) |
-| I2 | model call cannot run inside a mutation | Investigate Now | half-resolved: interpretation chain is mutation→action→mutation (`696e259`); recommendation seam still module-global |
-| I3 | no economic facts / discovery + $1 default | Investigate Now | in progress (grounding kernels built + unit-proven; wiring into runDecisionPass pending) |
+| I2 | model call cannot run inside a mutation | Investigate Now | **RESOLVED** (CP-4; `setManagementRecommender`/`_recommender` deleted; the decision pass is now the durable begin(port)→proposeDecision(action)→applyDecision(mutation) chain, mirroring interpretation; authority only in applyDecision) |
+| I3 | no economic facts / discovery + $1 default | Investigate Now | **RESOLVED** (CP-4; grounding wired via buildDecisionPassInput → createSnapshotDiscovery + VERIFIED_SERVICE_REGISTRY through the CP-3 grounding kernels; `discovered: []` is gone, so BUY is reachable; prices carry "provider_quote" provenance or stay null — no invented values; the "$1" was DEFAULT_BUDGET_LIMITS.maxExternalSpendUsd, a budget ceiling, and remains one) |
 | I4 | concurrent passes after dispatch | Investigate Now | **SHIPPED** as dispatch idempotency (stable identity + replay guards + reservation fencing, CP-2) |
 
 ### CP8 evidence
@@ -415,6 +415,79 @@ Existing suites migrated to the new gate input (`managementRequirements`,
 R3 A5 probe that a fake-satisfied row is refused by BOTH the proof gap and
 the missing resolution). Post-CP-3: **459 pass / 0 fail** (was 450 + these 9),
 both typecheck programs clean.
+
+**A7 + I2 + I3 — SHIPPED together (CP-4; approved as "runtime wiring of the
+already-accepted architecture").** The root cause behind all three was one fact:
+`runDecisionPass` ran inside `runManagementPass`, an internalMutation, and a
+mutation cannot make a model call. That is why capabilities were hardcoded
+(`["growth_launch_operations"]`, A7), grounding was empty (`discovered: []`,
+I3), and the recommendation seam was a module-global `_recommender` that was
+null in production — so `parseManagerialRecommendation(null)` typed-refused
+every pass and production could never authorize a dispatch (I2).
+
+The fix is the decision analogue of the proven interpretation chain, reusing the
+existing architecture end to end (no new subsystems):
+
+- **begin** — the `runDecisionPass` port (convex/management.ts) now RESERVES the
+  pass: writes the `management.pendingDecision` cursor + cumulative
+  `decisionAttempts[req]` ceiling (`BEGIN_DECISION_CEILING = 3`, persisted per
+  requirement across revisions), schedules `proposeDecision`, and returns null.
+  Deterministic requestId/decisionId
+  (`decide_<obj>_<req>_r<rev>_a<n>` / `dec_<obj>_<req>_r<rev>_a<n>`) make a
+  replayed wake a no-op. New cursor fields added to the objectiveRecord
+  validator.
+- **propose** — `proposeDecision` (convex/objectiveRunner.ts, "use node") is the
+  ONLY model step and may discover/propose/recommend ONLY: two bounded
+  schema-constrained calls (`proposeStrategyWithModel`, `recommendWithModel`),
+  plus a NON-authoritative kernel preview whose sole purpose is to surface the
+  eligible option ids to the recommender and capture its RAW output. Outage or
+  stale context forwards null payloads — fail-closed through the same parsers.
+  It returns raw data; it grants nothing.
+- **apply** — `applyDecision` (internalMutation) is the SOLE authorizer. It
+  rejects stale/foreign output (requestId must match the reservation; contract
+  revision must not have moved), RELOADS fresh truth via one bundled query
+  (`internal.internal.workforce.readDecisionContext` — the same query the action
+  previews against, so the two cannot drift), re-runs the pure kernel
+  `runManagerialDecisionPass` with `recommend: async () => rawRecommendation`
+  (so `parseManagerialRecommendation` revalidates the stored selection against
+  FRESHLY-recomputed eligible ids and stage-4 reauthorization decides from
+  current truth), persists through the shared `persistDecisionRow` writer,
+  clears the reservation, appends the deduped `decision_applied` wake
+  (`planWakeForDecision`, new WakeReason mirrored in vWakeReason) and schedules
+  the next pass, where the reducer routes to idempotent dispatch. Attempts reset
+  only on a successful authorization.
+
+Shared determinism lives in `lib/management/decisionPass.ts`
+(`buildDecisionPassInput`): capabilities come from the model-proposed
+`desiredCapabilities` via `parseStrategyProposal` → `validateCapabilityKeys`
+(A7: the launch literal and hardcoded permission/resource-class arrays are gone
+from convex/management.ts); resource classes derive from
+`requiredResourceClassesFor` + `controlledResourceClassesFor(CURRENT_RESOURCE_INVENTORY)`;
+external grounding flows through the CP-3 kernels over
+`createSnapshotDiscovery()` + `VERIFIED_SERVICE_REGISTRY` (zero-network — never
+the onchainos binary), so I3's `discovered: []` is gone and a genuine BUY is
+reachable with `provider_quote`-provenanced prices or honest nulls.
+`setManagementRecommender`/`_recommender` deleted (zero external callers; I2).
+One bug found and fixed by the new tests: validating the model-proposed external
+class against the capability-derived `RESOURCE_CLASS_VALUES` would have kept
+every external class unreachable (no controlled capability requires one) —
+`buildDecisionPassInput` now validates against the full catalog union
+(`RESOURCE_CLASSES`). The "$1" in the I3 finding is confirmed as
+`DEFAULT_BUDGET_LIMITS.maxExternalSpendUsd`, a budget ceiling, not a price
+literal; unchanged.
+
+Proofs: `tests/managementDecisionPass.test.ts` (13 — builder determinism, A7
+capability governance incl. "no launch literal leaks into a non-launch
+decision", I3 MAKE/BUY grounding + provenance + no invented prices, spend
+authority fail-closed, decisionId passthrough, wake determinism/dedupe) and
+`tests/managementDecisionChain.test.ts` (10 — begin reserves/idempotent/ceiling;
+apply happy path persists decision row + bound requirement + wake + event;
+stale requestId refused without effect; stale revision refused and reservation
+cleared; garbage proposal fail-closed; hallucinated option typed-refused with
+attempts retained; replay after apply is a no-op with exactly one wake row;
+non-launch objective authorizes with zero "growth_launch_operations" anywhere in
+persisted rows). Post-CP-4: **482 pass / 0 fail** (was 459 + these 23), both
+typecheck programs clean.
 
 ## R3 tomorrow morning
 

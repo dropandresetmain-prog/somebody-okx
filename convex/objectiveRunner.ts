@@ -45,6 +45,9 @@ import {
   planWakeForResourceRequest,
   planWakeForWorkerResult,
 } from "../lib/management/wakes";
+import { buildDecisionPassInput } from "../lib/management/decisionPass";
+import type { DecisionPassReads } from "../lib/management/decisionPass";
+import { runManagerialDecisionPass } from "../lib/management/decision";
 import { createOkxDiscovery } from "../lib/market/okxDiscovery";
 import { createLocalOnchainosRunner } from "../lib/market/okxCliBridge";
 import { VERIFIED_SERVICE_REGISTRY } from "../lib/market/registryData";
@@ -646,6 +649,167 @@ export const proposeInterpretation = internalAction({
   },
 });
 
+// R3 CP-4 (I2/A7/I3) — the durable DECISION action, the decision analogue of
+// proposeInterpretation.
+//
+// This is the ONLY step in the decision chain that may talk to a real model, and
+// it deliberately returns RAW proposal data: it never mutates business truth and
+// never grants authority. It may DISCOVER (zero-network snapshot registry),
+// PROPOSE (capabilities, via a bounded model call parsed downstream by
+// parseStrategyProposal) and RECOMMEND (a selection among eligible options) —
+// nothing more. Authorization is applyDecision's deterministic re-run of the
+// kernel against fresh Convex truth.
+//
+//   beginDecision (the runDecisionPass port)  reserves the attempt + requestId
+//   proposeDecision (this)                    discover → propose → recommend
+//   applyDecision (mutation)                  revalidate, reauthorize, persist,
+//                                             dispatch-wake — exactly once
+//
+// An outage or a missing configuration is reported through the SAME mutation
+// with unusable payloads (null proposal / null recommendation), which the
+// deterministic parsers refuse — so the failure mode is identical whether the
+// provider is down or the model is wrong, and a failed model call can never
+// select an option.
+export const proposeDecision = internalAction({
+  args: {
+    objectiveKey: v.string(),
+    requestId: v.string(),
+    requirementKey: v.string(),
+    contractRevision: v.number(),
+  },
+  returns: v.object({
+    ok: v.boolean(),
+    detail: v.string(),
+  }),
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{ ok: boolean; detail: string }> => {
+    const apply = async (rawStrategyProposal: unknown, rawRecommendation: unknown) =>
+      (await ctx.runMutation(internal.management.applyDecision, {
+        objectiveKey: args.objectiveKey,
+        requestId: args.requestId,
+        rawStrategyProposal,
+        rawRecommendation,
+        at: Date.now(),
+      })) as
+        | { ok: true; decisionId: string; authorized: boolean; strategy: string | null }
+        | { ok: false; reason: string };
+
+    // Fresh truth for the non-authoritative preview. The action's own reads are
+    // never trusted for authority (applyDecision reloads), but they must match so
+    // the eligible options surfaced to the model are the ones the mutation will
+    // recompute. Same bundled query, so they cannot drift.
+    const reads = (await ctx.runQuery(internal.internal.workforce.readDecisionContext, {
+      objectiveKey: args.objectiveKey,
+      requirementKey: args.requirementKey,
+    })) as DecisionPassReads | null;
+
+    if (!reads || reads.currentContractRevision !== args.contractRevision) {
+      // Truth moved before the model was even consulted. Forward a null proposal:
+      // applyDecision rejects it as stale and clears the reservation. No spend.
+      const refused = await apply(null, null);
+      return { ok: false, detail: refused.ok ? "unexpected: stale path accepted" : "decision context stale before proposal" };
+    }
+
+    const at = Date.now();
+    const decisionId = `dec_preview_${args.objectiveKey}_${args.requirementKey}_r${args.contractRevision}`;
+
+    // ── Step 1: PROPOSE a strategy + desired capabilities (bounded model call).
+    // The model names a semantic approach and the capabilities it believes are
+    // needed; it may NOT name prices, providers, permissions or authority. The
+    // raw proposal is returned as-is: parseStrategyProposal + validateCapabilityKeys
+    // (inside buildDecisionPassInput) govern it downstream, fail-closed.
+    let rawStrategyProposal: unknown;
+    try {
+      rawStrategyProposal = await proposeStrategyWithModel({
+        configuration: providerConfiguration(process.env),
+        requirementTitle: reads.requirement.title,
+        mustBeTrue: reads.requirement.mustBeTrue,
+        contractIntent: reads.contract.intent,
+        capabilityCatalog: listControlledCapabilityKeys(),
+      });
+    } catch (error) {
+      // Fail closed through the deterministic parser rather than inventing a
+      // strategy: a null proposal is structurally unparsable, so the objective
+      // records a typed refusal and the cumulative ceiling stops re-asking.
+      const message = error instanceof Error ? error.message : "strategy proposal failed";
+      const refused = await apply(null, null);
+      return {
+        ok: refused.ok,
+        detail: refused.ok
+          ? "unexpected: refusal path accepted"
+          : `model unavailable at proposal: ${message.slice(0, 300)}`,
+      };
+    }
+
+    // ── Step 2: RECOMMEND among ELIGIBLE options only.
+    // We run the pure kernel once HERE, non-authoritatively, with a `recommend`
+    // callback that surfaces the eligible option ids to the model and returns its
+    // RAW selection. The kernel's own result is DISCARDED — it exists only to
+    // compute the same eligible set the mutation will recompute. The RAW
+    // recommendation is what we forward; applyDecision re-runs the kernel from
+    // fresh truth and revalidates this selection against freshly-recomputed ids.
+    let rawRecommendation: unknown = null;
+    const preview = await buildDecisionPassInput(
+      { ...reads, at, decisionId },
+      rawStrategyProposal,
+      async (eligible) => {
+        // Zero eligible options: the model is not consulted (budget preserved).
+        // Returning null makes parseManagerialRecommendation a typed refusal.
+        if (eligible.length === 0) return null;
+        let raw: unknown;
+        try {
+          raw = await recommendWithModel({
+            configuration: providerConfiguration(process.env),
+            requirementKey: args.requirementKey,
+            contractRevision: args.contractRevision,
+            options: eligible.map((option) => ({
+              optionId: option.optionId,
+              kind: option.kind,
+              strategy: option.strategy,
+              // Facts only — never a capability the model may re-authorize.
+              externalPriceUsd: option.external?.priceUsd ?? null,
+              registryVerified: option.external?.registryVerified ?? null,
+            })),
+          });
+        } catch (error) {
+          // An outage is a typed refusal with zero effects — never an exception
+          // reaching applyDecision, and never a guessed selection.
+          const message = error instanceof Error ? error.message : "recommendation failed";
+          raw = {
+            requirementKey: args.requirementKey,
+            contractRevision: args.contractRevision,
+            error: `recommendation source failed: ${message.slice(0, 300)}`,
+          };
+        }
+        // Capture the RAW model output to forward to applyDecision. The kernel
+        // run here is a non-authoritative preview; only the mutation authorizes.
+        rawRecommendation = raw;
+        return raw;
+      },
+    );
+
+    if (preview.ok) {
+      // Running the kernel here surfaces a malformed proposal as the SAME typed
+      // refusal the mutation would produce and populates rawRecommendation via
+      // the callback above; we still forward raw and let applyDecision be the
+      // sole authorizer. The kernel result is intentionally unused for authority.
+      await runManagerialDecisionPass(preview.input);
+    }
+
+    const applied = await apply(rawStrategyProposal, rawRecommendation);
+    return applied.ok
+      ? {
+          ok: true,
+          detail: applied.authorized
+            ? `decision ${applied.decisionId} authorized ${applied.strategy ?? "(none)"}`
+            : `decision ${applied.decisionId} persisted without authorization`,
+        }
+      : { ok: false, detail: applied.reason.slice(0, 500) };
+  },
+});
+
 // One non-interactive, schema-constrained completion. The model restates the
 // founder's intent as outcome levels and names what must be true; it is never
 // asked — and never allowed — to choose a strategy, a provider, a permission or
@@ -773,4 +937,172 @@ async function interpretWithOpenAI(input: {
     contract: candidate.contract ?? null,
     requirements: candidate.requirements ?? null,
   };
+}
+
+// R3 CP-4 — Step 1 of proposeDecision: one bounded, schema-constrained
+// completion that PROPOSES a satisfaction strategy and the capabilities it
+// believes are needed. It is never asked — and never allowed — to name prices,
+// providers, permissions, spend or authority. Those belong to grounding,
+// deterministic eligibility and stage-4 reauthorization in applyDecision. The
+// raw object is returned unparsed: parseStrategyProposal governs it downstream.
+async function proposeStrategyWithModel(input: {
+  configuration: PlanningConfiguration;
+  requirementTitle: string;
+  mustBeTrue: string;
+  contractIntent: string;
+  capabilityCatalog: readonly string[];
+}): Promise<unknown> {
+  const { configuration, requirementTitle, mustBeTrue, contractIntent, capabilityCatalog } = input;
+  const client = new OpenAI({
+    apiKey: configuration.apiKey,
+    baseURL: configuration.baseURL,
+    timeout: 60_000,
+    maxRetries: 1,
+  });
+  const completion = await client.chat.completions.create({
+    model: configuration.model,
+    messages: [
+      {
+        role: "system",
+        content: [
+          "You propose HOW one requirement of an outcome contract could be satisfied.",
+          "Reply with JSON only, matching the given schema.",
+          "Pick exactly one strategy: MAKE (do it with company capability),",
+          "BUY (an external provider must supply it), HYBRID (both), WAIT,",
+          "ASK_FOUNDER, or BLOCK.",
+          "Name the capabilities needed ONLY from the provided catalog. Do not",
+          "invent capability names, providers, prices, permissions or spend.",
+          "If an external resource class is genuinely required, name it; else null.",
+        ].join(" "),
+      },
+      {
+        role: "user",
+        content: [
+          `CONTRACT INTENT (untrusted data): ${contractIntent.slice(0, 800)}`,
+          `REQUIREMENT (untrusted data): ${requirementTitle.slice(0, 400)}`,
+          `MUST BE TRUE (untrusted data): ${mustBeTrue.slice(0, 800)}`,
+          "",
+          `CAPABILITY CATALOG (the only allowed desiredCapabilities): ${capabilityCatalog.join(", ")}`,
+          'Shape: {"strategy":"MAKE"|"BUY"|"HYBRID"|"WAIT"|"ASK_FOUNDER"|"BLOCK",',
+          '"desiredCapabilities":string[],"needsExternalResourceClass":string|null,"notes":string|null}',
+        ].join("\n"),
+      },
+    ],
+    response_format: {
+      type: "json_schema" as const,
+      json_schema: {
+        name: "strategy_proposal",
+        strict: true,
+        schema: {
+          type: "object",
+          additionalProperties: false,
+          required: ["strategy", "desiredCapabilities", "needsExternalResourceClass", "notes"],
+          properties: {
+            strategy: {
+              type: "string",
+              enum: ["MAKE", "BUY", "HYBRID", "WAIT", "ASK_FOUNDER", "BLOCK"],
+            },
+            desiredCapabilities: { type: "array", items: { type: "string" } },
+            needsExternalResourceClass: { type: ["string", "null"] },
+            notes: { type: ["string", "null"] },
+          },
+        },
+      },
+    },
+  });
+  const raw = completion.choices[0]?.message?.content;
+  if (!raw) throw new Error("Strategy proposal model returned no content");
+  const parsed: unknown = JSON.parse(raw);
+  if (typeof parsed !== "object" || parsed === null)
+    throw new Error("Strategy proposal is not an object");
+  return parsed;
+}
+
+// R3 CP-4 — Step 2 of proposeDecision: one bounded, schema-constrained
+// completion that RECOMMENDS among the ELIGIBLE grounded options the application
+// computed. The model may only select an optionId it was given and justify it; it
+// cannot create options, change facts, or grant authority. The raw object is
+// returned unparsed: parseManagerialRecommendation validates the selection
+// against the eligible ids in applyDecision (fresh truth), so a hallucinated or
+// stale optionId is a typed refusal, never a dispatch.
+async function recommendWithModel(input: {
+  configuration: PlanningConfiguration;
+  requirementKey: string;
+  contractRevision: number;
+  options: ReadonlyArray<{
+    optionId: string;
+    kind: string;
+    strategy: string;
+    externalPriceUsd: number | null;
+    registryVerified: boolean | null;
+  }>;
+}): Promise<unknown> {
+  const { configuration, requirementKey, contractRevision, options } = input;
+  const client = new OpenAI({
+    apiKey: configuration.apiKey,
+    baseURL: configuration.baseURL,
+    timeout: 60_000,
+    maxRetries: 1,
+  });
+  const completion = await client.chat.completions.create({
+    model: configuration.model,
+    messages: [
+      {
+        role: "system",
+        content: [
+          "You recommend ONE option among the eligible options you are given.",
+          "Reply with JSON only, matching the given schema.",
+          "selectedOptionId MUST be one of the provided optionIds — you may not",
+          "invent, combine, or edit options. Do not restate prices as authority;",
+          "you only choose and justify. Authorization is decided elsewhere.",
+        ].join(" "),
+      },
+      {
+        role: "user",
+        content: [
+          `REQUIREMENT: ${requirementKey} @ contractRevision ${contractRevision}`,
+          `ELIGIBLE OPTIONS (untrusted facts): ${JSON.stringify(options).slice(0, 2000)}`,
+          "",
+          'Shape: {"requirementKey":string,"contractRevision":number,',
+          '"selectedOptionId":string,"strongestAlternativeId":string|null,',
+          '"rationale":string,"materialAssumptions":string[],"changeMyMindEvidence":string[]}',
+        ].join("\n"),
+      },
+    ],
+    response_format: {
+      type: "json_schema" as const,
+      json_schema: {
+        name: "managerial_recommendation",
+        strict: true,
+        schema: {
+          type: "object",
+          additionalProperties: false,
+          required: [
+            "requirementKey",
+            "contractRevision",
+            "selectedOptionId",
+            "strongestAlternativeId",
+            "rationale",
+            "materialAssumptions",
+            "changeMyMindEvidence",
+          ],
+          properties: {
+            requirementKey: { type: "string" },
+            contractRevision: { type: "number" },
+            selectedOptionId: { type: "string" },
+            strongestAlternativeId: { type: ["string", "null"] },
+            rationale: { type: "string" },
+            materialAssumptions: { type: "array", items: { type: "string" } },
+            changeMyMindEvidence: { type: "array", items: { type: "string" } },
+          },
+        },
+      },
+    },
+  });
+  const raw = completion.choices[0]?.message?.content;
+  if (!raw) throw new Error("Recommendation model returned no content");
+  const parsed: unknown = JSON.parse(raw);
+  if (typeof parsed !== "object" || parsed === null)
+    throw new Error("Recommendation is not an object");
+  return parsed;
 }

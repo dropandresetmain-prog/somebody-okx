@@ -189,6 +189,30 @@ export const objectiveRecord = v.object({
       interpretationRequestId: v.optional(v.union(v.string(), v.null())),
       interpretationAttempts: v.optional(v.number()),
       interpretationDetail: v.optional(v.union(v.string(), v.null())),
+      // R3 CP-4 (I2/A7/I3) — the durable DECISION cursor. The decision pass is
+      // split begin → propose(action) → apply(mutation) exactly like
+      // interpretation, because a mutation cannot make the production model call.
+      // `pendingDecision` is the reservation: while it is non-null an action is in
+      // flight for exactly one (requirement, contractRevision) pass, so a replayed
+      // wake can never schedule a second model call, and applyDecision can tell a
+      // matching apply from a stale one. Cleared (set null) when the pass reaches
+      // a terminal outcome — authorized, refused, or approval-required.
+      pendingDecision: v.optional(
+        v.union(
+          v.object({
+            requestId: v.string(),
+            requirementKey: v.string(),
+            contractRevision: v.number(),
+            attempts: v.number(),
+          }),
+          v.null(),
+        ),
+      ),
+      // Per-requirement decision attempts, persisted and never reset, so a model
+      // that keeps producing unusable output cannot be re-scheduled forever. This
+      // is the decision analogue of `interpretationAttempts`; it survives the
+      // clearing of `pendingDecision` on each terminal apply.
+      decisionAttempts: v.optional(v.record(v.string(), v.number())),
     }),
   ),
 });

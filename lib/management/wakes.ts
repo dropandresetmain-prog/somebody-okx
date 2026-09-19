@@ -112,6 +112,46 @@ export function planWakeForInterpretation(input: {
   };
 }
 
+// R3 CP-4 — DECISION-APPLIED WAKE.
+//
+// The decision pass is split begin → propose(action) → apply(mutation) exactly
+// like interpretation, so an authorized decision no longer lives inside the
+// same synchronous pass that produced it: applyDecision persists the authorized
+// decision row and must WAKE the management loop to dispatch on it. Identity is
+// the DECISION, not the moment: replaying applyDecision for the same decision
+// rebuilds a byte-identical eventId/dedupeKey, so appendWakeEvent's by_dedupe
+// collapses it and the loop dispatches once. The wake is a POINTER to the
+// decision row; it never carries the payload and never grants authority — the
+// reducer re-reads business state (latestAuthorizedDecision) every pass.
+export function planWakeForDecision(input: {
+  objectiveKey: string;
+  managerDecisionId: string;
+  authorized: boolean;
+  at: number;
+}): ResourceRequestWakePlan {
+  const reason: WakeReason = "decision_applied";
+  const dedupeKey = `decision:${input.objectiveKey}:${input.managerDecisionId}`;
+  const eventId = `wake_dc_${hash24(dedupeKey)}`;
+  return {
+    eventId,
+    dedupeKey,
+    reason,
+    event: {
+      eventId,
+      objectiveKey: input.objectiveKey,
+      reason,
+      // Pointer to the decision row the next pass reloads — never the payload.
+      refKind: "objective",
+      refId: input.managerDecisionId,
+      summary: input.authorized
+        ? `managerial decision ${input.managerDecisionId} authorized and persisted; dispatch may proceed`
+        : `managerial decision ${input.managerDecisionId} persisted without authorization`,
+      at: input.at,
+      consumedAt: null,
+    },
+  };
+}
+
 // A dispatch that could not be honoured needs no new machinery: the reducer
 // re-reads business state every pass, `settle` counts a pass that produced
 // nothing as NO progress, and the persisted no-progress ceiling escalates the
