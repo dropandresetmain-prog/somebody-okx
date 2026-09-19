@@ -8,7 +8,8 @@
 // happens via a proof-bearing wake → satisfaction → proposal → gate.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildManagementGraph, type ManagementPorts } from "../lib/management/graph";
+import { buildManagementGraph, TIMER_DELAYS_MS, type ManagementPorts } from "../lib/management/graph";
+import { deriveAssignmentId } from "../lib/management/dispatch";
 import { runManagerialDecisionPass, type DecisionPassResult } from "../lib/management/decision";
 import { attemptRequirementSatisfaction, type RequirementEvent } from "../lib/management/requirements";
 import { evaluateCompletionGate } from "../lib/management/completion";
@@ -16,6 +17,7 @@ import { createBudget, checkBudget, trySpendDecision, recordProgress } from "../
 import { bindProofParams, buildOutcomeContract } from "../lib/management/contract";
 import type { ReducerFacts } from "../lib/management/reducer";
 import type {
+  Assignment,
   CompletionVerdict,
   GraphState,
   GroundedOption,
@@ -85,6 +87,11 @@ type World = {
   pendingApproval: { question: string } | null;
   completionVerdict: CompletionVerdict | null;
   modelCallsSpent: number;
+  // R3 A2/A3 observation: effects the dispatch port created, timers the settle
+  // node armed, and the per-pass progress verdicts.
+  assignments: Assignment[];
+  timers: { timerKey: string; delayMs: number }[];
+  progress: boolean[];
 };
 
 function freshWorld(): World {
@@ -106,6 +113,9 @@ function freshWorld(): World {
     pendingApproval: null,
     completionVerdict: null,
     modelCallsSpent: 0,
+    assignments: [],
+    timers: [],
+    progress: [],
   };
 }
 
@@ -121,7 +131,7 @@ function makePorts(world: World): ManagementPorts {
       return world.groundedByReq;
     },
     async loadAssignments() {
-      return [];
+      return world.assignments.map((assignment) => structuredClone(assignment));
     },
     async loadIntents() {
       return [];
@@ -220,10 +230,11 @@ function makePorts(world: World): ManagementPorts {
         );
       }
     },
-    async recordSatisfactionAttempt() {
+    async recordSatisfactionAttempt(): Promise<boolean> {
       // routed satisfaction: the CALLER event decides; here CP4 test 2 drives
       // it explicitly via deliverVerified() below. The port exists so the
       // verify node has somewhere to route wake-borne evidence.
+      return false;
     },
     async proposeCompletion(proposal) {
       const satisfiedProofKeys = new Map<string, string[]>();
@@ -246,8 +257,55 @@ function makePorts(world: World): ManagementPorts {
       world.objectiveState = state;
       world.stateLog.push(state);
     },
-    async scheduleWake() {
-      // timeout wakes are the caller's scheduler in production; faked as no-op.
+    async scheduleTimer(_objectiveKey, _reason, delayMs, timerKey): Promise<boolean> {
+      // The fake scheduler records the arming; like production it refuses a
+      // zero delay, and like production it holds at most one outstanding timer
+      // per condition (the fake never consumes, so the second arming loses).
+      if (delayMs <= 0) throw new Error("timer delay must be non-zero");
+      if (world.timers.some((t) => t.timerKey === timerKey)) return false;
+      world.timers.push({ timerKey, delayMs });
+      return true;
+    },
+    async recordPassProgress(_objectiveKey, progressed) {
+      world.progress.push(progressed);
+    },
+    // R3 A2 — the fake dispatch honours the SAME contract as production: the
+    // effect identity is derived from the persisted authorized decision, and a
+    // replay lands on the existing row instead of minting a twin.
+    async dispatchRequirement(state, requirementKey, at): Promise<string | null> {
+      const decision = world.decisions.at(-1);
+      if (!decision || decision.authorization.kind !== "authorized") return null;
+      const assignmentId = deriveAssignmentId({
+        objectiveKey: state.objectiveKey,
+        requirementKey,
+        contractRevision: contract.revision,
+        decisionId: decision.decision.decisionId,
+      });
+      const existing = world.assignments.find((a) => a.assignmentId === assignmentId);
+      if (existing) return existing.assignmentId;
+      world.assignments.push({
+        assignmentId,
+        objectiveKey: state.objectiveKey,
+        requirementKey,
+        contractRevision: contract.revision,
+        decisionId: decision.decision.decisionId,
+        workerKey: "worker_fake",
+        kind: "internal_make",
+        state: "running",
+        attempt: 1,
+        runId: `run_${assignmentId}`,
+        workContract: {
+          assignment: "fake", idempotencyScope: assignmentId, workerKey: "worker_fake",
+          allowedToolIds: [], allowedCapabilityKeys: [], requiredSourceProofs: [],
+          maxExternalSpendUsd: 0, maxTokens: 100, maxDurationMs: 60_000,
+          deadlineAt: null, contractRevision: contract.revision,
+        } as never,
+        resultSummary: null,
+        idempotencyScope: assignmentId,
+        createdAt: at,
+        updatedAt: at,
+      });
+      return assignmentId;
     },
   };
   return ports;

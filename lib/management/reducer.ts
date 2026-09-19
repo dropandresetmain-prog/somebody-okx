@@ -20,6 +20,7 @@
 //  11. open requirements with executable paths → executing (decide next pass)
 
 import { openRequired } from "./requirements";
+import { strategyDelivery } from "./dispatch";
 import type {
   Assignment,
   BudgetVerdict,
@@ -53,6 +54,10 @@ export type ManagementAction =
   | { kind: "propose_completion" }
   | { kind: "decide_requirement"; requirementKey: string }
   | { kind: "dispatch"; requirementKey: string }
+  // R3 A2 — a run or provider result that has REACHED the application but has
+  // not been verified yet. Routing on this explicit action is what replaces the
+  // stale `lastNode === "decide"` test that made the verify node unreachable.
+  | { kind: "verify_requirement"; requirementKey: string }
   | { kind: "await_wake"; reason: string }
   | { kind: "hold"; state: ManagementState; reason: string };
 
@@ -64,6 +69,12 @@ export type ReducedState = {
 
 const ACTIVE_ASSIGNMENT_STATES = new Set(["dispatched", "running", "result_submitted"]);
 const OPEN_INTENT_STATES = new Set(["authorized", "handed_off", "awaiting_m3", "result_recorded"]);
+
+// Strategies that commit EXECUTION. WAIT / ASK_FOUNDER / BLOCK bind a strategy
+// too (that is how the engine records "we are deliberately not acting"), but
+// they have nothing to dispatch — treating them as dispatchable would be a way
+// to manufacture work out of a hold.
+const DISPATCHABLE_STRATEGIES = new Set(["MAKE", "BUY", "HYBRID"]);
 
 export function reduceManagementState(facts: ReducerFacts): ReducedState {
   const {
@@ -194,7 +205,76 @@ export function reduceManagementState(facts: ReducerFacts): ReducedState {
     };
   }
 
-  // 9. Work in flight — wake carries it forward, no new model invocations.
+  // 8b. R3 A2 — VERIFICATION TIME.
+  //
+  // A submitted worker result or a recorded provider result is DATA, not
+  // satisfaction (requirements.ts refuses `assignment_run_finished`; only an
+  // accepted, proof-bearing resolution satisfies). The engine must still RUN the
+  // verification step for those rows, and it must be reachable from business
+  // state — which is exactly what the graph's dead `verify` node needed.
+  const needsVerification = current.find((requirement) => {
+    if (requirement.state === "satisfied" || requirement.state === "superseded") return false;
+    const assignmentIn = assignments.filter(
+      (assignment) => assignment.requirementKey === requirement.requirementKey,
+    );
+    if (assignmentIn.some((assignment) => assignment.state === "result_submitted")) return true;
+    const intentsIn = intents.filter((intent) => intent.requirementKey === requirement.requirementKey);
+    return intentsIn.some((intent) => intent.state === "result_recorded");
+  });
+  if (needsVerification)
+    return {
+      state: "executing",
+      action: { kind: "verify_requirement", requirementKey: needsVerification.requirementKey },
+      detail: `${needsVerification.requirementKey} has an unverified result; verifying against current proof`,
+    };
+
+  // 9. R3 A2 — AUTHORIZED BUT NOT DELIVERED.
+  //
+  // A decision pass that authorizes a strategy BINDS it onto the requirement
+  // (decision.ts does that; nothing else may). Until CP8 nothing read that fact
+  // back, so the engine decided and then simply waited forever: the reducer had a
+  // `dispatch` action in its union that no rule ever returned, and
+  // reserveWorker/putAssignment/createIntentFromAuthorization/putIntent had zero
+  // production callers. An authorized plan that is never executed is a
+  // false-completion machine waiting to happen.
+  //
+  // The signal is therefore business state, not graph memory: a current-revision
+  // requirement that is still `active`, carries an executable strategy, and whose
+  // effect rows are MISSING. `strategyDelivery` says what missing means per
+  // strategy — MAKE needs an assignment, BUY needs an intent, HYBRID needs BOTH —
+  // so a half-delivered hybrid is still recognised as work to do rather than work
+  // in flight. That is a fact this reducer re-reads every pass, so a replayed wake
+  // recomputes the same conclusion and the dispatch itself is idempotent on stable
+  // identity (I4) rather than relying on this node having run exactly once.
+  const undelivered = [...current]
+    .filter(
+      (requirement) =>
+        requirement.state === "active" &&
+        DISPATCHABLE_STRATEGIES.has(requirement.strategy ?? "") &&
+        !strategyDelivery(requirement.strategy, {
+          assignmentStates: assignments
+            .filter((assignment) => assignment.requirementKey === requirement.requirementKey)
+            .map((assignment) => assignment.state),
+          intentStates: intents
+            .filter((intent) => intent.requirementKey === requirement.requirementKey)
+            .map((intent) => intent.state),
+        }).delivered,
+    )
+    // Same stable order the decision rule uses: required before supporting,
+    // then by key. Never insertion order, so a replay dispatches the same thing.
+    .sort(
+      (a, b) =>
+        (a.priority === b.priority ? 0 : a.priority === "required" ? -1 : 1) ||
+        a.requirementKey.localeCompare(b.requirementKey),
+    )[0];
+  if (undelivered)
+    return {
+      state: "executing",
+      action: { kind: "dispatch", requirementKey: undelivered.requirementKey },
+      detail: `authorized ${undelivered.strategy} for ${undelivered.requirementKey} is not fully delivered; dispatching`,
+    };
+
+  // 10. Work in flight — wake carries it forward, no new model invocations.
   const activeWork =
     assignments.some((assignment) => ACTIVE_ASSIGNMENT_STATES.has(assignment.state)) ||
     intents.some((intent) => OPEN_INTENT_STATES.has(intent.state));

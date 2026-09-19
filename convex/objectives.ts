@@ -25,7 +25,7 @@ import {
   query,
 } from "./_generated/server";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
-import { activityEvent, objectiveRecord } from "./objectiveValidators";
+import { activityEvent, objectiveRecord, workContract } from "./objectiveValidators";
 import {
   vEvidenceData,
   vFindingInput,
@@ -68,7 +68,10 @@ import type {
   ObjectiveRecord,
   PlannerProposal,
   ValidatedPlan,
+  WorkerRun,
+  WorkContract,
   WorkerSpec,
+  WorkItem,
 } from "../lib/workforce";
 import type { ResourceNeed } from "../lib/objective/resourceNeed";
 import type { SourcingDecisionRecord } from "../lib/objective/resourceNeed";
@@ -211,6 +214,16 @@ export const submitObjective = mutation({
     };
     await ctx.db.insert("objectives", { key, data: record });
     await appendEvent(ctx.db, key, "system", "Objective received.", now);
+    // R3 A1 — a submitted objective enters the MANAGEMENT engine, not only the
+    // M2 planner. Interpretation is the durable chain
+    //   beginInterpretation (reserve) → proposeInterpretation (model, "use node")
+    //   → applyInterpretation (persist contract + semantic requirements + wake).
+    // It never changes `state`, so the accepted M2 planning path keeps working on
+    // a "received" row; what it adds is the Outcome Contract the engine needs.
+    await ctx.scheduler.runAfter(0, internal.management.beginInterpretation, {
+      objectiveKey: key,
+      at: now,
+    });
     return { key };
   },
 });
@@ -725,15 +738,25 @@ export const readWorkerObservation = internalQuery({
       evidence,
       result: record.result,
     });
-    // Completion proof is CONTRACT-derived only. The M2 "growth extras" (a
-    // mandatory artifact bump + a mandatory resource-need, keyed off the
-    // update_company_artifact permission) were scenario choreography in the
-    // runtime; the generic engine expresses an artifact obligation as a
-    // company_artifact_version Requirement proof evaluated by the independent
-    // completion gate (lib/management/completion.ts), never as a permission
-    // branch here. This spine reports exactly the contract's source-proof and
-    // structured-result obligations.
     const unmet = [...check.unmet];
+    // M2-legacy obligation: growth contracts (those granted update_company_artifact)
+    // require an actual artifact version bump beyond the seed. This is the historical
+    // M2 completion rule, preserved behind the legacy boundary so M4-managed rows
+    // are evaluated by the independent gate, not this spine predicate.
+    const isM4Managed = (record as unknown as { management?: { contractId: string | null } }).management?.contractId != null;
+    if (!isM4Managed) {
+      const isGrowth = workItem.contract.allowedToolPermissions.includes(
+        "update_company_artifact",
+      );
+      if (isGrowth) {
+        const artifactChanged = (record.companyArtifacts ?? []).some(
+          (a) => a.provenanceRunId === args.runId && a.version > 1,
+        );
+        if (!artifactChanged) {
+          unmet.push("company_artifact: no version change by this run");
+        }
+      }
+    }
     return {
       assignment: workItem.contract.assignment,
       responsibility: workItem.contract.assignment,
@@ -981,11 +1004,29 @@ export const finishRun = internalMutation({
       result: record.result,
     });
 
-    // Completion is CONTRACT-proof-driven only. The M2 "growth extra" (a
-    // mandatory artifact bump keyed off the update_company_artifact permission)
-    // was scenario choreography; the generic engine expresses that obligation
-    // as a company_artifact_version Requirement proof checked by the
-    // independent completion gate, never as a permission branch in the spine.
+    // M2-legacy obligation: growth contracts (those granted update_company_artifact)
+    // require an actual artifact version bump beyond the seed. This is the historical
+    // M2 completion rule, preserved behind the legacy boundary so M4-managed rows
+    // are evaluated by the independent gate, not this spine predicate.
+    const isM4Managed = (record as unknown as { management?: { contractId: string | null } }).management?.contractId != null;
+    if (!isM4Managed) {
+      const isGrowthContract = workItem.contract.allowedToolPermissions.includes(
+        "update_company_artifact",
+      );
+      if (isGrowthContract) {
+        const artifacts = record.companyArtifacts ?? [];
+        const artifactChanged = artifacts.some(
+          (a) => a.provenanceRunId === args.runId && a.version > 1,
+        );
+        if (!artifactChanged) {
+          check.complete = false;
+          check.unmet = [
+            ...check.unmet,
+            "company_artifact: no version change by this run",
+          ];
+        }
+      }
+    }
 
     const buyPending = (record.resourceNeeds ?? []).some(
       (n) => n.status === "buy_pending",
@@ -1055,7 +1096,6 @@ export const finishRun = internalMutation({
     // the independent gate decides. M2-legacy rows (no contractId) keep the historical
     // spine state transition so canonicalM2 stays green, but the controlNote carries
     // the M4 truth: completion is proposed, not asserted by the spine.
-    const isM4Managed = management?.contractId != null;
     const recordState = check.complete
       ? isM4Managed
         ? "executing" // M4: awaiting the independent gate
@@ -1087,6 +1127,122 @@ export const finishRun = internalMutation({
       now,
     );
     return { completed: check.complete, unmet: check.unmet };
+  },
+});
+
+// ── R3 A2: a MANAGED run — the same bounded runtime, entered by the engine ──
+//
+// M4's dispatch must execute through the worker runtime that M1–M3 already
+// proved (lease, abort budget, fenced writes, expiry backstop, worker-result
+// wake). What it may NOT do is reuse `startRun`, whose preconditions belong to
+// the M2 planning path (`state === "ready_to_execute"`, random run id, UI
+// trigger). So this mutation owns the ONE thing the managed path needs: writing
+// the run row for an M4 assignment, idempotent on the run identity the
+// assignment derived from its authorization.
+//
+// Idempotency is structural, not hopeful: the run id is derived from the
+// assignment id, and a replay that finds that id already recorded returns
+// `started: false` without touching the aggregate. One authorization ⇒ one run.
+export const startManagedRun = internalMutation({
+  args: {
+    objectiveKey: v.string(),
+    assignmentId: v.string(),
+    runId: v.string(),
+    workerKey: v.string(),
+    title: v.string(),
+    contract: workContract,
+    at: v.number(),
+  },
+  returns: v.object({
+    started: v.boolean(),
+    reason: v.optional(v.string()),
+    replayed: v.optional(v.boolean()),
+  }),
+  handler: async (ctx, args): Promise<{ started: boolean; reason?: string; replayed?: boolean }> => {
+    const row = await ctx.db
+      .query("objectives")
+      .withIndex("by_key", (q) => q.eq("key", args.objectiveKey))
+      .unique();
+    if (!row) return { started: false, reason: "objective row missing" };
+    const record = (row as ObjectiveRow).data;
+
+    // The managed boundary: this seam exists for the M4 engine only. A row with
+    // no Outcome Contract is M2 history and stays on the M2 planning path.
+    const management = (record as unknown as { management?: { contractId?: string | null } }).management;
+    if (!management?.contractId)
+      return { started: false, reason: "objective is not M4-managed" };
+
+    const now = args.at;
+    // Replay: this exact run is already recorded → no second effect.
+    if (record.run && record.run.id === args.runId)
+      return { started: false, replayed: true, reason: `run ${args.runId} already recorded` };
+    // One live run per aggregate: a different run holding the lease is a
+    // DEFERRAL, never a takeover. The engine re-dispatches on that run's wake.
+    if (record.run && record.run.status === "running" && record.run.leaseUntil > now)
+      return { started: false, reason: `run ${record.run.id} still holds the lease` };
+
+    let selection: { model: string; reason: string };
+    try {
+      const configured = providerConfiguration(process.env);
+      selection = { model: configured.model, reason: configured.modelSelectionReason };
+    } catch (error) {
+      selection = {
+        model: "not configured",
+        reason: `live model is not configured (${error instanceof Error ? error.message : "unknown"}); the bounded runtime will refuse and the run fails closed`,
+      };
+    }
+
+    const run: WorkerRun = {
+      id: args.runId,
+      workItemId: `wi:${args.assignmentId}`,
+      status: "running",
+      startedAt: now,
+      leaseUntil: now + LEASE_MS,
+      // Deliberate model selection stays the runtime's own fail-closed decision;
+      // the run row records what it can honestly say NOW, so an unconfigured
+      // deployment reads as unconfigured rather than as a chosen model.
+      model: selection.model,
+      modelSelectionReason: selection.reason,
+      toolCalls: 0,
+      summary: "",
+    };
+    const workItem: WorkItem = {
+      id: run.workItemId,
+      objectiveKey: args.objectiveKey,
+      title: args.title,
+      assignment: args.contract.assignment,
+      workerKey: args.workerKey,
+      state: "running",
+      contract: args.contract,
+      runs: [run],
+    };
+    const updated: ObjectiveRecord = {
+      ...record,
+      state: "executing",
+      activity: `Managed assignment ${args.assignmentId} running as ${run.id}.`,
+      workItems: [workItem],
+      run,
+      updatedAt: now,
+    };
+    await ctx.db.patch(row._id, { data: updated });
+    await appendEvent(
+      ctx.db,
+      args.objectiveKey,
+      "agent",
+      `Managed run started for assignment ${args.assignmentId}: model ${run.model} (${run.modelSelectionReason})`,
+      now,
+    );
+    // The EXISTING bounded executor and the EXISTING expiry fence. Nothing new
+    // runs a worker, and nothing new terminates one.
+    await ctx.scheduler.runAfter(0, internal.objectiveRunner.executeWorker, {
+      objectiveKey: args.objectiveKey,
+      runId: run.id,
+    });
+    await ctx.scheduler.runAfter(LEASE_MS, internal.objectives.expireRun, {
+      objectiveKey: args.objectiveKey,
+      runId: run.id,
+    });
+    return { started: true };
   },
 });
 

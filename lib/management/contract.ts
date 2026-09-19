@@ -112,6 +112,57 @@ const PROOF_KINDS = [
   "founder_confirmation",
 ] as const;
 
+// ── Semantic requirements: what must be true, before how it will be satisfied ─
+
+// R3 A1 — a Requirement MUST be creatable without a satisfaction strategy.
+//
+// The interpretation step knows WHAT the founder needs; it does not yet know
+// whether Somebody will make it, buy it, or wait. Attaching proof obligations at
+// interpretation time would have to invent a strategy to choose them, which is
+// exactly the "model decides authority" failure M4 exists to prevent — and it is
+// why an Objective could never enter the engine at all before CP8: the only
+// requirement builder demanded an attachable strategy proof.
+//
+// So the shape is: semantic Requirement (proofs: [], strategy: null, state
+// "active") → grounded decision binds a strategy → the authorized strategy
+// attaches its governed proofs → strategy-specific proof params bind at
+// execution time. A proof-less requirement can NEVER be satisfied and can NEVER
+// pass the completion gate (enforced in requirements.ts and completion.ts, and
+// proved by tests there) — "not yet resolvable" is not "free to complete".
+export function buildSemanticRequirement(input: {
+  objectiveKey: string;
+  contract: OutcomeContract;
+  proposed: ParsedRequirementProposal;
+  at: number;
+}): { requirement: Requirement } | { errors: string[] } {
+  const errors: string[] = [];
+  const { proposed, contract } = input;
+  if (!ID_PATTERN.test(proposed.requirementKey))
+    errors.push(`requirementKey ${proposed.requirementKey} not bounded`);
+  if (errors.length) return { errors };
+  return {
+    requirement: {
+      requirementKey: proposed.requirementKey,
+      objectiveKey: input.objectiveKey,
+      contractId: contract.contractId,
+      contractRevision: contract.revision,
+      priority: proposed.priority,
+      title: proposed.title,
+      mustBeTrue: proposed.mustBeTrue,
+      scope: proposed.scope,
+      proofs: [],
+      state: "active",
+      strategy: null,
+      resolution: null,
+      blockedReason: null,
+      waiver: null,
+      revision: 1,
+      createdAt: input.at,
+      updatedAt: input.at,
+    },
+  };
+}
+
 export function buildRequirement(
   input: RequirementBuildInput,
   strategy: SatisfactionStrategy | null,
@@ -127,7 +178,6 @@ export function buildRequirement(
   if (!proofs.length)
     errors.push(`requirement ${proposed.requirementKey} has no attachable governed proof method`);
   if (errors.length) return { errors };
-
   return {
     requirement: {
       requirementKey: proposed.requirementKey,

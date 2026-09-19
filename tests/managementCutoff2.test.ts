@@ -413,6 +413,9 @@ function graphWorld(options: { requirement?: Requirement; budgetExhausted?: bool
     wakes: [] as WakeEvent[],
     states: [] as ManagementState[],
     decisionCalls: 0,
+    timers: [] as string[],
+    progress: [] as boolean[],
+    dispatchCalls: 0,
   };
   const ports: ManagementPorts = {
     async loadContract() { return { contract, currentContractRevision: 1 }; },
@@ -432,10 +435,22 @@ function graphWorld(options: { requirement?: Requirement; budgetExhausted?: bool
     async spendDecisionCall() { world.decisionCalls += 1; },
     async runDecisionPass() { return null; },
     async persistDecision() {},
-    async recordSatisfactionAttempt() {},
+    async recordSatisfactionAttempt(): Promise<boolean> {
+      return false;
+    },
     async proposeCompletion() { throw new Error("propose must not be reached in these passes"); },
     async writeObjectiveState(_k, state) { world.states.push(state); },
-    async scheduleWake() {},
+    async scheduleTimer(_k, _reason, delayMs, timerKey) {
+      if (delayMs <= 0) throw new Error("timer delay must be non-zero");
+      if (world.timers.includes(timerKey)) return false;
+      world.timers.push(timerKey);
+      return true;
+    },
+    async recordPassProgress(_k, progressed) { world.progress.push(progressed); },
+    async dispatchRequirement(): Promise<string | null> {
+      world.dispatchCalls += 1;
+      return null;
+    },
   };
   return { world, ports };
 }

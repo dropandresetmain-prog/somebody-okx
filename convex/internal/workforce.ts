@@ -27,6 +27,7 @@ import {
   tryIntentRetry,
   tryCommitSpend,
   trySpendModelCall,
+  recordProgress,
 } from "../../lib/management/budget";
 import type { WorkerRecord, ObjectiveBudget, WakeEvent } from "../../lib/management/types";
 
@@ -555,6 +556,145 @@ export const applyBudgetSpend = internalMutation({
     // Write back the mutated budget
     await ctx.db.patch(row._id, { data: result.budget });
     return { ok: true, budget: result.budget };
+  },
+});
+
+// R3 A3 — persisted no-progress accounting for ONE completed management pass.
+// The graph decides `progressed` from facts (material wake / authorization bound
+// / effect created / resolution accepted); this mutation only applies the pure
+// kernel's accounting so the FINITE ceiling is reachable from storage. Without
+// it, `maxNoProgressCycles` could never trigger and a self-rescheduling loop
+// would run forever. Idempotent-init: a managed objective always has a budget
+// row by the time a pass settles, but a missing row must not throw.
+export const applyPassProgress = internalMutation({
+  args: {
+    objectiveKey: v.string(),
+    progressed: v.boolean(),
+    at: v.number(),
+  },
+  returns: vObjectiveBudget,
+  handler: async (ctx, args): Promise<ObjectiveBudget> => {
+    const row = await ctx.db
+      .query("objectiveBudgets")
+      .withIndex("by_objectiveKey", (q) => q.eq("objectiveKey", args.objectiveKey))
+      .unique();
+
+    const budget = row
+      ? (row as BudgetRow).data
+      : createBudget(args.objectiveKey, args.at);
+    const next = recordProgress(budget, args.progressed, args.at);
+
+    if (row) await ctx.db.patch(row._id, { data: next });
+    else
+      await ctx.db.insert("objectiveBudgets", {
+        objectiveKey: args.objectiveKey,
+        data: next,
+      });
+    return next;
+  },
+});
+
+// ── Dispatch reads (R3 A2) ──────────────────────────────────────────────────
+//
+// The dispatcher must be able to ask "does this logical effect already exist?"
+// BEFORE it writes, because the upserts below REPLACE a row — which is correct
+// for an identical replay and wrong for a row that has already moved on (an
+// intent that reached `handed_off`, or an assignment already `running`, must
+// never be reset to its creation state by a redelivered wake).
+
+type AssignmentRow = { _id: Id<"assignments">; assignmentId: string; objectiveKey: string; data: unknown };
+type IntentRow = { _id: Id<"executionIntents">; intentId: string; objectiveKey: string; idempotencyKey: string; data: unknown };
+
+export const findAssignment = internalQuery({
+  args: { objectiveKey: v.string(), assignmentId: v.string() },
+  returns: v.any(),
+  handler: async (ctx, args): Promise<unknown> => {
+    const row = await ctx.db
+      .query("assignments")
+      .withIndex("by_assignmentId", (q) => q.eq("assignmentId", args.assignmentId))
+      .unique();
+    if (!row) return null;
+    const typed = row as AssignmentRow;
+    // Identity is objective-scoped: a row from another objective is a collision,
+    // not a match.
+    if (typed.objectiveKey !== args.objectiveKey) return null;
+    return typed.data;
+  },
+});
+
+export const findIntent = internalQuery({
+  args: { objectiveKey: v.string(), intentId: v.string() },
+  returns: v.any(),
+  handler: async (ctx, args): Promise<unknown> => {
+    const row = await ctx.db
+      .query("executionIntents")
+      .withIndex("by_intentId", (q) => q.eq("intentId", args.intentId))
+      .unique();
+    if (!row) return null;
+    const typed = row as IntentRow;
+    if (typed.objectiveKey !== args.objectiveKey) return null;
+    return typed.data;
+  },
+});
+
+// The authorization a dispatch is allowed to act on: the newest AUTHORIZED
+// decision for this requirement at this revision. Read-only — the dispatcher
+// never re-decides, and a decision from another revision is not a licence.
+export const latestAuthorizedDecision = internalQuery({
+  args: {
+    objectiveKey: v.string(),
+    requirementKey: v.string(),
+    contractRevision: v.number(),
+  },
+  returns: v.any(),
+  handler: async (ctx, args): Promise<unknown> => {
+    const rows = await ctx.db
+      .query("managerialDecisions")
+      .withIndex("by_objectiveKey", (q) => q.eq("objectiveKey", args.objectiveKey))
+      .collect();
+    const matching = rows
+      .map((row) => (row as { data: AnyDecisionData }).data)
+      .filter(
+        (data) =>
+          data.requirementKey === args.requirementKey &&
+          data.contractRevision === args.contractRevision &&
+          data.kind === "satisfaction_strategy" &&
+          (data.authorization as { kind?: string } | undefined)?.kind === "authorized",
+      )
+      .sort((a, b) => b.at - a.at || String(b.decisionId).localeCompare(String(a.decisionId)));
+    return matching[0] ?? null;
+  },
+});
+
+type AnyDecisionData = {
+  requirementKey: string;
+  contractRevision: number;
+  kind: string;
+  authorization: unknown;
+  at: number;
+  decisionId: string;
+};
+
+// ── Timer bookkeeping (R3 A3) ───────────────────────────────────────────────
+//
+// "At most one outstanding timer per logical condition" is a storage fact, so
+// the storage layer answers it. A timer wake is any wake row whose dedupeKey
+// belongs to `timerKey`; OUTSTANDING means not yet consumed by a pass.
+
+export const timerState = internalQuery({
+  args: { objectiveKey: v.string(), timerKey: v.string() },
+  returns: v.object({ outstanding: v.boolean(), armed: v.number() }),
+  handler: async (ctx, args): Promise<{ outstanding: boolean; armed: number }> => {
+    const rows = await ctx.db
+      .query("wakeEvents")
+      .withIndex("by_objective", (q) => q.eq("objectiveKey", args.objectiveKey))
+      .collect();
+    const prefix = `timer:${args.timerKey}:`;
+    const mine = rows.filter((row) => ((row as { dedupeKey: string }).dedupeKey ?? "").startsWith(prefix));
+    const outstanding = mine.some(
+      (row) => ((row as { data: WakeEvent }).data.consumedAt ?? null) === null,
+    );
+    return { outstanding, armed: mine.length };
   },
 });
 

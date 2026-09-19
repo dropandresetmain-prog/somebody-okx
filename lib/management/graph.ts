@@ -52,11 +52,44 @@ export type ManagementPorts = {
   spendDecisionCall(objectiveKey: string, at: number): Promise<void>;
   runDecisionPass(state: GraphState, ports: ManagementPorts, at: number): Promise<DecisionPassResult | null>;
   persistDecision(result: DecisionPassResult, at: number): Promise<void>;
-  recordSatisfactionAttempt(state: GraphState, requirementKey: string, at: number): Promise<void>;
+  recordSatisfactionAttempt(state: GraphState, requirementKey: string, at: number): Promise<boolean>;
   proposeCompletion(proposal: CompletionProposal, at: number): Promise<CompletionVerdict>;
   writeObjectiveState(objectiveKey: string, state: ManagementState, summary: string, at: number): Promise<void>;
-  scheduleWake(objectiveKey: string, reason: WakeReason, at: number): Promise<void>;
+  // R3 A3 — a TIMER, not a re-wake. `runAfter(0, runManagementPass)` used to be
+  // called from the settle node for every `waiting`/`blocked` pass, which is an
+  // infinite zero-delay loop that also appended a control note each round.
+  // Adapters must therefore (a) use the non-zero `delayMs` given here, (b) derive
+  // one stable identity per logical condition so at most one timer is outstanding
+  // for that condition, and (c) record the pass against the no-progress budget.
+  scheduleTimer(objectiveKey: string, reason: WakeReason, delayMs: number, timerKey: string, at: number): Promise<boolean>;
+  // R3 A3 — persisted no-progress accounting for one completed pass.
+  recordPassProgress(objectiveKey: string, progressed: boolean, at: number): Promise<void>;
+  // R3 A2 — make an authorized plan real. Adapters dispatch through the existing
+  // storage seams (reserveWorker/putAssignment, createIntentFromAuthorization/
+  // putIntent); ids come from stable decision identity so a replay is a no-op.
+  dispatchRequirement(state: GraphState, requirementKey: string, at: number): Promise<string | null>;
 };
+
+// Sensible, non-zero timer delays. A quiescent Objective does not poll; these are
+// the only self-generated wakes the engine is allowed to make, and each is one
+// bounded deadline for a specific logical condition.
+export const TIMER_DELAYS_MS = {
+  // Lease/watchdog for in-flight work: long enough that a normal run never needs
+  // it, short enough that a lost worker is noticed within the objective budget.
+  work_in_flight: 5 * 60_000,
+  // Nothing eligible right now: re-check on a human timescale, not a busy loop.
+  no_eligible_path: 15 * 60_000,
+  // Awaiting the founder: a reminder, never a retry storm.
+  founder_pending: 60 * 60_000,
+} as const;
+
+// R3 A2 — how much WORK one wake may contain. `decide → dispatch → verify →
+// propose` is the loop doing its job from reloaded state, so a single
+// `objective_submitted` wake must be able to reach quiescence instead of
+// deciding and then idling. It is bounded per pass, and every cycle still
+// consumes the persisted decision/model-call ceilings, so this can never spin:
+// the ceilings and the no-progress escalation remain the outer guards.
+export const MAX_CONTINUE_CYCLES = 3;
 
 export type GraphDeps = {
   ports: ManagementPorts;
@@ -94,10 +127,17 @@ async function observeNode(state: Ann, deps: GraphDeps): Promise<NodeResult> {
   const wakes = await ports.loadWakeEvents(state.objectiveKey);
   const fresh = wakes.filter((wake) => wake.consumedAt === null);
   if (fresh.length) await ports.consumeWakeEvents(state.objectiveKey, fresh.map((w) => w.eventId), at);
+  // R3 A3 — "material" means the WORLD changed: a worker result, a resource or
+  // approval event, founder input, a provider/M3 event. A timer or no-progress
+  // wake is the engine poking itself, which must NOT reset the no-progress
+  // counter — otherwise the finite ceiling could never be reached.
+  const SELF_WAKE = new Set<WakeReason>(["timeout", "no_progress", "recovery_event"]);
+  const material = fresh.some((wake) => !SELF_WAKE.has(wake.reason));
   return {
     lastNode: "observe",
     wakeReason: fresh[0]?.reason ?? state.wakeReason,
     wakeEventIds: fresh.map((w) => w.eventId),
+    continuation: { ...state.continuation, materialWake: material ? "true" : "false" },
     pass: state.pass + 1,
   };
 }
@@ -137,7 +177,9 @@ async function reduceNode(state: Ann, deps: GraphDeps): Promise<NodeResult> {
   // never a business resolution. The reducer is its only author.
   await ports.writeObjectiveState(state.objectiveKey, reduced.state, reduced.detail, at);
   const focus =
-    reduced.action.kind === "decide_requirement" || reduced.action.kind === "dispatch"
+    reduced.action.kind === "decide_requirement" ||
+    reduced.action.kind === "dispatch" ||
+    reduced.action.kind === "verify_requirement"
       ? reduced.action.requirementKey
       : null;
   return {
@@ -158,13 +200,45 @@ async function decideNode(state: Ann, deps: GraphDeps): Promise<NodeResult> {
   const result = await ports.runDecisionPass(state as GraphState, ports, at);
   if (result) {
     await ports.persistDecision(result, at);
+    const authorized = result.authorization.kind === "authorized";
     return {
       lastNode: "decide",
       managerDecisionId: result.decision.decisionId,
-      continuation: { ...state.continuation, lastAuthorization: result.authorization.kind },
+      continuation: {
+        ...state.continuation,
+        lastAuthorization: result.authorization.kind,
+        // Only an AUTHORIZATION counts as cycle work. A refusal changed no
+        // state, and re-deciding the same refusal would burn up to
+        // MAX_CONTINUE_CYCLES model calls per wake for an identical answer —
+        // the reducer routes refusal passes to `waiting` instead, where the
+        // bounded re-check timer applies.
+        ...(authorized ? { actedCycle: String(state.continuation.continueCycles ?? "0") } : {}),
+      },
     };
   }
   return { lastNode: "decide" };
+}
+
+// R3 A2 — the node that makes an authorized plan REAL. It performs no business
+// judgement: the reducer already concluded "authorized and undelivered" from
+// reloaded state, and the adapter's dispatch is idempotent on stable identity,
+// so re-entering this node cannot mint a second assignment or intent.
+async function dispatchNode(state: Ann, deps: GraphDeps): Promise<NodeResult> {
+  const at = deps.now();
+  const requirementKey = state.focusRequirementKey;
+  if (!requirementKey) return { lastNode: "dispatch" };
+  const effectId = await deps.ports.dispatchRequirement(state as GraphState, requirementKey, at);
+  return {
+    lastNode: "dispatch",
+    pendingIntentId: effectId ?? state.pendingIntentId,
+    continuation: {
+      ...state.continuation,
+      dispatched: requirementKey,
+      ...(effectId
+        ? { effectId, actedCycle: String(state.continuation.continueCycles ?? "0") }
+        : {}),
+    },
+  };
 }
 
 async function verifyNode(state: Ann, deps: GraphDeps): Promise<NodeResult> {
@@ -173,9 +247,23 @@ async function verifyNode(state: Ann, deps: GraphDeps): Promise<NodeResult> {
   // "did the world change" wakes into satisfaction attempts. It never marks
   // anything satisfied itself — recordSatisfactionAttempt delegates to
   // requirements.ts on the server side, where only proof-bearing events pass.
+  // The boolean is the KERNEL's verdict, reported back purely for progress
+  // accounting; nothing here reads it as business truth.
+  let satisfied = false;
   if (state.focusRequirementKey)
-    await deps.ports.recordSatisfactionAttempt(state as GraphState, state.focusRequirementKey, deps.now());
-  return { lastNode: "verify" };
+    satisfied = await deps.ports.recordSatisfactionAttempt(
+      state as GraphState,
+      state.focusRequirementKey,
+      deps.now(),
+    );
+  return {
+    lastNode: "verify",
+    continuation: {
+      ...state.continuation,
+      verifiedSatisfied: satisfied ? "true" : "false",
+      ...(satisfied ? { actedCycle: String(state.continuation.continueCycles ?? "0") } : {}),
+    },
+  };
 }
 
 async function proposeNode(state: Ann, deps: GraphDeps): Promise<NodeResult> {
@@ -202,7 +290,11 @@ async function proposeNode(state: Ann, deps: GraphDeps): Promise<NodeResult> {
     );
     return {
       lastNode: "propose",
-      continuation: { ...state.continuation, gateAccepted: String(verdict.accepted) },
+      continuation: {
+        ...state.continuation,
+        gateAccepted: String(verdict.accepted),
+        ...(verdict.accepted ? { actedCycle: String(state.continuation.continueCycles ?? "0") } : {}),
+      },
     };
   }
   return { lastNode: "propose" };
@@ -240,15 +332,93 @@ async function settleNode(state: Ann, deps: GraphDeps): Promise<NodeResult> {
     default:
       break;
   }
-  if (["waiting", "blocked"].includes(reduced.state))
-    await deps.ports.scheduleWake(state.objectiveKey, "timeout", at);
+
+  // R3 A3 — QUIESCENT STATES DO NOT RESCHEDULE THEMSELVES.
+  //
+  // `waiting` and `blocked` resume on a MEANINGFUL wake: a worker result, a
+  // resource request, founder input, an approval, a provider/M3 event. They used
+  // to call `scheduleWake("timeout")` → `runAfter(0, runManagementPass)`, which
+  // is an infinite zero-delay loop that also grew a control note every round.
+  //
+  // A timer is kept only where the passage of time is itself the condition the
+  // engine is waiting on — an expired worker lease, or re-checking whether a
+  // resource became available. Each such timer is (a) non-zero, (b) keyed by one
+  // stable identity per logical condition so the adapter can hold at most one
+  // outstanding timer for it, and (c) counted as NO progress below, so repeated
+  // timers walk the objective into the existing finite ceiling instead of
+  // spinning forever.
+  //
+  // A lease watchdog only makes sense while internal work is actually in flight;
+  // an intent resting at the M3 boundary is not "work in flight", it waits for a
+  // meaningful external event.
+  const liveInternalWork = assignments.some(
+    (assignment) => assignment.state === "dispatched" || assignment.state === "running",
+  );
+  const cycles = Number(state.continuation.continueCycles ?? "0");
+  let timerScheduled = false;
+  let continueRequested = false;
+
+  // R3 A2 — one wake may ACT until the objective is quiescent, bounded:
+  // decide → dispatch → verify → propose is the loop doing its job, not a
+  // retry storm. Two bounds apply: MAX_CONTINUE_CYCLES per pass, and the cycle
+  // that just ran must have PRODUCED something — an authorization, an effect
+  // row, a verification, a gate verdict (action nodes stamp `actedCycle`). A
+  // cycle that changed no state ends the pass: re-reducing identical state
+  // would only replay the same action, and the persisted decision/model-call
+  // ceilings plus no-progress escalation remain the outer guards.
+  const ACTIONABLE = new Set(["decide_requirement", "dispatch", "verify_requirement", "propose_completion"]);
+  const cycleDidWork = Number(state.continuation.actedCycle ?? "-1") === cycles;
+  if (ACTIONABLE.has(reduced.action.kind) && cycles < MAX_CONTINUE_CYCLES && cycleDidWork)
+    continueRequested = true;
+  if (!continueRequested) {
+    if (reduced.action.kind === "await_wake" && nextWakeExpected === "worker_result" && liveInternalWork) {
+      timerScheduled = await deps.ports.scheduleTimer(
+        state.objectiveKey, "timeout", TIMER_DELAYS_MS.work_in_flight,
+        `lease:${state.objectiveKey}`, at,
+      );
+    } else if (reduced.state === "waiting" || reduced.state === "blocked") {
+      timerScheduled = await deps.ports.scheduleTimer(
+        state.objectiveKey, "timeout", TIMER_DELAYS_MS.no_eligible_path,
+        `${reduced.state}:${state.objectiveKey}`, at,
+      );
+    } else if (reduced.state === "approval_required") {
+      timerScheduled = await deps.ports.scheduleTimer(
+        state.objectiveKey, "timeout", TIMER_DELAYS_MS.founder_pending,
+        `founder_pending:${state.objectiveKey}`, at,
+      );
+    }
+  }
+
+  // Progress is a FACT about this pass, read from what the nodes actually
+  // produced — not from "the graph ran". A pass that only poked itself made no
+  // progress, which is what makes the persisted no-progress ceiling reachable.
+  // Note `dispatched` alone is NOT progress: a deferred dispatch wrote no effect
+  // row, so only `effectId` (the id actually created or found) counts.
+  const carried = state.continuation;
+  const progressed =
+    carried.materialWake === "true" ||
+    carried.lastAuthorization === "authorized" || // a strategy was bound
+    carried.effectId !== undefined ||             // an effect row exists
+    carried.verifiedSatisfied === "true" ||       // a requirement was resolved
+    carried.gateAccepted === "true";              // the independent gate accepted
+  await deps.ports.recordPassProgress(state.objectiveKey, progressed, at);
+
   const outcome: GraphOutcome = {
     objectiveState: reduced.state,
-    acted: ["decide_requirement", "propose_completion", "dispatch"].includes(reduced.action.kind),
+    acted: ACTIONABLE.has(reduced.action.kind),
     nextWakeExpected,
     summary: reduced.detail,
   };
-  return { lastNode: "settle", outcome };
+  if (continueRequested)
+    return {
+      lastNode: "settle",
+      outcome,
+      continuation: {
+        continueRequested: "true",
+        continueCycles: String(cycles + 1),
+      },
+    };
+  return { lastNode: "settle", outcome, continuation: { continueRequested: "false" } };
 }
 
 // ── Graph assembly ───────────────────────────────────────────────────────────
@@ -257,7 +427,7 @@ export type ManagementGraph = {
   invoke(state: GraphState): Promise<{ final: GraphState; outcome: GraphOutcome }>;
 };
 
-const NODE_LIMIT = 8; // one wake = one pass; graph-local, mirrors §14 not business truth
+const NODE_LIMIT = 14; // bounded continue-cycles × 2 supersteps + the fixed nodes
 
 export function buildManagementGraph(deps: GraphDeps): ManagementGraph {
   const builder = new StateGraph(GraphAnnotation)
@@ -265,24 +435,40 @@ export function buildManagementGraph(deps: GraphDeps): ManagementGraph {
     .addNode("reduce", (state: Ann) => reduceNode(state, deps))
     .addNode("decide", (state: Ann) => decideNode(state, deps))
     .addNode("verify", (state: Ann) => verifyNode(state, deps))
+    .addNode("dispatch", (state: Ann) => dispatchNode(state, deps))
     .addNode("propose", (state: Ann) => proposeNode(state, deps))
     .addNode("settle", (state: Ann) => settleNode(state, deps))
     .addEdge(START, "observe")
     .addEdge("observe", "reduce")
     .addConditionalEdges("reduce", async (state: Ann) => {
-      // Route WITHOUT re-running the reducer's effects: continuation was
-      // written by reduceNode; recompute route from the carried action.
+      // R3 A2 — route on the reducer's EXPLICIT action, carried in graph memory
+      // by reduceNode. The previous test `state.lastNode === "decide"` could
+      // never be true, because reduceNode sets lastNode to "reduce" immediately
+      // before this edge runs: the verify node was unreachable and the engine
+      // decided without ever verifying or dispatching.
+      //
+      // Graph state remains continuation position only — the ACTION is a control
+      // conclusion derived fresh from reloaded business state every pass, so
+      // nothing here is stale truth.
       const action = state.continuation.reducerAction;
       if (action === "plan_contract" || action === "ask_founder" || action === "await_wake" || action === "hold") return "settle";
       if (action === "propose_completion") return "propose";
-      if (action === "decide_requirement" || action === "dispatch")
-        return state.lastNode === "decide" ? "verify" : "decide";
+      if (action === "decide_requirement") return "decide";
+      if (action === "dispatch") return "dispatch";
+      if (action === "verify_requirement") return "verify";
       return "settle";
-    }, { settle: "settle", propose: "propose", decide: "decide", verify: "verify" })
+    }, { settle: "settle", propose: "propose", decide: "decide", verify: "verify", dispatch: "dispatch" })
     .addEdge("decide", "settle")
+    .addEdge("dispatch", "settle")
     .addEdge("verify", "settle")
     .addEdge("propose", "settle")
-    .addEdge("settle", END);
+    // R3 A2 — settle may hand control BACK to reduce, so one wake can carry
+    // decide → dispatch → verify → propose. That is the loop doing its job from
+    // reloaded Convex state, not a retry storm: `continueCycles` is bounded, and
+    // every cycle still consumes the persisted decision/model-call ceilings.
+    .addConditionalEdges("settle", async (state: Ann) =>
+      state.continuation.continueRequested === "true" ? "reduce" : END,
+    { reduce: "reduce", [END]: END });
 
   const compiled = builder.compile();
 

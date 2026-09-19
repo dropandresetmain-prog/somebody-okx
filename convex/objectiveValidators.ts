@@ -171,6 +171,24 @@ export const objectiveRecord = v.object({
       contractId: v.union(v.string(), v.null()),
       currentContractRevision: v.optional(v.number()),
       controlNotes: v.optional(v.array(v.any())),
+      // R3 A1/I2 — the durable interpretation cursor. A management pass with no
+      // contract asks for ONE interpretation; this marker is what makes that
+      // request idempotent across replayed wakes, so an unbounded number of
+      // model calls can never be scheduled for one objective.
+      //   pending → an action is in flight (no new action may be scheduled)
+      //   refused → typed refusal (malformed output / outage), replanning is
+      //             founder-wake driven, never a retry storm
+      //   done    → contract + requirements are persisted
+      interpretationStatus: v.optional(
+        v.union(
+          v.literal("pending"),
+          v.literal("refused"),
+          v.literal("done"),
+        ),
+      ),
+      interpretationRequestId: v.optional(v.union(v.string(), v.null())),
+      interpretationAttempts: v.optional(v.number()),
+      interpretationDetail: v.optional(v.union(v.string(), v.null())),
     }),
   ),
 });

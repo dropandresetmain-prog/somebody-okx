@@ -80,6 +80,84 @@ export function planWakeForWorkerResult(
   };
 }
 
+// Pure: derive the durable wake for "this objective now has an Outcome
+// Contract and Requirements" (R3 A1 — the entry point the engine never had).
+//
+// Identity is the INTERPRETATION, not the moment: replaying the same
+// interpretation request rebuilds a byte-identical eventId/dedupeKey, so
+// appendWakeEvent's by_dedupe collapses it and the management loop starts once.
+// `reason: "objective_submitted"` is the existing WakeReason for exactly this.
+export function planWakeForInterpretation(input: {
+  objectiveKey: string;
+  contractId: string;
+  at: number;
+}): ResourceRequestWakePlan {
+  const dedupeKey = `interpret:${input.objectiveKey}:${input.contractId}`;
+  const eventId = `wake_in_${hash24(dedupeKey)}`;
+  return {
+    eventId,
+    dedupeKey,
+    reason: "objective_submitted",
+    event: {
+      eventId,
+      objectiveKey: input.objectiveKey,
+      reason: "objective_submitted",
+      // Pointer to the contract row the pass will reload — never the payload.
+      refKind: "contract",
+      refId: input.contractId,
+      summary: `objective interpreted: contract ${input.contractId} with its requirements persisted`,
+      at: input.at,
+      consumedAt: null,
+    },
+  };
+}
+
+// A dispatch that could not be honoured needs no new machinery: the reducer
+// re-reads business state every pass, `settle` counts a pass that produced
+// nothing as NO progress, and the persisted no-progress ceiling escalates the
+// objective. Adding a second failure counter here would duplicate budget.ts.
+
+// R3 A3 — TIMER WAKES.
+//
+// A quiescent objective may legitimately need ONE bounded deadline (a lease
+// watchdog, or "check whether this resource exists yet"). The identity rules
+// that make this safe instead of the old zero-delay self-wake loop:
+//   - the delay is supplied by the caller and must be non-zero;
+//   - one logical condition is one `timerKey`, and the adapter may only arm a
+//     timer for a condition that has no UNCONSUMED timer row (so at most one is
+//     outstanding at any time);
+//   - arming the next one is `sequence`-numbered, so identities stay stable and
+//     bounded while a genuinely repeating deadline remains possible;
+//   - the reason is `timeout`, which the graph classifies as a SELF wake: it
+//     never counts as material progress, so repeated timers walk the objective
+//     into the persisted no-progress ceiling rather than spinning forever.
+export function planWakeForTimer(input: {
+  objectiveKey: string;
+  timerKey: string;
+  sequence: number;
+  at: number;
+}): ResourceRequestWakePlan {
+  const dedupeKey = `timer:${input.timerKey}:${input.sequence}`;
+  const eventId = `wake_tm_${hash24(dedupeKey)}`;
+  return {
+    eventId,
+    dedupeKey,
+    reason: "timeout",
+    event: {
+      eventId,
+      objectiveKey: input.objectiveKey,
+      reason: "timeout",
+      // The timerKey names the LOGICAL CONDITION, so the pass can tell which
+      // deadline expired instead of guessing from a timestamp.
+      refKind: "objective",
+      refId: input.timerKey,
+      summary: `bounded timer #${input.sequence} for ${input.timerKey} elapsed`,
+      at: input.at,
+      consumedAt: null,
+    },
+  };
+}
+
 // Pure: derive the wake plan for a worker resource request. Deterministic in
 // its inputs so a replay builds a byte-identical eventId/dedupeKey.
 export function planWakeForResourceRequest(
