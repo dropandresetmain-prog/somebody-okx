@@ -83,6 +83,10 @@ export type OpenResourceNeedFact = {
   purpose: string;
   reasonOwnedInsufficient: string;
   status: string;
+  /** True only for application-validated gaps that bind eligibility. */
+  validated?: boolean;
+  inputCheckId?: string | null;
+  contractRevision?: number | null;
 };
 
 export type PrerequisiteResultFact = {
@@ -137,34 +141,45 @@ export async function buildDecisionPassInput(
   const requiredPermissions = toolPermissionsForCapabilities(requiredCapabilityKeys);
 
   // ── I3: resource classes are DERIVED, never hardcoded arrays ────────────────
-  // Capability-derived classes PLUS requirement-declared inputs PLUS open worker
-  // resource proposals (DATA). Ownership gaps surface as eligibility facts.
+  // Capability-derived classes PLUS requirement-declared inputs PLUS
+  // application-VALIDATED input gaps (not mere worker proposals). Proposed /
+  // unconfirmed needs may appear in context but must not exclude MAKE.
+  const validatedNeeds = (reads.openResourceNeeds ?? []).filter(
+    (need) => need.validated === true,
+  );
   const declaredClasses = [
     ...requiredResourceClassesFor(requiredCapabilityKeys),
     ...(requirement.requiredResourceClasses ?? []),
-    ...(reads.openResourceNeeds ?? []).map((need) => need.resourceClass),
+    ...validatedNeeds.map((need) => need.resourceClass),
   ];
   const requiredResourceClasses = [
     ...new Set(declaredClasses.filter((value): value is ResourceClass => isKnownResourceClass(value))),
   ];
   const controlledResourceClasses = controlledResourceClassesFor(CURRENT_RESOURCE_INVENTORY);
 
-  // The external class to discover for: open worker proposal first (scoped DATA),
-  // then the proposal's declared need when known, else first uncontrolled required.
+  // Discover for the validated gap first. Do not let an unrelated model-selected
+  // needsExternalResourceClass override a validated gap. Proposed-only needs
+  // never drive discovery.
   const missing = requiredResourceClasses.filter(
     (resource) => !controlledResourceClasses.includes(resource),
   );
-  const openNeedClass = (reads.openResourceNeeds ?? [])
+  const validatedGapClass = validatedNeeds
     .map((need) => need.resourceClass)
     .find((value) => isKnownResourceClass(value) && missing.includes(value as ResourceClass));
   const proposedExternal = parsedProposal.value.needsExternalResourceClass;
-  const externalClass: ResourceClass | null = isKnownResourceClass(openNeedClass ?? null)
-    ? (openNeedClass as ResourceClass)
-    : isKnownResourceClass(proposedExternal)
-      ? (proposedExternal as ResourceClass)
-      : missing.length > 0
-        ? (missing[0] as ResourceClass)
+  const externalClass: ResourceClass | null = isKnownResourceClass(validatedGapClass ?? null)
+    ? (validatedGapClass as ResourceClass)
+    : validatedGapClass == null && missing.length > 0
+      ? (missing[0] as ResourceClass)
+      : // Only fall back to model proposal when no validated/declared gap exists.
+        validatedNeeds.length === 0 && missing.length === 0 && isKnownResourceClass(proposedExternal)
+        ? (proposedExternal as ResourceClass)
         : null;
+
+  // Discovery task text prefers the validated gap's bounded purpose/scope.
+  const discoveryPurpose =
+    validatedNeeds.find((need) => need.resourceClass === externalClass)?.purpose ??
+    `${requirement.title} ${requirement.mustBeTrue}`;
 
   // ── I3: grounding from the static snapshot registry — zero network ──────────
   // createSnapshotDiscovery() reads SNAPSHOT_OFFERINGS + VERIFIED_SERVICE_REGISTRY
@@ -175,7 +190,7 @@ export async function buildDecisionPassInput(
         registry: VERIFIED_SERVICE_REGISTRY,
         discovered: await createSnapshotDiscovery().discover({
           resourceClass: externalClass,
-          taskDescription: `${requirement.title} ${requirement.mustBeTrue}`.slice(0, 400),
+          taskDescription: discoveryPurpose.slice(0, 400),
         }),
         requiredResourceClass: externalClass,
         at: reads.at,

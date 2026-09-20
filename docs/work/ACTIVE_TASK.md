@@ -4,13 +4,45 @@ Authoritative integrated code baseline: `main@a9a0b3d31a7125e83fe0771a783ee62cbd
 
 ## M6.1 CAUSAL-PIPELINE RECOVERY (branch `fix/m6-1-causal-pipeline`)
 
-Started 2026-09-20 from accepted M6.1 candidate `feat/m6-1-first-product-e2e@50acb6b`
-(not from post-failure stall commit `6f5e2b5`, which raised decision ceilings,
-silently widened observe permissions, and applied automatic growth artifact
-assist — all rejected for this recovery).
+Started 2026-09-20 from accepted M6.1 candidate `feat/m6-1-first-product-e2e@50acb6b`.
 
-Goal: repair the smallest generic contracts for one physically working M6.1 E2E.
-External provider/payment remains the ONLY simulated boundary. No M6.2 / live pay.
+**Final blocker repair** (starting SHA `6cf924f` = docs-only past `c18285a`):
+remove false `failed MAKE → proprietary_data` bridge; application-owned
+validated missing-input path → yield/redecision → coverage-bound MAKE/BUY.
+
+### CP-F1 — validated missing-input path (COMPLETE)
+
+- Worker may propose via `request_resource` / `submit_result.missingInputs`.
+- `validateMissingInputProposal` + `reportMissingInput` own scarcity truth.
+- Only validated (`active` + application authority) ResourceNeeds bind eligibility.
+- Fixed `activityResult.runId` optional validator; removed MAKE→class invention.
+- Tests: `tests/m61InputDiagnosis.test.ts` F1 cases.
+
+### CP-F2 — worker yield + fact-change redecision (COMPLETE)
+
+- Validated gap → `INPUT_BLOCKED`, worker `yieldReason`, clean finish (not timeout).
+- `EXECUTION_FAILED` does not invent ResourceNeeds.
+- Decision-input fingerprint stored after authorized decide; duplicate unchanged
+  facts do not burn another attempt; validated gap changes fingerprint.
+- Removed prompt language equating failed owned lookup with BUY proprietary_data.
+
+### CP-F3 — coverage-bound MAKE/BUY (COMPLETE)
+
+- `buildDecisionPassInput` merges only validated gaps into eligibility facts.
+- Discovery prefers validated gap purpose; model `needsExternalResourceClass`
+  cannot override a validated gap.
+- `input_not_owned` added to `vIneligibilityReason`; survives real persist path.
+- CP2/CP4 tests updated for validated-vs-proposed semantics.
+
+### CP-F4 — integration test (COMPLETE)
+
+- `tests/m61DiagnosisToExternalIntent.test.ts`: neutral setup (empty
+  `requiredResourceClasses`, no seeded BUY/intent/need) → validate gap →
+  MAKE ineligible → BUY authorized; negative twin; no-offering `input_not_owned`.
+
+### CP-F5 / CP-F6 — physical STOP B / full M6.1 (IN PROGRESS)
+
+---
 
 ### CP1 — execution / proof integrity (COMPLETE)
 

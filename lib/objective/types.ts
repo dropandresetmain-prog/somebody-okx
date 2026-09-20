@@ -163,6 +163,10 @@ export type ObjectiveRecord = {
   companyArtifacts?: import("./artifact").CompanyArtifact[];
   // Optional M6.1 external-acquisition state (absent on all earlier rows).
   acquisitionResults?: ExternalAcquisitionResult[];
+  /** Unconfirmed worker input diagnoses — never bind MAKE/BUY eligibility. */
+  unconfirmedInputFindings?: import("./inputDiagnosis").UnconfirmedInputFinding[];
+  /** Last typed delivery outcome for management redecision. */
+  lastDeliveryFailureClass?: "INPUT_BLOCKED" | "EXECUTION_FAILED" | null;
 };
 
 // ── Evidence ─────────────────────────────────────────────────────────────────

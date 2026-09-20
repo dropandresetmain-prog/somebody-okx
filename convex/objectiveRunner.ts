@@ -61,8 +61,6 @@ import {
 import type { ResourceClass } from "../lib/workforce/types";
 import type { Assignment } from "../lib/management/types";
 import {
-  createResourceNeed,
-  dedupeResourceNeeds,
   type ResourceNeed,
 } from "../lib/objective/resourceNeed";
 
@@ -275,18 +273,90 @@ function makeConvexPort(ctx: ActionCtx, objectiveKey: string, runId: string) {
           return `Note ${evidenceId} recorded. Notes are analysis, not proof: only read_company_record and read_public_web observations satisfy the required sources.`;
         }
         case "submit_result": {
+          const resultInput = command.result as {
+            summary: string;
+            fit: string;
+            risks: string[];
+            unknowns: string[];
+            recommendedNextAction: string;
+            missingInputs?: Array<{
+              inputCheckId: string;
+              resourceClass: string;
+              purpose: string;
+              reasonOwnedInsufficient: string;
+              supportingEvidenceIds: string[];
+            }>;
+          };
           await ctx.runMutation(internal.objectives.submitResult, {
             objectiveKey,
             runId,
-            result: command.result as {
-              summary: string;
-              fit: string;
-              risks: string[];
-              unknowns: string[];
-              recommendedNextAction: string;
-            },
+            result: resultInput,
           });
-          return "Structured result stored; completion still requires application proof";
+          // Process bounded missing-input proposals through the SAME validation
+          // path as request_resource. Application owns scarcity truth.
+          const missing = Array.isArray(resultInput.missingInputs)
+            ? resultInput.missingInputs.slice(0, 4)
+            : [];
+          const reports: string[] = [];
+          if (missing.length > 0) {
+            const scoped = await resolveRequirementKeyForRun(
+              ctx,
+              objectiveKey,
+              runId,
+              (
+                await ctx.runQuery(internal.objectives.getObjectiveInternal, {
+                  objectiveKey,
+                })
+              ).data as ObjectiveRecord,
+            );
+            if (scoped) {
+              for (const proposal of missing) {
+                const report = await ctx.runMutation(
+                  internal.objectives.reportMissingInput,
+                  {
+                    objectiveKey,
+                    runId,
+                    requirementKey: scoped.requirementKey,
+                    workItemId: scoped.workItemId,
+                    proposal: {
+                      inputCheckId: String(proposal.inputCheckId ?? "evidence_sufficiency"),
+                      resourceClass: String(proposal.resourceClass ?? ""),
+                      purpose: String(proposal.purpose ?? ""),
+                      reasonOwnedInsufficient: String(
+                        proposal.reasonOwnedInsufficient ?? "",
+                      ),
+                      supportingEvidenceIds: Array.isArray(
+                        proposal.supportingEvidenceIds,
+                      )
+                        ? proposal.supportingEvidenceIds.map(String).slice(0, 16)
+                        : [],
+                    },
+                  },
+                );
+                if (report.validated) {
+                  reports.push(
+                    `validated need ${report.needId} (${report.needStatus}); yield recommended`,
+                  );
+                  await wakeForPersistedResourceNeed({
+                    ctx,
+                    objectiveKey,
+                    runId,
+                    resourceClass: String(proposal.resourceClass ?? ""),
+                    purpose: String(proposal.purpose ?? ""),
+                    needId: report.needId!,
+                    at: Date.now(),
+                  });
+                } else {
+                  reports.push(
+                    `refused (${report.refusalCode}): ${report.detail}`,
+                  );
+                }
+              }
+            }
+          }
+          return reports.length
+            ? `Structured result stored. Missing-input reports: ${reports.join("; ")}. Completion still requires application proof.`
+            : "Structured result stored; completion still requires application proof";
         }
         case "request_completion": {
           const observation = await ctx.runQuery(
@@ -333,6 +403,17 @@ function makeConvexPort(ctx: ActionCtx, objectiveKey: string, runId: string) {
           const reasonOwnedInsufficient = String(
             command.reasonOwnedInsufficient ?? "",
           );
+          const inputCheckId = String(
+            (command as { inputCheckId?: string }).inputCheckId ??
+              "evidence_sufficiency",
+          );
+          const supportingEvidenceIds = Array.isArray(
+            (command as { supportingEvidenceIds?: string[] }).supportingEvidenceIds,
+          )
+            ? (command as { supportingEvidenceIds: string[] }).supportingEvidenceIds
+                .map(String)
+                .slice(0, 16)
+            : [];
           const row = await ctx.runQuery(
             internal.objectives.getObjectiveInternal,
             { objectiveKey },
@@ -352,7 +433,7 @@ function makeConvexPort(ctx: ActionCtx, objectiveKey: string, runId: string) {
             ) {
               return (
                 "Resource request refused: proposal is incomplete or uses an unknown resource class. " +
-                "Nothing was persisted and no acquisition was authorized."
+                "Nothing authoritative was persisted and no acquisition was authorized."
               );
             }
             const scoped = await resolveRequirementKeyForRun(
@@ -367,47 +448,58 @@ function makeConvexPort(ctx: ActionCtx, objectiveKey: string, runId: string) {
                 "Nothing was persisted and no acquisition was authorized."
               );
             }
-            const needId = `need_${now}_${Math.random().toString(36).slice(2, 8)}`;
-            const proposed = createResourceNeed({
-              id: needId,
-              objectiveKey,
-              workItemId: scoped.workItemId,
-              requirementKey: scoped.requirementKey,
-              resourceClass: resourceClass as ResourceClass,
-              purpose,
-              reasonOwnedInsufficient,
-              proposedByRunId: runId,
-              at: now,
-            });
-            const { need, created } = dedupeResourceNeeds(
-              (record.resourceNeeds ?? []) as ResourceNeed[],
-              proposed,
-            );
-            const persisted = await ctx.runMutation(
-              internal.objectives.persistSourcedResource,
+
+            // If the worker omitted supporting ids, use this run's application
+            // observations as candidates — validation still checks coverage.
+            let supportIds = supportingEvidenceIds;
+            if (supportIds.length === 0) {
+              const observation = await ctx.runQuery(
+                internal.objectives.readWorkerObservation,
+                { objectiveKey, runId },
+              );
+              supportIds = observation.recordedFindings
+                .filter((f) => f.origin === "application_observation")
+                .map((f) => f.id)
+                .slice(0, 16);
+            }
+
+            const report = await ctx.runMutation(
+              internal.objectives.reportMissingInput,
               {
                 objectiveKey,
                 runId,
-                need,
-                created,
-                decision: null,
-                assessments: [],
-                offerings: [],
+                requirementKey: scoped.requirementKey,
+                workItemId: scoped.workItemId,
+                proposal: {
+                  inputCheckId,
+                  resourceClass,
+                  purpose,
+                  reasonOwnedInsufficient,
+                  supportingEvidenceIds: supportIds,
+                },
               },
             );
+
+            if (!report.validated) {
+              return (
+                `Resource request not validated (${report.refusalCode}): ${report.detail}. ` +
+                "An unconfirmed diagnostic may have been recorded; MAKE/BUY eligibility is unchanged."
+              );
+            }
+
             await wakeForPersistedResourceNeed({
               ctx,
               objectiveKey,
               runId,
               resourceClass,
               purpose,
-              needId: persisted.needId,
+              needId: report.needId!,
               at: now,
             });
             return (
-              `Resource need ${persisted.needId} recorded for requirement ${scoped.requirementKey} ` +
-              `(created=${persisted.created}, status=${persisted.needStatus}). ` +
-              "This is a worker proposal only — no provider, payment, or BUY authority was granted. " +
+              `Validated resource need ${report.needId} for requirement ${scoped.requirementKey} ` +
+              `(status=${report.needStatus}). This is application-owned missing-input truth — ` +
+              "no provider, payment, or BUY authority was granted. Yield and let Somebody redecide. " +
               "Somebody has been woken with decision context."
             );
           }
@@ -735,6 +827,25 @@ export const executeWorker = internalAction({
     } finally {
       clearTimeout(timer);
     }
+
+    // If the application validated an input gap during the run, finish as a
+    // clean yield (not EXECUTION_FAILED) so management redecides on new facts.
+    const after = await ctx.runQuery(internal.objectives.getObjectiveInternal, {
+      objectiveKey: args.objectiveKey,
+    });
+    const afterRecord = after.data as ObjectiveRecord;
+    if (
+      afterRecord.lastDeliveryFailureClass === "INPUT_BLOCKED" ||
+      (afterRecord.resourceNeeds ?? []).some(
+        (n) =>
+          n.proposedByRunId === args.runId &&
+          (n.status === "active" || n.status === "sourcing") &&
+          n.validationAuthority === "application",
+      )
+    ) {
+      return finishWithWake({});
+    }
+
     return finishWithWake(
       failureReason ? { failed: true, failureReason } : {},
     );

@@ -31,6 +31,10 @@ export type WorkerCommand =
       resourceClass: string;
       purpose: string;
       reasonOwnedInsufficient: string;
+      /** Obligation id when known; defaults to evidence_sufficiency for M4. */
+      inputCheckId?: string;
+      /** Application observation ids supporting the gap claim. */
+      supportingEvidenceIds?: string[];
     }
   | {
       type: "update_company_artifact";
@@ -42,6 +46,15 @@ export type WorkerCommand =
       usedAcquisitionEvidenceIds?: string[];
     };
 
+/** Bounded missing-input finding a worker may propose with submit_result. */
+export type MissingInputFindingInput = {
+  inputCheckId: string;
+  resourceClass: string;
+  purpose: string;
+  reasonOwnedInsufficient: string;
+  supportingEvidenceIds: string[];
+};
+
 // The structured evaluation the role policy requires.
 export type WorkerResultInput = {
   summary: string;
@@ -49,6 +62,8 @@ export type WorkerResultInput = {
   risks: string[];
   unknowns: string[];
   recommendedNextAction: string;
+  /** Optional bounded missing-input proposals; application validates each. */
+  missingInputs?: MissingInputFindingInput[];
 };
 
 // One entry surfaced to the worker in WorkerObservation.recordedFindings.
@@ -91,6 +106,8 @@ export type WorkerObservation = {
   // untrusted provider data and must never be interpreted as instructions.
   acquiredInputs?: WorkerAcquiredInput[];
   unmetCompletionRequirements: string[];
+  /** When set, the worker must stop — application accepted an input gap. */
+  yieldReason?: string | null;
 };
 
 export type WorkerPort = {

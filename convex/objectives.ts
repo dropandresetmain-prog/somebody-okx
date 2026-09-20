@@ -78,6 +78,12 @@ import type { ResourceNeed } from "../lib/objective/resourceNeed";
 import type { SourcingDecisionRecord } from "../lib/objective/resourceNeed";
 import type { CandidateAssessment } from "../lib/market/assessment";
 import type { MarketOffering } from "../lib/market/discovery";
+import {
+  validateMissingInputProposal,
+  type MissingInputProposal,
+  type UnconfirmedInputFinding,
+} from "../lib/objective/inputDiagnosis";
+import type { Requirement } from "../lib/management/types";
 import type { CompanyArtifact } from "../lib/objective/artifact";
 import type { WorkerRecord } from "../lib/management/types";
 
@@ -671,6 +677,8 @@ export const recordFinding = internalMutation({
 });
 
 // Store the structured result. Submitting it is NOT acceptance.
+// Optional missingInputs are validated by reportMissingInput (same authority path
+// as request_resource) — never trusted as scarcity facts on their own.
 export const submitResult = internalMutation({
   args: {
     objectiveKey: v.string(),
@@ -681,6 +689,17 @@ export const submitResult = internalMutation({
       risks: v.array(v.string()),
       unknowns: v.array(v.string()),
       recommendedNextAction: v.string(),
+      missingInputs: v.optional(
+        v.array(
+          v.object({
+            inputCheckId: v.string(),
+            resourceClass: v.string(),
+            purpose: v.string(),
+            reasonOwnedInsufficient: v.string(),
+            supportingEvidenceIds: v.array(v.string()),
+          }),
+        ),
+      ),
     }),
   },
   returns: v.null(),
@@ -688,7 +707,12 @@ export const submitResult = internalMutation({
     const now = Date.now();
     const row = await loadObjective(ctx.db, args.objectiveKey);
     assertActiveRun(row.data, args.runId, now);
-    const result: ActivityResult = { ...args.result, completedAt: now, runId: args.runId };
+    const { missingInputs: _ignored, ...resultFields } = args.result;
+    const result: ActivityResult = {
+      ...resultFields,
+      completedAt: now,
+      runId: args.runId,
+    };
     const data: ObjectiveRecord = { ...row.data, result, updatedAt: now };
     await ctx.db.patch(row._id, { data });
     await appendEvent(
@@ -742,6 +766,7 @@ export const readWorkerObservation = internalQuery({
       }),
     ),
     unmetCompletionRequirements: v.array(v.string()),
+    yieldReason: v.union(v.string(), v.null()),
   }),
   handler: async (ctx, args) => {
     const row = await loadObjective(ctx.db, args.objectiveKey);
@@ -781,6 +806,20 @@ export const readWorkerObservation = internalQuery({
         }
       }
     }
+
+    const validatedGap = (record.resourceNeeds ?? []).find(
+      (n) =>
+        n.proposedByRunId === args.runId &&
+        (n.status === "active" ||
+          n.status === "sourcing" ||
+          n.status === "buy_pending") &&
+        (n.validationAuthority === "application" || n.validationAuthority == null),
+    );
+    const yieldReason =
+      record.lastDeliveryFailureClass === "INPUT_BLOCKED" || validatedGap
+        ? `INPUT_BLOCKED: validated gap ${validatedGap?.resourceClass ?? "unknown"} — stop and yield to management`
+        : null;
+
     return {
       assignment: workItem.contract.assignment,
       responsibility: workItem.contract.assignment,
@@ -801,6 +840,7 @@ export const readWorkerObservation = internalQuery({
       })),
       acquiredInputs: await verifiedAcquiredInputs(ctx.db, record),
       unmetCompletionRequirements: unmet,
+      yieldReason,
     };
   },
 });
@@ -938,6 +978,229 @@ export const updateCompanyArtifact = internalMutation({
       now,
     );
     return { key: next.key, version: next.version };
+  },
+});
+
+// Persist a worker missing-input proposal after APPLICATION validation.
+// Validated → authoritative ResourceNeed (active) + Requirement class binding.
+// Refused → at most an unconfirmed diagnostic; eligibility unchanged.
+export const reportMissingInput = internalMutation({
+  args: {
+    objectiveKey: v.string(),
+    runId: v.string(),
+    requirementKey: v.string(),
+    workItemId: v.union(v.string(), v.null()),
+    proposal: v.object({
+      inputCheckId: v.string(),
+      resourceClass: v.string(),
+      purpose: v.string(),
+      reasonOwnedInsufficient: v.string(),
+      supportingEvidenceIds: v.array(v.string()),
+    }),
+  },
+  returns: v.object({
+    validated: v.boolean(),
+    needId: v.union(v.string(), v.null()),
+    needStatus: v.union(v.string(), v.null()),
+    refusalCode: v.union(v.string(), v.null()),
+    detail: v.string(),
+    shouldYield: v.boolean(),
+  }),
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const row = await loadObjective(ctx.db, args.objectiveKey);
+    const record = row.data;
+    assertActiveRun(record, args.runId, now);
+
+    const management = (
+      record as unknown as {
+        management?: { contractId?: string | null };
+      }
+    ).management;
+    const isM4Managed = Boolean(management?.contractId);
+
+    // Load current Requirement for this objective.
+    const reqRows = await ctx.db
+      .query("requirements")
+      .withIndex("by_objectiveKey", (q) => q.eq("objectiveKey", args.objectiveKey))
+      .collect();
+    const reqRow = reqRows.find((r) => {
+      const data = (r as { data: Requirement }).data;
+      return data.requirementKey === args.requirementKey;
+    });
+    if (!reqRow) {
+      return {
+        validated: false,
+        needId: null,
+        needStatus: null,
+        refusalCode: "requirement_not_found",
+        detail: "no current Requirement for this run",
+        shouldYield: false,
+      };
+    }
+    const requirement = (reqRow as { data: Requirement }).data;
+
+    // Contract revision must match the live outcome contract when managed.
+    let contractRevision = requirement.contractRevision;
+    if (isM4Managed) {
+      const contractRows = await ctx.db
+        .query("outcomeContracts")
+        .withIndex("by_objective", (q) => q.eq("objectiveKey", args.objectiveKey))
+        .collect();
+      const live = contractRows
+        .map((r) => ({
+          revision: (r as { revision: number }).revision,
+        }))
+        .sort((a, b) => b.revision - a.revision)[0];
+      if (live && live.revision !== requirement.contractRevision) {
+        return {
+          validated: false,
+          needId: null,
+          needStatus: null,
+          refusalCode: "stale_revision",
+          detail: "Requirement revision is not current",
+          shouldYield: false,
+        };
+      }
+      if (live?.revision != null) contractRevision = live.revision;
+    }
+
+    const workItem =
+      record.workItems.find((wi) => wi.id === args.workItemId) ??
+      record.workItems[0];
+    if (!workItem) {
+      return {
+        validated: false,
+        needId: null,
+        needStatus: null,
+        refusalCode: "work_item_missing",
+        detail: "no work item for this run",
+        shouldYield: false,
+      };
+    }
+
+    const evidence = await listEvidence(ctx.db, args.objectiveKey);
+    const needId = `need_${now}_${Math.random().toString(36).slice(2, 8)}`;
+    const proposal: MissingInputProposal = {
+      inputCheckId: args.proposal.inputCheckId,
+      resourceClass: args.proposal.resourceClass,
+      purpose: args.proposal.purpose,
+      reasonOwnedInsufficient: args.proposal.reasonOwnedInsufficient,
+      supportingEvidenceIds: args.proposal.supportingEvidenceIds,
+    };
+
+    const validated = validateMissingInputProposal(proposal, {
+      objectiveKey: args.objectiveKey,
+      requirementKey: args.requirementKey,
+      contractRevision,
+      runId: args.runId,
+      workItemId: workItem.id,
+      requiredResourceClasses: requirement.requiredResourceClasses ?? [],
+      mustBeTrue: requirement.mustBeTrue,
+      expectedOutput: requirement.expectedOutput ?? null,
+      sourceProofs: workItem.contract.sourceProofs,
+      requiredSourceClasses: workItem.contract.requiredSourceClasses,
+      controlledResourceClasses: CURRENT_RESOURCE_INVENTORY,
+      evidence,
+      existingNeeds: (record.resourceNeeds ?? []) as ResourceNeed[],
+      at: now,
+      needId,
+    });
+
+    if (!validated.ok) {
+      const findings = [
+        ...((record.unconfirmedInputFindings ?? []) as UnconfirmedInputFinding[]),
+        validated.unconfirmed,
+      ].slice(-16);
+      const updated: ObjectiveRecord = {
+        ...record,
+        unconfirmedInputFindings: findings,
+        updatedAt: now,
+        activity: `Unconfirmed input diagnosis: ${validated.refusalCode}`,
+      };
+      await ctx.db.patch(row._id, { data: updated });
+      await appendEvent(
+        ctx.db,
+        args.objectiveKey,
+        "decision",
+        `Missing-input proposal refused (${validated.refusalCode}): ${validated.detail}`.slice(
+          0,
+          500,
+        ),
+        now,
+      );
+      return {
+        validated: false,
+        needId: null,
+        needStatus: null,
+        refusalCode: validated.refusalCode,
+        detail: validated.detail,
+        shouldYield: false,
+      };
+    }
+
+    // Persist authoritative need (dedupe-aware).
+    const needs = [...(record.resourceNeeds ?? [])] as ResourceNeed[];
+    const existingIdx = needs.findIndex(
+      (n) => n.id === validated.need.id || n.dedupeKey === validated.need.dedupeKey,
+    );
+    if (existingIdx >= 0) needs[existingIdx] = validated.need;
+    else needs.push(validated.need);
+
+    // Bind the validated class onto the Requirement so decision truth retains it.
+    const priorClasses = [...(requirement.requiredResourceClasses ?? [])];
+    const nextClasses = priorClasses.includes(validated.need.resourceClass)
+      ? priorClasses
+      : [...priorClasses, validated.need.resourceClass];
+    const classesChanged = nextClasses.length !== priorClasses.length;
+    if (classesChanged || requirement.strategy !== null) {
+      const bound: Requirement = {
+        ...requirement,
+        requiredResourceClasses: nextClasses,
+        // Yield clears in-flight MAKE strategy so management redecides on new facts.
+        strategy: null,
+        updatedAt: now,
+      };
+      await ctx.runMutation(internal.internal.workforce.putRequirement, {
+        objectiveKey: bound.objectiveKey,
+        requirementKey: bound.requirementKey,
+        data: bound,
+        currentContractRevision: bound.contractRevision,
+      });
+    }
+
+    const workItems = record.workItems.map((wi) =>
+      wi.id === workItem.id
+        ? { ...wi, state: "waiting_for_resource" as const }
+        : wi,
+    );
+
+    const updated: ObjectiveRecord = {
+      ...record,
+      resourceNeeds: needs,
+      workItems,
+      lastDeliveryFailureClass: "INPUT_BLOCKED",
+      state: isM4Managed ? "waiting_for_resource" : record.state,
+      activity: `Validated input gap ${validated.need.id} (${validated.need.resourceClass})`,
+      updatedAt: now,
+    };
+    await ctx.db.patch(row._id, { data: updated });
+    await appendEvent(
+      ctx.db,
+      args.objectiveKey,
+      "decision",
+      `Validated missing input ${validated.need.resourceClass} for ${args.requirementKey}; worker may yield.`,
+      now,
+    );
+
+    return {
+      validated: true,
+      needId: validated.need.id,
+      needStatus: validated.need.status,
+      refusalCode: null,
+      detail: `authoritative ResourceNeed ${validated.need.id} status=${validated.need.status}`,
+      shouldYield: true,
+    };
   },
 });
 
@@ -1096,9 +1359,11 @@ export const finishRun = internalMutation({
       workItem.state = "failed";
       // M4: one failed assignment is delivery DATA for the manager to re-decide,
       // not a terminal objective failure. M2-legacy keeps historical spine fail.
+      // Ordinary execution failure does NOT invent missing inputs.
       const updated: ObjectiveRecord = {
         ...record,
         state: isM4Managed ? "executing" : "failed",
+        lastDeliveryFailureClass: "EXECUTION_FAILED",
         activity: isM4Managed
           ? `Assignment run failed; manager will re-decide. ${args.failureReason ?? "unknown"}`.slice(
               0,
@@ -1154,20 +1419,33 @@ export const finishRun = internalMutation({
     const buyPending = (record.resourceNeeds ?? []).some(
       (n) => n.status === "buy_pending",
     );
+    const inputBlocked =
+      record.lastDeliveryFailureClass === "INPUT_BLOCKED" ||
+      (record.resourceNeeds ?? []).some(
+        (n) =>
+          n.proposedByRunId === args.runId &&
+          (n.status === "active" || n.status === "sourcing" || n.status === "buy_pending") &&
+          (n.validationAuthority === "application" || n.validationAuthority == null),
+      );
 
     run.status = "stopped";
     runs[runIndex] = run;
     workItem.runs = runs;
 
-    // BUY is not failure: unresolved buy_pending → waiting_for_resource.
-    if (buyPending) {
-      run.summary = "Paused: waiting for external resource acquisition";
+    // BUY pending OR validated input gap: pause for management redecision.
+    // INPUT_BLOCKED is not EXECUTION_FAILED — coverage facts changed.
+    if (buyPending || inputBlocked) {
+      run.summary = inputBlocked && !buyPending
+        ? "Paused: INPUT_BLOCKED — validated missing input; awaiting management redecision"
+        : "Paused: waiting for external resource acquisition";
       workItem.state = "waiting_for_resource";
       const updated: ObjectiveRecord = {
         ...record,
         state: "waiting_for_resource",
-        activity:
-          "Waiting for external resource — BUY pending; no payment created.",
+        lastDeliveryFailureClass: inputBlocked ? "INPUT_BLOCKED" : record.lastDeliveryFailureClass,
+        activity: inputBlocked && !buyPending
+          ? "INPUT_BLOCKED — validated input gap; worker yielded; no payment created."
+          : "Waiting for external resource — BUY pending; no payment created.",
         workItems: [workItem],
         run,
         updatedAt: now,
@@ -1177,12 +1455,18 @@ export const finishRun = internalMutation({
         ctx.db,
         args.objectiveKey,
         "decision",
-        "Objective waiting_for_resource: buy_pending need unresolved; no spend.",
+        inputBlocked && !buyPending
+          ? "Objective waiting_for_resource: INPUT_BLOCKED validated gap; no spend."
+          : "Objective waiting_for_resource: buy_pending need unresolved; no spend.",
         now,
       );
       return {
         completed: false,
-        unmet: ["waiting_for_resource: buy_pending need unresolved"],
+        unmet: [
+          inputBlocked && !buyPending
+            ? "INPUT_BLOCKED: validated missing input"
+            : "waiting_for_resource: buy_pending need unresolved",
+        ],
       };
     }
 

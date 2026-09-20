@@ -176,7 +176,7 @@ test("reducer blocks decide on dependent requirement until prerequisite satisfie
   }
 });
 
-test("buildDecisionPassInput merges open resource need into eligibility requiredResourceClasses", async () => {
+test("buildDecisionPassInput merges VALIDATED resource need into eligibility requiredResourceClasses", async () => {
   const requirement = researchRequirement();
   const reads: DecisionPassReads = {
     contract: researchContract,
@@ -192,7 +192,8 @@ test("buildDecisionPassInput merges open resource need into eligibility required
         resourceClass: "proprietary_data",
         purpose: "market dataset for topic",
         reasonOwnedInsufficient: "not in company_records",
-        status: "proposed",
+        status: "active",
+        validated: true,
       },
     ],
     prerequisiteResults: [],
@@ -213,6 +214,48 @@ test("buildDecisionPassInput merges open resource need into eligibility required
   if (!built.ok) return;
   assert.ok(
     built.input.eligibilityFacts.requiredResourceClasses.includes("proprietary_data"),
+  );
+});
+
+test("buildDecisionPassInput ignores proposed-only resource need for MAKE eligibility", async () => {
+  const requirement = researchRequirement({ requiredResourceClasses: [] });
+  const reads: DecisionPassReads = {
+    contract: researchContract,
+    currentContractRevision: 1,
+    requirement,
+    inventory: [],
+    creationAllowed: true,
+    budget: null,
+    grant: null,
+    openResourceNeeds: [
+      {
+        needId: "need_proposed",
+        resourceClass: "proprietary_data",
+        purpose: "market dataset for topic",
+        reasonOwnedInsufficient: "not in company_records",
+        status: "proposed",
+        validated: false,
+      },
+    ],
+    prerequisiteResults: [],
+    at,
+    decisionId: "dec_cp2_proposed",
+  };
+  const built = await buildDecisionPassInput(
+    reads,
+    {
+      strategy: "MAKE",
+      desiredCapabilities: ["public_information_research"],
+      needsExternalResourceClass: null,
+      notes: null,
+    },
+    async () => null,
+  );
+  assert.equal(built.ok, true);
+  if (!built.ok) return;
+  assert.ok(
+    !built.input.eligibilityFacts.requiredResourceClasses.includes("proprietary_data"),
+    "unconfirmed proposals must not exclude MAKE",
   );
 });
 

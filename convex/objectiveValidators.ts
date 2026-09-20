@@ -137,6 +137,8 @@ export const activityResult = v.object({
   unknowns: v.array(v.string()),
   recommendedNextAction: v.string(),
   completedAt: v.number(),
+  // Optional for older rows written before run-binding; submitResult always sets it.
+  runId: v.optional(v.string()),
 });
 
 export const objectiveRecord = v.object({
@@ -167,6 +169,16 @@ export const objectiveRecord = v.object({
   // M6.1 — persisted verified external acquisition results. Storage only; the
   // truth a result carries is whatever its execution intent verified.
   acquisitionResults: v.optional(v.array(v.any())),
+  // Application-owned input-diagnosis diagnostics (never bind eligibility).
+  unconfirmedInputFindings: v.optional(v.array(v.any())),
+  // Typed delivery outcome for redecision: INPUT_BLOCKED vs EXECUTION_FAILED.
+  lastDeliveryFailureClass: v.optional(
+    v.union(
+      v.literal("INPUT_BLOCKED"),
+      v.literal("EXECUTION_FAILED"),
+      v.null(),
+    ),
+  ),
   // M4 management engine fields — optional so M2 rows keep loading.
   // Storage only; business rules live in lib/management/*.
   management: v.optional(
@@ -207,6 +219,9 @@ export const objectiveRecord = v.object({
             requirementKey: v.string(),
             contractRevision: v.number(),
             attempts: v.number(),
+            // Material decision-input fingerprint for this reservation (optional
+            // for older pending rows).
+            inputFingerprint: v.optional(v.string()),
           }),
           v.null(),
         ),
@@ -216,6 +231,9 @@ export const objectiveRecord = v.object({
       // is the decision analogue of `interpretationAttempts`; it survives the
       // clearing of `pendingDecision` on each terminal apply.
       decisionAttempts: v.optional(v.record(v.string(), v.number())),
+      // Last authorized decision-input fingerprint per requirement. Duplicate
+      // wakes with unchanged material facts do not burn another attempt.
+      decisionInputFingerprints: v.optional(v.record(v.string(), v.string())),
     }),
   ),
 });

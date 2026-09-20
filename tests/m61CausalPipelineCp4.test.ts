@@ -363,7 +363,7 @@ test("CP4: simulated acquisition never renders payment submitted or settled in M
   assert.ok(!story.some((title) => title.includes("Payment settled")));
 });
 
-test("CP4: BUY becomes eligible from semantic requirement + openResourceNeed without a pre-authorized intent", async () => {
+test("CP4: BUY becomes eligible from semantic requirement + VALIDATED openResourceNeed without a pre-authorized intent", async () => {
   const requirement = researchRequirement();
   const reads: DecisionPassReads = {
     contract: researchContract,
@@ -404,7 +404,8 @@ test("CP4: BUY becomes eligible from semantic requirement + openResourceNeed wit
         resourceClass: "proprietary_data",
         purpose: "market dataset for topic",
         reasonOwnedInsufficient: "not in company_records",
-        status: "proposed",
+        status: "active",
+        validated: true,
       },
     ],
     prerequisiteResults: [],
@@ -437,7 +438,7 @@ test("CP4: BUY becomes eligible from semantic requirement + openResourceNeed wit
 
   assert.ok(
     built.input.eligibilityFacts.requiredResourceClasses.includes("proprietary_data"),
-    "open resource need merges into eligibility facts",
+    "validated resource need merges into eligibility facts",
   );
 
   const result = await runManagerialDecisionPass(built.input);

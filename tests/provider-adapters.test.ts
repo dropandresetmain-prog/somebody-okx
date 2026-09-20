@@ -36,6 +36,7 @@ function makeNeed(overrides?: Partial<ResourceNeed>): ResourceNeed {
     id: "need_001",
     objectiveKey: "obj_launch_fix",
     workItemId: "wi_001",
+    requirementKey: null,
     resourceClass: "proprietary_data",
     purpose: "current social sentiment about our product launch",
     reasonOwnedInsufficient: "no access to real-time social data",

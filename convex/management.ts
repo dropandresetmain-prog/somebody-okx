@@ -35,6 +35,11 @@ import type { FounderSpendGrant } from "./internal/workforce";
 import { interpretObjective } from "../lib/management/interpretation";
 import { planWakeForDecision, planWakeForInterpretation, planWakeForTimer } from "../lib/management/wakes";
 import {
+  computeDecisionInputFingerprint,
+  isValidatedInputGap,
+} from "../lib/objective/inputDiagnosis";
+import type { ResourceNeed } from "../lib/objective/resourceNeed";
+import {
   advanceAssignment,
   buildAssignmentContract,
   deriveAssignmentId,
@@ -386,6 +391,36 @@ export function buildConvexManagementPorts(ctx: MutationCtx): ManagementPorts {
       const cumulative = attemptsMap[requirement.requirementKey] ?? 0;
       if (cumulative >= BEGIN_DECISION_CEILING) return null;
 
+      // Fact-change fingerprint: duplicate wakes with unchanged material
+      // management facts must not burn another strategic decision attempt.
+      // A newly validated input gap changes the fingerprint and permits decide.
+      const fingerprints = (mgmt.decisionInputFingerprints ?? {}) as Record<
+        string,
+        string
+      >;
+      const objectiveNeeds = ((data as { resourceNeeds?: ResourceNeed[] })
+        .resourceNeeds ?? []) as ResourceNeed[];
+      const validatedMissing = objectiveNeeds
+        .filter(
+          (need) =>
+            need.requirementKey === requirement.requirementKey &&
+            isValidatedInputGap(need),
+        )
+        .map((need) => need.resourceClass);
+      const fingerprint = computeDecisionInputFingerprint({
+        requirementKey: requirement.requirementKey,
+        contractRevision: currentContractRevision,
+        requiredResourceClasses: requirement.requiredResourceClasses ?? [],
+        validatedMissingClasses: validatedMissing,
+        prerequisiteStates: (requirement.dependsOnRequirementKeys ?? []).map(
+          (key) => `${key}:pending`,
+        ),
+        eligibleOfferingIds: [],
+        spendAuthorityUsd: null,
+        budgetRemainingUsd: null,
+      });
+      if (fingerprints[requirement.requirementKey] === fingerprint) return null;
+
       // The requestId IS the reservation: derived from objective + requirement +
       // revision + attempt, so it is stable across a replayed delivery of the
       // same attempt and can never collide with a later one. The decisionId the
@@ -403,6 +438,7 @@ export function buildConvexManagementPorts(ctx: MutationCtx): ManagementPorts {
               requirementKey: requirement.requirementKey,
               contractRevision: currentContractRevision,
               attempts: cumulative + 1,
+              inputFingerprint: fingerprint,
             },
             decisionAttempts: { ...attemptsMap, [requirement.requirementKey]: cumulative + 1 },
           },
@@ -993,25 +1029,12 @@ async function clearStrategyAfterFailedDelivery(
   );
   if (reqRow) {
     const bound = (reqRow as AnyRow).data as Requirement;
-    const priorStrategy = bound.strategy;
-    const priorClasses = [...(bound.requiredResourceClasses ?? [])];
-    // Failed MAKE with no declared external inputs: delivery proved owned
-    // inventory insufficient. Record a missing input class so the next decide
-    // cannot re-authorize MAKE via vacuous inputs_owned — BUY/HYBRID can surface.
-    // proprietary_data is the catalog class for licensed/external evidence the
-    // snapshot registry can actually offer (not a scenario hardcode).
-    let nextClasses = priorClasses;
-    if (priorStrategy === "MAKE" && priorClasses.length === 0) {
-      nextClasses = ["proprietary_data"];
-    }
-    const classesChanged =
-      nextClasses.length !== priorClasses.length ||
-      nextClasses.some((value, index) => value !== priorClasses[index]);
-    if (bound.strategy !== null || classesChanged) {
+    // Clear strategy only. Failure alone MUST NOT invent a resource class
+    // (e.g. proprietary_data) — validated missing-input diagnosis owns that.
+    if (bound.strategy !== null) {
       const cleared: Requirement = {
         ...bound,
         strategy: null,
-        requiredResourceClasses: nextClasses,
         updatedAt: input.at,
       };
       await ctx.runMutation(internal.internal.workforce.putRequirement, {
@@ -1451,11 +1474,36 @@ export const applyDecision = internalMutation({
     // Clear the reservation on EVERY terminal path so the begin step can run
     // again for a genuine re-decision; the cumulative decisionAttempts ceiling
     // (persisted separately) is what stops a refusal from becoming a storm.
-    const clearPending = async (extra: Record<string, unknown> = {}): Promise<void> => {
+    // Persist the decision-input fingerprint only after an authorized decision
+    // so refusal retries still work until the ceiling, while duplicate wakes
+    // after a real decision with unchanged facts do not burn another attempt.
+    const pendingFingerprint =
+      typeof (pending as unknown as { inputFingerprint?: unknown }).inputFingerprint ===
+      "string"
+        ? (pending as unknown as { inputFingerprint: string }).inputFingerprint
+        : null;
+    const clearPending = async (
+      extra: Record<string, unknown> = {},
+      storeFingerprint = false,
+    ): Promise<void> => {
+      const fingerprints = {
+        ...((mgmt.decisionInputFingerprints ?? {}) as Record<string, string>),
+      };
+      if (storeFingerprint && pendingFingerprint) {
+        fingerprints[pending.requirementKey] = pendingFingerprint;
+      }
       await ctx.db.patch(row._id, {
         data: {
           ...data,
-          management: { ...mgmt, contractId: (mgmt.contractId as string | null) ?? null, pendingDecision: null, ...extra },
+          management: {
+            ...mgmt,
+            contractId: (mgmt.contractId as string | null) ?? null,
+            pendingDecision: null,
+            ...(storeFingerprint
+              ? { decisionInputFingerprints: fingerprints }
+              : {}),
+            ...extra,
+          },
         },
       } as never);
     };
@@ -1508,7 +1556,7 @@ export const applyDecision = internalMutation({
     // still stops a refuse/re-ask storm.
     const attemptsMap = { ...((mgmt.decisionAttempts ?? {}) as Record<string, number>) };
 
-    await clearPending({ decisionAttempts: attemptsMap });
+    await clearPending({ decisionAttempts: attemptsMap }, authorized);
 
     await ctx.db.insert("objectiveEvents", {
       objectiveKey: args.objectiveKey,

@@ -180,18 +180,47 @@ export async function runWorker(
       return tool({
         name: "submit_result",
         description:
-          "Submit the structured evaluation: summary, fit, risks, unknowns and the recommended next action.",
+          "Submit the structured evaluation: summary, fit, risks, unknowns and the recommended next action. Optionally include missingInputs findings for application validation.",
         parameters: z.object({
           summary: z.string().min(1).max(2000),
           fit: z.string().min(1).max(2000),
           risks: z.array(z.string().min(1).max(500)).min(1).max(10),
           unknowns: z.array(z.string().min(1).max(500)).min(1).max(10),
           recommendedNextAction: z.string().min(1).max(500),
+          missingInputs: z
+            .array(
+              z.object({
+                inputCheckId: z.string().min(1).max(120),
+                resourceClass: z.string().min(1).max(120),
+                purpose: z.string().min(1).max(500),
+                reasonOwnedInsufficient: z.string().min(1).max(500),
+                supportingEvidenceIds: z
+                  .array(z.string().min(1).max(160))
+                  .min(1)
+                  .max(16),
+              }),
+            )
+            .max(4)
+            .optional(),
         }),
-        execute: ({ summary, fit, risks, unknowns, recommendedNextAction }) =>
+        execute: ({
+          summary,
+          fit,
+          risks,
+          unknowns,
+          recommendedNextAction,
+          missingInputs,
+        }) =>
           act({
             type: "submit_result",
-            result: { summary, fit, risks, unknowns, recommendedNextAction },
+            result: {
+              summary,
+              fit,
+              risks,
+              unknowns,
+              recommendedNextAction,
+              ...(missingInputs ? { missingInputs } : {}),
+            },
           }),
       });
     return tool({
@@ -272,18 +301,31 @@ export async function runWorker(
       return tool({
         name: "request_resource",
         description:
-          "Propose a missing resource the application should acquire. The application validates and persists the proposal; the worker cannot mark a resource fulfilled or choose a provider.",
+          "Propose a missing input the application should validate. Pass supportingEvidenceIds from application observations in this run. The application decides whether the gap is authoritative; you cannot mark a resource fulfilled, choose a provider, or force BUY.",
         parameters: z.object({
           resourceClass: z.string().min(1).max(120),
           purpose: z.string().min(1).max(500),
           reasonOwnedInsufficient: z.string().min(1).max(500),
+          inputCheckId: z.string().min(1).max(120).optional(),
+          supportingEvidenceIds: z
+            .array(z.string().min(1).max(160))
+            .max(16)
+            .optional(),
         }),
-        execute: ({ resourceClass, purpose, reasonOwnedInsufficient }) =>
+        execute: ({
+          resourceClass,
+          purpose,
+          reasonOwnedInsufficient,
+          inputCheckId,
+          supportingEvidenceIds,
+        }) =>
           act({
             type: "request_resource",
             resourceClass,
             purpose,
             reasonOwnedInsufficient,
+            ...(inputCheckId ? { inputCheckId } : {}),
+            ...(supportingEvidenceIds ? { supportingEvidenceIds } : {}),
           }),
       });
     if (permission === "update_company_artifact")
@@ -358,7 +400,7 @@ export async function runWorker(
     );
   if (hasResourcePermission)
     toolLines.push(
-      "- request_resource proposes a missing resource the application should acquire. You cannot choose a provider, mark a resource fulfilled, pay, or invoke a provider; the application owns sourcing.",
+      "- request_resource proposes a missing input for application validation. Cite supportingEvidenceIds from application observations in this run. You cannot choose a provider, mark a resource fulfilled, pay, invent BUY, or assert scarcity by naming a class alone.",
     );
   if (toolLines.length === 0)
     toolLines.push(
@@ -378,8 +420,7 @@ export async function runWorker(
     );
   if (hasResourcePermission)
     orderSteps.push(
-      `If owned resources are insufficient, call request_resource for the missing resource class; do not invent a provider name.`,
-      `If company_record or other owned lookups return zero usable sources for a required fact, you MUST call request_resource before finishing — ending without that call leaves the manager unable to BUY the missing input.`,
+      `If owned observations are insufficient for a required fact, call request_resource with a governed resource class, purpose, reasonOwnedInsufficient, and supportingEvidenceIds from this run's application observations. The application validates whether that is an authoritative input gap. Do not assume failed owned lookups mean BUY external proprietary data.`,
     );
   orderSteps.push(
     `submit_result with the structured evaluation, then request_completion.`,
@@ -421,10 +462,21 @@ Return only a short operational update, never private reasoning.`;
     instructions: workerInstructions,
     modelSettings: { parallelToolCalls: false, toolChoice: "required" },
     tools,
-    // Stop as soon as the application says the proof is complete; the
-    // application owns completion, the final output is operational text.
+    // Stop when proof is complete OR the application accepted an input gap
+    // (worker must yield — do not burn turns until timeout).
     toolUseBehavior: async () => {
       const current = await port.read();
+      if (current.yieldReason) {
+        return {
+          isFinalOutput: true as const,
+          isInterrupted: undefined,
+          finalOutput: JSON.stringify({
+            yielded: true,
+            reason: current.yieldReason,
+            observation: current,
+          }),
+        };
+      }
       return current.unmetCompletionRequirements.length === 0
         ? {
             isFinalOutput: true as const,

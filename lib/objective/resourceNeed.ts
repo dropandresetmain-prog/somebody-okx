@@ -31,6 +31,14 @@ export type ResourceNeed = {
   createdAt: number;
   updatedAt: number;
   dedupeKey: string;
+  /** Contract revision when the application validated this gap (optional for legacy). */
+  contractRevision?: number | null;
+  /** Obligation identity the gap was validated against. */
+  inputCheckId?: string | null;
+  /** Application observation ids that support the gap claim. */
+  supportingEvidenceIds?: string[];
+  /** Set to "application" only after validateMissingInputProposal accepts. */
+  validationAuthority?: "application" | "unconfirmed" | null;
 };
 
 // ─── Dedupe key ───────────────────────────────────────────────────────────────
@@ -68,6 +76,11 @@ export type CreateResourceNeedInput = {
   reasonOwnedInsufficient: string;
   proposedByRunId?: string | null;
   at: number;
+  status?: ResourceNeedStatus;
+  contractRevision?: number | null;
+  inputCheckId?: string | null;
+  supportingEvidenceIds?: readonly string[];
+  validationAuthority?: "application" | "unconfirmed" | null;
 };
 
 export function createResourceNeed(input: CreateResourceNeedInput): ResourceNeed {
@@ -85,11 +98,17 @@ export function createResourceNeed(input: CreateResourceNeedInput): ResourceNeed
     resourceClass: input.resourceClass,
     purpose: input.purpose,
     reasonOwnedInsufficient: input.reasonOwnedInsufficient,
-    status: "proposed",
+    status: input.status ?? "proposed",
     proposedByRunId: input.proposedByRunId ?? null,
     createdAt: input.at,
     updatedAt: input.at,
     dedupeKey,
+    contractRevision: input.contractRevision ?? null,
+    inputCheckId: input.inputCheckId ?? null,
+    supportingEvidenceIds: input.supportingEvidenceIds
+      ? [...input.supportingEvidenceIds]
+      : [],
+    validationAuthority: input.validationAuthority ?? null,
   };
 }
 

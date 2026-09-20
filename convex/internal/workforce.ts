@@ -776,13 +776,37 @@ export const readDecisionContext = internalQuery({
         need.requirementKey === args.requirementKey || need.requirementKey == null,
       )
       .slice(0, 8)
-      .map((need) => ({
-        needId: String(need.id ?? ""),
-        resourceClass: String(need.resourceClass ?? ""),
-        purpose: String(need.purpose ?? "").slice(0, 400),
-        reasonOwnedInsufficient: String(need.reasonOwnedInsufficient ?? "").slice(0, 400),
-        status: String(need.status ?? "proposed"),
-      }))
+      .map((need) => {
+        const status = String(need.status ?? "proposed");
+        const scoped = need.requirementKey === args.requirementKey;
+        const raw = need as {
+          validationAuthority?: string | null;
+          inputCheckId?: string | null;
+          contractRevision?: number | null;
+        };
+        const authority = raw.validationAuthority;
+        // Authoritative eligibility binding: application-validated + active+ +
+        // requirement-scoped. Proposed / unconfirmed / unscoped never bind.
+        const validated =
+          scoped &&
+          (status === "active" || status === "sourcing" || status === "buy_pending") &&
+          (authority === "application" ||
+            // Legacy active+ rows written before validationAuthority existed.
+            authority == null ||
+            authority === undefined);
+        return {
+          needId: String(need.id ?? ""),
+          resourceClass: String(need.resourceClass ?? ""),
+          purpose: String(need.purpose ?? "").slice(0, 400),
+          reasonOwnedInsufficient: String(need.reasonOwnedInsufficient ?? "").slice(0, 400),
+          status,
+          validated: Boolean(validated),
+          inputCheckId:
+            typeof raw.inputCheckId === "string" ? raw.inputCheckId : null,
+          contractRevision:
+            typeof raw.contractRevision === "number" ? raw.contractRevision : null,
+        };
+      })
       .filter((need) => need.needId && need.resourceClass);
 
     // Accepted prerequisite results: satisfied/waived dependsOn keys with

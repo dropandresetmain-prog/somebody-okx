@@ -198,6 +198,7 @@ export const vIneligibilityReason = v.union(
   v.literal("unverified_source"),
   v.literal("worker_unavailable"),
   v.literal("contradictory_requirement"),
+  v.literal("input_not_owned"),
   v.literal("unknown"),
 );
 
