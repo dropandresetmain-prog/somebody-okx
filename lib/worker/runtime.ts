@@ -27,6 +27,88 @@ export const MAX_TURNS = 8;
 /** Identical failing tool actions allowed before no-progress termination. */
 export const MAX_DUPLICATE_FAILURES = 2;
 
+/** Safe runtime telemetry for a single WorkerRun (no secrets / CoT). */
+export type WorkerRunTelemetry = {
+  providerStarted: boolean;
+  modelResponses: number;
+  toolCallCount: number;
+  toolNames: string[];
+  successfulActions: number;
+  failedActions: number;
+  finalOutputReceived: boolean;
+  zeroProgressReason: string | null;
+  turnCount: number | null;
+};
+
+export function emptyWorkerTelemetry(): WorkerRunTelemetry {
+  return {
+    providerStarted: false,
+    modelResponses: 0,
+    toolCallCount: 0,
+    toolNames: [],
+    successfulActions: 0,
+    failedActions: 0,
+    finalOutputReceived: false,
+    zeroProgressReason: null,
+    turnCount: null,
+  };
+}
+
+/**
+ * WorkContracts that require application-observable proof cannot finish on
+ * prose alone. Tool-mediated progress is mandatory for these assignments.
+ */
+export function contractRequiresToolMediatedProgress(
+  contract: WorkContract,
+): boolean {
+  if (contract.minObservations > 0) return true;
+  if (contract.sourceProofs.some((p) => p.minDistinctSources > 0)) return true;
+  if (contract.requiredSourceClasses.length > 0) return true;
+  if (contract.allowedToolPermissions.includes("update_company_artifact"))
+    return true;
+  return false;
+}
+
+function countApplicationObservations(
+  findings: WorkerObservationFinding[],
+): number {
+  return findings.filter((f) => f.origin === "application_observation").length;
+}
+
+/**
+ * Returns an EXECUTION_FAILED reason when a run produced no meaningful
+ * application effects. Null means the run made enough progress to finish
+ * without being classified as zero-progress (proof may still be Incomplete).
+ */
+export function assessZeroProgress(input: {
+  contract: WorkContract;
+  baseline: WorkerObservation;
+  after: WorkerObservation;
+  toolCallCount: number;
+  successfulActions: number;
+}): string | null {
+  if (!contractRequiresToolMediatedProgress(input.contract)) return null;
+  // Application accepted an input gap — that is meaningful progress.
+  if (input.after.yieldReason) return null;
+
+  const newAppObs =
+    countApplicationObservations(input.after.recordedFindings) >
+    countApplicationObservations(input.baseline.recordedFindings);
+  const unmetShrunk =
+    input.after.unmetCompletionRequirements.length <
+    input.baseline.unmetCompletionRequirements.length;
+
+  const meaningful =
+    input.toolCallCount > 0 &&
+    (newAppObs ||
+      unmetShrunk ||
+      input.successfulActions > 0 ||
+      Boolean(input.after.yieldReason));
+
+  if (meaningful) return null;
+  return "EXECUTION_FAILED: zero_progress";
+}
+
 // Bounded observation surface caps (contract §5).
 const MAX_FINDING_TEXT_CHARS = 1200;
 const MAX_RECORDED_FINDINGS = 6;
@@ -122,9 +204,13 @@ export async function runWorker(
     env?: Record<string, string | undefined>;
     signal?: AbortSignal;
     maxTurns?: number;
+    /** Optional mutable bag filled with safe run telemetry. */
+    telemetry?: WorkerRunTelemetry;
   } = {},
 ) {
   const observation = modelSafeObservation(await port.read());
+  const telemetry = options.telemetry ?? emptyWorkerTelemetry();
+  if (options.telemetry) Object.assign(options.telemetry, telemetry);
   // With an injected model there is no live provider; with live execution the
   // provider configuration gate applies (LIVE_AI_ENABLED + deliberate model).
   const configuration = options.model
@@ -137,6 +223,7 @@ export async function runWorker(
         useResponses: configuration.provider === "openai",
       })
     : undefined;
+  telemetry.providerStarted = Boolean(provider) || Boolean(options.model);
 
   // Duplicate/no-progress guard: identical failing material actions stop the run.
   const failureFingerprints = new Map<string, number>();
@@ -154,6 +241,8 @@ export async function runWorker(
     );
   };
   const trackActionOutcome = (toolName: string, args: unknown, outcome: string) => {
+    telemetry.toolCallCount += 1;
+    telemetry.toolNames.push(toolName);
     if (noProgressReason) return;
     const lower = outcome.toLowerCase();
     const failed =
@@ -163,13 +252,17 @@ export async function runWorker(
       lower.includes("availability: invalid_request") ||
       lower.includes("tool action failed") ||
       (lower.includes("provider") && lower.includes("error"));
-    if (!failed) return;
-    const key = `${toolName}|${normalizeArgs(args)}|${outcome.slice(0, 160)}`;
-    const next = (failureFingerprints.get(key) ?? 0) + 1;
-    failureFingerprints.set(key, next);
-    if (next >= MAX_DUPLICATE_FAILURES) {
-      noProgressReason = `EXECUTION_FAILED: no-progress — repeated identical failing action (${toolName})`;
+    if (failed) {
+      telemetry.failedActions += 1;
+      const key = `${toolName}|${normalizeArgs(args)}|${outcome.slice(0, 160)}`;
+      const next = (failureFingerprints.get(key) ?? 0) + 1;
+      failureFingerprints.set(key, next);
+      if (next >= MAX_DUPLICATE_FAILURES) {
+        noProgressReason = `EXECUTION_FAILED: no-progress — repeated identical failing action (${toolName})`;
+      }
+      return;
     }
+    telemetry.successfulActions += 1;
   };
 
   // act() returns the bounded observed content to the model, not just a label.
@@ -604,9 +697,38 @@ Return only a short operational update, never private reasoning.`;
         signal: options.signal,
       },
     );
-    if (noProgressReason) throw new Error(noProgressReason);
+    telemetry.modelResponses = Math.max(
+      telemetry.modelResponses,
+      typeof result.turns === "number" ? result.turns : 0,
+    );
+    telemetry.turnCount =
+      typeof result.turns === "number" ? result.turns : telemetry.turnCount;
+    telemetry.finalOutputReceived =
+      result.finalOutput !== undefined && result.finalOutput !== null;
+
+    if (noProgressReason) {
+      telemetry.zeroProgressReason = noProgressReason;
+      throw new Error(noProgressReason);
+    }
+
+    // Agents SDK treats plain assistant text as final output when the model
+    // emits no tool calls — even with toolChoice:"required" if the provider
+    // ignores it. Application code must reject zero-effect finishes.
+    const after = modelSafeObservation(await port.read());
+    const zeroReason = assessZeroProgress({
+      contract,
+      baseline: observation,
+      after,
+      toolCallCount: telemetry.toolCallCount,
+      successfulActions: telemetry.successfulActions,
+    });
+    if (zeroReason) {
+      telemetry.zeroProgressReason = zeroReason;
+      throw new Error(zeroReason);
+    }
     return result;
   } finally {
+    if (options.telemetry) Object.assign(options.telemetry, telemetry);
     await provider?.close();
   }
 }

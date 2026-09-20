@@ -33,7 +33,12 @@ import {
 } from "../lib/objective/planner";
 import { listControlledCapabilityKeys } from "../lib/workforce/catalog";
 import { toolPermissionsForCapabilities } from "../lib/workforce/permissions";
-import { runWorker } from "../lib/worker/runtime";
+import {
+  runWorker,
+  emptyWorkerTelemetry,
+  toolNamesForContract,
+} from "../lib/worker/runtime";
+import type { WorkerRunTelemetry } from "../lib/worker/runtime";
 import { providerConfiguration } from "../lib/worker/modelSelection";
 import type { ModelNoteInput } from "../lib/worker/port";
 import { fetchPublicHtml, htmlToExtractableText } from "../lib/web/fetchPublicHtml";
@@ -816,6 +821,8 @@ export const executeWorker = internalAction({
     const finishWithWake = async (input: {
       failed?: boolean;
       failureReason?: string;
+      toolCalls?: number;
+      telemetrySummary?: string;
     }): Promise<{ completed: boolean; unmet: string[] }> => {
       const result = await ctx.runMutation(internal.objectives.finishRun, {
         objectiveKey: args.objectiveKey,
@@ -862,6 +869,14 @@ export const executeWorker = internalAction({
 
     const contract: WorkContract = record.workItems[0].contract;
     const port = makeConvexPort(ctx, args.objectiveKey, args.runId);
+    const surface = toolNamesForContract(contract);
+    const registeredToolNames = [
+      ...surface.materialized,
+      ...(contract.allowedToolPermissions.includes("read_company_record")
+        ? ["list_available_company_inputs", "check_input_availability"]
+        : []),
+      ...surface.workflow,
+    ];
 
     const controller = new AbortController();
     // Strictly inside the lease window: EXECUTION_TIMEOUT_MS < LEASE_MS is
@@ -872,10 +887,28 @@ export const executeWorker = internalAction({
     );
 
     let failureReason: string | undefined;
+    const telemetry = emptyWorkerTelemetry();
+    const formatTelemetry = (t: WorkerRunTelemetry): string => {
+      const called = [...new Set(t.toolNames)].slice(0, 12).join(",");
+      const registered = [...new Set(registeredToolNames)].slice(0, 16).join(",");
+      return [
+        `registered=[${registered}]`,
+        `tools=${t.toolCallCount}`,
+        `called=[${called}]`,
+        `ok=${t.successfulActions}`,
+        `fail=${t.failedActions}`,
+        `turns=${t.turnCount ?? "?"}`,
+        `final=${t.finalOutputReceived ? 1 : 0}`,
+        t.zeroProgressReason ? `zero=${t.zeroProgressReason}` : null,
+      ]
+        .filter(Boolean)
+        .join(" ");
+    };
     try {
       await runWorker(port, contract, {
         env: process.env,
         signal: controller.signal,
+        telemetry,
       });
     } catch (error) {
       // Safe provider-error persistence: operational text only, no secrets.
@@ -889,6 +922,8 @@ export const executeWorker = internalAction({
     } finally {
       clearTimeout(timer);
     }
+
+    const telemetrySummary = formatTelemetry(telemetry);
 
     // If the application validated an input gap during the run, finish as a
     // clean yield (not EXECUTION_FAILED) so management redecides on new facts.
@@ -905,11 +940,24 @@ export const executeWorker = internalAction({
           n.validationAuthority === "application",
       )
     ) {
-      return finishWithWake({});
+      return finishWithWake({
+        toolCalls: telemetry.toolCallCount,
+        telemetrySummary,
+      });
     }
 
     return finishWithWake(
-      failureReason ? { failed: true, failureReason } : {},
+      failureReason
+        ? {
+            failed: true,
+            failureReason,
+            toolCalls: telemetry.toolCallCount,
+            telemetrySummary,
+          }
+        : {
+            toolCalls: telemetry.toolCallCount,
+            telemetrySummary,
+          },
     );
   },
 });

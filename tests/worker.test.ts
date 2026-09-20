@@ -372,7 +372,10 @@ test("a run without meaningful tool progress cannot fabricate completion", async
   });
   // The model just talks: no tool calls at all.
   const { model } = scriptedModel([]);
-  await runWorker(port, c, { model });
+  await assert.rejects(
+    () => runWorker(port, c, { model }),
+    /EXECUTION_FAILED: zero_progress/,
+  );
   assert.equal(port.state.evidence.length, 0);
   assert.equal(port.state.completed, false);
 });

@@ -1416,6 +1416,10 @@ export const finishRun = internalMutation({
     runId: v.string(),
     failed: v.optional(v.boolean()),
     failureReason: v.optional(v.string()),
+    /** Actual tool invocations during this run (was previously a dead counter). */
+    toolCalls: v.optional(v.number()),
+    /** Safe one-line runtime telemetry (names/counts only). */
+    telemetrySummary: v.optional(v.string()),
   },
   returns: v.object({
     completed: v.boolean(),
@@ -1452,10 +1456,23 @@ export const finishRun = internalMutation({
     const runs = [...workItem.runs];
     const runIndex = runs.findIndex((candidate) => candidate.id === args.runId);
     const run = { ...runs[runIndex] };
+    if (typeof args.toolCalls === "number" && args.toolCalls >= 0) {
+      run.toolCalls = args.toolCalls;
+    }
     const managementEarly = (
       record as unknown as { management?: { contractId: string | null } }
     ).management;
     const isM4Managed = Boolean(managementEarly?.contractId);
+
+    if (args.telemetrySummary) {
+      await appendEvent(
+        ctx.db,
+        args.objectiveKey,
+        "system",
+        `Worker telemetry: ${args.telemetrySummary}`.slice(0, 500),
+        now,
+      );
+    }
 
     if (args.failed) {
       run.status = "failed";
