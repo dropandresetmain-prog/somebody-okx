@@ -131,9 +131,20 @@ export function evaluateCompletion(input: {
   evidence: EvidenceRecord[];
   result: ActivityResult | null;
   verifiedEffects?: { key: string; status: string }[];
+  /** When set, only a structured result submitted by THIS run counts. A prior
+   * run's result may remain on the objective as context but cannot complete. */
+  currentRunId?: string;
 }): CompletionCheck {
   const unmet: string[] = [];
-  const { contract, evidence, result } = input;
+  const { contract, evidence } = input;
+
+  // Bind active results to run identity: an unbound or foreign runId is not
+  // this run's submission, even if the objective still holds the old payload.
+  const result =
+    input.currentRunId &&
+    (!input.result || input.result.runId !== input.currentRunId)
+      ? null
+      : input.result;
 
   // Filter to application observations only (Blocker A)
   const applicationObservations = evidence.filter(

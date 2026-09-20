@@ -102,10 +102,18 @@ const EXTERNAL_AUTHORITY_MODE: ExternalAuthorityMode = "m3_available_bounded";
 // step (runDecisionPass port) refuses to schedule another proposeDecision action
 // once this many attempts have been recorded for a requirement, so a model that
 // keeps producing unusable output cannot be re-scheduled forever. Mirrors
-// BEGIN_INTERPRETATION_CEILING. applyDecision resets a requirement's count on a
-// SUCCESSFUL authorization (a genuine later re-decision stays possible) and
-// leaves it in place on a refusal (the storm guard).
+// BEGIN_INTERPRETATION_CEILING. Counts are retained after authorization so a
+// failed delivery can re-decide under a NEW decision identity (`…_aN+1`); the
+// ceiling is what stops a refuse/re-ask storm.
 export const BEGIN_DECISION_CEILING = 3;
+
+/** Parse `…_aN` from a deterministic decision id; null if the suffix is absent. */
+export function attemptFromDecisionId(decisionId: string): number | null {
+  const match = /_a(\d+)$/.exec(decisionId);
+  if (!match) return null;
+  const n = Number(match[1]);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
 
 // ── Bounded control notes (R3 A3, persistence side) ─────────────────────────
 //
@@ -559,7 +567,79 @@ export function buildConvexManagementPorts(ctx: MutationCtx): ManagementPorts {
         // The KERNEL's verdict, reported for progress accounting only.
         return true;
       }
-      // If not satisfied (including assignment_run_finished refusal), persist nothing.
+
+      // Submitted but proofs do not recompute: FAILED delivery, not a permanent
+      // verify loop. Leaving `result_submitted` forever re-routes every pass to
+      // verify_requirement with identical facts. Fail the assignment, clear the
+      // bound strategy (KEEP proofs — wiping them enabled vacuous satisfaction),
+      // pin decisionAttempts so the next begin mints a new identity, and wake.
+      if (submittedAssignment) {
+        const moved = advanceAssignment(submittedAssignment, "failed", at, {
+          resultSummary: (attempt.reason ?? "submitted result did not meet required proof").slice(
+            0,
+            500,
+          ),
+        });
+        if (moved.ok) {
+          await ctx.runMutation(internal.internal.workforce.putAssignment, {
+            assignmentId: submittedAssignment.assignmentId,
+            objectiveKey: state.objectiveKey,
+            data: moved.assignment,
+          });
+        }
+        await ctx.runMutation(internal.internal.workforce.releaseWorker, {
+          workerKey: submittedAssignment.workerKey,
+          assignmentId: submittedAssignment.assignmentId,
+          at,
+        });
+        await ctx.runMutation(internal.internal.workforce.applyBudgetSpend, {
+          objectiveKey: state.objectiveKey,
+          spend: { kind: "assignment_finish", requirementKey: null, intentId: null, at },
+        });
+        const cleared: Requirement = {
+          ...bound,
+          strategy: null,
+          updatedAt: at,
+        };
+        await ctx.runMutation(internal.internal.workforce.putRequirement, {
+          objectiveKey: cleared.objectiveKey,
+          requirementKey: cleared.requirementKey,
+          data: cleared,
+          currentContractRevision,
+        });
+        const failedAttempt = attemptFromDecisionId(submittedAssignment.decisionId);
+        if (failedAttempt !== null) {
+          const objectiveRow = await ctx.db
+            .query("objectives")
+            .withIndex("by_key", (q) => q.eq("key", state.objectiveKey))
+            .unique();
+          if (objectiveRow) {
+            const odata = (objectiveRow as AnyRow).data as Record<string, unknown>;
+            const omgmt = (odata.management ?? {}) as Record<string, unknown>;
+            const attemptsMap = {
+              ...((omgmt.decisionAttempts ?? {}) as Record<string, number>),
+            };
+            attemptsMap[cleared.requirementKey] = Math.max(
+              attemptsMap[cleared.requirementKey] ?? 0,
+              failedAttempt,
+            );
+            await ctx.db.patch(objectiveRow._id, {
+              data: {
+                ...odata,
+                management: {
+                  ...omgmt,
+                  contractId: (omgmt.contractId as string | null) ?? null,
+                  decisionAttempts: attemptsMap,
+                },
+              },
+            } as never);
+          }
+        }
+        await ctx.scheduler.runAfter(0, internal.management.runManagementPass, {
+          objectiveKey: state.objectiveKey,
+          reason: "worker_failure",
+        });
+      }
       return false;
     },
 
@@ -1356,11 +1436,12 @@ export const applyDecision = internalMutation({
 
     const authorized = result.authorization.kind === "authorized";
 
-    // On a SUCCESSFUL authorization, reset this requirement's attempt count so a
-    // genuine later re-decision stays possible; on a refusal, leave it so the
-    // cumulative ceiling (BEGIN_DECISION_CEILING) eventually stops re-asking.
+    // Keep decisionAttempts after authorization. Resetting to zero reminted the
+    // same `…_a1` decisionId on a post-failure retry, which derived the same
+    // assignment id as the failed delivery and deferred forever. The cumulative
+    // counter gives each re-decision a new identity; BEGIN_DECISION_CEILING
+    // still stops a refuse/re-ask storm.
     const attemptsMap = { ...((mgmt.decisionAttempts ?? {}) as Record<string, number>) };
-    if (authorized) delete attemptsMap[pending.requirementKey];
 
     await clearPending({ decisionAttempts: attemptsMap });
 

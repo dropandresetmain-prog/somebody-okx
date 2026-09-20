@@ -439,7 +439,7 @@ test("4. APPLY happy path MAKE: begin + applyDecision authorizes and persists de
   assert.equal(mgmt2.pendingDecision, null, "pendingDecision cleared");
 
   const attempts2 = mgmt2.decisionAttempts as Record<string, number>;
-  assert.equal(attempts2[reqKey], undefined, "decisionAttempts cleared for req on authorization");
+  assert.equal(attempts2[reqKey], 1, "decisionAttempts retained after authorization");
 
   const wakes = await readWakeEvents(t, key);
   const decisionWake = wakes.find((w) => w.dedupeKey === `decision:${key}:${expectedDecisionId}`);

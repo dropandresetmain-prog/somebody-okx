@@ -22,6 +22,7 @@ import { buildRequirement, unresolvedMaterialAmbiguity } from "./contract";
 import { decideStaffing } from "./staffing";
 import { parseManagerialRecommendation } from "./proposals";
 import { reauthorizeRecommendation } from "./authorization";
+import { assessInternalContractExecutability } from "./dispatch";
 import {
   buildExternalOption,
   buildHybridOption,
@@ -338,6 +339,36 @@ export async function runManagerialDecisionPass(
         },
         notes,
       );
+    }
+    // Executability before authorization sticks: a MAKE/HYBRID whose envelope
+    // cannot physically produce its newly attached proofs is refused here —
+    // never authorized and later "fixed" by silently widening dispatch tools.
+    if (authorization.strategy === "MAKE" || authorization.strategy === "HYBRID") {
+      const optionsById = new Map(grounded.map((option) => [option.optionId, option]));
+      const option = optionsById.get(authorization.optionId);
+      const internal = option?.internal;
+      if (internal) {
+        const executable = assessInternalContractExecutability({
+          requirement: built.requirement,
+          capabilityKeys: internal.capabilityKeys,
+        });
+        if (!executable.ok) {
+          return finish(
+            input,
+            null,
+            grounded,
+            recommendation,
+            {
+              kind: "refused",
+              requirementKey: input.requirementKey,
+              contractRevision: input.currentContractRevision,
+              reasons: ["proof_unavailable"],
+              detail: `authorized ${authorization.strategy} is not executable: ${executable.reasons.join("; ")}`,
+            },
+            notes,
+          );
+        }
+      }
     }
     bound = built.requirement;
   }

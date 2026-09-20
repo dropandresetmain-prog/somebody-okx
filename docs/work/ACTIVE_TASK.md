@@ -2,6 +2,43 @@
 
 Authoritative integrated code baseline: `main@a9a0b3d31a7125e83fe0771a783ee62cbd96914a`.
 
+## M6.1 CAUSAL-PIPELINE RECOVERY (branch `fix/m6-1-causal-pipeline`)
+
+Started 2026-09-20 from accepted M6.1 candidate `feat/m6-1-first-product-e2e@50acb6b`
+(not from post-failure stall commit `6f5e2b5`, which raised decision ceilings,
+silently widened observe permissions, and applied automatic growth artifact
+assist — all rejected for this recovery).
+
+Goal: repair the smallest generic contracts for one physically working M6.1 E2E.
+External provider/payment remains the ONLY simulated boundary. No M6.2 / live pay.
+
+### CP1 — execution / proof integrity (COMPLETE)
+
+Repaired before attempting BUY:
+
+- **A stale result leakage:** `ActivityResult.runId` bound on submit; `evaluateCompletion({ currentRunId })` ignores foreign/unbound results.
+- **B empty proofs:** `attemptRequirementSatisfaction` refuses `proofs.length === 0`; failure paths keep proofs when clearing strategy.
+- **C executability before auth:** `assessInternalContractExecutability` — MAKE/HYBRID refused when envelope cannot produce required observation/artifact proofs (no silent dispatch widen).
+- **D mutation obligation:** M4-managed runs with `update_company_artifact` cannot finish without a version change by this run.
+- **E failed verification exit:** unproven `result_submitted` → assignment `failed`, strategy cleared (proofs kept), decisionAttempts pinned, next pass scheduled.
+- **F attempt identities:** decisionAttempts retained after authorization so genuine retry mints `…_a(N+1)` / new assignment id; `BEGIN_DECISION_CEILING` stays **3**.
+- **G management metadata:** patches preserve `contractId` + attempt maps when writing.
+
+Evidence: `tests/m61CausalPipelineCp1.test.ts` + updated A5-9 / decision-chain retain;
+`npx tsx --test` on CP1 suite cluster: 43 pass / 0 fail.
+
+Rejected from `6f5e2b5`: ceiling 16, `ensureObservableCapabilityKeys` widen, growth artifact assist.
+
+### CP2 — diagnosis → management bridge (IN PROGRESS)
+
+### CP3 — genuine MAKE/BUY eligibility (PENDING)
+
+### CP4 — acquisition → artifact → M5 closure (PENDING)
+
+### CP5 — fresh physical E2E acceptance (PENDING)
+
+---
+
 ## M6.1 FIRST PRODUCT E2E — LIVE LEDGER (branch `feat/m6-1-first-product-e2e`)
 
 Started 2026-09-20 from `main@2bc3e06a60e32fe5e987b1dced35627f7dae2827`

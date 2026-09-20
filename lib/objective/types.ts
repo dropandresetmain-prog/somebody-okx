@@ -257,6 +257,9 @@ export type ActivityResult = {
   unknowns: string[];
   recommendedNextAction: string;
   completedAt: number;
+  /** Run that submitted this result. Prior-run results are context only and
+   * must not satisfy a later run's completion check. */
+  runId?: string;
 };
 
 // ── Activity ─────────────────────────────────────────────────────────────────

@@ -191,6 +191,17 @@ export function attemptRequirementSatisfaction(input: {
       reason: `requirement ${requirement.requirementKey} is ${requirement.state}; a resolved requirement is not re-satisfied`,
     };
 
+  // Empty obligation lists must never "pass". A semantic (pre-strategy) row
+  // and a failure path that wiped proofs both look like proofs:[] — neither
+  // may become satisfied. The completion gate already refuses vacuous claims;
+  // this closes the satisfaction kernel itself.
+  if (requirement.proofs.length === 0)
+    return {
+      satisfied: false,
+      requirement,
+      reason: `requirement ${requirement.requirementKey} declares no governed proof; cannot satisfy`,
+    };
+
   const missing = missingProofs(requirement.proofs, input.facts, {
     contractRevision: eventRevision,
     proofRefs: input.proofRefs,

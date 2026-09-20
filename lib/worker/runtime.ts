@@ -374,7 +374,7 @@ export async function runWorker(
   ];
   if (hasArtifactPermission)
     orderSteps.push(
-      `If the assignment requires it, call update_company_artifact with a real, versioned change and a changeNote.`,
+      `This assignment's envelope can mutate a controlled company artifact: you MUST call update_company_artifact with a real, versioned change and a changeNote before submit_result. Advice-only completion will be refused.`,
     );
   if (hasResourcePermission)
     orderSteps.push(

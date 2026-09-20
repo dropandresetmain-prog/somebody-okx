@@ -138,6 +138,42 @@ export function proofSourceClassesFor(
   return classes;
 }
 
+// Can this capability envelope physically produce the requirement's governed
+// proofs? Checked BEFORE authorization — do not silently widen permissions to
+// make an ineligible MAKE look executable at dispatch time.
+export type ContractExecutability =
+  | { ok: true }
+  | { ok: false; reasons: string[] };
+
+export function assessInternalContractExecutability(input: {
+  requirement: Requirement;
+  capabilityKeys: readonly string[];
+}): ContractExecutability {
+  const reasons: string[] = [];
+  const keys = input.capabilityKeys.filter(isControlledCapabilityKey) as CapabilityKey[];
+  const granted = new Set<string>(toolPermissionsForCapabilities(keys));
+
+  const needsObservation = input.requirement.proofs.some(
+    (proof) => proof.proofKind === "application_observation",
+  );
+  if (needsObservation && proofSourceClassesFor(keys).length === 0) {
+    reasons.push(
+      "observation proof required but capability envelope has no executable observe path",
+    );
+  }
+
+  const needsArtifact = input.requirement.proofs.some(
+    (proof) => proof.proofKind === "company_artifact_version",
+  );
+  if (needsArtifact && !granted.has("update_company_artifact")) {
+    reasons.push(
+      "artifact proof required but capability envelope cannot mutate company artifacts",
+    );
+  }
+
+  return reasons.length ? { ok: false, reasons } : { ok: true };
+}
+
 // The observation proofs a requirement demands, as far as they are executable.
 // A requirement with a concrete `sourceId`/`evidenceId` bound asks for THAT
 // source; a requirement that merely demands an observation asks for one distinct

@@ -683,7 +683,7 @@ export const submitResult = internalMutation({
     const now = Date.now();
     const row = await loadObjective(ctx.db, args.objectiveKey);
     assertActiveRun(row.data, args.runId, now);
-    const result: ActivityResult = { ...args.result, completedAt: now };
+    const result: ActivityResult = { ...args.result, completedAt: now, runId: args.runId };
     const data: ObjectiveRecord = { ...row.data, result, updatedAt: now };
     await ctx.db.patch(row._id, { data });
     await appendEvent(
@@ -750,26 +750,24 @@ export const readWorkerObservation = internalQuery({
       contract: workItem.contract,
       evidence,
       result: record.result,
+      currentRunId: args.runId,
     });
     const unmet = [...check.unmet];
-    // M2-legacy obligation: growth contracts (those granted update_company_artifact)
-    // require an actual artifact version bump beyond the seed AND a resource-need
-    // proposal from this run (the M2 canonical loop is how external acquisition
-    // gets discovered at all). This is the historical M2 completion rule,
-    // preserved behind the legacy boundary so M4-managed rows are evaluated by
-    // the independent gate, not this spine predicate.
-    const isM4Managed = (record as unknown as { management?: { contractId: string | null } }).management?.contractId != null;
-    if (!isM4Managed) {
-      const isGrowth = workItem.contract.allowedToolPermissions.includes(
-        "update_company_artifact",
+    // Mutation-required assignments (envelope grants update_company_artifact)
+    // cannot finish on observations/summary alone — M2 legacy and M4 managed
+    // alike. The CONTENT change must come from this run.
+    const requiresArtifactMutation = workItem.contract.allowedToolPermissions.includes(
+      "update_company_artifact",
+    );
+    if (requiresArtifactMutation) {
+      const artifactChanged = (record.companyArtifacts ?? []).some(
+        (a) => a.provenanceRunId === args.runId && a.version > 1,
       );
-      if (isGrowth) {
-        const artifactChanged = (record.companyArtifacts ?? []).some(
-          (a) => a.provenanceRunId === args.runId && a.version > 1,
-        );
-        if (!artifactChanged) {
-          unmet.push("company_artifact: no version change by this run");
-        }
+      if (!artifactChanged) {
+        unmet.push("company_artifact: no version change by this run");
+      }
+      const isM4Managed = (record as unknown as { management?: { contractId: string | null } }).management?.contractId != null;
+      if (!isM4Managed) {
         const hasNeed = (record.resourceNeeds ?? []).some(
           (n) => n.proposedByRunId === args.runId,
         );
@@ -1070,6 +1068,7 @@ export const finishRun = internalMutation({
                 contract: record.workItems[0].contract,
                 evidence: evidenceForRun(all, args.runId),
                 result: record.result,
+                currentRunId: args.runId,
               }).unmet
             : ["Run was superseded before it could complete"];
       return { completed: decision.completed, unmet };
@@ -1114,29 +1113,25 @@ export const finishRun = internalMutation({
       contract: workItem.contract,
       evidence,
       result: record.result,
+      currentRunId: args.runId,
     });
 
-    // M2-legacy obligation: growth contracts (those granted update_company_artifact)
-    // require an actual artifact version bump beyond the seed. This is the historical
-    // M2 completion rule, preserved behind the legacy boundary so M4-managed rows
-    // are evaluated by the independent gate, not this spine predicate.
-    const isM4Managed = (record as unknown as { management?: { contractId: string | null } }).management?.contractId != null;
-    if (!isM4Managed) {
-      const isGrowthContract = workItem.contract.allowedToolPermissions.includes(
-        "update_company_artifact",
+    // Mutation-required assignments cannot finish without a version change by
+    // THIS run — applies to M4-managed work as well as M2 legacy growth.
+    const requiresArtifactMutation = workItem.contract.allowedToolPermissions.includes(
+      "update_company_artifact",
+    );
+    if (requiresArtifactMutation) {
+      const artifacts = record.companyArtifacts ?? [];
+      const artifactChanged = artifacts.some(
+        (a) => a.provenanceRunId === args.runId && a.version > 1,
       );
-      if (isGrowthContract) {
-        const artifacts = record.companyArtifacts ?? [];
-        const artifactChanged = artifacts.some(
-          (a) => a.provenanceRunId === args.runId && a.version > 1,
-        );
-        if (!artifactChanged) {
-          check.complete = false;
-          check.unmet = [
-            ...check.unmet,
-            "company_artifact: no version change by this run",
-          ];
-        }
+      if (!artifactChanged) {
+        check.complete = false;
+        check.unmet = [
+          ...check.unmet,
+          "company_artifact: no version change by this run",
+        ];
       }
     }
 
@@ -1408,6 +1403,7 @@ export const getObjective = query({
               ? evidenceForRun(evidence, record.run.id)
               : evidence,
             result: record.result,
+            ...(record.run ? { currentRunId: record.run.id } : {}),
           }).unmet
         : ["No work item has been planned yet"];
     return {
