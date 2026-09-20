@@ -18,7 +18,11 @@ import {
   EXECUTION_TIMEOUT_MS,
   isRunActive,
 } from "../lib/objective/runGuards";
-import { companyRecord } from "../lib/objective/policy";
+import {
+  formatAvailabilityToolResult,
+  listCompanyInputCatalog,
+  lookupCompanyRecord,
+} from "../lib/objective/inputAvailability";
 import { normalizePublicUrl } from "../lib/objective/contract";
 import {
   M1_ROLE_REQUIREMENTS,
@@ -192,13 +196,29 @@ function makeConvexPort(ctx: ActionCtx, objectiveKey: string, runId: string) {
           let sourceClass: SourceClass;
           let sourceId: string;
           if (intent.source === "company_record") {
-            const record = companyRecord(intent.recordRef ?? "");
-            if (!record)
-              throw new Error(`Unknown company record: ${intent.recordRef}`);
-            text = record.text;
-            label = record.label;
+            const looked = lookupCompanyRecord(intent.recordRef ?? "");
+            if (looked.status === "INVALID_REQUEST") {
+              // Persist INVALID_REQUEST as an application observation so the
+              // worker has a durable fact — never treat this as NOT_AVAILABLE.
+              const finding: FindingInput = {
+                sourceClass: "company_record",
+                label: "input_check:INVALID_REQUEST",
+                text: `availability: INVALID_REQUEST. ${looked.detail}`,
+                origin: "application_observation",
+                sourceId: `record:input_check/invalid/${(intent.recordRef ?? "").trim() || "empty"}`,
+                recordRef: `input_check/invalid/${(intent.recordRef ?? "").trim() || "empty"}`,
+                observedAt: Date.now(),
+              };
+              const { evidenceId } = await ctx.runMutation(
+                internal.objectives.recordFinding,
+                { objectiveKey, runId, finding },
+              );
+              return `INVALID_REQUEST (evidence ${evidenceId}): ${looked.detail}`;
+            }
+            text = looked.record.text;
+            label = looked.record.label;
             sourceClass = "company_record";
-            sourceId = `record:${record.ref.trim()}`;
+            sourceId = `record:${looked.record.ref.trim()}`;
           } else {
             const url = intent.url ?? "";
             const normalized = normalizePublicUrl(url);
@@ -397,6 +417,40 @@ function makeConvexPort(ctx: ActionCtx, objectiveKey: string, runId: string) {
           );
           return `Company artifact ${result.key} updated to version ${result.version}. Provenance run=${runId}.`;
         }
+        case "list_available_company_inputs": {
+          const catalog = listCompanyInputCatalog();
+          return JSON.stringify({
+            status: "AVAILABLE",
+            inputs: catalog,
+            note: "These are the only governed company_record refs. Do not invent refs. INVALID_REQUEST lookups are not missing-input evidence.",
+          });
+        }
+        case "check_input_availability": {
+          const inputCheckId = String(
+            (command as { inputCheckId?: string }).inputCheckId ?? "",
+          );
+          const scoped = await resolveRequirementKeyForRun(
+            ctx,
+            objectiveKey,
+            runId,
+            (
+              await ctx.runQuery(internal.objectives.getObjectiveInternal, {
+                objectiveKey,
+              })
+            ).data as ObjectiveRecord,
+          );
+          const report = await ctx.runMutation(
+            internal.objectives.recordInputAvailabilityCheck,
+            {
+              objectiveKey,
+              runId,
+              inputCheckId,
+              requirementKey: scoped?.requirementKey ?? null,
+              workItemId: scoped?.workItemId ?? null,
+            },
+          );
+          return `${formatAvailabilityToolResult(report)} (evidence ${report.evidenceId})`;
+        }
         case "request_resource": {
           const resourceClass = String(command.resourceClass ?? "");
           const purpose = String(command.purpose ?? "");
@@ -457,7 +511,15 @@ function makeConvexPort(ctx: ActionCtx, objectiveKey: string, runId: string) {
                 internal.objectives.readWorkerObservation,
                 { objectiveKey, runId },
               );
-              supportIds = observation.recordedFindings
+              const notAvailable = observation.recordedFindings.filter(
+                (f) =>
+                  f.origin === "application_observation" &&
+                  (String(f.label ?? "").toLowerCase().includes("not_available") ||
+                    String(f.text ?? "").toLowerCase().includes("availability: not_available")),
+              );
+              supportIds = (
+                notAvailable.length > 0 ? notAvailable : observation.recordedFindings
+              )
                 .filter((f) => f.origin === "application_observation")
                 .map((f) => f.id)
                 .slice(0, 16);

@@ -26,8 +26,8 @@ const at = 1_700_000_000_000;
 function evidence(over: Partial<EvidenceRecord> & { id: string }): EvidenceRecord {
   return {
     sourceClass: "company_record",
-    label: "record",
-    text: "not found — zero usable sources for required market fact",
+    label: "input_check:NOT_AVAILABLE",
+    text: "availability: NOT_AVAILABLE. not found — zero usable sources for required market fact",
     observedAt: at,
     origin: "application_observation",
     sourceId: `src_${over.id}`,
@@ -135,22 +135,34 @@ test("F1 negative: owned class proposal is not an acquisition gap", () => {
 });
 
 test("F1 negative: sufficient owned evidence refuses gap", () => {
-  const result = validateMissingInputProposal(validProposal, {
+  const result = validateMissingInputProposal(
+    { ...validProposal, supportingEvidenceIds: ["ev_rec", "ev_web", "ev_na"] },
+    {
     ...baseCtx(),
     evidence: [
       evidence({
         id: "ev_rec",
+        label: "Company CRM export",
         text: "Company CRM export listing 120 qualified leads with industry tags and ARR.",
         recordRef: "crm_leads_q1",
       }),
       evidence({
         id: "ev_web",
+        label: "Public market report",
         sourceClass: "public_web",
         url: "https://example.com/market",
         text: "Public industry report summarizing TAM and competitor pricing bands.",
       }),
+      // Stale NOT_AVAILABLE cannot invent a gap once live coverage is AVAILABLE.
+      evidence({
+        id: "ev_na",
+        label: "input_check:NOT_AVAILABLE",
+        text: "availability: NOT_AVAILABLE. stale check",
+        recordRef: "input_check/evidence_sufficiency/NOT_AVAILABLE",
+      }),
     ],
-  });
+  },
+  );
   assert.equal(result.ok, false);
   if (result.ok) return;
   assert.equal(result.refusalCode, "owned_evidence_sufficient");

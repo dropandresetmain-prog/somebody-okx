@@ -94,8 +94,16 @@ assignment `asg_9c4a40ea51403db4f85ec70b` / run `run_b1c097c8b64cfbbf5fd3c226`.
 MAKE/BUY eligibility redesign; Convex connect timeout (this run completed
 server-side).
 
-**Next:** CP-A1.2 governed input availability + reporting; CP-A1.3 turn /
-no-progress bounds (default 8).
+### CP-A1.2 / CP-A1.3 — input availability + worker bounds (COMPLETE)
+
+- `list_available_company_inputs` + `check_input_availability` (companions when
+  `read_company_record` is granted); unknown refs persist `INVALID_REQUEST`
+  observations (not scarcity).
+- Validated gaps require a governed `NOT_AVAILABLE` application observation.
+- `MAX_TURNS` 24→8; duplicate identical failing actions stop at 2 (`no-progress`).
+- Tests: `tests/m61A1InputAvailability.test.ts` + diagnosis/worker regressions.
+
+### CP-A1.4 — physical STOP A1/B (PENDING)
 
 ---
 

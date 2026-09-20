@@ -430,6 +430,8 @@ test("unregistered tools are never offered to the model", async () => {
   assert.deepEqual(
     [...new Set(seen)].sort(),
     [
+      "check_input_availability",
+      "list_available_company_inputs",
       "read_company_record",
       "read_public_web",
       "record_finding",
@@ -747,8 +749,10 @@ test("authorize_external_spend and unknown tools never materialize in the agent 
     !uniqueTools.includes("draft_document"),
     "draft_document must never materialize when not in the envelope",
   );
-  // Only the envelope permissions plus workflow verbs.
+  // Only the envelope permissions plus workflow verbs and governed-input companions.
   assert.deepEqual(uniqueTools, [
+    "check_input_availability",
+    "list_available_company_inputs",
     "read_company_record",
     "read_public_web",
     "record_finding",

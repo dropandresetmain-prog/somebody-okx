@@ -24,6 +24,8 @@ export type WorkerCommand =
       url?: string;
       recordRef?: string;
     }
+  | { type: "list_available_company_inputs" }
+  | { type: "check_input_availability"; inputCheckId: string }
   | { type: "submit_result"; result: WorkerResultInput }
   | { type: "request_completion" }
   | {

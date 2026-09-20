@@ -13,6 +13,10 @@ import type {
   WorkContract,
   WorkerSpec,
 } from "./types";
+import {
+  isInvalidRequestObservation,
+  isNotAvailableObservation,
+} from "./inputAvailability";
 
 // Normalize a public URL to a stable identity: lowercase scheme+host, strip
 // www. prefix, drop fragment, strip trailing slash, keep query. Returns "" for
@@ -146,9 +150,13 @@ export function evaluateCompletion(input: {
       ? null
       : input.result;
 
-  // Filter to application observations only (Blocker A)
+  // Filter to application observations only (Blocker A). Coverage/absence
+  // diagnostics are application facts but never satisfy source proofs.
   const applicationObservations = evidence.filter(
-    (item) => item.origin === "application_observation"
+    (item) =>
+      item.origin === "application_observation" &&
+      !isNotAvailableObservation(item) &&
+      !isInvalidRequestObservation(item),
   );
 
   // Check each source proof requirement (Blocker B)

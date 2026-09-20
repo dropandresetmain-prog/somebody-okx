@@ -79,10 +79,12 @@ import type { SourcingDecisionRecord } from "../lib/objective/resourceNeed";
 import type { CandidateAssessment } from "../lib/market/assessment";
 import type { MarketOffering } from "../lib/market/discovery";
 import {
+  listInputObligations,
   validateMissingInputProposal,
   type MissingInputProposal,
   type UnconfirmedInputFinding,
 } from "../lib/objective/inputDiagnosis";
+import { checkInputAvailability } from "../lib/objective/inputAvailability";
 import type { Requirement } from "../lib/management/types";
 import type { CompanyArtifact } from "../lib/objective/artifact";
 import type { WorkerRecord } from "../lib/management/types";
@@ -978,6 +980,110 @@ export const updateCompanyArtifact = internalMutation({
       now,
     );
     return { key: next.key, version: next.version };
+  },
+});
+
+// Persist a governed input-availability check as an application observation.
+// Only NOT_AVAILABLE results may later support validated missing-input gaps.
+export const recordInputAvailabilityCheck = internalMutation({
+  args: {
+    objectiveKey: v.string(),
+    runId: v.string(),
+    inputCheckId: v.string(),
+    requirementKey: v.union(v.string(), v.null()),
+    workItemId: v.union(v.string(), v.null()),
+  },
+  returns: v.object({
+    status: v.string(),
+    inputCheckId: v.string(),
+    detail: v.string(),
+    evidenceId: v.string(),
+    evidenceText: v.string(),
+    label: v.string(),
+  }),
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const row = await loadObjective(ctx.db, args.objectiveKey);
+    assertActiveRun(row.data, args.runId, now);
+    const record = row.data;
+    const workItem =
+      record.workItems.find((wi) => wi.id === args.workItemId) ??
+      record.workItems[0];
+    if (!workItem) throw new Error("no work item for input availability check");
+
+    let requiredResourceClasses: string[] = [];
+    let mustBeTrue = workItem.contract.assignment;
+    let expectedOutput: string | null = null;
+    if (args.requirementKey) {
+      const reqRows = await ctx.db
+        .query("requirements")
+        .withIndex("by_objectiveKey", (q) => q.eq("objectiveKey", args.objectiveKey))
+        .collect();
+      const reqRow = reqRows.find((r) => {
+        const data = (r as { data: Requirement }).data;
+        return data.requirementKey === args.requirementKey;
+      });
+      if (reqRow) {
+        const requirement = (reqRow as { data: Requirement }).data;
+        requiredResourceClasses = requirement.requiredResourceClasses ?? [];
+        mustBeTrue = requirement.mustBeTrue;
+        expectedOutput = requirement.expectedOutput ?? null;
+      }
+    }
+
+    const evidence = await listEvidence(ctx.db, args.objectiveKey);
+    const obligations = listInputObligations({
+      requiredResourceClasses,
+      sourceProofs: workItem.contract.sourceProofs,
+      mustBeTrue,
+      expectedOutput,
+    });
+    const result = checkInputAvailability({
+      inputCheckId: args.inputCheckId,
+      obligations,
+      sourceProofs: workItem.contract.sourceProofs,
+      controlledResourceClasses: [...CURRENT_RESOURCE_INVENTORY],
+      evidence,
+      runId: args.runId,
+    });
+
+    const recordRef = `input_check/${result.inputCheckId || "unknown"}/${result.status}`;
+    const derived = sourceIdentity({
+      sourceClass: "company_record",
+      recordRef,
+    });
+    if (!derived || derived !== `record:${recordRef}`)
+      throw new Error("input availability check produced an invalid source identity");
+
+    const evidenceId = `ev_${now}_${Math.random().toString(36).slice(2, 8)}`;
+    const evidenceRow: EvidenceRecord = {
+      sourceClass: "company_record",
+      label: result.label,
+      text: result.evidenceText,
+      origin: "application_observation",
+      sourceId: derived,
+      recordRef,
+      observedAt: now,
+      id: evidenceId,
+      recordedBy: workItem.workerKey,
+      runId: args.runId,
+    };
+    await recordEvidenceRow(ctx.db, args.objectiveKey, evidenceRow);
+    await appendEvent(
+      ctx.db,
+      args.objectiveKey,
+      "evidence",
+      `Input availability ${result.status} for ${result.inputCheckId || "unknown"}`,
+      now,
+    );
+    return {
+      status: result.status,
+      inputCheckId: result.inputCheckId,
+      detail: result.detail,
+      evidenceId,
+      evidenceText: result.evidenceText,
+      label: result.label,
+    };
   },
 });
 

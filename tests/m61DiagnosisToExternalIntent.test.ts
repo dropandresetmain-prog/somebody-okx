@@ -217,8 +217,8 @@ async function seedNeutral(t: Backend, key: string) {
         evidenceId: "ev_rec",
         data: {
           sourceClass: "company_record" as const,
-          label: "Company record missing_market",
-          text: "not found — zero usable sources for required market fact",
+          label: "input_check:NOT_AVAILABLE",
+          text: "availability: NOT_AVAILABLE. not found — zero usable sources for required market fact",
           recordRef: "missing_market",
           observedAt: now,
           recordedBy: "app",

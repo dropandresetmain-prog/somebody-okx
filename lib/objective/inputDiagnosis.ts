@@ -12,6 +12,11 @@ import {
 } from "../workforce/catalog";
 import type { ResourceClass } from "../workforce/types";
 import {
+  checkInputAvailability,
+  isInvalidRequestObservation,
+  isNotAvailableObservation,
+} from "./inputAvailability";
+import {
   createResourceNeed,
   dedupeResourceNeeds,
   transitionNeedStatus,
@@ -144,7 +149,9 @@ function ownedEvidenceCoversProofs(
     (item) =>
       item.runId === runId &&
       item.origin === PROOF_ORIGIN &&
-      (item.sourceClass === "company_record" || item.sourceClass === "public_web"),
+      (item.sourceClass === "company_record" || item.sourceClass === "public_web") &&
+      !isNotAvailableObservation(item) &&
+      !isInvalidRequestObservation(item),
   );
   for (const proof of sourceProofs) {
     const matching = ownedObs.filter((item) => item.sourceClass === proof.sourceClass);
@@ -304,13 +311,42 @@ export function validateMissingInputProposal(
         "foreign_evidence",
         `supporting evidence ${id} is not an application observation`,
       );
+    // Invalid lookups are never scarcity evidence.
+    if (isInvalidRequestObservation(item))
+      return refuse(
+        "invalid_reference_evidence",
+        `supporting evidence ${id} is INVALID_REQUEST, not NOT_AVAILABLE`,
+      );
   }
 
-  // For evidence-sufficiency: owned observations must NOT already cover proofs.
+  // Authoritative gaps require at least one application NOT_AVAILABLE check.
+  const notAvailableSupport = supportingIds.filter((id) => {
+    const item = evidenceById.get(id);
+    return item ? isNotAvailableObservation(item) : false;
+  });
+  if (notAvailableSupport.length === 0)
+    return refuse(
+      "missing_not_available_evidence",
+      "validated gaps require supportingEvidenceIds from a governed NOT_AVAILABLE input check",
+    );
+
+  // Live coverage must still be NOT_AVAILABLE (stale checks do not invent gaps
+  // after owned evidence becomes sufficient).
   if (obligation.kind === "evidence_sufficiency") {
-    if (
-      ownedEvidenceCoversProofs(ctx.evidence, ctx.sourceProofs, ctx.runId)
-    )
+    const live = checkInputAvailability({
+      inputCheckId: obligation.inputCheckId,
+      obligations: listInputObligations({
+        requiredResourceClasses: ctx.requiredResourceClasses,
+        sourceProofs: ctx.sourceProofs,
+        mustBeTrue: ctx.mustBeTrue,
+        expectedOutput: ctx.expectedOutput,
+      }),
+      sourceProofs: ctx.sourceProofs,
+      controlledResourceClasses: ctx.controlledResourceClasses,
+      evidence: ctx.evidence,
+      runId: ctx.runId,
+    });
+    if (live.status === "AVAILABLE")
       return refuse(
         "owned_evidence_sufficient",
         "owned/accepted evidence already covers the work-contract proofs",
