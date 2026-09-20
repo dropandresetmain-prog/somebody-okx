@@ -126,6 +126,29 @@ test("material ambiguity outranks executable work → approval_required/ask_foun
   );
   assert.equal(r.state, "approval_required");
   assert.deepEqual(r.action, { kind: "ask_founder", question: "spend money?" });
+  assert.ok(isCoherentHold(r), "ask_founder must be a coherent hold, not a crash");
+});
+
+test("Cutoff-2 sweep includes material ask_founder as a coherent quiescent hold", () => {
+  const r = reduceManagementState(
+    base({
+      contract: {
+        ...contract,
+        ambiguities: [
+          {
+            question: "irreversible external commitment?",
+            materiality: "material",
+            resolution: "founder must decide",
+            resolvedBy: "founder",
+            requiresFounderApproval: true,
+          },
+        ],
+      },
+    }),
+  );
+  assert.equal(r.state, "approval_required");
+  assert.equal(r.action.kind, "ask_founder");
+  assert.ok(isCoherentHold(r));
 });
 
 test("pending founder approval parks the loop on await_wake, never a model call", () => {
@@ -266,6 +289,20 @@ test("Cutoff-2 sweep: every reachable state is a ManagementState literal and qui
     base({ contract: null }),
     base({ budgetVerdict: { ok: false, limit: "x", detail: "d", state: "recovery_required" } }),
     base({ pendingApproval: { question: "q" } }),
+    base({
+      contract: {
+        ...contract,
+        ambiguities: [
+          {
+            question: "spend?",
+            materiality: "material",
+            resolution: "founder",
+            resolvedBy: "founder",
+            requiresFounderApproval: true,
+          },
+        ],
+      },
+    }),
     base({ groundedByRequirement: new Map() }),
     base({ requirements: [requirement({ state: "blocked", blockedReason: "b" })], groundedByRequirement: new Map([["page_live", [ineligibleOption("page_live")]]]) }),
     base(),

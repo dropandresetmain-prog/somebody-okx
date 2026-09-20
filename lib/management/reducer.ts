@@ -333,7 +333,14 @@ export function reduceManagementState(facts: ReducerFacts): ReducedState {
 
 // Invariant the graph asserts on every transition (and Cutoff-2 tests hammer):
 // a quiescent state NEVER carries a model-invoking or effect-making action.
+// `ask_founder` is the coherent park for unresolved material ambiguity — it
+// invokes no model and mints no effect; omitting it made every material
+// ambiguity crash the management pass instead of waiting for the founder.
 export function isCoherentHold(reduced: ReducedState): boolean {
   if (!isQuiescent(reduced.state)) return true;
-  return reduced.action.kind === "await_wake" || reduced.action.kind === "hold";
+  return (
+    reduced.action.kind === "await_wake" ||
+    reduced.action.kind === "hold" ||
+    reduced.action.kind === "ask_founder"
+  );
 }
