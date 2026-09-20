@@ -511,7 +511,7 @@ export async function runWorker(
       return tool({
         name: "update_company_artifact",
         description:
-          "Apply a bounded versioned change to a controlled company artifact. If verified acquired inputs are present in the observable state, name the exact resultEvidenceId values you actually used; the application validates them and rejects fabricated causal proof.",
+          "Apply a bounded versioned change to a controlled company artifact. If verified acquired inputs are present in the observable state, name the exact resultEvidenceId values you actually used; the application validates them and rejects fabricated causal proof. Refused while a NOT_AVAILABLE input check is unresolved — report the gap first.",
         parameters: z.object({
           content: z.string().min(1).max(8000),
           changeNote: z.string().min(1).max(500),
@@ -520,13 +520,35 @@ export async function runWorker(
             .max(8)
             .optional(),
         }),
-        execute: ({ content, changeNote, usedAcquisitionEvidenceIds }) =>
-          act({
+        execute: async ({ content, changeNote, usedAcquisitionEvidenceIds }) => {
+          const current = modelSafeObservation(await port.read());
+          if (!current.yieldReason) {
+            const blocked = current.recordedFindings.some(
+              (f) =>
+                f.origin === "application_observation" &&
+                /availability:\s*NOT_AVAILABLE/i.test(f.text),
+            );
+            if (blocked) {
+              const message =
+                "INVALID_REQUEST: refuse artifact mutation while a NOT_AVAILABLE input check is unresolved — call request_resource or submit_result.missingInputs first";
+              trackActionOutcome(
+                "update_company_artifact",
+                { content, changeNote },
+                message,
+              );
+              return JSON.stringify({
+                error: message,
+                observation: current,
+              });
+            }
+          }
+          return act({
             type: "update_company_artifact",
             content,
             changeNote,
             ...(usedAcquisitionEvidenceIds ? { usedAcquisitionEvidenceIds } : {}),
-          }),
+          });
+        },
       });
     // The workflow verbs are inherent to the bounded assignment, not
     // permission-derived authority.
@@ -589,22 +611,27 @@ export async function runWorker(
   // A generic, bounded work order derived from the contract. It names the
   // source CLASSES to satisfy, never scenario-specific record refs or counts.
   // Step numbers are assigned by push order so the list stays coherent.
+  // Gap reporting MUST come before optional artifact mutation: otherwise a
+  // toolChoice:required worker can burn maxTurns updating an artifact after
+  // NOT_AVAILABLE and never reach request_resource / INPUT_BLOCKED.
   const orderSteps: string[] = [
     `If this assignment can read company records: call list_available_company_inputs, then check_input_availability for each accepted input obligation (typically evidence_sufficiency). Do not invent record refs.`,
-    `Read only listed company_record refs with read_company_record when useful for context. INVALID_REQUEST means the ref is invalid — it is not missing-input evidence.`,
-    `Read distinct public HTTPS pages with read_public_web only when the contract requires public_web proof. Re-reading one page twice does not count as distinct.`,
   ];
-  if (hasArtifactPermission)
-    orderSteps.push(
-      `This assignment's envelope can mutate a controlled company artifact: you MUST call update_company_artifact with a real, versioned change and a changeNote before submit_result. Advice-only completion will be refused.`,
-    );
   if (hasResourcePermission)
     orderSteps.push(
-      `If check_input_availability returned NOT_AVAILABLE for a required obligation, report it via request_resource and/or submit_result.missingInputs with that evidence id in supportingEvidenceIds. The application validates scarcity. Do not choose providers, authorize spend, invent BUY, or keep retrying identical failed reads.`,
+      `If check_input_availability returned NOT_AVAILABLE for a required obligation, IMMEDIATELY report it via request_resource (and/or submit_result.missingInputs) with that evidence id in supportingEvidenceIds, then stop when yieldReason is set. Do not spend remaining turns on further reads, notes, or artifact edits once scarcity is observed.`,
     );
   else
     orderSteps.push(
-      `If check_input_availability returned NOT_AVAILABLE, include it in submit_result.missingInputs with supportingEvidenceIds from that check. Universal structured results are the generic reporting path when request_resource is not granted.`,
+      `If check_input_availability returned NOT_AVAILABLE, include it in submit_result.missingInputs with supportingEvidenceIds from that check, then stop. Universal structured results are the generic reporting path when request_resource is not granted.`,
+    );
+  orderSteps.push(
+    `Read only listed company_record refs with read_company_record when useful for context and inputs are available. INVALID_REQUEST means the ref is invalid — it is not missing-input evidence.`,
+    `Read distinct public HTTPS pages with read_public_web only when the contract requires public_web proof and owned inputs are available. Re-reading one page twice does not count as distinct.`,
+  );
+  if (hasArtifactPermission)
+    orderSteps.push(
+      `Only when input checks did not yield NOT_AVAILABLE / INPUT_BLOCKED: call update_company_artifact with a real, versioned change and a changeNote before submit_result. Advice-only completion will be refused. Skip artifact mutation when you are reporting a validated missing input.`,
     );
   orderSteps.push(
     `submit_result with the structured evaluation, then request_completion — unless the application already set a yieldReason (INPUT_BLOCKED), in which case stop immediately.`,
