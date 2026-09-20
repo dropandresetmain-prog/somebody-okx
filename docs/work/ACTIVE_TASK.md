@@ -52,6 +52,51 @@ validated missing-input path → yield/redecision → coverage-bound MAKE/BUY.
 - Probe: `scripts/m61-stopb-probe.mjs` (STOP A→A1→B→B1 gated).
 - Resume physical when Convex connectivity is healthy; do not raise ceilings.
 
+### CP-A1.1 — failed-run inspection (`run_b1c097…`) (COMPLETE — diagnosis only)
+
+Starting SHA: `dc55d20`. Objective `obj_1789901599587_51vhx5` /
+assignment `asg_9c4a40ea51403db4f85ec70b` / run `run_b1c097c8b64cfbbf5fd3c226`.
+
+**WorkContract (persisted):**
+- Requirement `req_01` (Baseline performance data…); `requiredResourceClasses: []`.
+- Capabilities: `company_records_lookup`, `document_drafting`,
+  `growth_launch_operations`, `public_information_research`.
+- Tools granted: `draft_document`, `read_company_record`, `read_public_web`,
+  `record_finding`, `request_resource`, `update_company_artifact`
+  (+ workflow `submit_result` / `request_completion`).
+- Source proofs: `company_record` ×1; full resultRequirements; minObservations 1.
+- Model: `nvidia/nemotron-3-ultra-550b-a55b:free`; runtime `MAX_TURNS=24`;
+  lease 300s / `EXECUTION_TIMEOUT_MS=270s`.
+
+**Observable terminal state:**
+- `lastDeliveryFailureClass = EXECUTION_FAILED`
+- summary: `Worker execution timed out inside the lease budget`
+- `evidence = []`, `resourceNeeds = []`, `unconfirmedInputFindings = []`,
+  no `result`, no `INPUT_BLOCKED`.
+- `toolCalls` stayed `0` because the counter is never incremented (dead field) —
+  not proof that the model made zero tool attempts.
+- Convex log retention empty for this window; no durable tool-call transcript.
+
+**Root cause (two layers):**
+1. **Terminal:** run aborted at execution-budget timeout (~270s) with no
+   validated input gap — `EXECUTION_FAILED`, not a scarcity fact.
+2. **Structural A1 defect (code-confirmed):** unknown `read_company_record(ref)`
+   throws `Unknown company record` and returns a tool *error* only — it does
+   **not** persist an `application_observation`. Validated gaps require
+   `supportingEvidenceIds` from application observations, so a failed/guessed
+   lookup cannot authorize `missingInputs` / `INPUT_BLOCKED`. Worker has no
+   list/check affordance for opaque record refs; `MAX_TURNS=24` with no
+   duplicate-action guard. Suspected guess→error→retry loop is therefore
+   possible but not reconstructible from this run’s durable trace; the durable
+   fact is: **no path existed to create NOT_AVAILABLE evidence**.
+
+**Not the failure:** missing `request_resource` permission (it was granted);
+MAKE/BUY eligibility redesign; Convex connect timeout (this run completed
+server-side).
+
+**Next:** CP-A1.2 governed input availability + reporting; CP-A1.3 turn /
+no-progress bounds (default 8).
+
 ---
 
 ### CP1 — execution / proof integrity (COMPLETE)
