@@ -379,6 +379,7 @@ export async function runWorker(
   if (hasResourcePermission)
     orderSteps.push(
       `If owned resources are insufficient, call request_resource for the missing resource class; do not invent a provider name.`,
+      `If company_record or other owned lookups return zero usable sources for a required fact, you MUST call request_resource before finishing — ending without that call leaves the manager unable to BUY the missing input.`,
     );
   orderSteps.push(
     `submit_result with the structured evaluation, then request_completion.`,

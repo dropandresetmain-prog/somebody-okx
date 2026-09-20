@@ -600,45 +600,12 @@ export function buildConvexManagementPorts(ctx: MutationCtx): ManagementPorts {
           objectiveKey: state.objectiveKey,
           spend: { kind: "assignment_finish", requirementKey: null, intentId: null, at },
         });
-        const cleared: Requirement = {
-          ...bound,
-          strategy: null,
-          updatedAt: at,
-        };
-        await ctx.runMutation(internal.internal.workforce.putRequirement, {
-          objectiveKey: cleared.objectiveKey,
-          requirementKey: cleared.requirementKey,
-          data: cleared,
-          currentContractRevision,
+        await clearStrategyAfterFailedDelivery(ctx, {
+          objectiveKey: state.objectiveKey,
+          requirementKey: bound.requirementKey,
+          decisionId: submittedAssignment.decisionId,
+          at,
         });
-        const failedAttempt = attemptFromDecisionId(submittedAssignment.decisionId);
-        if (failedAttempt !== null) {
-          const objectiveRow = await ctx.db
-            .query("objectives")
-            .withIndex("by_key", (q) => q.eq("key", state.objectiveKey))
-            .unique();
-          if (objectiveRow) {
-            const odata = (objectiveRow as AnyRow).data as Record<string, unknown>;
-            const omgmt = (odata.management ?? {}) as Record<string, unknown>;
-            const attemptsMap = {
-              ...((omgmt.decisionAttempts ?? {}) as Record<string, number>),
-            };
-            attemptsMap[cleared.requirementKey] = Math.max(
-              attemptsMap[cleared.requirementKey] ?? 0,
-              failedAttempt,
-            );
-            await ctx.db.patch(objectiveRow._id, {
-              data: {
-                ...odata,
-                management: {
-                  ...omgmt,
-                  contractId: (omgmt.contractId as string | null) ?? null,
-                  decisionAttempts: attemptsMap,
-                },
-              },
-            } as never);
-          }
-        }
         await ctx.scheduler.runAfter(0, internal.management.runManagementPass, {
           objectiveKey: state.objectiveKey,
           reason: "worker_failure",
@@ -993,8 +960,79 @@ async function reconcileAssignmentRunFacts(ctx: MutationCtx, objectiveKey: strin
         objectiveKey,
         spend: { kind: "assignment_finish", requirementKey: null, intentId: null, at },
       });
+      // Same failed-delivery exit as proof-reject verify: clear the bound
+      // strategy (KEEP proofs), pin decisionAttempts so the next begin mints
+      // …_aN+1, and let this pass's reduce route to decide instead of
+      // dispatch_deferred forever on the dead assignment.
+      await clearStrategyAfterFailedDelivery(ctx, {
+        objectiveKey,
+        requirementKey: assignment.requirementKey,
+        decisionId: assignment.decisionId,
+        at,
+      });
     }
   }
+}
+
+/** Clear bound strategy + pin attempt counter after a failed delivery. */
+async function clearStrategyAfterFailedDelivery(
+  ctx: MutationCtx,
+  input: {
+    objectiveKey: string;
+    requirementKey: string;
+    decisionId: string;
+    at: number;
+  },
+): Promise<void> {
+  const reqRows = await ctx.db
+    .query("requirements")
+    .withIndex("by_objectiveKey", (q) => q.eq("objectiveKey", input.objectiveKey))
+    .collect();
+  const reqRow = reqRows.find(
+    (row) => ((row as AnyRow).data as Requirement).requirementKey === input.requirementKey,
+  );
+  if (reqRow) {
+    const bound = (reqRow as AnyRow).data as Requirement;
+    if (bound.strategy !== null) {
+      const cleared: Requirement = {
+        ...bound,
+        strategy: null,
+        updatedAt: input.at,
+      };
+      await ctx.runMutation(internal.internal.workforce.putRequirement, {
+        objectiveKey: cleared.objectiveKey,
+        requirementKey: cleared.requirementKey,
+        data: cleared,
+        currentContractRevision: cleared.contractRevision,
+      });
+    }
+  }
+  const failedAttempt = attemptFromDecisionId(input.decisionId);
+  if (failedAttempt === null) return;
+  const objectiveRow = await ctx.db
+    .query("objectives")
+    .withIndex("by_key", (q) => q.eq("key", input.objectiveKey))
+    .unique();
+  if (!objectiveRow) return;
+  const odata = (objectiveRow as AnyRow).data as Record<string, unknown>;
+  const omgmt = (odata.management ?? {}) as Record<string, unknown>;
+  const attemptsMap = {
+    ...((omgmt.decisionAttempts ?? {}) as Record<string, number>),
+  };
+  attemptsMap[input.requirementKey] = Math.max(
+    attemptsMap[input.requirementKey] ?? 0,
+    failedAttempt,
+  );
+  await ctx.db.patch(objectiveRow._id, {
+    data: {
+      ...odata,
+      management: {
+        ...omgmt,
+        contractId: (omgmt.contractId as string | null) ?? null,
+        decisionAttempts: attemptsMap,
+      },
+    },
+  } as never);
 }
 
 export const runManagementPass = internalMutation({
