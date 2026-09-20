@@ -59,12 +59,12 @@ Evidence: `tests/m61CausalPipelineCp3.test.ts` 9/9.
 
 Evidence: `tests/m61CausalPipelineCp4.test.ts` + m61FirstProductE2E — 19/19; typecheck clean.
 
-### CP5 — fresh physical E2e acceptance (IN PROGRESS)
+### CP5 — fresh physical E2E acceptance (BLOCKED / PARTIAL)
 
-- **Act Now fix 1:** Convex isolate missing `queueMicrotask` → LangGraph died before decide (`1511233`).
-- **Act Now fix 2:** Free Nemotron interpret ~90s; OpenAI client timeout was 60s → catch applied null → `contract proposal is not an object`. Raised to 180s + persist `providerError`.
-- Live model: `nvidia/nemotron-3-ultra-550b-a55b:free`.
-- Mock evidence: polyfill + production loop 12/12.
+- **Mock path:** green (polyfill + production loop + reducer coherence).
+- **Physical on Nemotron:** STOP A reachable; decide/dispatch reachable; **STOP B never produced an authorized BUY/HYBRID `simulationCandidate`**. Stopped by founder request.
+- Fixes landed under CP5: queueMicrotask polyfill; 180s model timeout; ask_founder coherent hold; clear strategy on run-failed; M4 finishRun does not terminal-fail objective; failed MAKE → `proprietary_data` missing-input bridge.
+- Remaining gap: free-model interpret still omits `requiredResourceClasses`; first path is MAKE against empty company records; BUY path not yet observed end-to-end before ceiling/time burn.
 
 ---
 
