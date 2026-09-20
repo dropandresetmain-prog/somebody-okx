@@ -18,6 +18,7 @@
 // adapters (CP3/CP7 wiring), and deterministic fakes in Cutoff-2 adversarial
 // tests. The graph itself holds zero state between invocations.
 
+import "./convexIsolatePolyfill";
 import { Annotation, END, START, StateGraph } from "@langchain/langgraph";
 import { isCoherentHold, reduceManagementState } from "./reducer";
 import type { DecisionPassResult } from "./decision";

@@ -310,7 +310,14 @@ export function reduceManagementState(facts: ReducerFacts): ReducedState {
 
 // Invariant the graph asserts on every transition (and Cutoff-2 tests hammer):
 // a quiescent state NEVER carries a model-invoking or effect-making action.
+// `ask_founder` is the reducer's coherent hold for unresolved material
+// ambiguity — it parks the loop and expects founder_input, it does not decide
+// or dispatch.
 export function isCoherentHold(reduced: ReducedState): boolean {
   if (!isQuiescent(reduced.state)) return true;
-  return reduced.action.kind === "await_wake" || reduced.action.kind === "hold";
+  return (
+    reduced.action.kind === "await_wake" ||
+    reduced.action.kind === "hold" ||
+    reduced.action.kind === "ask_founder"
+  );
 }

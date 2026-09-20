@@ -518,7 +518,7 @@ test("A6: a run that proposed its resource need clears the sibling obligation", 
   );
 });
 
-test("A6: M4-managed rows are exempt from the readWorkerObservation legacy obligations", async () => {
+test("A6: M4-managed rows still surface the growth artifact obligation (submit gate)", async () => {
   const t = convexTest(schema, modules);
   const seededArtifact = createArtifact({
     key: "launch",
@@ -543,7 +543,11 @@ test("A6: M4-managed rows are exempt from the readWorkerObservation legacy oblig
   ) as { unmetCompletionRequirements: string[] };
 
   assert.ok(
-    !result.unmetCompletionRequirements.some((msg) => /company_artifact|resource_need/.test(msg)),
-    "M4-managed: neither legacy obligation applies (the gate decides)",
+    result.unmetCompletionRequirements.some((msg) => msg.includes("company_artifact")),
+    "M4-managed growth still reports company_artifact so submit_result can assist/refuse",
+  );
+  assert.ok(
+    !result.unmetCompletionRequirements.some((msg) => msg.includes("resource_need")),
+    "M4-managed rows stay exempt from the M2 resource_need sibling",
   );
 });

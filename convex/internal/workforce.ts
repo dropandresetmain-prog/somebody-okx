@@ -465,6 +465,198 @@ export const readBudget = internalQuery({
   },
 });
 
+// Demo/ops: clear burned requirement attempts / no-progress counters that
+// never became durable work (e.g. contract-build deferrals), and reopen an
+// escalated objective so the same run can continue after a code fix.
+export const resetRequirementAttempts = internalMutation({
+  args: {
+    objectiveKey: v.string(),
+    requirementKey: v.string(),
+    reopenEscalated: v.optional(v.boolean()),
+    /** When set, force decisionAttempts[requirementKey] so the next decide mints a fresh identity. */
+    decisionAttemptFloor: v.optional(v.number()),
+    clearStrategy: v.optional(v.boolean()),
+  },
+  returns: v.union(vObjectiveBudget, v.null()),
+  handler: async (ctx, args): Promise<ObjectiveBudget | null> => {
+    const row = await ctx.db
+      .query("objectiveBudgets")
+      .withIndex("by_objectiveKey", (q) => q.eq("objectiveKey", args.objectiveKey))
+      .unique();
+    if (!row) return null;
+    const budget = (row as BudgetRow).data;
+    const next: ObjectiveBudget = {
+      ...budget,
+      limits: {
+        ...budget.limits,
+        // Free-router decision latency routinely burns the default 3-cycle
+        // no-progress ceiling while a proposeDecision action is still in flight.
+        maxNoProgressCycles: Math.max(budget.limits.maxNoProgressCycles, 12),
+        maxWorkerAttemptsPerRequirement: Math.max(
+          budget.limits.maxWorkerAttemptsPerRequirement,
+          6,
+        ),
+      },
+      used: {
+        ...budget.used,
+        noProgressCycles: 0,
+        attemptsByRequirement: {
+          ...budget.used.attemptsByRequirement,
+          [args.requirementKey]: 0,
+        },
+      },
+    };
+    await ctx.db.patch(row._id, { data: next });
+
+    const objective = await ctx.db
+      .query("objectives")
+      .withIndex("by_key", (q) => q.eq("key", args.objectiveKey))
+      .unique();
+    if (objective) {
+      const data = (objective as { data: Record<string, unknown> }).data;
+      const mgmt = (data.management ?? {}) as Record<string, unknown>;
+      const attemptsMap = {
+        ...((mgmt.decisionAttempts ?? {}) as Record<string, number>),
+      };
+      if (typeof args.decisionAttemptFloor === "number" && args.decisionAttemptFloor > 0) {
+        attemptsMap[args.requirementKey] = Math.max(
+          attemptsMap[args.requirementKey] ?? 0,
+          args.decisionAttemptFloor,
+        );
+      }
+      let state = data.state;
+      if (
+        args.reopenEscalated !== false &&
+        (state === "escalated" || state === "recovery_required")
+      ) {
+        state = "executing";
+      }
+      await ctx.db.patch(objective._id, {
+        data: {
+          ...data,
+          state,
+          management: {
+            ...mgmt,
+            contractId: (mgmt.contractId as string | null) ?? null,
+            decisionAttempts: attemptsMap,
+            pendingDecision: null,
+          },
+        },
+      } as never);
+    }
+
+    if (args.clearStrategy) {
+      const reqRows = await ctx.db
+        .query("requirements")
+        .withIndex("by_objectiveRequirement", (q) =>
+          q.eq("objectiveKey", args.objectiveKey).eq("requirementKey", args.requirementKey),
+        )
+        .collect();
+      for (const reqRow of reqRows) {
+        const reqData = (reqRow as { data: Record<string, unknown> }).data;
+        if (reqData.strategy != null) {
+          await ctx.db.patch(reqRow._id, {
+            data: {
+              ...reqData,
+              strategy: null,
+              // Keep proofs. Wiping them allowed vacuously-satisfied rows that
+              // the completion gate then refused as recovery_required.
+              updatedAt: Date.now(),
+            },
+          } as never);
+        }
+      }
+    }
+    return next;
+  },
+});
+
+// Ops repair: a fail-closed verify once wiped proofs on req_05, then an empty
+// obligation list vacuously satisfied and the completion gate parked the
+// objective in recovery_required. Restore governed MAKE proofs + strategy and
+// reopen executing so the gate can re-derive against real facts.
+export const repairSatisfiedRequirementProofs = internalMutation({
+  args: {
+    objectiveKey: v.string(),
+    requirementKey: v.string(),
+    artifactKey: v.string(),
+    minVersion: v.number(),
+    observationSourceId: v.optional(v.string()),
+  },
+  returns: v.object({
+    repaired: v.boolean(),
+    objectiveState: v.string(),
+    proofCount: v.number(),
+  }),
+  handler: async (ctx, args) => {
+    const reqRows = await ctx.db
+      .query("requirements")
+      .withIndex("by_objectiveRequirement", (q) =>
+        q.eq("objectiveKey", args.objectiveKey).eq("requirementKey", args.requirementKey),
+      )
+      .collect();
+    if (reqRows.length === 0) {
+      return { repaired: false, objectiveState: "missing_requirement", proofCount: 0 };
+    }
+    const now = Date.now();
+    const proofs = [
+      {
+        proofKey: "artifact_change",
+        description: `controlled company artifact ${args.artifactKey} advanced by an accepted run`,
+        proofKind: "company_artifact_version" as const,
+        params: { artifactKey: args.artifactKey, minVersion: args.minVersion },
+      },
+      {
+        proofKey: "observation",
+        description:
+          "at least one application-recorded observation supports the requirement",
+        proofKind: "application_observation" as const,
+        params: args.observationSourceId
+          ? { sourceId: args.observationSourceId }
+          : {},
+      },
+    ];
+    for (const reqRow of reqRows) {
+      const reqData = (reqRow as { data: Record<string, unknown> }).data;
+      await ctx.db.patch(reqRow._id, {
+        data: {
+          ...reqData,
+          strategy: "MAKE",
+          proofs,
+          updatedAt: now,
+        },
+      } as never);
+    }
+
+    const objective = await ctx.db
+      .query("objectives")
+      .withIndex("by_key", (q) => q.eq("key", args.objectiveKey))
+      .unique();
+    let objectiveState = "unknown";
+    if (objective) {
+      const data = (objective as { data: Record<string, unknown> }).data;
+      const mgmt = (data.management ?? {}) as Record<string, unknown>;
+      const nextState =
+        data.state === "recovery_required" || data.state === "escalated"
+          ? "executing"
+          : data.state;
+      objectiveState = String(nextState);
+      await ctx.db.patch(objective._id, {
+        data: {
+          ...data,
+          state: nextState,
+          management: {
+            ...mgmt,
+            contractId: (mgmt.contractId as string | null) ?? null,
+            pendingDecision: null,
+          },
+        },
+      } as never);
+    }
+    return { repaired: true, objectiveState, proofCount: proofs.length };
+  },
+});
+
 // Apply a budget spend. Uses pure helpers from lib/management/budget.
 export const applyBudgetSpend = internalMutation({
   args: {

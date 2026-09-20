@@ -81,16 +81,16 @@ test("founder-resolved question clears the approval flag; others keep it", () =>
   assert.equal(unresolvedMaterialAmbiguity(unresolved.contract), parsed.ambiguities[0].question);
 });
 
-test("proposal with bar referencing an undeclared level is refused", () => {
+test("proposal with bar referencing an undeclared level falls back to the first declared level", () => {
   const raw = {
     intent: "x",
     levels: [{ levelKey: "lvl_a", statement: "a", label: "A" }],
     minimumCompletionBar: "nonexistent_level",
   };
   const result = parseOutcomeContractProposal(raw);
-  assert.equal(result.ok, false);
-  if (result.ok) return;
-  assert.ok(result.errors.some((e) => e.includes("not one of the proposed levels")));
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.value.minimumCompletionBar, "lvl_a");
 });
 
 test("proposal declaring no levels or no bar is refused outright", () => {
@@ -268,4 +268,51 @@ test("revision bump supersedes unresolved requirements but preserves satisfied/w
       ["r_block", "superseded"],
     ],
   );
+});
+
+test("free-router level keys like L2 / REQ-01 normalize to bounded identifiers", () => {
+  const parsedContract = parseOutcomeContractProposal({
+    intent: "diagnose and relaunch messaging",
+    levels: [
+      { levelKey: "L1", order: 1, statement: "diagnosis done", label: "Diagnosed" },
+      { levelKey: "L2", order: 2, statement: "relaunch ready", label: "Ready" },
+    ],
+    minimumCompletionBar: "L2",
+    ambiguities: [],
+  });
+  assert.equal(parsedContract.ok, true);
+  if (!parsedContract.ok) return;
+  assert.deepEqual(
+    parsedContract.value.levels.map((l) => l.levelKey),
+    ["l1", "l2"],
+  );
+  assert.equal(parsedContract.value.minimumCompletionBar, "l2");
+
+  const parsedReqs = parseRequirementProposals([
+    {
+      requirementKey: "REQ-01",
+      priority: "required",
+      title: "Evidence available",
+      mustBeTrue: "Evidence is available",
+      scope: "Evidence is available",
+    },
+  ]);
+  assert.equal(parsedReqs.ok, true);
+  if (!parsedReqs.ok) return;
+  assert.equal(parsedReqs.value[0].requirementKey, "req_01");
+});
+
+test("free-router minimumCompletionBar prose falls back to a declared level", () => {
+  const parsedContract = parseOutcomeContractProposal({
+    intent: "diagnose and relaunch messaging",
+    levels: [
+      { levelKey: "diagnosed", order: 1, statement: "diagnosis done", label: "Diagnosed" },
+      { levelKey: "ready", order: 2, statement: "relaunch ready", label: "Ready" },
+    ],
+    minimumCompletionBar: "Root causes of launch messaging failure are identified",
+    ambiguities: [],
+  });
+  assert.equal(parsedContract.ok, true);
+  if (!parsedContract.ok) return;
+  assert.equal(parsedContract.value.minimumCompletionBar, "diagnosed");
 });

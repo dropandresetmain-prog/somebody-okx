@@ -33,6 +33,23 @@ const LIMITS = {
 
 const LEVEL_KEY_PATTERN = /^[a-z][a-z0-9_]{1,60}$/;
 
+// Free-router models often emit "L2", "Level 1", or "REQ-01". Normalize to the
+// bounded identifier grammar before fail-closed validation — never invent a
+// key when the model supplied nothing usable.
+function normalizeBoundedKey(value: unknown, max: number): string | null {
+  const raw = text(value, max);
+  if (!raw) return null;
+  let key = raw
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .replace(/_+/g, "_");
+  if (!key) return null;
+  if (/^[0-9]/.test(key)) key = `k_${key}`;
+  if (key.length > max) key = key.slice(0, max).replace(/_+$/g, "");
+  return LEVEL_KEY_PATTERN.test(key) ? key : null;
+}
+
 function text(value: unknown, max: number): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
@@ -85,8 +102,8 @@ export function parseOutcomeContractProposal(raw: unknown): ProposalParseResult<
       return;
     }
     const item = entry as Record<string, unknown>;
-    const levelKey = text(item.levelKey, LIMITS.key);
-    if (!levelKey || !LEVEL_KEY_PATTERN.test(levelKey)) {
+    const levelKey = normalizeBoundedKey(item.levelKey, LIMITS.key);
+    if (!levelKey) {
       errors.push(`level ${index} has no bounded levelKey`);
       return;
     }
@@ -106,9 +123,17 @@ export function parseOutcomeContractProposal(raw: unknown): ProposalParseResult<
     });
   });
 
-  const bar = text(candidate.minimumCompletionBar, LIMITS.key);
+  let bar = normalizeBoundedKey(candidate.minimumCompletionBar, LIMITS.key);
   if (!bar) errors.push("contract proposal declares no minimum completion bar");
-  else if (!seenKeys.has(bar)) errors.push(`minimum completion bar ${bar} is not one of the proposed levels`);
+  else if (!seenKeys.has(bar)) {
+    // Free-router drift: models often paste a label or prose into the bar field.
+    const labelMatch = levels.find(
+      (level) => normalizeBoundedKey(level.label, LIMITS.key) === bar,
+    );
+    if (labelMatch) bar = labelMatch.levelKey;
+    else if (levels.length > 0) bar = levels[0].levelKey;
+    else errors.push(`minimum completion bar ${bar} is not one of the proposed levels`);
+  }
 
   const ambiguities: ContractAmbiguity[] = [];
   const rawAmbiguities = Array.isArray(candidate.ambiguities)
@@ -177,8 +202,8 @@ export function parseRequirementProposals(raw: unknown): ProposalParseResult<Par
       return;
     }
     const item = entry as Record<string, unknown>;
-    const key = text(item.requirementKey, LIMITS.key);
-    if (!key || !LEVEL_KEY_PATTERN.test(key)) {
+    const key = normalizeBoundedKey(item.requirementKey, LIMITS.key);
+    if (!key) {
       errors.push(`requirement ${index} has no bounded requirementKey`);
       return;
     }

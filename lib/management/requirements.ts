@@ -191,6 +191,15 @@ export function attemptRequirementSatisfaction(input: {
       reason: `requirement ${requirement.requirementKey} is ${requirement.state}; a resolved requirement is not re-satisfied`,
     };
 
+  // Empty obligation lists must never "pass" — that is how a cleared-proof
+  // row falsely satisfied and tripped the completion gate into recovery.
+  if (requirement.proofs.length === 0)
+    return {
+      satisfied: false,
+      requirement,
+      reason: `requirement ${requirement.requirementKey} declares no governed proof; cannot satisfy`,
+    };
+
   const missing = missingProofs(requirement.proofs, input.facts, {
     contractRevision: eventRevision,
     proofRefs: input.proofRefs,

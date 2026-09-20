@@ -11,6 +11,7 @@ import { hash24 } from "./sha256";
 import { requireCapability, isControlledCapabilityKey } from "../workforce/catalog";
 import { toolPermissionsForCapabilities } from "../workforce/permissions";
 import { evaluateOptionEligibility } from "../sourcing/eligibility";
+import { ensureObservableCapabilityKeys } from "./dispatch";
 import type { CapabilityKey } from "../workforce/types";
 import type {
   EconomicFacts,
@@ -102,7 +103,9 @@ export function buildInternalOption(
   if (!accepted.length)
     return { option: null, ungovernedKeys: rejected.length ? rejected : ["(none proposed)"] };
 
-  const keys = [...new Set(accepted)].sort();
+  // MAKE/HYBRID WorkContracts require an observable source class; drafting-only
+  // proposals get the minimum governed observe capability paired in.
+  const keys = ensureObservableCapabilityKeys(accepted);
   const primitives = [...toolPermissionsForCapabilities(keys)].sort();
   const requiredResources = [...new Set(keys.flatMap((key) => [...requireCapability(key).requiredResources]))].sort();
   const target = `internal:${keys.join("+")}:${seed.workerKey ?? "new"}`;

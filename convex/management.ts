@@ -1,5 +1,9 @@
 "use strict";
 
+// Ensure LangGraph can run inside the Convex default isolate before any
+// management graph import pulls `@langchain/langgraph` in.
+import "../lib/management/convexIsolatePolyfill";
+
 // CP7 — Production Convex-backed ManagementPorts adapter.
 //
 // Every port reads Convex fresh on each call (the reload rule). No caching.
@@ -28,7 +32,7 @@ import { buildDecisionPassInput } from "../lib/management/decisionPass";
 import type { DecisionPassReads } from "../lib/management/decisionPass";
 import type { DecisionPassResult } from "../lib/management/decision";
 import type { FounderSpendGrant } from "./internal/workforce";
-import { interpretObjective } from "../lib/management/interpretation";
+import { demoteSpendAmbiguitiesWhenGrantPresent, interpretObjective } from "../lib/management/interpretation";
 import { planWakeForDecision, planWakeForInterpretation, planWakeForTimer } from "../lib/management/wakes";
 import {
   advanceAssignment,
@@ -36,6 +40,7 @@ import {
   deriveAssignmentId,
   deriveRunId,
   dispatchTargets,
+  ensureObservableCapabilityKeys,
   targetWorkerKey,
 } from "../lib/management/dispatch";
 import { createIntentFromAuthorization } from "../lib/management/intents";
@@ -102,10 +107,18 @@ const EXTERNAL_AUTHORITY_MODE: ExternalAuthorityMode = "m3_available_bounded";
 // step (runDecisionPass port) refuses to schedule another proposeDecision action
 // once this many attempts have been recorded for a requirement, so a model that
 // keeps producing unusable output cannot be re-scheduled forever. Mirrors
-// BEGIN_INTERPRETATION_CEILING. applyDecision resets a requirement's count on a
-// SUCCESSFUL authorization (a genuine later re-decision stays possible) and
-// leaves it in place on a refusal (the storm guard).
-export const BEGIN_DECISION_CEILING = 3;
+// BEGIN_INTERPRETATION_CEILING. Counts are retained after authorization so a
+// failed delivery can re-decide under a NEW decision identity (`…_aN+1`); the
+// ceiling is what stops a refuse/re-ask storm.
+export const BEGIN_DECISION_CEILING = 16;
+
+/** Parse `…_aN` from a deterministic decision id; null if the suffix is absent. */
+export function attemptFromDecisionId(decisionId: string): number | null {
+  const match = /_a(\d+)$/.exec(decisionId);
+  if (!match) return null;
+  const n = Number(match[1]);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
 
 // ── Bounded control notes (R3 A3, persistence side) ─────────────────────────
 //
@@ -559,7 +572,88 @@ export function buildConvexManagementPorts(ctx: MutationCtx): ManagementPorts {
         // The KERNEL's verdict, reported for progress accounting only.
         return true;
       }
-      // If not satisfied (including assignment_run_finished refusal), persist nothing.
+
+      // Submitted but proofs do not recompute: this is a FAILED delivery, not a
+      // permanent verify loop. Leaving `result_submitted` forever re-routes every
+      // pass to verify_requirement with identical facts (the deadlock M6.1 hit
+      // when an envelope demanded an artifact bump the run never made). Fail the
+      // assignment, clear the bound strategy so a FRESH decision (new identity)
+      // can be authorized, and schedule the next pass — otherwise the engine
+      // parks with no in-flight work and no timer.
+      if (submittedAssignment) {
+        const moved = advanceAssignment(submittedAssignment, "failed", at, {
+          resultSummary: (attempt.reason ?? "submitted result did not meet required proof").slice(
+            0,
+            500,
+          ),
+        });
+        if (moved.ok) {
+          await ctx.runMutation(internal.internal.workforce.putAssignment, {
+            assignmentId: submittedAssignment.assignmentId,
+            objectiveKey: state.objectiveKey,
+            data: moved.assignment,
+          });
+        }
+        await ctx.runMutation(internal.internal.workforce.releaseWorker, {
+          workerKey: submittedAssignment.workerKey,
+          assignmentId: submittedAssignment.assignmentId,
+          at,
+        });
+        await ctx.runMutation(internal.internal.workforce.applyBudgetSpend, {
+          objectiveKey: state.objectiveKey,
+          spend: { kind: "assignment_finish", requirementKey: null, intentId: null, at },
+        });
+        const cleared: Requirement = {
+          ...bound,
+          strategy: null,
+          // Keep governed proofs. Clearing them let a later verify treat an
+          // empty obligation list as vacuously satisfied, which the completion
+          // gate then correctly refused as recovery_required. Strategy alone
+          // is enough to force a fresh authorization identity.
+          updatedAt: at,
+        };
+        await ctx.runMutation(internal.internal.workforce.putRequirement, {
+          objectiveKey: cleared.objectiveKey,
+          requirementKey: cleared.requirementKey,
+          data: cleared,
+          currentContractRevision,
+        });
+        // Pin decisionAttempts to at least this failed decision's attempt so the
+        // next beginDecision mints `…_a(N+1)` rather than reusing the failed
+        // assignment's decision identity.
+        const failedAttempt = attemptFromDecisionId(submittedAssignment.decisionId);
+        if (failedAttempt !== null) {
+          const objectiveRow = await ctx.db
+            .query("objectives")
+            .withIndex("by_key", (q) => q.eq("key", state.objectiveKey))
+            .unique();
+          if (objectiveRow) {
+            const odata = (objectiveRow as AnyRow).data as Record<string, unknown>;
+            const omgmt = (odata.management ?? {}) as Record<string, unknown>;
+            const attemptsMap = {
+              ...((omgmt.decisionAttempts ?? {}) as Record<string, number>),
+            };
+            attemptsMap[cleared.requirementKey] = Math.max(
+              attemptsMap[cleared.requirementKey] ?? 0,
+              failedAttempt,
+            );
+            await ctx.db.patch(objectiveRow._id, {
+              data: {
+                ...odata,
+                management: {
+                  ...omgmt,
+                  contractId: (omgmt.contractId as string | null) ?? null,
+                  decisionAttempts: attemptsMap,
+                },
+              },
+            } as never);
+          }
+        }
+        await ctx.scheduler.runAfter(0, internal.management.runManagementPass, {
+          objectiveKey: state.objectiveKey,
+          reason: "worker_failure",
+        });
+      }
       return false;
     },
 
@@ -1050,7 +1144,19 @@ export const applyInterpretation = internalMutation({
       return { ok: false as const, errors: interpreted.errors };
     }
 
-    const { contract, requirements, notes } = interpreted;
+    let { contract, requirements, notes } = interpreted;
+    // Demo/setup (and any pre-seeded grant) already answers "what can we spend?"
+    // Free-router models often re-ask that as material and park the loop.
+    const liveGrant = (await ctx.runQuery(internal.internal.workforce.activeSpendGrant, {
+      objectiveKey: args.objectiveKey,
+    })) as { approvalId: string } | null;
+    const demoted = demoteSpendAmbiguitiesWhenGrantPresent(contract, liveGrant !== null);
+    contract = demoted.contract;
+    if (demoted.demoted > 0)
+      notes = [
+        ...notes,
+        `demoted ${demoted.demoted} spend-bound material ambiguity/ambiguities; live founder grant already recorded`,
+      ];
 
     await ctx.runMutation(internal.internal.workforce.putContract, {
       objectiveKey: args.objectiveKey,
@@ -1356,11 +1462,13 @@ export const applyDecision = internalMutation({
 
     const authorized = result.authorization.kind === "authorized";
 
-    // On a SUCCESSFUL authorization, reset this requirement's attempt count so a
-    // genuine later re-decision stays possible; on a refusal, leave it so the
-    // cumulative ceiling (BEGIN_DECISION_CEILING) eventually stops re-asking.
+    // Keep decisionAttempts after authorization. Resetting to zero reminted the
+    // same `…_a1` decisionId on a post-failure retry, which derived the same
+    // assignment id as the failed delivery and deferred forever ("already
+    // failed; a retry needs a fresh authorization"). The cumulative counter is
+    // what gives each re-decision a new identity; BEGIN_DECISION_CEILING still
+    // stops a refuse/re-ask storm.
     const attemptsMap = { ...((mgmt.decisionAttempts ?? {}) as Record<string, number>) };
-    if (authorized) delete attemptsMap[pending.requirementKey];
 
     await clearPending({ decisionAttempts: attemptsMap });
 
@@ -1630,7 +1738,20 @@ async function dispatchInternal(
     return existing.assignmentId;
   }
 
-  const workerKey = targetWorkerKey(option);
+  // Drafting-only authorizations still need an observe capability to build a
+  // WorkContract; widen before worker identity / reservation so CREATE lands on
+  // the dispatchable envelope (same widening buildAssignmentContract applies).
+  const rawInternal = option.internal;
+  if (!rawInternal)
+    return await noteDispatchDeferred(ctx, objectiveKey, requirement.requirementKey, at,
+      "authorized option carries no internal component to dispatch");
+  const capabilityKeys = ensureObservableCapabilityKeys(rawInternal.capabilityKeys);
+  const optionForDispatch = {
+    ...option,
+    internal: { ...rawInternal, capabilityKeys },
+  };
+
+  const workerKey = targetWorkerKey(optionForDispatch);
   if (!workerKey)
     return await noteDispatchDeferred(ctx, objectiveKey, requirement.requirementKey, at,
       "authorized option resolves to no stable worker identity");
@@ -1648,7 +1769,7 @@ async function dispatchInternal(
     if (!spend.ok)
       return await noteDispatchDeferred(ctx, objectiveKey, requirement.requirementKey, at,
         `worker creation is not affordable under the objective budget`);
-    const spec = createWorkerSpec(option.internal?.capabilityKeys ?? []);
+    const spec = createWorkerSpec(capabilityKeys);
     const record: WorkerRecord = {
       workerKey: spec.workerKey,
       displayName: spec.workerKey,
@@ -1671,9 +1792,21 @@ async function dispatchInternal(
     worker = record;
   }
 
-  // Attempt ceiling: each dispatch attempt for a requirement is charged against
-  // `maxWorkerAttemptsPerRequirement` BEFORE anything is written, so an
-  // undeliverable plan escalates instead of re-arming forever.
+  // Attempt ceiling charges only once the WorkContract is buildable and we are
+  // about to reserve/write. Undeliverable plans (e.g. drafting-only envelopes
+  // before observe widening) must not burn the finite attempt budget.
+  const built = buildAssignmentContract({
+    requirement,
+    option: optionForDispatch,
+    assignmentId,
+    workerKey,
+    worker,
+    at,
+  });
+  if (!built.ok)
+    return await noteDispatchDeferred(ctx, objectiveKey, requirement.requirementKey, at,
+      built.errors.join("; "));
+
   const attemptSpend = (await ctx.runMutation(internal.internal.workforce.applyBudgetSpend, {
     objectiveKey,
     spend: { kind: "requirement_attempt", requirementKey: requirement.requirementKey, intentId: null, at },
@@ -1697,20 +1830,6 @@ async function dispatchInternal(
     });
     return await noteDispatchDeferred(ctx, objectiveKey, requirement.requirementKey, at,
       `worker ${workerKey} refused the reservation (${reserved.reason ?? "unknown"})`);
-  }
-
-  const built = buildAssignmentContract({
-    requirement,
-    option,
-    assignmentId,
-    workerKey,
-    worker,
-    at,
-  });
-  if (!built.ok) {
-    await ctx.runMutation(internal.internal.workforce.releaseWorker, { workerKey, assignmentId, at });
-    return await noteDispatchDeferred(ctx, objectiveKey, requirement.requirementKey, at,
-      built.errors.join("; "));
   }
 
   const runId = deriveRunId(assignmentId);

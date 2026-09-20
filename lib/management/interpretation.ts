@@ -139,6 +139,50 @@ export function interpretObjective(input: InterpretationInput): InterpretationRe
   return { ok: true, contract, requirements, notes };
 }
 
+/** True when the ambiguity is about a spend/budget bound the objective already authorized. */
+export function isSpendBoundAmbiguity(question: string): boolean {
+  return /\b(spend|budget|limit|usd|\$|cost|priced?)\b/i.test(question);
+}
+
+/**
+ * When a live founder spend grant already exists, demote spend-bound material
+ * ambiguities to ordinary. Free-router models often re-ask for the spend limit
+ * even though the objective text and demo grant already authorize it — that
+ * parks the engine on ask_founder forever with no UI answer path.
+ */
+export function demoteSpendAmbiguitiesWhenGrantPresent<
+  T extends {
+    ambiguities: Array<{
+      question: string;
+      materiality: "material" | "ordinary";
+      resolution: string;
+      resolvedBy: "somebody" | "founder";
+      requiresFounderApproval: boolean;
+    }>;
+  },
+>(contract: T, hasLiveSpendGrant: boolean): { contract: T; demoted: number } {
+  if (!hasLiveSpendGrant) return { contract, demoted: 0 };
+  let demoted = 0;
+  const ambiguities = contract.ambiguities.map((ambiguity) => {
+    if (
+      ambiguity.materiality === "material" &&
+      ambiguity.requiresFounderApproval &&
+      isSpendBoundAmbiguity(ambiguity.question)
+    ) {
+      demoted += 1;
+      return {
+        ...ambiguity,
+        materiality: "ordinary" as const,
+        requiresFounderApproval: false,
+        resolvedBy: "somebody" as const,
+        resolution: `${ambiguity.resolution} Bounded by the existing founder spend grant.`,
+      };
+    }
+    return ambiguity;
+  });
+  return { contract: { ...contract, ambiguities }, demoted };
+}
+
 // The durable wake identity for "this objective now has a contract" — used by
 // the interpretation mutation to wake the management loop exactly once per
 // interpretation, however many times the write is replayed.

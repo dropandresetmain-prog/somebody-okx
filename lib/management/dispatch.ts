@@ -138,6 +138,25 @@ export function proofSourceClassesFor(
   return classes;
 }
 
+// Drafting/mutation-only envelopes (e.g. document_drafting alone) cannot produce
+// application_observation proof. Every MAKE WorkContract requires at least one
+// observable source class — pair with the smallest governed observe capability
+// so free-router strategy proposals that omit reads still dispatch.
+export function ensureObservableCapabilityKeys(
+  capabilityKeys: readonly string[],
+): CapabilityKey[] {
+  const keys = [
+    ...new Set(
+      capabilityKeys.filter((key): key is CapabilityKey =>
+        isControlledCapabilityKey(key),
+      ),
+    ),
+  ].sort();
+  if (keys.length === 0) return keys;
+  if (proofSourceClassesFor(keys).length > 0) return keys;
+  return [...new Set([...keys, "company_records_lookup" as CapabilityKey])].sort();
+}
+
 // The observation proofs a requirement demands, as far as they are executable.
 // A requirement with a concrete `sourceId`/`evidenceId` bound asks for THAT
 // source; a requirement that merely demands an observation asks for one distinct
@@ -185,8 +204,9 @@ export function buildAssignmentContract(input: {
   // an intent created by intents.ts and never becomes a tool grant here.
   if (errors.length) return { ok: false, errors };
 
-  const spec = createWorkerSpec(internal.capabilityKeys);
-  const sourceProofs = observationProofObligations(input.requirement, internal.capabilityKeys);
+  const capabilityKeys = ensureObservableCapabilityKeys(internal.capabilityKeys);
+  const spec = createWorkerSpec(capabilityKeys);
+  const sourceProofs = observationProofObligations(input.requirement, capabilityKeys);
   if (sourceProofs.length === 0)
     return {
       ok: false,
@@ -227,7 +247,7 @@ export function buildAssignmentContract(input: {
       if (!input.worker)
         return { ok: false, errors: [`dispatch named worker ${input.workerKey} without that worker's record`] };
       const held = new Set(input.worker.capabilityKeys);
-      const beyond = internal.capabilityKeys.filter((key) => !held.has(key));
+      const beyond = capabilityKeys.filter((key) => !held.has(key));
       if (beyond.length)
         return {
           ok: false,
@@ -247,7 +267,10 @@ export function buildAssignmentContract(input: {
 export function targetWorkerKey(option: GroundedOption): string {
   const internal = option.internal;
   if (!internal) return "";
-  return internal.workerKey ?? deriveWorkerKeyStable(internal.capabilityKeys);
+  return (
+    internal.workerKey ??
+    deriveWorkerKeyStable(ensureObservableCapabilityKeys(internal.capabilityKeys))
+  );
 }
 
 function deriveWorkerKeyStable(capabilityKeys: readonly string[]): string {

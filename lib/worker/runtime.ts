@@ -22,6 +22,7 @@ import type {
   WorkerObservationFinding,
 } from "./port";
 import { providerConfiguration } from "./modelSelection";
+import { COMPANY_RECORD_KEYS } from "../objective/policy";
 
 export const MAX_TURNS = 24;
 
@@ -208,7 +209,7 @@ export async function runWorker(
       return tool({
         name: "read_company_record",
         description:
-          "Read an internal internal company record (criteria, context) relevant to the assignment. The application records the observation as evidence and returns the bounded content you observed. Cite the source label and recordRef in your findings.",
+          `Read an internal company record (criteria, context) relevant to the assignment. Available recordRef values: ${COMPANY_RECORD_KEYS.join(", ")}. The application records the observation as evidence and returns the bounded content you observed. Cite the source label and recordRef in your findings.`,
         parameters: z.object({ recordRef: z.string().min(1).max(120) }),
         execute: ({ recordRef }) =>
           actRead(
@@ -367,14 +368,22 @@ export async function runWorker(
 
   // A generic, bounded work order derived from the contract. It names the
   // source CLASSES to satisfy, never scenario-specific record refs or counts.
-  // Step numbers are assigned by push order so the list stays coherent.
-  const orderSteps: string[] = [
-    `Read the internal company records relevant to the assignment with read_company_record until every required company_record source is satisfied.`,
-    `Read distinct public HTTPS pages relevant to the assignment with read_public_web until every required public_web source is satisfied. Re-reading one page twice does not count as distinct.`,
-  ];
+  // Available record refs come from the application catalog (policy), not a
+  // scenario script — without them the model guesses and collects zero proof.
+  const orderSteps: string[] = [];
+  if (contract.allowedToolPermissions.includes("read_company_record")) {
+    orderSteps.push(
+      `Read the internal company records relevant to the assignment with read_company_record until every required company_record source is satisfied. Available recordRef values: ${COMPANY_RECORD_KEYS.join(", ")}.`,
+    );
+  }
+  if (contract.allowedToolPermissions.includes("read_public_web")) {
+    orderSteps.push(
+      `Read distinct public HTTPS pages relevant to the assignment with read_public_web until every required public_web source is satisfied. Re-reading one page twice does not count as distinct.`,
+    );
+  }
   if (hasArtifactPermission)
     orderSteps.push(
-      `If the assignment requires it, call update_company_artifact with a real, versioned change and a changeNote.`,
+      `This assignment's envelope can mutate a controlled company artifact: you MUST call update_company_artifact with a real, versioned change and a changeNote before submit_result. Advice-only completion will be refused.`,
     );
   if (hasResourcePermission)
     orderSteps.push(

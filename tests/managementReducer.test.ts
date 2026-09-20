@@ -124,6 +124,7 @@ test("material ambiguity outranks executable work → approval_required/ask_foun
   );
   assert.equal(r.state, "approval_required");
   assert.deepEqual(r.action, { kind: "ask_founder", question: "spend money?" });
+  assert.ok(isCoherentHold(r));
 });
 
 test("pending founder approval parks the loop on await_wake, never a model call", () => {
@@ -264,6 +265,20 @@ test("Cutoff-2 sweep: every reachable state is a ManagementState literal and qui
     base({ contract: null }),
     base({ budgetVerdict: { ok: false, limit: "x", detail: "d", state: "recovery_required" } }),
     base({ pendingApproval: { question: "q" } }),
+    base({
+      contract: {
+        ...contract,
+        ambiguities: [
+          {
+            question: "spend money?",
+            materiality: "material",
+            resolution: "?",
+            resolvedBy: "founder",
+            requiresFounderApproval: true,
+          },
+        ],
+      },
+    }),
     base({ groundedByRequirement: new Map() }),
     base({ requirements: [requirement({ state: "blocked", blockedReason: "b" })], groundedByRequirement: new Map([["page_live", [ineligibleOption("page_live")]]]) }),
     base(),

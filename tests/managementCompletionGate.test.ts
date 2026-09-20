@@ -558,7 +558,7 @@ test("A5-8 legit delivery: kernel-bound observation satisfies via the verify pat
 
 // ── Run-fact reconciliation ──────────────────────────────────────────────────
 
-test("A5-9 reconciliation: a completed managed run becomes result_submitted at pass entry — and without proof it satisfies nothing", async () => {
+test("A5-9 reconciliation: a completed managed run becomes result_submitted then fails closed when proof is missing", async () => {
   const t = convexTest(schema, modules);
   const key = "obj_a5_reconcile";
   const requirement = makeRequirement(key);
@@ -588,7 +588,16 @@ test("A5-9 reconciliation: a completed managed run becomes result_submitted at p
   );
 
   const [assignment] = await assignmentRows(t, key);
-  assert.equal(assignment.data.state, "result_submitted", "run facts, reconciled at the entry, drive the delivery row");
+  // Entry reconciliation advances running → result_submitted; the verify pass
+  // then fail-closes to `failed` when required proof does not recompute, so the
+  // engine cannot loop forever on an unverifiable submission.
+  assert.equal(assignment.data.state, "failed", "unverifiable submitted result fails closed instead of looping");
+  assert.match(
+    String(assignment.data.resultSummary ?? ""),
+    /proof/i,
+    "failure summary names the missing proof",
+  );
   const [stored] = await requirementRows(t, key);
   assert.equal(stored.data.state, "active", "a submitted result with NO proof facts satisfies nothing");
+  assert.equal(stored.data.strategy, null, "bound strategy clears so a fresh decision can retry");
 });
