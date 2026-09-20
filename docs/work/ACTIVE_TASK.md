@@ -6,9 +6,34 @@ Authoritative integrated code baseline: `main@a9a0b3d31a7125e83fe0771a783ee62cbd
 
 Started 2026-09-20 from accepted M6.1 candidate `feat/m6-1-first-product-e2e@50acb6b`.
 
-**Final blocker repair** (starting SHA `6cf924f` = docs-only past `c18285a`):
-remove false `failed MAKE → proprietary_data` bridge; application-owned
-validated missing-input path → yield/redecision → coverage-bound MAKE/BUY.
+### CP-STOP-B — redecide after validated INPUT_BLOCKED (COMPLETE — PASS)
+
+Starting SHA: `273861c`. Final: this commit.
+
+**Root cause:** `reconcileAssignmentRunFacts` did not map
+`run.stopped` + `workItem.waiting_for_resource` (INPUT_BLOCKED yield) out of
+assignment `running`. Reducer therefore saw active work forever
+(`await_wake` / "assignment or intent in flight"), never reached
+`decide_requirement`, and `decisionAttempts.req_01` stayed 1. Live proof on
+`obj_1789914590830_dooy8i`: control notes repeated that summary then
+escalated on no-progress. Fingerprint logic was fine (gap changes it); the
+assignment falsely stayed in flight.
+
+**Exact repair:** one branch in `reconcileAssignmentRunFacts` —
+stopped + `waiting_for_resource` → assignment `failed`, release worker,
+clear strategy (idempotent). Genuine external wait remains on open intents
+(`awaiting_m3` → `waiting_for_resource`). No worker / MAKE-BUY kernel changes.
+
+**Focused evidence:** `tests/m61StopBRedecide.test.ts` — redecide+BUY,
+negative twin (awaiting intent), duplicate wake. Related diagnosis/reducer/
+completion A5-9 green. Pre-existing `managementFinishGate` M2/M4 complete
+spine asserts still fail (unrelated).
+
+**Physical STOP B:** fresh `obj_1789915609288_82nxtn` /
+`run_8ec971c8f106ac7b00de14b5` (terra, tools=3) → validated
+`proprietary_data` + INPUT_BLOCKED → immediate `decisionAttempts.req_01=2`
+→ authorized HYBRID → `simulationCandidate` `int_581aaf745a978369f9feac1b`
+(`proprietary_data`). STOP. Do not simulate. Do not start M6.2.
 
 ### CP-F1 — validated missing-input path (COMPLETE)
 

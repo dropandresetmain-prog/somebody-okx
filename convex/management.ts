@@ -971,14 +971,27 @@ async function reconcileAssignmentRunFacts(ctx: MutationCtx, objectiveKey: strin
     let next: Assignment["state"] | null = null;
     if (run.status === "failed" || wi.state === "failed") next = "failed";
     else if (run.status === "stopped" && wi.state === "completed") next = "result_submitted";
-    else if (assignment.state === "dispatched" && run.status === "running") next = "running";
+    else if (run.status === "stopped" && wi.state === "waiting_for_resource") {
+      // INPUT_BLOCKED / buy_pending: worker delivery ended. Leaving the assignment
+      // `running` falsely signals work in flight and parks the reducer on
+      // await_wake forever (a validated gap alone is not an acquisition in flight).
+      // Genuine external wait is carried by open execution intents.
+      next = "failed";
+    } else if (assignment.state === "dispatched" && run.status === "running") next = "running";
     if (!next) continue;
 
     const moved = advanceAssignment(
       assignment,
       next,
       at,
-      next === "failed" ? { resultSummary: `run ${run.id} ended failed; the engine records it, the budget bounds retries` } : {},
+      next === "failed"
+        ? {
+            resultSummary:
+              wi.state === "waiting_for_resource"
+                ? `run ${run.id} ended waiting_for_resource; worker released for management redecision`
+                : `run ${run.id} ended failed; the engine records it, the budget bounds retries`,
+          }
+        : {},
     );
     if (!moved.ok) continue;
     await ctx.runMutation(internal.internal.workforce.putAssignment, {
