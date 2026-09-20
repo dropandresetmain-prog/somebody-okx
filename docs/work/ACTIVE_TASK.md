@@ -103,7 +103,22 @@ server-side).
 - `MAX_TURNS` 24→8; duplicate identical failing actions stop at 2 (`no-progress`).
 - Tests: `tests/m61A1InputAvailability.test.ts` + diagnosis/worker regressions.
 
-### CP-A1.4 — physical STOP A1/B (PENDING)
+### CP-A1.4 — physical STOP A1/B (FAIL on A1 — stopped)
+
+Fresh objective `obj_1789903981000_z602px` after deploy of `ecfeaf4`.
+
+- STOP A: PASS (6 requirements, interpretation done).
+- STOP A1: FAIL — first MAKE run `run_53dc48f64e3a1aa9e1da98a7` ended
+  `stopped`/`Incomplete` in ~5s with **0 evidence**, **0 ResourceNeeds**,
+  no `INPUT_BLOCKED`. Summary: missing company_record proof + structured
+  result + artifact mutation. Contract still granted `read_company_record`,
+  `request_resource`, and (runtime) list/check companions.
+- Probe stopped per rule (do not burn M4 retries / 45 minutes).
+- STOP B: not reached.
+
+Live free Nemotron did not exercise the new governed check path on this run.
+Unit/integration coverage for the A1 seam remains green; physical model
+behavior is the remaining risk.
 
 ---
 
