@@ -107,6 +107,11 @@ export type DecisionPassInput = {
   spendApprovalId: string | null;
   externalAuthority: ExternalAuthorityMode;
   waiverRequested: boolean;
+  /**
+   * When true, do not ground/offer compound HYBRID. Serial MAKE then BUY (or
+   * reverse) with reassessment between. Historical HYBRID rows remain readable.
+   */
+  serialManagerProtocol?: boolean;
 };
 
 export type DecisionPassResult = {
@@ -179,7 +184,13 @@ export async function runManagerialDecisionPass(
   // HYBRID: internal half + the single best-priced eligible-shaped external
   // half. Formed deterministically (cheapest quoted offering, tie by id), so a
   // replay rebuilds the same optionId; the model never assembles hybrids.
-  if (internalOption && externalOptions.length) {
+  // Serial manager protocol parks compound HYBRID for new objectives — a mixed
+  // plan is separately authorized MAKE and BUY with reassessment between them.
+  if (
+    !input.serialManagerProtocol &&
+    internalOption &&
+    externalOptions.length
+  ) {
     const best = [...externalOptions].sort(
       (a, b) =>
         (a.external?.priceUsd ?? Number.MAX_SAFE_INTEGER) -

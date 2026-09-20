@@ -57,6 +57,12 @@ export type MissingInputFindingInput = {
   supportingEvidenceIds: string[];
 };
 
+/** Tagged terminal handoff for the serial manager–execution path. */
+export type WorkerTerminalOutcome =
+  | "DELIVERED"
+  | "NEEDS_INPUT"
+  | "EXECUTION_ERROR";
+
 // The structured evaluation the role policy requires.
 export type WorkerResultInput = {
   summary: string;
@@ -66,6 +72,12 @@ export type WorkerResultInput = {
   recommendedNextAction: string;
   /** Optional bounded missing-input proposals; application validates each. */
   missingInputs?: MissingInputFindingInput[];
+  /**
+   * Serial protocol terminal tag. Application owns consequences; the model
+   * cannot self-authorize spend or guarantee retry safety by naming a tag.
+   * Legacy callers may omit this field.
+   */
+  terminal?: WorkerTerminalOutcome;
 };
 
 // One entry surfaced to the worker in WorkerObservation.recordedFindings.

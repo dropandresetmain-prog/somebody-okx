@@ -28,6 +28,10 @@ import type { Id } from "./_generated/dataModel";
 import { buildManagementGraph } from "../lib/management/graph";
 import type { ManagementPorts } from "../lib/management/graph";
 import { runManagerialDecisionPass } from "../lib/management/decision";
+import {
+  isInputOnlyRequirement,
+  isSerialManagerProtocol,
+} from "../lib/management/executionProtocol";
 import { buildDecisionPassInput } from "../lib/management/decisionPass";
 import type { DecisionPassReads } from "../lib/management/decisionPass";
 import type { DecisionPassResult } from "../lib/management/decision";
@@ -827,6 +831,90 @@ export function buildConvexManagementPorts(ctx: MutationCtx): ManagementPorts {
       if (!requirement || requirement.state !== "active" || requirement.strategy === null)
         return null;
 
+      const objectiveRow = await ctx.db
+        .query("objectives")
+        .withIndex("by_key", (q) => q.eq("key", state.objectiveKey))
+        .unique();
+      const serial = isSerialManagerProtocol(
+        ((objectiveRow as AnyRow | null)?.data as { management?: { executionProtocol?: string } } | undefined)
+          ?.management,
+      );
+
+      // Serial path: never dispatch compound HYBRID (keep historical rows readable).
+      if (serial && requirement.strategy === "HYBRID") {
+        return await noteDispatchDeferred(
+          ctx,
+          state.objectiveKey,
+          requirementKey,
+          at,
+          "serial manager protocol does not dispatch compound HYBRID; authorize MAKE or BUY separately",
+        );
+      }
+
+      // Serial path: at most one in-flight assignment OR open intent per Objective.
+      if (serial) {
+        const assignments = await ports.loadAssignments(state.objectiveKey);
+        const intents = await ports.loadIntents(state.objectiveKey);
+        const otherActive = assignments.some(
+          (a) =>
+            a.requirementKey !== requirementKey &&
+            (a.state === "authorized" ||
+              a.state === "dispatched" ||
+              a.state === "running" ||
+              a.state === "result_submitted"),
+        );
+        const otherOpenIntent = intents.some(
+          (i) =>
+            i.requirementKey !== requirementKey &&
+            (i.state === "authorized" ||
+              i.state === "handed_off" ||
+              i.state === "awaiting_m3" ||
+              i.state === "result_recorded"),
+        );
+        const openIntentAny = intents.some(
+          (i) =>
+            i.state === "authorized" ||
+            i.state === "handed_off" ||
+            i.state === "awaiting_m3" ||
+            i.state === "result_recorded",
+        );
+        const activeAssignmentAny = assignments.some(
+          (a) =>
+            a.state === "authorized" ||
+            a.state === "dispatched" ||
+            a.state === "running" ||
+            a.state === "result_submitted",
+        );
+        if (otherActive || otherOpenIntent) {
+          return await noteDispatchDeferred(
+            ctx,
+            state.objectiveKey,
+            requirementKey,
+            at,
+            "serial manager protocol allows only one current action per objective",
+          );
+        }
+        // Same objective, different action kind still in flight.
+        if (requirement.strategy === "MAKE" && openIntentAny) {
+          return await noteDispatchDeferred(
+            ctx,
+            state.objectiveKey,
+            requirementKey,
+            at,
+            "serial manager protocol: open acquisition intent blocks concurrent MAKE",
+          );
+        }
+        if (requirement.strategy === "BUY" && activeAssignmentAny) {
+          return await noteDispatchDeferred(
+            ctx,
+            state.objectiveKey,
+            requirementKey,
+            at,
+            "serial manager protocol: active assignment blocks concurrent BUY",
+          );
+        }
+      }
+
       const persisted = (await ctx.runQuery(internal.internal.workforce.latestAuthorizedDecision, {
         objectiveKey: state.objectiveKey,
         requirementKey,
@@ -1136,6 +1224,83 @@ async function clearStrategyAfterFailedDelivery(
   } as never);
 }
 
+/**
+ * Serial protocol: after a verified acquisition that is not an input-only
+ * requirement, clear the bound BUY strategy so Somebody reassesses. The
+ * verified intent remains; coverage still fulfills ResourceNeeds. Does not
+ * rewrite historical HYBRID rows or force a worker continuation.
+ */
+async function releaseSerialAcquisitionForReassessment(
+  ctx: MutationCtx,
+  objectiveKey: string,
+  at: number,
+): Promise<void> {
+  const objectiveRow = await ctx.db
+    .query("objectives")
+    .withIndex("by_key", (q) => q.eq("key", objectiveKey))
+    .unique();
+  if (!objectiveRow) return;
+  const odata = (objectiveRow as AnyRow).data as Record<string, unknown>;
+  const omgmt = (odata.management ?? {}) as {
+    executionProtocol?: string | null;
+    contractId?: string | null;
+  };
+  if (!isSerialManagerProtocol(omgmt)) return;
+
+  const intentRows = await ctx.db
+    .query("executionIntents")
+    .withIndex("by_objective", (q) => q.eq("objectiveKey", objectiveKey))
+    .collect();
+  const verifiedByReq = new Map<string, string>();
+  for (const row of intentRows) {
+    const intent = (row as AnyRow).data as ExecutionIntent;
+    if (intent.state !== "verified") continue;
+    if (intent.strategy !== "BUY" && intent.strategy !== "HYBRID") continue;
+    verifiedByReq.set(intent.requirementKey, intent.intentId);
+  }
+  if (verifiedByReq.size === 0) return;
+
+  const assignmentRows = await ctx.db
+    .query("assignments")
+    .withIndex("by_objective", (q) => q.eq("objectiveKey", objectiveKey))
+    .collect();
+  const activeAssignmentReqs = new Set(
+    assignmentRows
+      .map((row) => (row as AnyRow).data as Assignment)
+      .filter((a) =>
+        a.state === "authorized" ||
+        a.state === "dispatched" ||
+        a.state === "running" ||
+        a.state === "result_submitted",
+      )
+      .map((a) => a.requirementKey),
+  );
+
+  const reqRows = await ctx.db
+    .query("requirements")
+    .withIndex("by_objectiveKey", (q) => q.eq("objectiveKey", objectiveKey))
+    .collect();
+  for (const row of reqRows) {
+    const req = (row as AnyRow).data as Requirement;
+    if (req.strategy !== "BUY" && req.strategy !== "HYBRID") continue;
+    if (!verifiedByReq.has(req.requirementKey)) continue;
+    if (activeAssignmentReqs.has(req.requirementKey)) continue;
+    if (isInputOnlyRequirement(req.proofs.map((p) => p.proofKind))) continue;
+    // Clear without inventing a failed attempt pin — acquisition succeeded.
+    const cleared: Requirement = {
+      ...req,
+      strategy: null,
+      updatedAt: at,
+    };
+    await ctx.runMutation(internal.internal.workforce.putRequirement, {
+      objectiveKey: cleared.objectiveKey,
+      requirementKey: cleared.requirementKey,
+      data: cleared,
+      currentContractRevision: cleared.contractRevision,
+    });
+  }
+}
+
 export const runManagementPass = internalMutation({
   args: {
     objectiveKey: v.string(),
@@ -1170,6 +1335,11 @@ export const runManagementPass = internalMutation({
     // Verified acquisitions fulfill matching ResourceNeeds before reduce/decide
     // so coverage and fingerprints see the post-acquisition world.
     await reconcileResourceNeedCoverage(ctx, args.objectiveKey, Date.now());
+    // Serial protocol: a verified BUY closes the acquisition *action* and
+    // returns to Somebody for reassessment. It does not auto-satisfy an output
+    // requirement. Input-only requirements keep the bound strategy so verify
+    // can accept a scoped external result.
+    await releaseSerialAcquisitionForReassessment(ctx, args.objectiveKey, Date.now());
 
     const { outcome } = await graph.invoke({
       objectiveKey: args.objectiveKey,
@@ -1323,12 +1493,16 @@ export const applyInterpretation = internalMutation({
           interpretationStatus: "done",
           interpretationRequestId: args.requestId,
           interpretationDetail: null,
+          // New managed objectives use the serial MAKE/BUY loop. Historical
+          // rows without this flag keep the legacy HYBRID path readable.
+          executionProtocol: "m61_serial_v1",
           controlNotes: boundNotes(mgmt.controlNotes, {
             type: "contract_interpreted",
             contractId: contract.contractId,
             revision: contract.revision,
             requirements: requirements.map((requirement) => requirement.requirementKey),
             at: args.at,
+            executionProtocol: "m61_serial_v1",
           }),
         },
       },

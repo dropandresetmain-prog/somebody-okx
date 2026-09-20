@@ -234,6 +234,11 @@ export const objectiveRecord = v.object({
       // Last authorized decision-input fingerprint per requirement. Duplicate
       // wakes with unchanged material facts do not burn another attempt.
       decisionInputFingerprints: v.optional(v.record(v.string(), v.string())),
+      // M6.1 serial manager–execution loop. Set at interpretation for new
+      // objectives; absent/legacy keeps historical HYBRID + ceremony readable.
+      executionProtocol: v.optional(
+        v.union(v.literal("m61_serial_v1"), v.null()),
+      ),
     }),
   ),
 });

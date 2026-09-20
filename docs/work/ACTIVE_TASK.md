@@ -1,85 +1,59 @@
 # ACTIVE TASK — M6.1 manager–execution mini-refactor
 
 Updated: 21 September 2026 (Singapore)
-Status: **PLAN READY / IMPLEMENTATION NOT STARTED / M6.1 NOT ACCEPTED**
+Status: **BLOCKS 1–2 CANDIDATE READY FOR OWNER REVIEW / M6.1 NOT ACCEPTED / GATE 1 NOT RUN**
 
 ## Goal
 
 Somebody chooses one bounded MAKE or BUY action, receives its actual result,
 reassesses, and continues until it delivers a persisted, evidence-backed
-relaunch recommendation. Keep the payment/authority controls; simplify the
-management–worker protocol. No scripted demo engine or more isolated retries.
-
-## Read first
-
-1. `docs/work/M6_1_MANAGER_EXECUTION_REFACTOR_PLAN.md` — scope, contracts,
-   implementation map, two acceptance gates and final reporting requirements.
-2. Latest 21 September entry in `DECISIONS_LOG.md` — narrow freeze exception.
-3. Relevant implementation files named in the plan; re-read current code.
-
-The plan supersedes conflicting earlier planning only for the explicitly
-changed M6.1 execution semantics. Existing safety and M3 authority remain.
-`ARCHITECTURE.md` / `MASTER_PLAN.md` describe the previous baseline and must
-be reconciled to actual implementation at the next verified milestone.
+relaunch recommendation.
 
 ## Branch / base
 
-- Planning branch: `docs/m6-1-manager-execution-plan` (docs only).
-- Recovery code base: `fix/m6-1-causal-pipeline` at
-  `07230355c0000d294be32aa6bf08a2200631d3e2`.
-- Last verified `main`: `2bc3e06a60e32fe5e987b1dced35627f7dae2827`.
-- Recovery was 32 commits ahead of main, zero behind; main was the merge base.
-- Create `refactor/m6-1-manager-execution-loop` from this documentation tip.
-- Recheck remote refs, local HEAD/worktrees and dirty/stashed work first.
-  Do not reset later work or pop historical model experiments blindly.
-- Planning used remote GitHub reads/writes, not the founder's local checkout.
-  No local stash, runtime configuration or deployment was verified here.
+- Branch: `refactor/m6-1-manager-execution-loop`
+- Started from: `e8de0849e66f15ec8288de669c1dc5ab8187993c`
+- Preserved: `stash@{0}` free-model experiments; untracked `scripts/_tmp-*`
+- Worktrees left alone
 
-## Current truth
+## Shared contracts implemented
 
-- Latest recovery already fixed the unrealizable document-drafting grant.
-- M3/M4 and M5 subsystem acceptance does not establish complete product E2E.
-- M6.1 is NOT physically accepted. Do not carry a PASS from old seam tests.
-- This commit changes documentation only; no implementation/model/payment run.
-- All earlier ACTIVE_TASK content is preserved byte-for-byte in
-  `docs/work/M6_1_PRE_REFACTOR_RECOVERY_HISTORY.md`.
-  It is history, not instructions to resume the old STOP-A1/B retry sequence.
+- `management.executionProtocol: "m61_serial_v1"` set at `applyInterpretation`
+- Absent/legacy keeps HYBRID + old ceremonies readable
+- `WorkerResultInput.terminal`: `DELIVERED` | `NEEDS_INPUT` | `EXECUTION_ERROR`
+- Serial: no compound HYBRID ground/offer/dispatch; ≤1 current action
+- Verified BUY (non input-only) → clear strategy → management redecide
+- Artifact mutation required only when proofs demand `company_artifact_version`
+  (and `expectedOutput` present when attaching that proof)
+- Historical `lastDeliveryFailureClass` / INPUT_BLOCKED = diagnostic only
 
-## Execution checklist — internal working memory, not founder checkpoints
+## Execution checklist
 
-- [ ] Verify base/local state and trace the production loop.
-- [ ] Record the small chosen contract/lifecycle changes; implement together.
-- [ ] Prove changed behavior and real production seams with focused tests.
-- [ ] Review changed authority, completion and concurrency boundaries; fix blockers.
-- [ ] Gate 1: two fresh live-model runs, only acquisition boundary simulated,
-      on the same candidate/configuration, without manual state rescue.
-- [ ] Reconcile docs/evidence; commit exact files and push; report Gate 1 result.
+- [x] Verify base/local state and trace the production loop
+- [x] Record contract choices; implement shared seams
+- [x] Focused production-seam tests green (see below)
+- [ ] Owner review of changed authority/completion/concurrency
+- [ ] Gate 1 live-model (owner) — NOT run
+- [ ] Reconcile ARCHITECTURE/MASTER_PLAN at verified milestone
 
-Current checkpoint: implementation plan prepared; no application checks run.
-Next action: implement Gate 1 from the plan, starting with the shared contract.
-Do not stop after returning another broad plan or send each seam to a new fixer.
+## Focused checks (this candidate)
 
-## Critical constraints
+- `tests/m61SerialManagerLoop.test.ts` — **12/12 pass**
+- `tests/m61DiagnosisToExternalIntent.test.ts` — **4/4 pass**
+- `tests/m61PostAcquisitionResume.test.ts` — **7/7 pass**
+- `tests/m61ConsistencyRepair.test.ts` — **9/9 pass**
+- `tests/m61InputDiagnosis.test.ts` + `m61ZeroProgress` — **26/26 pass**
 
-- Lock the outcome; planning substeps are not all mandatory outcome requirements.
-- LLM owns semantic assessment and eligible-option recommendation; application
-  owns facts, authority, effects, identities and completion acceptance.
-- One current action; one worker result surface; no compound HYBRID for new runs.
-- Keep historical HYBRID records readable; do not resume/rewrite failed objectives.
-- Preserve Convex, LangGraph, worker runtime, M3 rail and accepted M5 layout.
-- Acquisition evidence must cross the next-action boundary under explicit scope
-  and materially inform the final artifact; a receipt/version bump is not enough.
-- No fabricated scarcity, source reads, authorizations, prices or completion.
-- No secret-bearing logs, silent model fallback, budget reset or live payment.
-- Revalidate any existing model approval and spending bounds before live calls.
-- No broad suite/build/typecheck after each edit; focused evidence first.
-- Gate 2 (genuine acquisition → transparent replay → recording/freeze) is later
-  and requires its own explicit live-execution scope. It is not this handoff's
-  automatic next action or a new authorization to spend.
+## Known gaps (do not claim Gate 1)
 
-## Completion / handoff
+- Full unseeded interpret→…→BUY→sim→MAKE→artifact→completion is
+  **composed from seam tests + thin interpret→MAKE→dispatch**; not yet one
+  single unbroken harness matching every Gate 1 sentence.
+- Live-model Gate 1 not run. No deployment asserted for this candidate.
+- Pre-existing: `managementDecisionPass` I3 provenance expectation mismatch
+  (`provider_quote` vs `registry_data`) — Park for Later.
 
-Keep this file about 50–150 lines. Check items only after evidence passes.
-Report PASS/PARTIAL/FAIL, changed files/behavior, exact checks and physical
-runs, all findings triaged, risks, docs, branch/SHA/push/deployment state and
-one next step. A missing environment means PARTIAL, never invented evidence.
+## Next (owner)
+
+Review this candidate; decide whether to proceed to focused review and
+physical Gate 1. Implementer must not declare M6.1/Gate 1 PASS.

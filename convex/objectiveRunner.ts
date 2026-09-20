@@ -303,6 +303,7 @@ function makeConvexPort(ctx: ActionCtx, objectiveKey: string, runId: string) {
             risks: string[];
             unknowns: string[];
             recommendedNextAction: string;
+            terminal?: "DELIVERED" | "NEEDS_INPUT" | "EXECUTION_ERROR";
             missingInputs?: Array<{
               inputCheckId: string;
               resourceClass: string;
@@ -322,7 +323,7 @@ function makeConvexPort(ctx: ActionCtx, objectiveKey: string, runId: string) {
             ? resultInput.missingInputs.slice(0, 4)
             : [];
           const reports: string[] = [];
-          if (missing.length > 0) {
+          if (missing.length > 0 || resultInput.terminal === "NEEDS_INPUT") {
             const scoped = await resolveRequirementKeyForRun(
               ctx,
               objectiveKey,
@@ -377,6 +378,19 @@ function makeConvexPort(ctx: ActionCtx, objectiveKey: string, runId: string) {
                 }
               }
             }
+          }
+          if (resultInput.terminal === "DELIVERED") {
+            return reports.length
+              ? `DELIVERED result stored. Missing-input reports: ${reports.join("; ")}.`
+              : "DELIVERED result stored; action finishes when application proof accepts.";
+          }
+          if (resultInput.terminal === "NEEDS_INPUT") {
+            return reports.length
+              ? `NEEDS_INPUT recorded. Reports: ${reports.join("; ")}.`
+              : "NEEDS_INPUT recorded; include missingInputs with supportingEvidenceIds.";
+          }
+          if (resultInput.terminal === "EXECUTION_ERROR") {
+            return "EXECUTION_ERROR recorded; application will classify failure/retryability.";
           }
           return reports.length
             ? `Structured result stored. Missing-input reports: ${reports.join("; ")}. Completion still requires application proof.`
@@ -892,8 +906,14 @@ export const executeWorker = internalAction({
     }
 
     const contract: WorkContract = record.workItems[0].contract;
+    const serialManagerProtocol =
+      (
+        record as unknown as {
+          management?: { executionProtocol?: string | null };
+        }
+      ).management?.executionProtocol === "m61_serial_v1";
     const port = makeConvexPort(ctx, args.objectiveKey, args.runId);
-    const surface = toolNamesForContract(contract);
+    const surface = toolNamesForContract(contract, { serialManagerProtocol });
     const registeredToolNames = [
       ...surface.materialized,
       ...(contract.allowedToolPermissions.includes("read_company_record")
@@ -933,6 +953,7 @@ export const executeWorker = internalAction({
         env: process.env,
         signal: controller.signal,
         telemetry,
+        serialManagerProtocol,
       });
     } catch (error) {
       // Safe provider-error persistence: operational text only, no secrets.
@@ -1156,6 +1177,7 @@ export const proposeDecision = internalAction({
         mustBeTrue: reads.requirement.mustBeTrue,
         contractIntent: reads.contract.intent,
         capabilityCatalog: listControlledCapabilityKeys(),
+        serialManagerProtocol: reads.serialManagerProtocol === true,
       });
     } catch (error) {
       // Fail closed through the deterministic parser rather than inventing a
@@ -1504,8 +1526,19 @@ async function proposeStrategyWithModel(input: {
   mustBeTrue: string;
   contractIntent: string;
   capabilityCatalog: readonly string[];
+  serialManagerProtocol?: boolean;
 }): Promise<unknown> {
   const { configuration, requirementTitle, mustBeTrue, contractIntent, capabilityCatalog } = input;
+  const serial = input.serialManagerProtocol === true;
+  const strategyEnum = serial
+    ? ["MAKE", "BUY", "WAIT", "ASK_FOUNDER", "BLOCK"]
+    : ["MAKE", "BUY", "HYBRID", "WAIT", "ASK_FOUNDER", "BLOCK"];
+  const strategyHelp = serial
+    ? "Pick exactly one strategy: MAKE (do it with company capability), BUY (an external provider must supply it), WAIT, ASK_FOUNDER, or BLOCK. Do not propose compound HYBRID — MAKE and BUY are separate actions."
+    : "Pick exactly one strategy: MAKE (do it with company capability), BUY (an external provider must supply it), HYBRID (both), WAIT, ASK_FOUNDER, or BLOCK.";
+  const strategyShape = serial
+    ? '"strategy":"MAKE"|"BUY"|"WAIT"|"ASK_FOUNDER"|"BLOCK"'
+    : '"strategy":"MAKE"|"BUY"|"HYBRID"|"WAIT"|"ASK_FOUNDER"|"BLOCK"';
   const client = new OpenAI({
     apiKey: configuration.apiKey,
     baseURL: configuration.baseURL,
@@ -1521,9 +1554,7 @@ async function proposeStrategyWithModel(input: {
         content: [
           "You propose HOW one requirement of an outcome contract could be satisfied.",
           "Reply with JSON only, matching the given schema.",
-          "Pick exactly one strategy: MAKE (do it with company capability),",
-          "BUY (an external provider must supply it), HYBRID (both), WAIT,",
-          "ASK_FOUNDER, or BLOCK.",
+          strategyHelp,
           "Name the capabilities needed ONLY from the provided catalog. Do not",
           "invent capability names, providers, prices, permissions or spend.",
           "If an external resource class is genuinely required, name it; else null.",
@@ -1537,7 +1568,7 @@ async function proposeStrategyWithModel(input: {
           `MUST BE TRUE (untrusted data): ${mustBeTrue.slice(0, 800)}`,
           "",
           `CAPABILITY CATALOG (the only allowed desiredCapabilities): ${capabilityCatalog.join(", ")}`,
-          'Shape: {"strategy":"MAKE"|"BUY"|"HYBRID"|"WAIT"|"ASK_FOUNDER"|"BLOCK",',
+          `Shape: {${strategyShape},`,
           '"desiredCapabilities":string[],"needsExternalResourceClass":string|null,"notes":string|null}',
         ].join("\n"),
       },
@@ -1554,7 +1585,7 @@ async function proposeStrategyWithModel(input: {
           properties: {
             strategy: {
               type: "string",
-              enum: ["MAKE", "BUY", "HYBRID", "WAIT", "ASK_FOUNDER", "BLOCK"],
+              enum: strategyEnum,
             },
             desiredCapabilities: { type: "array", items: { type: "string" } },
             needsExternalResourceClass: { type: ["string", "null"] },

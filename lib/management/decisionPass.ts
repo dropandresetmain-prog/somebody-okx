@@ -80,6 +80,11 @@ export type DecisionPassReads = {
   // Deterministic, stable per (objective, requirement, revision, attempt) so a
   // replay rebuilds the same decision row identity.
   decisionId: string;
+  /**
+   * When true, park compound HYBRID for this pass. Sourced from
+   * `management.executionProtocol === "m61_serial_v1"`.
+   */
+  serialManagerProtocol?: boolean;
 };
 
 export type OpenResourceNeedFact = {
@@ -294,6 +299,7 @@ export async function buildDecisionPassInput(
       // boundary is genuinely absent.
       externalAuthority: "m3_available_bounded",
       waiverRequested: false,
+      serialManagerProtocol: reads.serialManagerProtocol === true,
     },
   };
 }

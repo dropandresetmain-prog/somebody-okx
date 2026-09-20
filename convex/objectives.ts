@@ -91,6 +91,10 @@ import {
 import type { Requirement } from "../lib/management/types";
 import type { CompanyArtifact } from "../lib/objective/artifact";
 import type { WorkerRecord } from "../lib/management/types";
+import {
+  assignmentRequiresArtifactMutation,
+  isSerialManagerProtocol,
+} from "../lib/management/executionProtocol";
 
 type ObjectiveRow = { _id: Id<"objectives">; key: string; data: ObjectiveRecord };
 
@@ -158,6 +162,44 @@ async function listEvents(
 // behind by a superseded run cannot be credited to a newer one.
 function evidenceForRun(evidence: EvidenceRecord[], runId: string) {
   return evidence.filter((item) => item.runId === runId);
+}
+
+/** Proof kinds on the bound requirement for this work item (wi:<assignmentId>). */
+async function requirementProofKinds(
+  db: QueryCtx["db"],
+  objectiveKey: string,
+  workItem: { id?: string } | null | undefined,
+): Promise<string[]> {
+  const workItemId = workItem?.id;
+  if (!workItemId?.startsWith("wi:")) return [];
+  const assignmentId = workItemId.slice(3);
+  if (!assignmentId) return [];
+  const assignmentRows = await db
+    .query("assignments")
+    .withIndex("by_objective", (q) => q.eq("objectiveKey", objectiveKey))
+    .collect();
+  const assignment = assignmentRows
+    .map((row) => (row as { data: { assignmentId: string; requirementKey?: string } }).data)
+    .find((data) => data.assignmentId === assignmentId);
+  if (!assignment?.requirementKey) return [];
+  const reqRows = await db
+    .query("requirements")
+    .withIndex("by_objectiveRequirement", (q) =>
+      q.eq("objectiveKey", objectiveKey).eq("requirementKey", assignment.requirementKey!),
+    )
+    .collect();
+  if (reqRows.length === 0) return [];
+  const latest = reqRows.reduce((max, row) => {
+    const rev = (row as { data: { contractRevision?: number } }).data.contractRevision ?? 0;
+    const maxRev =
+      (max as { data: { contractRevision?: number } }).data.contractRevision ?? 0;
+    return rev >= maxRev ? row : max;
+  });
+  const proofs = ((latest as { data: { proofs?: Array<{ proofKind?: string }> } }).data
+    .proofs ?? []) as Array<{ proofKind?: string }>;
+  return proofs
+    .map((proof) => proof.proofKind)
+    .filter((kind): kind is string => typeof kind === "string");
 }
 
 // The single write gate for anything a worker does. Uses the same pure fence
@@ -694,6 +736,13 @@ export const submitResult = internalMutation({
       risks: v.array(v.string()),
       unknowns: v.array(v.string()),
       recommendedNextAction: v.string(),
+      terminal: v.optional(
+        v.union(
+          v.literal("DELIVERED"),
+          v.literal("NEEDS_INPUT"),
+          v.literal("EXECUTION_ERROR"),
+        ),
+      ),
       missingInputs: v.optional(
         v.array(
           v.object({
@@ -712,19 +761,35 @@ export const submitResult = internalMutation({
     const now = Date.now();
     const row = await loadObjective(ctx.db, args.objectiveKey);
     assertActiveRun(row.data, args.runId, now);
-    const { missingInputs: _ignored, ...resultFields } = args.result;
+    const { missingInputs: _ignored, terminal, ...resultFields } = args.result;
     const result: ActivityResult = {
       ...resultFields,
       completedAt: now,
       runId: args.runId,
     };
-    const data: ObjectiveRecord = { ...row.data, result, updatedAt: now };
+    // EXECUTION_ERROR is application-classified failure; persist diagnostic class.
+    const lastDeliveryFailureClass =
+      terminal === "EXECUTION_ERROR"
+        ? ("EXECUTION_FAILED" as const)
+        : terminal === "NEEDS_INPUT"
+          ? ("INPUT_BLOCKED" as const)
+          : row.data.lastDeliveryFailureClass;
+    const data: ObjectiveRecord = {
+      ...row.data,
+      result,
+      ...(terminal
+        ? { lastDeliveryFailureClass: lastDeliveryFailureClass ?? null }
+        : {}),
+      updatedAt: now,
+    };
     await ctx.db.patch(row._id, { data });
     await appendEvent(
       ctx.db,
       args.objectiveKey,
       "result",
-      "Structured result submitted (awaiting application proof check).",
+      terminal
+        ? `Structured result submitted (${terminal}; awaiting application proof check).`
+        : "Structured result submitted (awaiting application proof check).",
       now,
     );
     return null;
@@ -788,12 +853,22 @@ export const readWorkerObservation = internalQuery({
       currentRunId: args.runId,
     });
     const unmet = [...check.unmet];
-    // Mutation-required assignments (envelope grants update_company_artifact)
-    // cannot finish on observations/summary alone — M2 legacy and M4 managed
-    // alike. The CONTENT change must come from this run.
-    const requiresArtifactMutation = workItem.contract.allowedToolPermissions.includes(
-      "update_company_artifact",
+    // Serial protocol: artifact mutation only when proofs demand it. Legacy:
+    // permission grant still implies mutation obligation.
+    const management = (
+      record as unknown as { management?: { executionProtocol?: string | null; contractId?: string | null } }
+    ).management;
+    const serial = isSerialManagerProtocol(management);
+    const proofKinds = await requirementProofKinds(
+      ctx.db,
+      args.objectiveKey,
+      workItem,
     );
+    const requiresArtifactMutation = assignmentRequiresArtifactMutation({
+      allowedToolPermissions: workItem.contract.allowedToolPermissions,
+      proofKinds,
+      serialProtocol: serial,
+    });
     if (requiresArtifactMutation) {
       const artifactChanged = (record.companyArtifacts ?? []).some(
         (a) => a.provenanceRunId === args.runId && a.version > 1,
@@ -801,7 +876,7 @@ export const readWorkerObservation = internalQuery({
       if (!artifactChanged) {
         unmet.push("company_artifact: no version change by this run");
       }
-      const isM4Managed = (record as unknown as { management?: { contractId: string | null } }).management?.contractId != null;
+      const isM4Managed = management?.contractId != null;
       if (!isM4Managed) {
         const hasNeed = (record.resourceNeeds ?? []).some(
           (n) => n.proposedByRunId === args.runId,
@@ -1542,11 +1617,19 @@ export const finishRun = internalMutation({
       currentRunId: args.runId,
     });
 
-    // Mutation-required assignments cannot finish without a version change by
-    // THIS run — applies to M4-managed work as well as M2 legacy growth.
-    const requiresArtifactMutation = workItem.contract.allowedToolPermissions.includes(
-      "update_company_artifact",
-    );
+    // Serial protocol: artifact mutation only when proofs demand it.
+    const management = (
+      record as unknown as { management?: { executionProtocol?: string | null } }
+    ).management;
+    const requiresArtifactMutation = assignmentRequiresArtifactMutation({
+      allowedToolPermissions: workItem.contract.allowedToolPermissions,
+      proofKinds: await requirementProofKinds(
+        ctx.db,
+        args.objectiveKey,
+        workItem,
+      ),
+      serialProtocol: isSerialManagerProtocol(management),
+    });
     if (requiresArtifactMutation) {
       const artifacts = record.companyArtifacts ?? [];
       const artifactChanged = artifacts.some(
@@ -1630,13 +1713,14 @@ export const finishRun = internalMutation({
     // the spine PROPOSES completion to the independent gate (lib/management/completion.ts).
     // The gate re-derives against the OutcomeContract; it never inherits the spine verdict.
     // Spread existing management so decisionAttempts / fingerprints / cursors survive.
+    // Named distinctly from the earlier protocol read (`management`) in this handler.
     type ManagementBlob = {
       contractId: string | null;
       currentContractRevision?: number;
       controlNotes?: unknown[];
       [key: string]: unknown;
     };
-    let management = (record as unknown as { management?: ManagementBlob }).management;
+    let managementForPatch = (record as unknown as { management?: ManagementBlob }).management;
     if (check.complete) {
       const proposalNote = {
         type: "completion_proposed",
@@ -1645,10 +1729,10 @@ export const finishRun = internalMutation({
         spineVerdict: "complete",
         proposedAt: now,
       };
-      const existingNotes = management?.controlNotes ?? [];
-      management = {
-        ...(management ?? { contractId: null }),
-        contractId: management?.contractId ?? null,
+      const existingNotes = managementForPatch?.controlNotes ?? [];
+      managementForPatch = {
+        ...(managementForPatch ?? { contractId: null }),
+        contractId: managementForPatch?.contractId ?? null,
         controlNotes: [...existingNotes, proposalNote],
       };
     }
@@ -1681,7 +1765,7 @@ export const finishRun = internalMutation({
       activity: recordActivity,
       workItems: [workItem],
       run,
-      ...(management ? { management } : {}),
+      ...(managementForPatch ? { management: managementForPatch } : {}),
       updatedAt: now,
     } as ObjectiveRecord;
     await ctx.db.patch(row._id, { data: updated });

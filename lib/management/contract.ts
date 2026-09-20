@@ -226,7 +226,10 @@ function attachGovernedProofs(
     });
   }
   if (strategy === "MAKE" || strategy === "HYBRID") {
-    if (artifactKey) {
+    // Drafting proof only when the requirement names a controlled output to
+    // save. Analysis/diagnosis MUST NOT inherit an artifact obligation merely
+    // because the capability envelope could mutate one.
+    if (artifactKey && proposed.expectedOutput) {
       proofs.push({
         proofKey: "artifact_change",
         description: `controlled company artifact ${artifactKey} advanced by an accepted run`,

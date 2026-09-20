@@ -737,6 +737,7 @@ export const readDecisionContext = internalQuery({
           companyArtifacts?: Array<{ key?: string }>;
           resourceNeeds?: ResourceNeed[];
           acquisitionResults?: ExternalAcquisitionResult[];
+          management?: { executionProtocol?: string | null };
           result?: {
             summary?: string;
             unknowns?: string[];
@@ -889,6 +890,8 @@ export const readDecisionContext = internalQuery({
       openResourceNeeds,
       prerequisiteResults,
       scopedCoveredResourceClasses: scopedCovered,
+      serialManagerProtocol:
+        objectiveData?.management?.executionProtocol === "m61_serial_v1",
     };
   },
 });
