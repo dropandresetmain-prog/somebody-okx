@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import { convexTest } from "convex-test";
 import schema from "../convex/schema";
 import type { WorkerRecord, ObjectiveBudget } from "../lib/management/types";
+import { CP2_REQUIREMENT_FIELDS } from "./helpers/cp2Requirement";
 
 // Provide modules explicitly since import.meta.glob isn't available in Node test runner
 const modules = {
@@ -764,6 +765,7 @@ test("putRequirement rejects stale downsert on satisfied requirement", async () 
         title: "Requirement 1",
         mustBeTrue: "Something must be true",
         scope: "In scope",
+        ...CP2_REQUIREMENT_FIELDS,
         proofs: [],
         state: "satisfied",
         strategy: "MAKE",

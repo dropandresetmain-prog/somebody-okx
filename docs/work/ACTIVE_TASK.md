@@ -50,7 +50,14 @@ Evidence: CP2 suite + contract/reducer/decisionPass — 47 pass; `tsc --noEmit` 
 
 Evidence: `tests/m61CausalPipelineCp3.test.ts` 9/9.
 
-### CP4 — acquisition → artifact → M5 closure (IN PROGRESS)
+### CP4 — acquisition → artifact → M5 closure (COMPLETE)
+
+- `simulationCandidate` requires `objectiveKey`; selects most recent authorized intent for that objective only.
+- M5: object-shaped EconomicFacts project into OptionView; `model_note` no longer maps to `founder_confirmation`; simulation never renders payment submitted/settled.
+- Integration proof before pre-authorized BUY: open need + requiredResourceClasses can make BUY eligible and authorize without seeding an intent.
+- Artifact evidence-ref path and acquisition→worker surface remain from M6.1 candidate; mutation obligation from CP1.
+
+Evidence: `tests/m61CausalPipelineCp4.test.ts` + m61FirstProductE2E — 19/19; typecheck clean.
 
 ### CP5 — fresh physical E2E acceptance (PENDING)
 
@@ -134,8 +141,8 @@ emerges from the demo objective text + seeded artifacts only.
    intent with no satisfaction attempt routes to `verify_requirement` — else a
    verified BUY stalls forever because satisfaction only counts verified intents.
 6. **Simulation boundary** (convex/m3Driver.ts, operator-gated): read-only
-   `simulationCandidate` (oldest authorized intent matching the fixture's
-   resourceClass) + `simulateVerifiedAcquisition` driving the SAME kernel as the
+   `simulationCandidate` (most recent authorized intent for the given
+   `objectiveKey` matching the fixture's resourceClass) + `simulateVerifiedAcquisition` driving the SAME kernel as the
    live rail: `handed_off → provider_result → verification_result` via
    `advanceIntent`/`applyRailEvent`, derived result identity
    (`sha256(intentId ⊹ responseHash ⊹ "m6-1-simulation")`, 24 hex), provenance
@@ -219,8 +226,8 @@ via convex-test and the real LangGraph pass):
    b. Watch the pass: interpretation → ordered requirements (req_01… with the
       external-evidence truth before the artifact truth) → decision (BUY or
       HYBRID over newsliquid_twitter_search) → intent minted `authorized`.
-   c. Call query `simulationCandidate` with the operator token → it returns the
-      authorized intent.
+   c. Call query `simulationCandidate` with the operator token and objective key →
+      it returns the authorized intent for that objective.
    d. Call mutation `simulateVerifiedAcquisition` with
       `{ operatorToken, intentId }` → intent verified through the kernel, wake
       emitted.

@@ -431,7 +431,10 @@ test("M6.1 simulation: authorized intent → verified through the real kernel, p
 
   // Candidate discovery finds it for the operator.
   const candidate = await t.mutation(async (ctx) =>
-    (simulationCandidate as unknown as Handler)._handler(ctx, { operatorToken: OPERATOR_TOKEN }),
+    (simulationCandidate as unknown as Handler)._handler(ctx, {
+      operatorToken: OPERATOR_TOKEN,
+      objectiveKey: key,
+    }),
   ) as { intentId: string } | null;
   assert.ok(candidate);
   assert.equal(candidate!.intentId, effectId);
@@ -528,7 +531,10 @@ test("M6.1 simulation fails closed: no token, wrong token, wrong resource class,
   try {
     await assert.rejects(
       () => t.mutation(async (ctx) =>
-        (simulationCandidate as unknown as Handler)._handler(ctx, { operatorToken: OPERATOR_TOKEN }),
+        (simulationCandidate as unknown as Handler)._handler(ctx, {
+          operatorToken: OPERATOR_TOKEN,
+          objectiveKey: key,
+        }),
       ),
       /not authorized/,
     );

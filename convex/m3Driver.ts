@@ -233,11 +233,14 @@ export const apply = mutation({
 // says SIMULATION in durable truth. No wallet, key, signature or rail call
 // exists anywhere behind this seam.
 
-// Read-only candidate discovery for the operator: the oldest authorized
-// external_acquisition intent whose target resource class matches the
-// simulated fixture. Everything else is deliberately invisible here.
+// Read-only candidate discovery for the operator: the current authorized
+// external_acquisition intent for a SPECIFIC objective whose target resource
+// class matches the simulated fixture. Never picks "oldest across the database".
 export const simulationCandidate = query({
-  args: { operatorToken: v.string() },
+  args: {
+    operatorToken: v.string(),
+    objectiveKey: v.string(),
+  },
   returns: v.union(
     v.null(),
     v.object({
@@ -257,17 +260,23 @@ export const simulationCandidate = query({
   ),
   handler: async (ctx, args) => {
     assertDemoOperator(args.operatorToken);
-    const rows = await ctx.db.query("executionIntents").collect();
+    if (!args.objectiveKey.trim()) return null;
+    const rows = await ctx.db
+      .query("executionIntents")
+      .withIndex("by_objective", (q) => q.eq("objectiveKey", args.objectiveKey))
+      .collect();
     const candidates = rows
       .map((row) => row.data as ExecutionIntent)
       .filter(
         (intent) =>
+          intent.objectiveKey === args.objectiveKey &&
           intent.kind === "external_acquisition" &&
           intent.state === "authorized" &&
           intent.target.resourceClass ===
             CANONICAL_SIMULATED_SOCIAL_RESULT.resourceClass,
       )
-      .sort((left, right) => left.updatedAt - right.updatedAt);
+      // Current intent for this objective: most recently updated authorized row.
+      .sort((left, right) => right.updatedAt - left.updatedAt);
     const intent = candidates[0];
     if (!intent) return null;
     return {

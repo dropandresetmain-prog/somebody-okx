@@ -19,9 +19,9 @@
 //   - worker result_submitted ≠ assignment verified ≠ requirement satisfied ≠
 //     objective completed.
 //   - external_acquisition ≠ external_effect.
-//   - No Requirement dependency edges exist; none are invented (the accepted
-//     frontend xray builder only relates requirement→contract, never
-//     requirement→requirement).
+//   - Requirement dependency edges may exist as dependsOnRequirementKeys DATA;
+//     the accepted frontend xray builder only relates requirement→contract and
+//     does not invent requirement→requirement edges beyond persisted fields.
 //   - Mission Story events come from persisted rows with stable ids; the
 //     backend's wake dedupe means duplicate activity cannot duplicate events.
 
@@ -327,7 +327,9 @@ function decodeDecisionExtras(summary: string): {
 }
 
 function toOptionView(raw: Record<string, unknown>): OptionView {
-  const facts = Array.isArray(raw.facts) ? (raw.facts as Array<Record<string, unknown>>) : [];
+  // Engine EconomicFacts are object-shaped ({ scope, externalPriceUsd, ... }).
+  // Legacy array shapes are still accepted when present.
+  const facts = projectOptionFacts(raw.facts);
   return {
     optionId: String(raw.optionId ?? "option"),
     strategy: (["MAKE", "BUY", "HYBRID"].includes(String(raw.strategy)) ? String(raw.strategy) : "MAKE") as OptionView["strategy"],
@@ -342,14 +344,40 @@ function toOptionView(raw: Record<string, unknown>): OptionView {
         ((raw.eligibility as { reasons?: string[] } | undefined)?.reasons ?? []).join(", ") ??
         "Grounded by application code.",
     ),
-    facts: facts.slice(0, 6).map((fact) => ({
+    facts,
+  };
+}
+
+function projectOptionFacts(raw: unknown): OptionView["facts"] {
+  const normalizeProvenance = (value: unknown): OptionView["facts"][number]["provenance"] =>
+    (["persisted_evidence", "registry_data", "provider_quote", "llm_estimate", "measured"].includes(String(value))
+      ? String(value)
+      : "unknown") as OptionView["facts"][number]["provenance"];
+
+  if (Array.isArray(raw)) {
+    return (raw as Array<Record<string, unknown>>).slice(0, 6).map((fact) => ({
       label: String(fact.label ?? fact.key ?? "fact"),
       value: String(fact.value ?? "unknown"),
-      provenance: (["persisted_evidence", "registry_data", "provider_quote", "llm_estimate", "measured"].includes(String(fact.provenance))
-        ? String(fact.provenance)
-        : "unknown") as OptionView["facts"][number]["provenance"],
-    })),
-  };
+      provenance: normalizeProvenance(fact.provenance),
+    }));
+  }
+  if (!raw || typeof raw !== "object") return [];
+  const entries: OptionView["facts"] = [];
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (value == null) continue;
+    if (typeof value === "object" && value !== null && "value" in (value as object)) {
+      const fact = value as { value: unknown; provenance?: unknown };
+      if (fact.value == null) continue;
+      entries.push({
+        label: key,
+        value: String(fact.value),
+        provenance: normalizeProvenance(fact.provenance),
+      });
+    } else if (typeof value === "string" || typeof value === "number") {
+      entries.push({ label: key, value: String(value), provenance: "unknown" });
+    }
+  }
+  return entries.slice(0, 6);
 }
 
 function toDecisionView(row: SourceDecisionRow): DecisionView | null {
@@ -469,10 +497,13 @@ function toEvidenceViews(source: WorkspaceSource): EvidenceView[] {
     evidenceId: row.evidenceId,
     label: row.label,
     summary: row.text.slice(0, 400),
-    // model_note is a non-proof annotation; the closest view origin is
-    // founder_confirmation-shaped text, but truthfully it is neither an
-    // application observation nor a provider result — keep application truth:
-    origin: row.origin === "application_observation" ? "application_observation" : "founder_confirmation",
+    // model_note is a non-proof annotation — never founder_confirmation.
+    origin:
+      row.origin === "application_observation"
+        ? "application_observation"
+        : row.origin === "model_note"
+          ? "model_note"
+          : "founder_confirmation",
     state: evidenceState(row, source.requirements),
     requirementKey:
       source.intents.find((intent) => intent.resultEvidenceId === row.evidenceId)?.requirementKey ??
