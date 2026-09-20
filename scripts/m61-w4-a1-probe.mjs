@@ -196,6 +196,21 @@ for (let i = 0; i < 72; i++) {
     process.exit(2);
   }
 
+  // Tools ran but finished Incomplete without gap/proof — do not wait for M4 loops.
+  if (
+    run &&
+    (run.status === "stopped" || run.status === "failed") &&
+    s.lastDeliveryFailureClass !== "INPUT_BLOCKED" &&
+    (s.validatedGaps?.length ?? 0) === 0 &&
+    i >= 3
+  ) {
+    dump(
+      "STOP A1 FAIL — worker terminal without validated gap/proof (fail-fast)",
+      s,
+    );
+    process.exit(2);
+  }
+
   // Valid internal proof path (rare for this demo): completed result with evidence.
   if (
     run &&

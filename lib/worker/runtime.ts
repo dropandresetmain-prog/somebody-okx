@@ -332,7 +332,7 @@ export async function runWorker(
       return tool({
         name: "submit_result",
         description:
-          "Submit the structured evaluation: summary, fit, risks, unknowns and the recommended next action. Optionally include missingInputs findings for application validation.",
+          "Submit the structured evaluation: summary, fit, risks, unknowns and the recommended next action. Optionally include missingInputs findings for application validation (resourceClass must be a governed external class such as proprietary_data).",
         parameters: z.object({
           summary: z.string().min(1).max(2000),
           fit: z.string().min(1).max(2000),
@@ -480,7 +480,7 @@ export async function runWorker(
       return tool({
         name: "request_resource",
         description:
-          "Propose a missing input the application should validate. Pass supportingEvidenceIds from application observations in this run. The application decides whether the gap is authoritative; you cannot mark a resource fulfilled, choose a provider, or force BUY.",
+          "Propose a missing input the application should validate. Pass supportingEvidenceIds from application observations in this run. resourceClass MUST be a governed external class such as proprietary_data, privileged_access, specialist_compute, human_voice_contact, physical_presence, or attestation — never a free-form phrase and never an already-owned class (company_records, public_web, llm_reasoning, company_tools, ordinary_compute). The application decides whether the gap is authoritative; you cannot mark a resource fulfilled, choose a provider, or force BUY.",
         parameters: z.object({
           resourceClass: z.string().min(1).max(120),
           purpose: z.string().min(1).max(500),
@@ -675,6 +675,10 @@ Return only a short operational update, never private reasoning.`;
     model: options.model ?? configuration!.model,
     instructions: workerInstructions,
     modelSettings: { parallelToolCalls: false, toolChoice: "required" },
+    // Keep toolChoice:"required" across turns. The SDK default resets it after
+    // the first tool, which lets the model prose-exit as a clean final output
+    // while proof/gap obligations remain unmet.
+    resetToolChoice: false,
     tools,
     // Stop when proof is complete OR the application accepted an input gap
     // (worker must yield — do not burn turns until timeout).
