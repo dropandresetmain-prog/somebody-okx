@@ -71,6 +71,11 @@ export type DecisionPassReads = {
   openResourceNeeds?: readonly OpenResourceNeedFact[];
   /** Bounded accepted prerequisite results for dependsOn keys (DATA). */
   prerequisiteResults?: readonly PrerequisiteResultFact[];
+  /**
+   * Resource classes already satisfied by verified scoped acquisitions for this
+   * Requirement+revision. Never promotes a class into global owned inventory.
+   */
+  scopedCoveredResourceClasses?: readonly string[];
   at: number;
   // Deterministic, stable per (objective, requirement, revision, attempt) so a
   // replay rebuilds the same decision row identity.
@@ -156,12 +161,18 @@ export async function buildDecisionPassInput(
     ...new Set(declaredClasses.filter((value): value is ResourceClass => isKnownResourceClass(value))),
   ];
   const controlledResourceClasses = controlledResourceClassesFor(CURRENT_RESOURCE_INVENTORY);
+  const scopedCovered = new Set(
+    (reads.scopedCoveredResourceClasses ?? []).map((value) => value.toLowerCase()),
+  );
 
   // Discover for the validated gap first. Do not let an unrelated model-selected
   // needsExternalResourceClass override a validated gap. Proposed-only needs
-  // never drive discovery.
+  // never drive discovery. Verified scoped acquisitions also remove covered
+  // classes from "missing" without declaring them globally owned.
   const missing = requiredResourceClasses.filter(
-    (resource) => !controlledResourceClasses.includes(resource),
+    (resource) =>
+      !controlledResourceClasses.includes(resource) &&
+      !scopedCovered.has(resource.toLowerCase()),
   );
   const validatedGapClass = validatedNeeds
     .map((need) => need.resourceClass)
@@ -250,7 +261,14 @@ export async function buildDecisionPassInput(
       grounding,
       eligibilityFacts: {
         requiredResourceClasses,
-        controlledResourceClasses,
+        controlledResourceClasses: [
+          ...new Set([
+            ...controlledResourceClasses,
+            ...(reads.scopedCoveredResourceClasses ?? []).filter(
+              (value): value is ResourceClass => isKnownResourceClass(value),
+            ),
+          ]),
+        ],
         deadlineAt: null,
         now: reads.at,
         estimatedMinutes: null,

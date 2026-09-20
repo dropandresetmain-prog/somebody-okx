@@ -23,6 +23,8 @@ import {
   listCompanyInputCatalog,
   lookupCompanyRecord,
 } from "../lib/objective/inputAvailability";
+import { currentUnresolvedValidatedGap } from "../lib/objective/inputDiagnosis";
+import type { ResourceNeed } from "../lib/objective/resourceNeed";
 import { normalizePublicUrl } from "../lib/objective/contract";
 import {
   M1_ROLE_REQUIREMENTS,
@@ -950,21 +952,23 @@ export const executeWorker = internalAction({
 
     const telemetrySummary = formatTelemetry(telemetry);
 
-    // If the application validated an input gap during the run, finish as a
-    // clean yield (not EXECUTION_FAILED) so management redecides on new facts.
+    // If THIS run validated an unresolved input gap, finish as a clean yield
+    // (not EXECUTION_FAILED). Historical lastDeliveryFailureClass alone is not
+    // current blocking authority after acquisition coverage.
     const after = await ctx.runQuery(internal.objectives.getObjectiveInternal, {
       objectiveKey: args.objectiveKey,
     });
     const afterRecord = after.data as ObjectiveRecord;
-    if (
-      afterRecord.lastDeliveryFailureClass === "INPUT_BLOCKED" ||
-      (afterRecord.resourceNeeds ?? []).some(
-        (n) =>
-          n.proposedByRunId === args.runId &&
-          (n.status === "active" || n.status === "sourcing") &&
-          n.validationAuthority === "application",
-      )
-    ) {
+    const gap = currentUnresolvedValidatedGap(
+      (afterRecord.resourceNeeds ?? []) as ResourceNeed[],
+      (afterRecord.acquisitionResults ?? []).map((a) => ({
+        requirementKey: a.requirementKey,
+        contractRevision: a.contractRevision,
+        resourceClass: a.resourceClass,
+        verifiedAt: a.verifiedAt,
+      })),
+    );
+    if (gap) {
       return finishWithWake({
         toolCalls: telemetry.toolCallCount,
         telemetrySummary,

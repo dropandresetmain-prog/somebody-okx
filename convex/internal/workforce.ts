@@ -32,6 +32,7 @@ import {
 } from "../../lib/management/budget";
 import type { WorkerRecord, ObjectiveBudget, WakeEvent } from "../../lib/management/types";
 import { verifiedAcquisitionCoversNeed } from "../../lib/objective/inputDiagnosis";
+import { scopedCoveredResourceClasses } from "../../lib/objective/inputAvailability";
 import type { ResourceNeed } from "../../lib/objective/resourceNeed";
 import type { ExternalAcquisitionResult } from "../../lib/objective/types";
 
@@ -814,6 +815,17 @@ export const readDecisionContext = internalQuery({
       })
       .filter((need) => need.needId && need.resourceClass);
 
+    const scopedCovered = scopedCoveredResourceClasses({
+      requirementKey: args.requirementKey,
+      contractRevision: currentContractRevision,
+      acquisitions: acquisitions.map((a) => ({
+        requirementKey: a.requirementKey,
+        contractRevision: a.contractRevision,
+        resourceClass: a.resourceClass ?? "unknown",
+        verifiedAt: a.verifiedAt,
+      })),
+    });
+
     // Accepted prerequisite results: satisfied/waived dependsOn keys with
     // bounded proof refs + any current objective result unknowns (DATA).
     const prerequisiteResults: Array<{
@@ -876,6 +888,7 @@ export const readDecisionContext = internalQuery({
       artifactKeyForInternalProof,
       openResourceNeeds,
       prerequisiteResults,
+      scopedCoveredResourceClasses: scopedCovered,
     };
   },
 });

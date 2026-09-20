@@ -120,7 +120,9 @@ export function dedupeResourceNeeds(
 ): { need: ResourceNeed; created: boolean } {
   for (const e of existing) {
     if (e.dedupeKey === proposed.dedupeKey) {
-      if (e.status !== "rejected" && e.status !== "fulfilled") {
+      // Fulfilled needs still match: do not mint a second need for the same
+      // obligation identity. Callers must refuse reacquisition separately.
+      if (e.status !== "rejected") {
         return { need: e, created: false };
       }
     }

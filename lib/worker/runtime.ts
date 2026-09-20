@@ -615,19 +615,18 @@ export async function runWorker(
   // toolChoice:required worker can burn maxTurns updating an artifact after
   // NOT_AVAILABLE and never reach request_resource / INPUT_BLOCKED.
   const orderSteps: string[] = [
-    `If this assignment can read company records: call list_available_company_inputs, then check_input_availability for each accepted input obligation (typically evidence_sufficiency). Do not invent record refs.`,
+    `If this assignment can read company records: call list_available_company_inputs, then read the listed company_record refs with read_company_record before claiming scarcity.`,
   ];
   if (hasResourcePermission)
     orderSteps.push(
-      `If check_input_availability returned NOT_AVAILABLE for a required obligation, IMMEDIATELY report it via request_resource (and/or submit_result.missingInputs) with that evidence id in supportingEvidenceIds, then stop when yieldReason is set. Do not spend remaining turns on further reads, notes, or artifact edits once scarcity is observed.`,
+      `After inspecting owned inputs (or when a required resource class is declared), call check_input_availability for each accepted input obligation (typically evidence_sufficiency and any req_class:*). Only NOT_AVAILABLE is scarcity — UNREAD means you must read owned inputs first. If NOT_AVAILABLE, IMMEDIATELY report it via request_resource (and/or submit_result.missingInputs) with that evidence id in supportingEvidenceIds, then stop when yieldReason is set. Do not spend remaining turns on further reads, notes, or artifact edits once scarcity is observed.`,
     );
   else
     orderSteps.push(
-      `If check_input_availability returned NOT_AVAILABLE, include it in submit_result.missingInputs with supportingEvidenceIds from that check, then stop. Universal structured results are the generic reporting path when request_resource is not granted.`,
+      `After inspecting owned inputs, call check_input_availability. If it returned NOT_AVAILABLE, include it in submit_result.missingInputs with supportingEvidenceIds from that check, then stop. UNREAD is not missing-input evidence. Universal structured results are the generic reporting path when request_resource is not granted.`,
     );
   orderSteps.push(
-    `Read only listed company_record refs with read_company_record when useful for context and inputs are available. INVALID_REQUEST means the ref is invalid — it is not missing-input evidence.`,
-    `Read distinct public HTTPS pages with read_public_web only when the contract requires public_web proof and owned inputs are available. Re-reading one page twice does not count as distinct.`,
+    `Read distinct public HTTPS pages with read_public_web only when the contract requires public_web proof and owned inputs are available. Re-reading one page twice does not count as distinct. INVALID_REQUEST means the ref is invalid — it is not missing-input evidence.`,
   );
   if (hasArtifactPermission)
     orderSteps.push(

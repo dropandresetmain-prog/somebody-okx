@@ -40,19 +40,84 @@ test("catalog lists governed company inputs only", () => {
   );
 });
 
-test("A1 positive: NOT_AVAILABLE check supports validated gap", () => {
+test("A1: unread catalog is UNREAD, not acquisition-worthy scarcity", () => {
   const obligations = listInputObligations({
     requiredResourceClasses: [],
     sourceProofs: [{ sourceClass: "company_record", minDistinctSources: 1 }],
     mustBeTrue: "metrics on record",
     expectedOutput: "baseline metrics",
   });
-  const check = checkInputAvailability({
+  const unread = checkInputAvailability({
     inputCheckId: "evidence_sufficiency",
     obligations,
     sourceProofs: [{ sourceClass: "company_record", minDistinctSources: 1 }],
     controlledResourceClasses: [...CURRENT_RESOURCE_INVENTORY],
     evidence: [],
+    runId: "run_a1",
+  });
+  assert.equal(unread.status, "UNREAD");
+
+  const refused = validateMissingInputProposal(
+    {
+      inputCheckId: "evidence_sufficiency",
+      resourceClass: "proprietary_data",
+      purpose: "baseline launch messaging performance metrics",
+      reasonOwnedInsufficient: "zero observations so far",
+      supportingEvidenceIds: ["ev_fake"],
+    },
+    {
+      objectiveKey: "obj_a1",
+      requirementKey: "req_01",
+      contractRevision: 1,
+      runId: "run_a1",
+      workItemId: "wi_1",
+      requiredResourceClasses: [],
+      mustBeTrue: "metrics on record",
+      expectedOutput: "baseline metrics",
+      sourceProofs: [{ sourceClass: "company_record", minDistinctSources: 1 }],
+      requiredSourceClasses: ["company_record"],
+      controlledResourceClasses: [...CURRENT_RESOURCE_INVENTORY],
+      evidence: [],
+      existingNeeds: [],
+      at,
+      needId: "need_a1",
+    },
+  );
+  assert.equal(refused.ok, false);
+  if (!refused.ok) {
+    assert.ok(
+      refused.refusalCode === "owned_inputs_unread" ||
+        refused.refusalCode === "missing_supporting_evidence" ||
+        refused.refusalCode === "foreign_evidence",
+    );
+  }
+});
+
+test("A1 positive: inspected-but-insufficient owned sources → NOT_AVAILABLE supports validated gap", () => {
+  const obligations = listInputObligations({
+    requiredResourceClasses: [],
+    sourceProofs: [{ sourceClass: "company_record", minDistinctSources: 1 }],
+    mustBeTrue: "metrics on record",
+    expectedOutput: "baseline metrics",
+  });
+  const inspected: EvidenceRecord = {
+    id: "ev_inspected",
+    sourceClass: "company_record",
+    label: "company/profile",
+    text: "no usable metrics for the current launch decision",
+    origin: "application_observation",
+    sourceId: "record:company/profile",
+    recordRef: "company/profile",
+    observedAt: at,
+    recordedBy: "app",
+    runId: "run_a1",
+  };
+  const check = checkInputAvailability({
+    inputCheckId: "evidence_sufficiency",
+    obligations,
+    sourceProofs: [{ sourceClass: "company_record", minDistinctSources: 1 }],
+    controlledResourceClasses: [...CURRENT_RESOURCE_INVENTORY],
+    evidence: [inspected],
     runId: "run_a1",
   });
   assert.equal(check.status, "NOT_AVAILABLE");
@@ -95,7 +160,7 @@ test("A1 positive: NOT_AVAILABLE check supports validated gap", () => {
       sourceProofs: [{ sourceClass: "company_record", minDistinctSources: 1 }],
       requiredSourceClasses: ["company_record"],
       controlledResourceClasses: [...CURRENT_RESOURCE_INVENTORY],
-      evidence: [evidence],
+      evidence: [inspected, evidence],
       existingNeeds: [],
       at,
       needId: "need_a1",

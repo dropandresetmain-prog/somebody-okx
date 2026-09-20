@@ -15,6 +15,7 @@ import {
   checkInputAvailability,
   isInvalidRequestObservation,
   isNotAvailableObservation,
+  type ScopedAcquisitionCoverage,
 } from "./inputAvailability";
 import {
   createResourceNeed,
@@ -84,6 +85,8 @@ export type ValidateMissingInputContext = {
   /** Evidence for this objective; supporting ids must resolve here. */
   evidence: readonly EvidenceRecord[];
   existingNeeds: readonly ResourceNeed[];
+  /** Verified acquisitions that may already cover this obligation. */
+  acquisitions?: readonly ScopedAcquisitionCoverage[];
   at: number;
   needId: string;
 };
@@ -263,6 +266,22 @@ export function validateMissingInputProposal(
       `resource class ${resourceClass} is owned vocabulary, not an acquisition gap`,
     );
 
+  // Already-covered Requirement-scoped obligation must not reacquire.
+  if (
+    obligationAlreadyCovered({
+      requirementKey: ctx.requirementKey,
+      contractRevision: ctx.contractRevision,
+      resourceClass,
+      existingNeeds: ctx.existingNeeds,
+      acquisitions: ctx.acquisitions ?? [],
+    })
+  ) {
+    return refuse(
+      "already_covered",
+      `requirement ${ctx.requirementKey} already has verified coverage for ${resourceClass}`,
+    );
+  }
+
   const obligations = listInputObligations({
     requiredResourceClasses: ctx.requiredResourceClasses,
     sourceProofs: ctx.sourceProofs,
@@ -330,31 +349,40 @@ export function validateMissingInputProposal(
       "validated gaps require supportingEvidenceIds from a governed NOT_AVAILABLE input check",
     );
 
-  // Live coverage must still be NOT_AVAILABLE (stale checks do not invent gaps
-  // after owned evidence becomes sufficient).
-  if (obligation.kind === "evidence_sufficiency") {
-    const live = checkInputAvailability({
-      inputCheckId: obligation.inputCheckId,
-      obligations: listInputObligations({
-        requiredResourceClasses: ctx.requiredResourceClasses,
-        sourceProofs: ctx.sourceProofs,
-        mustBeTrue: ctx.mustBeTrue,
-        expectedOutput: ctx.expectedOutput,
-      }),
-      sourceProofs: ctx.sourceProofs,
-      controlledResourceClasses: ctx.controlledResourceClasses,
-      evidence: ctx.evidence,
-      runId: ctx.runId,
-    });
-    if (live.status === "AVAILABLE")
-      return refuse(
-        "owned_evidence_sufficient",
-        "owned/accepted evidence already covers the work-contract proofs",
-      );
-  }
-
-  // For declared required class: class must still be uncovered (checked above
-  // via controlledResourceClasses). Nothing further.
+  // Live coverage must still be NOT_AVAILABLE. AVAILABLE / UNREAD / other
+  // statuses never authorize an acquisition-worthy gap.
+  const liveObligations = listInputObligations({
+    requiredResourceClasses: ctx.requiredResourceClasses,
+    sourceProofs: ctx.sourceProofs,
+    mustBeTrue: ctx.mustBeTrue,
+    expectedOutput: ctx.expectedOutput,
+  });
+  const live = checkInputAvailability({
+    inputCheckId: obligation.inputCheckId,
+    obligations: liveObligations,
+    sourceProofs: ctx.sourceProofs,
+    controlledResourceClasses: ctx.controlledResourceClasses,
+    evidence: ctx.evidence,
+    runId: ctx.runId,
+    requirementKey: ctx.requirementKey,
+    contractRevision: ctx.contractRevision,
+    acquisitions: ctx.acquisitions ?? [],
+  });
+  if (live.status === "AVAILABLE")
+    return refuse(
+      "owned_evidence_sufficient",
+      "owned/accepted evidence already covers the work-contract proofs",
+    );
+  if (live.status === "UNREAD")
+    return refuse(
+      "owned_inputs_unread",
+      "owned catalog inputs exist but have not been inspected yet; unread is not scarcity",
+    );
+  if (live.status !== "NOT_AVAILABLE")
+    return refuse(
+      "coverage_not_scarce",
+      `live coverage status ${live.status} does not authorize a missing-input gap`,
+    );
 
   const proposed = createResourceNeed({
     id: ctx.needId,
@@ -374,6 +402,14 @@ export function validateMissingInputProposal(
   });
 
   const { need: deduped, created } = dedupeResourceNeeds(ctx.existingNeeds, proposed);
+
+  // Fulfilled / already-covered dedupe hit → refuse reacquisition.
+  if (!created && deduped.status === "fulfilled") {
+    return refuse(
+      "already_covered",
+      `equivalent ResourceNeed ${deduped.id} is already fulfilled for this obligation`,
+    );
+  }
 
   // Promote to active (authoritative). If dedupe hit an existing active+ need,
   // keep it; if it hit proposed, upgrade.
@@ -407,6 +443,69 @@ export function validateMissingInputProposal(
   }
 
   return { ok: true, need, created: created || need.id === ctx.needId, obligation };
+}
+
+/**
+ * Current unresolved validated gap — never inferred from historical
+ * lastDeliveryFailureClass alone.
+ */
+export function currentUnresolvedValidatedGap(
+  needs: readonly ResourceNeed[],
+  acquisitions: readonly {
+    requirementKey: string;
+    contractRevision: number;
+    resourceClass: string | null;
+    verifiedAt?: number | null;
+  }[] = [],
+  opts: { runId?: string | null } = {},
+): ResourceNeed | null {
+  for (const need of needs) {
+    if (!isValidatedInputGap(need)) continue;
+    if (opts.runId != null && need.proposedByRunId !== opts.runId) continue;
+    if (acquisitions.some((acquisition) => verifiedAcquisitionCoversNeed(need, acquisition))) {
+      continue;
+    }
+    return need;
+  }
+  return null;
+}
+
+/** Requirement-scoped obligation already satisfied by fulfilled need or acquisition. */
+export function obligationAlreadyCovered(input: {
+  requirementKey: string;
+  contractRevision: number;
+  resourceClass: string;
+  existingNeeds: readonly ResourceNeed[];
+  acquisitions: readonly ScopedAcquisitionCoverage[];
+}): boolean {
+  for (const need of input.existingNeeds) {
+    if (need.requirementKey !== input.requirementKey) continue;
+    if (need.resourceClass !== input.resourceClass) continue;
+    if (
+      need.contractRevision != null &&
+      need.contractRevision !== input.contractRevision
+    ) {
+      continue;
+    }
+    if (need.status === "fulfilled") return true;
+    if (
+      (need.status === "active" ||
+        need.status === "sourcing" ||
+        need.status === "buy_pending") &&
+      input.acquisitions.some((acquisition) =>
+        verifiedAcquisitionCoversNeed(need, acquisition),
+      )
+    ) {
+      return true;
+    }
+  }
+  return input.acquisitions.some(
+    (acquisition) =>
+      acquisition.verifiedAt != null &&
+      acquisition.requirementKey === input.requirementKey &&
+      acquisition.contractRevision === input.contractRevision &&
+      acquisition.resourceClass === input.resourceClass,
+  );
 }
 
 /** Needs that are hard eligibility facts (exclude unsupported MAKE). */

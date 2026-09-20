@@ -79,12 +79,15 @@ import type { SourcingDecisionRecord } from "../lib/objective/resourceNeed";
 import type { CandidateAssessment } from "../lib/market/assessment";
 import type { MarketOffering } from "../lib/market/discovery";
 import {
+  currentUnresolvedValidatedGap,
   listInputObligations,
   validateMissingInputProposal,
   type MissingInputProposal,
   type UnconfirmedInputFinding,
 } from "../lib/objective/inputDiagnosis";
-import { checkInputAvailability } from "../lib/objective/inputAvailability";
+import {
+  checkInputAvailability,
+} from "../lib/objective/inputAvailability";
 import type { Requirement } from "../lib/management/types";
 import type { CompanyArtifact } from "../lib/objective/artifact";
 import type { WorkerRecord } from "../lib/management/types";
@@ -809,18 +812,20 @@ export const readWorkerObservation = internalQuery({
       }
     }
 
-    const validatedGap = (record.resourceNeeds ?? []).find(
-      (n) =>
-        n.proposedByRunId === args.runId &&
-        (n.status === "active" ||
-          n.status === "sourcing" ||
-          n.status === "buy_pending") &&
-        (n.validationAuthority === "application" || n.validationAuthority == null),
+    const validatedGap = currentUnresolvedValidatedGap(
+      (record.resourceNeeds ?? []) as ResourceNeed[],
+      (record.acquisitionResults ?? []).map((a) => ({
+        requirementKey: a.requirementKey,
+        contractRevision: a.contractRevision,
+        resourceClass: a.resourceClass,
+        verifiedAt: a.verifiedAt,
+      })),
     );
-    const yieldReason =
-      record.lastDeliveryFailureClass === "INPUT_BLOCKED" || validatedGap
-        ? `INPUT_BLOCKED: validated gap ${validatedGap?.resourceClass ?? "unknown"} — stop and yield to management`
-        : null;
+    // Historical lastDeliveryFailureClass is diagnostic only — it must not
+    // authorize a yield for a newly resumed run with no current gap.
+    const yieldReason = validatedGap
+      ? `INPUT_BLOCKED: validated gap ${validatedGap.resourceClass} — stop and yield to management`
+      : null;
 
     return {
       assignment: workItem.contract.assignment,
@@ -1014,6 +1019,7 @@ export const recordInputAvailabilityCheck = internalMutation({
     let requiredResourceClasses: string[] = [];
     let mustBeTrue = workItem.contract.assignment;
     let expectedOutput: string | null = null;
+    let contractRevision: number | null = null;
     if (args.requirementKey) {
       const reqRows = await ctx.db
         .query("requirements")
@@ -1028,6 +1034,7 @@ export const recordInputAvailabilityCheck = internalMutation({
         requiredResourceClasses = requirement.requiredResourceClasses ?? [];
         mustBeTrue = requirement.mustBeTrue;
         expectedOutput = requirement.expectedOutput ?? null;
+        contractRevision = requirement.contractRevision;
       }
     }
 
@@ -1038,6 +1045,12 @@ export const recordInputAvailabilityCheck = internalMutation({
       mustBeTrue,
       expectedOutput,
     });
+    const acquisitions = (record.acquisitionResults ?? []).map((a) => ({
+      requirementKey: a.requirementKey,
+      contractRevision: a.contractRevision,
+      resourceClass: a.resourceClass ?? "unknown",
+      verifiedAt: a.verifiedAt,
+    }));
     const result = checkInputAvailability({
       inputCheckId: args.inputCheckId,
       obligations,
@@ -1045,6 +1058,9 @@ export const recordInputAvailabilityCheck = internalMutation({
       controlledResourceClasses: [...CURRENT_RESOURCE_INVENTORY],
       evidence,
       runId: args.runId,
+      requirementKey: args.requirementKey,
+      contractRevision,
+      acquisitions,
     });
 
     const recordRef = `input_check/${result.inputCheckId || "unknown"}/${result.status}`;
@@ -1209,6 +1225,12 @@ export const reportMissingInput = internalMutation({
       controlledResourceClasses: CURRENT_RESOURCE_INVENTORY,
       evidence,
       existingNeeds: (record.resourceNeeds ?? []) as ResourceNeed[],
+      acquisitions: (record.acquisitionResults ?? []).map((a) => ({
+        requirementKey: a.requirementKey,
+        contractRevision: a.contractRevision,
+        resourceClass: a.resourceClass ?? "unknown",
+        verifiedAt: a.verifiedAt,
+      })),
       at: now,
       needId,
     });
@@ -1542,14 +1564,18 @@ export const finishRun = internalMutation({
     const buyPending = (record.resourceNeeds ?? []).some(
       (n) => n.status === "buy_pending",
     );
+    // Current unresolved validated gap only — historical lastDeliveryFailureClass
+    // is diagnostic and must not re-block a resumed run after coverage.
     const inputBlocked =
-      record.lastDeliveryFailureClass === "INPUT_BLOCKED" ||
-      (record.resourceNeeds ?? []).some(
-        (n) =>
-          n.proposedByRunId === args.runId &&
-          (n.status === "active" || n.status === "sourcing" || n.status === "buy_pending") &&
-          (n.validationAuthority === "application" || n.validationAuthority == null),
-      );
+      currentUnresolvedValidatedGap(
+        (record.resourceNeeds ?? []) as ResourceNeed[],
+        (record.acquisitionResults ?? []).map((a) => ({
+          requirementKey: a.requirementKey,
+          contractRevision: a.contractRevision,
+          resourceClass: a.resourceClass,
+          verifiedAt: a.verifiedAt,
+        })),
+      ) != null;
 
     run.status = "stopped";
     runs[runIndex] = run;
@@ -1603,7 +1629,14 @@ export const finishRun = internalMutation({
     // not the objective's completion authority. When check.complete is true,
     // the spine PROPOSES completion to the independent gate (lib/management/completion.ts).
     // The gate re-derives against the OutcomeContract; it never inherits the spine verdict.
-    let management = (record as unknown as { management?: { contractId: string | null; currentContractRevision?: number; controlNotes?: unknown[] } }).management;
+    // Spread existing management so decisionAttempts / fingerprints / cursors survive.
+    type ManagementBlob = {
+      contractId: string | null;
+      currentContractRevision?: number;
+      controlNotes?: unknown[];
+      [key: string]: unknown;
+    };
+    let management = (record as unknown as { management?: ManagementBlob }).management;
     if (check.complete) {
       const proposalNote = {
         type: "completion_proposed",
@@ -1614,10 +1647,8 @@ export const finishRun = internalMutation({
       };
       const existingNotes = management?.controlNotes ?? [];
       management = {
+        ...(management ?? { contractId: null }),
         contractId: management?.contractId ?? null,
-        ...(management?.currentContractRevision != null
-          ? { currentContractRevision: management.currentContractRevision }
-          : {}),
         controlNotes: [...existingNotes, proposalNote],
       };
     }
