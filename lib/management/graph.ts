@@ -133,6 +133,10 @@ async function observeNode(state: Ann, deps: GraphDeps): Promise<NodeResult> {
   // counter — otherwise the finite ceiling could never be reached.
   const SELF_WAKE = new Set<WakeReason>(["timeout", "no_progress", "recovery_event"]);
   const material = fresh.some((wake) => !SELF_WAKE.has(wake.reason));
+  // Reset the no-progress ceiling BEFORE reduce reads the budget verdict.
+  // Otherwise a verification_result that arrives after three timeout polls
+  // escalates immediately and never acts on the new acquisition fact.
+  if (material) await ports.recordPassProgress(state.objectiveKey, true, at);
   return {
     lastNode: "observe",
     wakeReason: fresh[0]?.reason ?? state.wakeReason,

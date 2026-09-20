@@ -31,6 +31,9 @@ import {
   recordProgress,
 } from "../../lib/management/budget";
 import type { WorkerRecord, ObjectiveBudget, WakeEvent } from "../../lib/management/types";
+import { verifiedAcquisitionCoversNeed } from "../../lib/objective/inputDiagnosis";
+import type { ResourceNeed } from "../../lib/objective/resourceNeed";
+import type { ExternalAcquisitionResult } from "../../lib/objective/types";
 
 // Row shapes for the storage layer. `FounderSpendGrant` is the persisted
 // founder authority record (R3 A4); it lives here because nothing in
@@ -731,14 +734,8 @@ export const readDecisionContext = internalQuery({
     const objectiveData = objectiveRow?.data as
       | {
           companyArtifacts?: Array<{ key?: string }>;
-          resourceNeeds?: Array<{
-            id?: string;
-            requirementKey?: string | null;
-            resourceClass?: string;
-            purpose?: string;
-            reasonOwnedInsufficient?: string;
-            status?: string;
-          }>;
+          resourceNeeds?: ResourceNeed[];
+          acquisitionResults?: ExternalAcquisitionResult[];
           result?: {
             summary?: string;
             unknowns?: string[];
@@ -762,6 +759,7 @@ export const readDecisionContext = internalQuery({
       : [];
 
     const openStatuses = new Set(["proposed", "active", "sourcing", "buy_pending"]);
+    const acquisitions = objectiveData?.acquisitionResults ?? [];
     const openResourceNeeds = (objectiveData?.resourceNeeds ?? [])
       .filter(
         (need) =>
@@ -774,6 +772,13 @@ export const readDecisionContext = internalQuery({
       )
       .filter((need) =>
         need.requirementKey === args.requirementKey || need.requirementKey == null,
+      )
+      // Scoped verified acquisition = coverage, not an open gap.
+      .filter(
+        (need) =>
+          !acquisitions.some((acquisition) =>
+            verifiedAcquisitionCoversNeed(need, acquisition),
+          ),
       )
       .slice(0, 8)
       .map((need) => {

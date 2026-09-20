@@ -132,8 +132,10 @@ export function dedupeResourceNeeds(
 
 const LEGAL_TRANSITIONS: Record<ResourceNeedStatus, readonly ResourceNeedStatus[]> = {
   proposed: ["active", "rejected"],
-  active: ["sourcing", "rejected"],
-  sourcing: ["buy_pending", "rejected"],
+  // A verified acquisition may fulfill a validated gap without the buy_pending
+  // hop (HYBRID/BUY already authorized the external half separately).
+  active: ["sourcing", "fulfilled", "rejected"],
+  sourcing: ["buy_pending", "fulfilled", "rejected"],
   buy_pending: ["fulfilled"],
   fulfilled: [],
   rejected: [],

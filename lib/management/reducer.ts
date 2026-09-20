@@ -241,14 +241,21 @@ export function reduceManagementState(facts: ReducerFacts): ReducedState {
     );
     if (assignmentIn.some((assignment) => assignment.state === "result_submitted")) return true;
     const intentsIn = intents.filter((intent) => intent.requirementKey === requirement.requirementKey);
-    // `result_recorded` awaits verification of a provider result. `verified`
-    // routes here too: satisfaction itself only counts verified intents
-    // (external_result_verified), so a verified intent without a satisfaction
-    // attempt yet must still reach the verify step, not stall forever.
-    return intentsIn.some(
-      (intent) =>
-        intent.state === "result_recorded" || intent.state === "verified",
-    );
+    // Provider result recorded but not yet independently verified — always verify.
+    if (intentsIn.some((intent) => intent.state === "result_recorded")) return true;
+    // `verified` must reach satisfaction (BUY can complete on external proof alone).
+    // It must NOT trap HYBRID/MAKE redecision: after INPUT_BLOCKED the bound
+    // strategy is cleared, or HYBRID's internal half is still missing — those
+    // passes must fall through to decide/dispatch, not re-verify forever.
+    if (!intentsIn.some((intent) => intent.state === "verified")) return false;
+    if (requirement.strategy === null) return false;
+    if (assignmentIn.some((assignment) => ACTIVE_ASSIGNMENT_STATES.has(assignment.state)))
+      return false;
+    const delivery = strategyDelivery(requirement.strategy, {
+      assignmentStates: assignmentIn.map((assignment) => assignment.state),
+      intentStates: intentsIn.map((intent) => intent.state),
+    });
+    return delivery.delivered;
   });
   if (needsVerification)
     return {

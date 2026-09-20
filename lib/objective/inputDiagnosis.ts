@@ -428,6 +428,58 @@ export function isValidatedInputGap(need: ResourceNeed): boolean {
   );
 }
 
+/**
+ * Scoped coverage: a verified acquisition supplies one need only when
+ * requirement, contract revision (when the need recorded one), and resource
+ * class all match. Never global "proprietary_data is owned".
+ */
+export function verifiedAcquisitionCoversNeed(
+  need: ResourceNeed,
+  acquisition: {
+    requirementKey: string;
+    contractRevision: number;
+    resourceClass: string | null;
+    verifiedAt?: number | null;
+  },
+): boolean {
+  if (acquisition.verifiedAt == null) return false;
+  if (need.requirementKey == null) return false;
+  if (need.requirementKey !== acquisition.requirementKey) return false;
+  if (
+    need.contractRevision != null &&
+    need.contractRevision !== acquisition.contractRevision
+  ) {
+    return false;
+  }
+  if (!acquisition.resourceClass) return false;
+  return need.resourceClass === acquisition.resourceClass;
+}
+
+/** Validated gap classes still missing after applying scoped verified acquisitions. */
+export function validatedMissingClassesAfterAcquisitions(
+  needs: readonly ResourceNeed[],
+  requirementKey: string,
+  acquisitions: readonly {
+    requirementKey: string;
+    contractRevision: number;
+    resourceClass: string | null;
+    verifiedAt?: number | null;
+  }[],
+): string[] {
+  return needs
+    .filter(
+      (need) =>
+        need.requirementKey === requirementKey && isValidatedInputGap(need),
+    )
+    .filter(
+      (need) =>
+        !acquisitions.some((acquisition) =>
+          verifiedAcquisitionCoversNeed(need, acquisition),
+        ),
+    )
+    .map((need) => need.resourceClass);
+}
+
 /** Material decision-input fingerprint — no timestamps or model wording. */
 export function computeDecisionInputFingerprint(input: {
   requirementKey: string;

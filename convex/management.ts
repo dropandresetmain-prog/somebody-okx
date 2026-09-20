@@ -36,9 +36,12 @@ import { interpretObjective } from "../lib/management/interpretation";
 import { planWakeForDecision, planWakeForInterpretation, planWakeForTimer } from "../lib/management/wakes";
 import {
   computeDecisionInputFingerprint,
-  isValidatedInputGap,
+  validatedMissingClassesAfterAcquisitions,
+  verifiedAcquisitionCoversNeed,
 } from "../lib/objective/inputDiagnosis";
 import type { ResourceNeed } from "../lib/objective/resourceNeed";
+import { transitionNeedStatus } from "../lib/objective/resourceNeed";
+import type { ExternalAcquisitionResult } from "../lib/objective/types";
 import {
   advanceAssignment,
   buildAssignmentContract,
@@ -400,13 +403,15 @@ export function buildConvexManagementPorts(ctx: MutationCtx): ManagementPorts {
       >;
       const objectiveNeeds = ((data as { resourceNeeds?: ResourceNeed[] })
         .resourceNeeds ?? []) as ResourceNeed[];
-      const validatedMissing = objectiveNeeds
-        .filter(
-          (need) =>
-            need.requirementKey === requirement.requirementKey &&
-            isValidatedInputGap(need),
-        )
-        .map((need) => need.resourceClass);
+      const acquisitions = ((data as { acquisitionResults?: ExternalAcquisitionResult[] })
+        .acquisitionResults ?? []) as ExternalAcquisitionResult[];
+      // Verified acquisitions are MATERIAL coverage facts: a still-open need
+      // whose scoped input is already supplied must not fingerprint as "missing".
+      const validatedMissing = validatedMissingClassesAfterAcquisitions(
+        objectiveNeeds,
+        requirement.requirementKey,
+        acquisitions,
+      );
       const fingerprint = computeDecisionInputFingerprint({
         requirementKey: requirement.requirementKey,
         contractRevision: currentContractRevision,
@@ -1023,6 +1028,51 @@ async function reconcileAssignmentRunFacts(ctx: MutationCtx, objectiveKey: strin
   }
 }
 
+/**
+ * Mark ResourceNeeds fulfilled when a scoped verified acquisition already
+ * supplies their exact input. Idempotent; never invents coverage across
+ * requirements, revisions, or resource classes.
+ */
+async function reconcileResourceNeedCoverage(
+  ctx: MutationCtx,
+  objectiveKey: string,
+  at: number,
+): Promise<void> {
+  const row = await ctx.db
+    .query("objectives")
+    .withIndex("by_key", (q) => q.eq("key", objectiveKey))
+    .unique();
+  if (!row) return;
+  const record = (row as AnyRow).data as Record<string, unknown>;
+  const needs = [...((record.resourceNeeds ?? []) as ResourceNeed[])];
+  const acquisitions = (record.acquisitionResults ?? []) as ExternalAcquisitionResult[];
+  if (!needs.length || !acquisitions.length) return;
+
+  let changed = false;
+  const next = needs.map((need) => {
+    if (need.status === "fulfilled" || need.status === "rejected") return need;
+    const covered = acquisitions.some((acquisition) =>
+      verifiedAcquisitionCoversNeed(need, acquisition),
+    );
+    if (!covered) return need;
+    try {
+      changed = true;
+      return transitionNeedStatus(need, "fulfilled", at);
+    } catch {
+      // Illegal hop (e.g. proposed): leave the row; coverage filters still apply.
+      return need;
+    }
+  });
+  if (!changed) return;
+  await ctx.db.patch(row._id, {
+    data: {
+      ...record,
+      resourceNeeds: next,
+      updatedAt: at,
+    },
+  } as never);
+}
+
 /** Clear bound strategy + pin attempt counter after a failed delivery. */
 async function clearStrategyAfterFailedDelivery(
   ctx: MutationCtx,
@@ -1117,6 +1167,9 @@ export const runManagementPass = internalMutation({
     // work, and every transition it makes is one the dispatch kernel already
     // declared legal.
     await reconcileAssignmentRunFacts(ctx, args.objectiveKey, Date.now());
+    // Verified acquisitions fulfill matching ResourceNeeds before reduce/decide
+    // so coverage and fingerprints see the post-acquisition world.
+    await reconcileResourceNeedCoverage(ctx, args.objectiveKey, Date.now());
 
     const { outcome } = await graph.invoke({
       objectiveKey: args.objectiveKey,

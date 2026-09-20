@@ -180,6 +180,13 @@ test("illegal transition fulfilled -> proposed throws", () => {
   assert.throws(() => transitionNeedStatus(need, "proposed", AT + 1));
 });
 
+test("active/sourcing -> fulfilled is legal after verified acquisition", () => {
+  const active = makeNeed({ status: "active" });
+  const sourcing = makeNeed({ status: "sourcing" });
+  assert.equal(transitionNeedStatus(active, "fulfilled", AT + 1).status, "fulfilled");
+  assert.equal(transitionNeedStatus(sourcing, "fulfilled", AT + 1).status, "fulfilled");
+});
+
 test("active/sourcing -> rejected is legal", () => {
   const active = makeNeed({ status: "active" });
   const sourcing = makeNeed({ status: "sourcing" });
