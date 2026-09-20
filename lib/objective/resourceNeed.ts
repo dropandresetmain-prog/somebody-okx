@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { sha256Hex } from "../management/sha256";
 import type { ResourceClass } from "../workforce/types";
 import type {
   SourcingDecision,
@@ -61,7 +61,7 @@ export function computeNeedDedupeKey(input: {
     normalize(input.purpose) +
     "\u0000" +
     normalize(input.requirementKey ?? "");
-  return createHash("sha256").update(payload).digest("hex");
+  return sha256Hex(payload);
 }
 
 // ─── Factory ──────────────────────────────────────────────────────────────────

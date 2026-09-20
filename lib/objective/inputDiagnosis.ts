@@ -5,7 +5,7 @@
 // MAKE/BUY eligibility. Failure modes (timeout, malformed output, bad refs)
 // never invent a resource class.
 
-import { createHash } from "node:crypto";
+import { sha256Hex } from "../management/sha256";
 import {
   RESOURCE_CLASSES,
   isOwnedResourceClass,
@@ -413,7 +413,7 @@ export function computeDecisionInputFingerprint(input: {
     input.spendAuthorityUsd == null ? "na" : String(input.spendAuthorityUsd),
     input.budgetRemainingUsd == null ? "na" : String(input.budgetRemainingUsd),
   ];
-  return createHash("sha256").update(parts.join("\u0000")).digest("hex").slice(0, 32);
+  return sha256Hex(parts.join("\u0000")).slice(0, 32);
 }
 
 export type DeliveryFailureClass = "INPUT_BLOCKED" | "EXECUTION_FAILED";
