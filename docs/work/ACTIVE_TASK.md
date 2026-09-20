@@ -40,9 +40,17 @@ Rejected from `6f5e2b5`: ceiling 16, `ensureObservableCapabilityKeys` widen, gro
 
 Evidence: CP2 suite + contract/reducer/decisionPass — 47 pass; `tsc --noEmit` clean.
 
-### CP3 — genuine MAKE/BUY eligibility (IN PROGRESS)
+### CP3 — genuine MAKE/BUY eligibility (COMPLETE)
 
-### CP4 — acquisition → artifact → M5 closure (PENDING)
+- Separated capability from input ownership (`input_not_owned`).
+- MAKE ineligible when required inputs are not company-controlled.
+- HYBRID does not require the externally supplied class to already be owned.
+- BUY still requires compatible verified offering + financial bounds; missing grant → approval_required.
+- Snapshot registry prices labelled `registry_data`, not live `provider_quote`.
+
+Evidence: `tests/m61CausalPipelineCp3.test.ts` 9/9.
+
+### CP4 — acquisition → artifact → M5 closure (IN PROGRESS)
 
 ### CP5 — fresh physical E2E acceptance (PENDING)
 

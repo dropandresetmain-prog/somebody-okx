@@ -281,6 +281,7 @@ export type IneligibilityReason =
   | "unverified_source"
   | "worker_unavailable"
   | "contradictory_requirement"
+  | "input_not_owned" // required input/resource is not currently company-controlled
   | "unknown";
 
 export type OptionEligibility =
@@ -307,6 +308,7 @@ export type EligibilityInput = {
   // External options only: identity/endpoint compatibility + price.
   external: {
     offeringId: string | null;
+    resourceClass: string | null;
     registryVerified: boolean;
     compatibleResourceClass: boolean;
     priceUsd: number | null;

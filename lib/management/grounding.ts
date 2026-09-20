@@ -76,15 +76,16 @@ export function groundRegistryOfferings(
         : "";
 
     // Price: from the offering's quote, parsed as a number. Null when absent.
-    // Provenance is "provider_quote" (the offering's source returned it) or
-    // null when no price exists.
+    // Provenance is honest: snapshot/registry fixtures are registry_data, never
+    // labelled as a fresh live provider_quote.
     let priceUsd: number | null = null;
     let priceProvenance: FactProvenance = "unknown";
     if (offering.price) {
       const parsed = parseDecimalAmount(offering.price.amount);
       if (parsed !== null) {
         priceUsd = parsed;
-        priceProvenance = "provider_quote";
+        priceProvenance =
+          offering.source.kind === "snapshot" ? "registry_data" : "provider_quote";
       }
     }
 
@@ -94,6 +95,7 @@ export function groundRegistryOfferings(
       serviceId: offering.serviceId,
       resourceClass,
       priceUsd,
+      priceProvenance,
       registryVerified,
       compatibleResourceClass,
     };

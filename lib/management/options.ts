@@ -220,6 +220,7 @@ export function eligibilityInputFor(
     external: option.external
       ? {
           offeringId: option.external.offeringId,
+          resourceClass: option.external.resourceClass,
           registryVerified: option.external.registryVerified,
           compatibleResourceClass: option.external.compatibleResourceClass,
           priceUsd: option.external.priceUsd,

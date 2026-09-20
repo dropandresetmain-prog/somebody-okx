@@ -123,10 +123,13 @@ test("provenance classes are preserved exactly", () => {
   for (const offering of result.offerings) {
     const facts = result.factsForOffering(offering);
 
-    // Price is the only populated fact, and it must be provider_quote
+    // Snapshot fixtures carry registry_data provenance, not a live provider quote.
     if (facts.externalPriceUsd !== null) {
-      assert.equal(facts.externalPriceUsd.provenance, "provider_quote");
+      assert.equal(facts.externalPriceUsd.provenance, "registry_data");
       assert.equal(facts.externalPriceUsd.confidence, "high");
+      const matched = result.offerings.find((o) => facts.scope === `external:${o.resourceClass}`);
+      assert.ok(matched);
+      assert.equal(matched.priceProvenance, "registry_data");
     }
 
     // Scope is always populated
@@ -344,10 +347,11 @@ test("real VERIFIED_SERVICE_REGISTRY + SNAPSHOT_OFFERINGS grounding", () => {
   assert.equal(flybeaconAnalysis.registryVerified, true);
   assert.equal(flybeaconAnalysis.compatibleResourceClass, false);
 
-  // Facts for newsliquid: price should be provider_quote
+  // Facts for newsliquid: snapshot price is registry_data
+  assert.equal(newsliquid.priceProvenance, "registry_data");
   const newsliquidFacts = result.factsForOffering(newsliquid);
   assert.ok(newsliquidFacts.externalPriceUsd !== null);
-  assert.equal(newsliquidFacts.externalPriceUsd!.provenance, "provider_quote");
+  assert.equal(newsliquidFacts.externalPriceUsd!.provenance, "registry_data");
   assert.equal(newsliquidFacts.externalPriceUsd!.value, 0.002);
   // Everything else null
   assert.equal(newsliquidFacts.expectedQuality, null);
@@ -357,19 +361,22 @@ test("real VERIFIED_SERVICE_REGISTRY + SNAPSHOT_OFFERINGS grounding", () => {
 
 // ── Provenance never upgraded ────────────────────────────────────────────────
 
-test("provenance class is never upgraded from provider_quote", () => {
+test("live discovery quotes keep provider_quote provenance (never upgraded to measured)", () => {
+  const liveOffering: MarketOffering = {
+    ...mockOfferings[0],
+    source: { kind: "okx_api", retrievedAt: 1000 },
+  };
   const result = groundRegistryOfferings({
     registry: mockRegistry,
-    discovered: mockOfferings,
+    discovered: [liveOffering],
     requiredResourceClass: "proprietary_data",
     at: 1000,
   });
 
-  for (const offering of result.offerings) {
-    const facts = result.factsForOffering(offering);
-    if (facts.externalPriceUsd !== null) {
-      // Must be exactly provider_quote, never "measured" or "registry_data"
-      assert.equal(facts.externalPriceUsd.provenance, "provider_quote");
-    }
+  const grounded = result.offerings[0];
+  assert.equal(grounded.priceProvenance, "provider_quote");
+  const facts = result.factsForOffering(grounded);
+  if (facts.externalPriceUsd !== null) {
+    assert.equal(facts.externalPriceUsd.provenance, "provider_quote");
   }
 });

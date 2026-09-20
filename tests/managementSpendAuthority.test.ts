@@ -117,6 +117,7 @@ function offering(priceUsd: number | null): RegistryOffering {
     serviceId: "svc_dataset",
     resourceClass: "public_web",
     priceUsd,
+    priceProvenance: "provider_quote",
     registryVerified: true,
     compatibleResourceClass: true,
   };

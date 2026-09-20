@@ -37,6 +37,7 @@ import type { StaffingRequest } from "./staffing";
 import type {
   AuthorizationResult,
   EconomicFacts,
+  FactProvenance,
   FactValue,
   GroundedOption,
   IneligibilityReason,
@@ -59,6 +60,8 @@ export type RegistryOffering = {
   serviceId: string;
   resourceClass: string;
   priceUsd: number | null;
+  /** Honest price provenance — snapshot registry data is NOT a live provider quote. */
+  priceProvenance: FactProvenance;
   registryVerified: boolean;
   compatibleResourceClass: boolean;
 };
@@ -162,7 +165,7 @@ export async function runManagerialDecisionPass(
         serviceId: offering.serviceId,
         resourceClass: offering.resourceClass,
         priceUsd: offering.priceUsd,
-        priceProvenance: "provider_quote",
+        priceProvenance: offering.priceProvenance,
         registryVerified: offering.registryVerified,
         compatibleResourceClass: offering.compatibleResourceClass,
         facts: grounding.factsForOffering(offering),

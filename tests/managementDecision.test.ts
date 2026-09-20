@@ -76,6 +76,7 @@ function offering(overrides: Partial<RegistryOffering> = {}): RegistryOffering {
     serviceId: "svc_research_sprint",
     resourceClass: "public_web",
     priceUsd: 1.5,
+    priceProvenance: "provider_quote",
     registryVerified: true,
     compatibleResourceClass: true,
     ...overrides,
