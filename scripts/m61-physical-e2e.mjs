@@ -134,8 +134,24 @@ for (let i = 0; i < 90; i++) {
       `t=${i * 5}s state=${s.state} attempts=${JSON.stringify(s.decisionAttempts)} buyish=${buyish.map((r) => r.key + ":" + r.strategy).join(",") || "none"} candidate=${s.simulationCandidate?.intentId ?? "none"}`,
     );
   }
-  // Early stop if escalated/recovery without intent
-  if (["escalated", "recovery_required", "failed", "blocked"].includes(s.state) && !s.simulationCandidate?.intentId) {
+  // Early stop only on truly terminal parks — not mid-retry "failed" from a
+  // single assignment (M4 keeps executing while the manager re-decides).
+  if (
+    ["escalated", "recovery_required", "blocked"].includes(s.state) &&
+    !s.simulationCandidate?.intentId
+  ) {
+    console.error("STOP B FAIL: parked without intent", s.state, s.somebodyNow);
+    console.log(JSON.stringify(s, null, 2));
+    process.exit(3);
+  }
+  // Soft-fail: objective.state may briefly read "failed" from a spine run; wait
+  // if a pending decision or rising decisionAttempts shows the manager retrying.
+  if (
+    s.state === "failed" &&
+    !s.simulationCandidate?.intentId &&
+    !s.pendingDecision &&
+    i >= 12
+  ) {
     console.error("STOP B FAIL: parked without intent", s.state, s.somebodyNow);
     console.log(JSON.stringify(s, null, 2));
     process.exit(3);

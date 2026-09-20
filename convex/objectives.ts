@@ -565,9 +565,14 @@ export const expireRun = internalMutation({
     runs[runIndex] = run;
     workItem.runs = runs;
     workItem.state = "failed";
+    const isM4Managed = Boolean(
+      (record as unknown as { management?: { contractId: string | null } }).management
+        ?.contractId,
+    );
     const updated: ObjectiveRecord = {
       ...record,
-      state: "failed",
+      // M4: lease expiry fails the run/assignment, not the whole objective.
+      state: isM4Managed ? "executing" : "failed",
       activity: run.summary,
       workItems: [workItem],
       run,
@@ -1078,6 +1083,10 @@ export const finishRun = internalMutation({
     const runs = [...workItem.runs];
     const runIndex = runs.findIndex((candidate) => candidate.id === args.runId);
     const run = { ...runs[runIndex] };
+    const managementEarly = (
+      record as unknown as { management?: { contractId: string | null } }
+    ).management;
+    const isM4Managed = Boolean(managementEarly?.contractId);
 
     if (args.failed) {
       run.status = "failed";
@@ -1085,10 +1094,17 @@ export const finishRun = internalMutation({
       runs[runIndex] = run;
       workItem.runs = runs;
       workItem.state = "failed";
+      // M4: one failed assignment is delivery DATA for the manager to re-decide,
+      // not a terminal objective failure. M2-legacy keeps historical spine fail.
       const updated: ObjectiveRecord = {
         ...record,
-        state: "failed",
-        activity: `Run failed: ${args.failureReason ?? "unknown"}`,
+        state: isM4Managed ? "executing" : "failed",
+        activity: isM4Managed
+          ? `Assignment run failed; manager will re-decide. ${args.failureReason ?? "unknown"}`.slice(
+              0,
+              500,
+            )
+          : `Run failed: ${args.failureReason ?? "unknown"}`,
         workItems: [workItem],
         run,
         updatedAt: now,
@@ -1199,22 +1215,27 @@ export const finishRun = internalMutation({
       };
     }
 
-    const isM4Managed = Boolean(management?.contractId);
-
     // M4-managed rows (management.contractId set) do NOT transition to "completed":
-    // the independent gate decides. M2-legacy rows (no contractId) keep the historical
-    // spine state transition so canonicalM2 stays green, but the controlNote carries
-    // the M4 truth: completion is proposed, not asserted by the spine.
+    // the independent gate decides. Incomplete/failed assignment delivery is also
+    // NOT a terminal objective failure under M4 — the manager clears strategy and
+    // re-decides. M2-legacy rows keep the historical spine state transition.
     const recordState = check.complete
       ? isM4Managed
         ? "executing" // M4: awaiting the independent gate
         : "completed" // M2-legacy: historical spine verdict
-      : "failed";
+      : isM4Managed
+        ? "executing" // M4: failed delivery → manager re-decides
+        : "failed";
     const recordActivity = check.complete
       ? isM4Managed
         ? "Completion proposed; awaiting the independent gate."
         : "Work completed with verified proof."
-      : `Run ended without required proof: ${check.unmet.join("; ")}`;
+      : isM4Managed
+        ? `Assignment ended without required proof; manager will re-decide. ${check.unmet.join("; ")}`.slice(
+            0,
+            500,
+          )
+        : `Run ended without required proof: ${check.unmet.join("; ")}`;
 
     const updated = {
       ...record,
