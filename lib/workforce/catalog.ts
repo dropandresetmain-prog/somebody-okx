@@ -75,8 +75,12 @@ export const TOOL_PERMISSIONS: readonly ToolPermissionDefinition[] = [
     externalAuthority: false,
   },
   {
+    // Reserved vocabulary only. No capability may grant this — the worker
+    // runtime never materializes it. Document drafting uses
+    // update_company_artifact (bounded versioned mutation left for review).
     id: "draft_document",
-    description: "Produce a draft artifact for review.",
+    description:
+      "Obsolete alias for producing a draft artifact. Not materializable; do not grant.",
     externalAuthority: false,
   },
   {
@@ -129,11 +133,14 @@ export const CONTROLLED_CAPABILITIES: readonly CapabilityDefinition[] = [
   {
     key: "document_drafting",
     name: "Document drafting",
-    description: "Produce a review-ready written artifact from supplied material.",
+    description:
+      "Produce a review-ready written artifact by applying a bounded versioned change to a controlled company artifact.",
     requiredResources: ["llm_reasoning", "ordinary_compute"],
-    allowedToolPermissions: ["draft_document", "record_finding"],
+    // Must grant a materializable mutation tool. draft_document is a zombie
+    // permission the worker runtime never turns into a tool.
+    allowedToolPermissions: ["update_company_artifact", "record_finding"],
     responsibility:
-      "Draft the requested artifact from supplied material only, and leave it for review rather than sending or publishing it.",
+      "Draft the requested artifact from supplied material only via a bounded versioned company-artifact change, and leave it for review rather than sending or publishing it.",
   },
   {
     key: "growth_launch_operations",
@@ -209,6 +216,16 @@ export function validateCapabilityKeys(proposed: readonly string[]): {
     rejected: [...rejected].sort(),
   };
 }
+// Permissions the worker runtime can materialize from capability grants.
+// Must stay aligned with MATERIALIZABLE_TOOL_PERMISSIONS in permissions.ts.
+const MATERIALIZABLE_GRANT_IDS = new Set([
+  "read_public_web",
+  "read_company_record",
+  "record_finding",
+  "request_resource",
+  "update_company_artifact",
+]);
+
 // Guards the catalog itself, so a bad definition fails at the source rather than at a grant.
 export function assertCatalogIntegrity(): void {
   for (const capability of CONTROLLED_CAPABILITIES) {
@@ -231,6 +248,10 @@ export function assertCatalogIntegrity(): void {
       if (permission.externalAuthority)
         throw new Error(
           `Capability ${capability.key} grants external-authority permission ${permissionId}`,
+        );
+      if (!MATERIALIZABLE_GRANT_IDS.has(permissionId))
+        throw new Error(
+          `Capability ${capability.key} grants non-materializable permission ${permissionId}`,
         );
     }
   }

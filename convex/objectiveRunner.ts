@@ -71,9 +71,6 @@ import {
 } from "../lib/management/interpretationContext";
 import type { ResourceClass } from "../lib/workforce/types";
 import type { Assignment } from "../lib/management/types";
-import {
-  type ResourceNeed,
-} from "../lib/objective/resourceNeed";
 
 // Ceiling for text the application resolves from a source before persisting it.
 // The bounded surface the MODEL sees is owned by lib/worker/runtime.ts.
@@ -1306,6 +1303,9 @@ async function interpretWithOpenAI(input: {
           "spend, and never a strategy such as make/buy/hire.",
           "Declare ordered outcome levels and pick the minimum completion bar",
           "as one of them — the least acceptable outcome that is still real.",
+          "Each levelKey MUST be lowercase snake_case (e.g. diagnosis_complete,",
+          "relaunch_ready) — never bare L1/L2 and never the word none.",
+          "minimumCompletionBar MUST be exactly one of those levelKey values.",
           "Anything genuinely ambiguous must be declared as an ambiguity with",
           "materiality 'material' ONLY when proceeding would spend money, grant",
           "permissions, make an irreversible external commitment, or when NO",

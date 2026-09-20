@@ -1245,6 +1245,10 @@ export const applyInterpretation = internalMutation({
       };
     }
 
+    const grant = (await ctx.runQuery(internal.internal.workforce.activeSpendGrant, {
+      objectiveKey: args.objectiveKey,
+    })) as { limitUsd: number; approvalId: string } | null;
+
     const interpreted = interpretObjective({
       objectiveKey: args.objectiveKey,
       requestId: args.requestId,
@@ -1252,6 +1256,7 @@ export const applyInterpretation = internalMutation({
       rawRequirements: args.rawRequirements,
       founderResolvedQuestions: args.founderResolvedQuestions,
       at: args.at,
+      spendGrantPresent: grant != null,
     });
     if (!interpreted.ok) {
       // Typed refusal, persisted as a cursor so the loop cannot retry-storm a

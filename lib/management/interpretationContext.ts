@@ -28,7 +28,7 @@ export function buildInterpretationCompanyContext(input: {
     );
   } else if (input.spendGrantPresent === true) {
     materialConstraints.push(
-      "A bounded founder spend grant is present (amount is not disclosed here).",
+      "A bounded founder spend grant is present (amount is not disclosed here). Do NOT raise material ambiguities about the grant amount, whether spend within the grant needs further founder approval, or what the grant may be spent on — treat the grant as an ordinary working assumption. Only spend beyond the bound would be material.",
     );
   }
   const notCurrentlyOwned = [

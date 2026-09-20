@@ -85,7 +85,9 @@ export function parseOutcomeContractProposal(raw: unknown): ProposalParseResult<
       return;
     }
     const item = entry as Record<string, unknown>;
-    const levelKey = text(item.levelKey, LIMITS.key);
+    // Models often emit mixed-case keys (e.g. L1); IDs are lowercase-only.
+    const levelKeyRaw = text(item.levelKey, LIMITS.key);
+    const levelKey = levelKeyRaw ? levelKeyRaw.toLowerCase() : null;
     if (!levelKey || !LEVEL_KEY_PATTERN.test(levelKey)) {
       errors.push(`level ${index} has no bounded levelKey`);
       return;
@@ -111,7 +113,8 @@ export function parseOutcomeContractProposal(raw: unknown): ProposalParseResult<
   // invent a new level, only remap onto one the proposal already declared.
   const rawBar = text(candidate.minimumCompletionBar, LIMITS.statement);
   let bar: string | null = null;
-  if (rawBar && seenKeys.has(rawBar)) bar = rawBar;
+  const rawBarKey = rawBar ? rawBar.toLowerCase() : null;
+  if (rawBarKey && seenKeys.has(rawBarKey)) bar = rawBarKey;
   else if (rawBar) {
     const matched = levels.find(
       (level) => level.label === rawBar || level.statement === rawBar,

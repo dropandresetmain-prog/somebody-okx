@@ -24,7 +24,10 @@
 
 import { createWorkContract } from "../objective/contract";
 import { createWorkerSpec } from "../workforce/workers";
-import { toolPermissionsForCapabilities } from "../workforce/permissions";
+import {
+  isMaterializableToolPermission,
+  toolPermissionsForCapabilities,
+} from "../workforce/permissions";
 import { isControlledCapabilityKey } from "../workforce/catalog";
 import { identityMaterial, hash24 } from "./sha256";
 import type { CapabilityKey } from "../workforce/types";
@@ -151,7 +154,16 @@ export function assessInternalContractExecutability(input: {
 }): ContractExecutability {
   const reasons: string[] = [];
   const keys = input.capabilityKeys.filter(isControlledCapabilityKey) as CapabilityKey[];
-  const granted = new Set<string>(toolPermissionsForCapabilities(keys));
+  const granted = toolPermissionsForCapabilities(keys);
+  const grantedSet = new Set<string>(granted);
+
+  // Zombie grants (e.g. historical draft_document) cannot silently dispatch.
+  const unrealizable = granted.filter((id) => !isMaterializableToolPermission(id));
+  if (unrealizable.length) {
+    reasons.push(
+      `capability envelope grants non-materializable tool permission(s): ${unrealizable.join(", ")}`,
+    );
+  }
 
   const needsObservation = input.requirement.proofs.some(
     (proof) => proof.proofKind === "application_observation",
@@ -165,7 +177,7 @@ export function assessInternalContractExecutability(input: {
   const needsArtifact = input.requirement.proofs.some(
     (proof) => proof.proofKind === "company_artifact_version",
   );
-  if (needsArtifact && !granted.has("update_company_artifact")) {
+  if (needsArtifact && !grantedSet.has("update_company_artifact")) {
     reasons.push(
       "artifact proof required but capability envelope cannot mutate company artifacts",
     );

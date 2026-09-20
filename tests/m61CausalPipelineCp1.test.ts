@@ -144,15 +144,22 @@ test("assessInternalContractExecutability refuses artifact proof without update_
       },
     ],
   });
+  // Observe-only envelope — no document_drafting / growth mutation grant.
   const notOk = assessInternalContractExecutability({
     requirement: artifactReq,
-    capabilityKeys: ["document_drafting", "public_information_research"],
+    capabilityKeys: ["company_records_lookup", "public_information_research"],
   });
   assert.equal(notOk.ok, false);
   if (notOk.ok) return;
   assert.ok(
     notOk.reasons.some((r) => r.includes("cannot mutate company artifacts")),
   );
+
+  const withDrafting = assessInternalContractExecutability({
+    requirement: artifactReq,
+    capabilityKeys: ["company_records_lookup", "document_drafting"],
+  });
+  assert.equal(withDrafting.ok, true);
 });
 
 // ── C. Empty proofs never satisfy ────────────────────────────────────────────

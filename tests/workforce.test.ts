@@ -54,15 +54,15 @@ test("an unknown capability fails closed everywhere it can reach a worker", () =
 });
 test("a capability maps only to the tools it is permitted", () => {
   assert.deepEqual(toolPermissionsForCapabilities(["document_drafting"]), [
-    "draft_document",
     "record_finding",
+    "update_company_artifact",
   ]);
   assert.deepEqual(
     toolPermissionsForCapabilities([
       "document_drafting",
       "public_information_research",
     ]),
-    ["draft_document", "read_public_web", "record_finding"],
+    ["read_public_web", "record_finding", "update_company_artifact"],
   );
   assert.equal(
     isPermissionAllowedForCapability("read_public_web", "document_drafting"),
@@ -80,14 +80,16 @@ test("tools outside the capability envelope are not granted", () => {
   const envelope = enforcePermissionEnvelope({
     capabilityKeys: ["document_drafting"],
     requestedPermissions: [
-      "draft_document",
+      "update_company_artifact",
       "read_company_record",
       "delete_company_record",
+      "draft_document",
     ],
   });
-  assert.deepEqual(envelope.granted, ["draft_document"]);
+  assert.deepEqual(envelope.granted, ["update_company_artifact"]);
   assert.deepEqual(envelope.denied, [
     "delete_company_record",
+    "draft_document",
     "read_company_record",
   ]);
 });
@@ -150,9 +152,11 @@ test("a reused worker cannot carry permissions its capabilities do not allow", (
   const smuggled: WorkerSpec = {
     ...createWorkerSpec(["document_drafting"]),
     allowedToolPermissions: [
-      "draft_document",
+      "update_company_artifact",
+      "record_finding",
       "read_company_record",
       "authorize_external_spend",
+      "draft_document",
     ],
   };
   const resolution = resolveWorker({
@@ -160,7 +164,10 @@ test("a reused worker cannot carry permissions its capabilities do not allow", (
     inventory: [smuggled],
   });
   assert.equal(resolution.outcome, "reuse");
-  assert.deepEqual(resolution.worker.allowedToolPermissions, ["draft_document"]);
+  assert.deepEqual(resolution.worker.allowedToolPermissions, [
+    "record_finding",
+    "update_company_artifact",
+  ]);
 });
 test("external spend authority is never granted to an ordinary MAKE worker", () => {
   const spend = TOOL_PERMISSIONS.find(

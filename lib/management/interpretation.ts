@@ -45,7 +45,31 @@ export type InterpretationInput = {
   // Questions the founder has actually answered, by question text.
   founderResolvedQuestions: readonly string[];
   at: number;
+  // When a founder spend grant is already bound, meta-questions about the grant
+  // itself (amount / whether further approval is needed within the grant) are
+  // not material — they are ordinary working assumptions Somebody may own.
+  spendGrantPresent?: boolean;
 };
+
+/**
+ * Models often re-ask about the already-bound spend grant as a "material"
+ * ambiguity. That parks the Objective forever (no production founder-answer
+ * seam). When a grant is present, demote those grant-meta questions only.
+ */
+export function isSpendGrantMetaAmbiguity(question: string): boolean {
+  const q = question.toLowerCase();
+  if (!/(spend|grant|budget|limit|authority|approval|usd|payment)/.test(q)) {
+    return false;
+  }
+  return (
+    /approved spend limit|spend limit amount|founder.?grant|spend grant/.test(q) ||
+    /beyond (the )?(bounded )?founder grant/.test(q) ||
+    /further approval|additional approval|another approval/.test(q) ||
+    /what is the approved/.test(q) ||
+    /how much.*(spend|budget|limit|grant)/.test(q) ||
+    /on what is it spent/.test(q)
+  );
+}
 
 export type InterpretationResult =
   | {
@@ -88,7 +112,36 @@ export function interpretObjective(input: InterpretationInput): InterpretationRe
   });
   if (!contractResult.ok)
     return { ok: false, errors: contractResult.errors.map((e) => `contract: ${e}`) };
-  const contract = contractResult.contract;
+  let contract = contractResult.contract;
+
+  if (input.spendGrantPresent) {
+    let demoted = 0;
+    const ambiguities = contract.ambiguities.map((ambiguity) => {
+      if (
+        ambiguity.materiality === "material" &&
+        ambiguity.requiresFounderApproval &&
+        isSpendGrantMetaAmbiguity(ambiguity.question)
+      ) {
+        demoted += 1;
+        return {
+          ...ambiguity,
+          materiality: "ordinary" as const,
+          requiresFounderApproval: false,
+          resolvedBy: "somebody" as const,
+          resolution:
+            ambiguity.resolution?.trim() ||
+            "A bounded founder spend grant is already bound; spend within that grant needs no further founder question.",
+        };
+      }
+      return ambiguity;
+    });
+    if (demoted > 0) {
+      contract = { ...contract, ambiguities };
+      notes.push(
+        `demoted ${demoted} spend-grant meta ambiguity/ambiguities to ordinary (grant already bound)`,
+      );
+    }
+  }
 
   const parsedRequirements = parseRequirementProposals(input.rawRequirements);
   if (!parsedRequirements.ok)
