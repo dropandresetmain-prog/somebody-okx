@@ -40,6 +40,7 @@ import {
 } from "../convex/objectives";
 import {
   buildConvexManagementPorts,
+  runManagementPass,
 } from "../convex/management";
 import {
   putContract,
@@ -999,4 +1000,80 @@ test("M5: artifact versions carry their own evidence refs; unverified acquisitio
   unverified.intents = [{ ...simulatedIntent, state: "authorized", resultEvidenceId: null, verificationEvidenceId: null }];
   const view2 = composeObjectiveWorkspace(unverified);
   assert.equal(view2.evidence.find((item) => item.evidenceId === "ev_m5_result"), undefined);
+});
+
+// ── 7. Level 2: the simulation wake drives the REAL management pass to
+//       satisfaction (verify → external_result_verified) ─────────────────────
+
+test("M6.1 Level 2: simulation wake → real management pass → BUY requirement satisfied by external_result_verified", async () => {
+  const t = convexTest(schema, modules);
+  const key = "obj_m61_pass";
+  const previousToken = process.env.SOMEBODY_DEMO_OPERATOR_TOKEN;
+  process.env.SOMEBODY_DEMO_OPERATOR_TOKEN = OPERATOR_TOKEN;
+  try {
+    await runSimulationToSatisfaction(t, key);
+  } finally {
+    if (previousToken === undefined) delete process.env.SOMEBODY_DEMO_OPERATOR_TOKEN;
+    else process.env.SOMEBODY_DEMO_OPERATOR_TOKEN = previousToken;
+  }
+
+  async function runSimulationToSatisfaction(t: ReturnType<typeof convexTest>, key: string) {
+    const requirement = await seedObjectiveWithGrant(t, key);
+    await seedAuthorizedBuy(t, key, requirement, buyOption());
+    const effectId = await dispatchBuy(t, key);
+    assert.ok(effectId);
+
+    // The operator executes the simulated acquisition boundary.
+    const result = await t.mutation(async (ctx) =>
+      (simulateVerifiedAcquisition as unknown as Handler)._handler(ctx, {
+        operatorToken: OPERATOR_TOKEN,
+        intentId: effectId,
+      }),
+    ) as { verified: boolean; resultEvidenceId: string };
+
+    // The wake Somebody receives is the SAME management pass the live rail
+    // would trigger. The reducer must route the VERIFIED intent to verify,
+    // and recordSatisfactionAttempt must satisfy through the kernel.
+    const outcome = await t.mutation(async (ctx) =>
+      (runManagementPass as unknown as Handler)._handler(ctx, {
+        objectiveKey: key,
+        reason: "verification_result",
+      }),
+    ) as { objectiveState: string; acted: boolean; summary: string };
+
+    // The simulation did NOT complete the objective — the ENGINE did: within
+    // the bounded continue-cycles the pass verifies the intent, satisfies the
+    // requirement through external_result_verified, proposes completion, and
+    // the deterministic gate accepts (the only required requirement is now
+    // satisfied). The simulated boundary stayed at the intent kernel.
+    assert.equal(outcome.objectiveState, "completed");
+
+    const requirements = await t.query(async (ctx) => {
+      const db = ctx.db as unknown as {
+        query(n: string): { collect(): Promise<Array<{ data: Requirement }>> };
+      };
+      return db.query("requirements").collect();
+    });
+    const satisfied = requirements.find((row) => row.data.requirementKey === REQ);
+    assert.ok(satisfied);
+    assert.equal(satisfied!.data.state, "satisfied", "the kernel accepted the verified external result");
+    assert.equal(satisfied!.data.resolution?.acceptedIntentId, effectId, "the resolution names the verified intent");
+
+    // The provenance travels: the persisted acquisition result on the
+    // objective is exactly what the worker surface will expose next run.
+    const record = await t.query(async (ctx) => {
+      const db = ctx.db as unknown as {
+        query(n: string): {
+          withIndex(n: string, f: (q: { eq: (k: string, v: unknown) => unknown }) => unknown): {
+            unique(): Promise<{ data: { acquisitionResults?: Array<{ resultEvidenceId: string; provenance: string }> } } | null>;
+          };
+        };
+      };
+      const row = await db.query("objectives").withIndex("by_key", (q) => q.eq("key", key)).unique();
+      return row!.data;
+    });
+    assert.equal(record.acquisitionResults?.length, 1);
+    assert.equal(record.acquisitionResults![0].resultEvidenceId, result.resultEvidenceId);
+    assert.equal(record.acquisitionResults![0].provenance, "simulation");
+  }
 });
