@@ -361,6 +361,18 @@ M4 must not invent an alternate payment state machine.
 
 Until M3/R2 is accepted, M4 may truthfully stop/wait at the external-execution boundary.
 
+M6.1 adds ONE deterministic simulation entry at this seam, without changing the
+architecture: an operator-token-gated mutation (`simulateVerifiedAcquisition`
+in `convex/m3Driver.ts`) drives the SAME intent transition kernel the live rail
+drives (`handed_off → provider_result → verification_result`) against a
+current, founder-grant-covered `authorized` intent, persists
+`ExternalAcquisitionResult` with `provenance: "simulation"`, and wakes Somebody
+through the normal wake path. It never touches a wallet, signature, rail call
+or payment record, fails closed on stale/unauthorized state, and never
+completes an Objective by itself — verification, satisfaction, artifact work
+and the completion gate stay with the engine. The M5 read model renders a
+simulated acquisition as SIMULATION ONLY and never as a payment fact.
+
 ## 18. Reliability / no-progress limits
 
 Persist objective-wide finite limits for:

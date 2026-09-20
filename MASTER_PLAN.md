@@ -201,7 +201,19 @@ Unsupported/infeasible objectives should reach typed waiting, approval_required,
 
 ### M6.1 — First Product E2E
 
-Immediate priority.
+Immediate priority. **Status: implementation complete on
+`feat/m6-1-first-product-e2e`; physical live-model run founder-gated.**
+
+Implemented (generic, no scenario branches): deterministic simulation boundary
+at the M3 seam (`simulateVerifiedAcquisition`, operator-gated, fail-closed,
+provenance `simulation`, same intent kernel as the live rail), worker access to
+verified acquisition content (untrusted-wrapped), evidence-ref artifact
+causality (enforced both directions), verified-intent verification routing, M5
+truthful simulation rendering, and `setupCanonicalDemoObjective` entering the
+normal interpretation path. Level 1+2 deterministic tests prove the causal
+chain below up to gate acceptance through the REAL management pass; the live
+model run requires the founder deployment steps recorded in
+`docs/work/ACTIVE_TASK.md` CP3.
 
 Physically run the canonical Objective through the integrated product with a deterministic simulated useful external result. Prove the causal chain:
 
