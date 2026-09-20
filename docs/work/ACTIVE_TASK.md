@@ -40,7 +40,17 @@ validated missing-input path → yield/redecision → coverage-bound MAKE/BUY.
   `requiredResourceClasses`, no seeded BUY/intent/need) → validate gap →
   MAKE ineligible → BUY authorized; negative twin; no-offering `input_not_owned`.
 
-### CP-F5 / CP-F6 — physical STOP B / full M6.1 (IN PROGRESS)
+### CP-F5 / CP-F6 — physical STOP B / full M6.1 (BLOCKED — network)
+
+- Code deployed to `clean-tapir-151` (`npx convex dev --once` green after
+  isolate-safe `sha256Hex` fix).
+- Fresh objective created (`obj_1789900120556_q0hrye`); interpretation stayed
+  `pending` while client polls hit repeated `ConnectTimeoutError` to
+  Convex cloud (104.18.x:443). MCP `run`/`logs` similarly failed to fetch.
+- Do NOT retry physical for 45 minutes per stop rule once STOP B fails;
+  this attempt never reached STOP A/A1/B — infra timeout, not decision logic.
+- Probe: `scripts/m61-stopb-probe.mjs` (STOP A→A1→B→B1 gated).
+- Resume physical when Convex connectivity is healthy; do not raise ceilings.
 
 ---
 
