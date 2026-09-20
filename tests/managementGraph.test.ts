@@ -15,6 +15,7 @@ import { attemptRequirementSatisfaction, type ProofFacts, type RequirementEvent 
 import { evaluateCompletionGate } from "../lib/management/completion";
 import { createBudget, checkBudget, trySpendDecision, recordProgress } from "../lib/management/budget";
 import { bindProofParams, buildOutcomeContract } from "../lib/management/contract";
+import { CP2_DECISION_PASS_FIELDS, CP2_REQUIREMENT_FIELDS } from "./helpers/cp2Requirement";
 import type { ReducerFacts } from "../lib/management/reducer";
 import type {
   Assignment,
@@ -70,6 +71,7 @@ function requirement(): Requirement {
     revision: 1,
     createdAt: at0,
     updatedAt: at0,
+    ...CP2_REQUIREMENT_FIELDS,
   };
 }
 
@@ -214,6 +216,7 @@ function makePorts(world: World): ManagementPorts {
         spendApprovalId: "appr_test_graph_1",
         externalAuthority: "m3_unavailable",
         waiverRequested: false,
+        ...CP2_DECISION_PASS_FIELDS,
       });
       void eligibleIds;
       return result;

@@ -82,6 +82,9 @@ export type DecisionPassInput = {
   requirementTitle: string;
   mustBeTrue: string;
   priority: RequirementPriority;
+  dependsOnRequirementKeys: string[];
+  requiredResourceClasses: string[];
+  expectedOutput: string | null;
   artifactKeyForInternalProof: string | null;
   staffing: StaffingRequest & { inventory: readonly WorkerRecord[]; creationAllowed: boolean };
   grounding: GroundingContext;
@@ -316,6 +319,9 @@ export async function runManagerialDecisionPass(
           title: input.requirementTitle,
           mustBeTrue: input.mustBeTrue,
           scope: input.mustBeTrue,
+          dependsOnRequirementKeys: [...input.dependsOnRequirementKeys],
+          requiredResourceClasses: [...input.requiredResourceClasses],
+          expectedOutput: input.expectedOutput,
         },
         artifactKeyForInternalProof: input.artifactKeyForInternalProof,
         at: input.at,

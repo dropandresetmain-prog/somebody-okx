@@ -64,6 +64,7 @@ import type {
   WorkerRecord,
 } from "../lib/management/types";
 import type { GraphState } from "../lib/management/types";
+import { cp2ParsedRequirement } from "./helpers/cp2Requirement";
 
 const modules = {
   "../convex/schema.ts": () => import("../convex/schema"),
@@ -113,13 +114,13 @@ function makeRequirement(objectiveKey: string, strategy: "MAKE" | "BUY" | "HYBRI
     {
       objectiveKey,
       contract: contractFor(objectiveKey),
-      proposed: {
+      proposed: cp2ParsedRequirement({
         requirementKey: REQ,
         priority: "required",
         title: "The governed result is recorded",
         mustBeTrue: "an application observation supports the statement",
         scope: "company artifact + observation",
-      },
+      }),
       // No artifact proof: MAKE/HYBRID still attach an application_observation
       // proof, which is what the bounded WorkContract consumes.
       artifactKeyForInternalProof: null,

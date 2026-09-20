@@ -11,6 +11,7 @@ import {
 } from "../lib/management/requirements";
 import { evaluateCompletionGate } from "../lib/management/completion";
 import type { Requirement, OutcomeContract } from "../lib/management/types";
+import { CP2_REQUIREMENT_FIELDS } from "./helpers/cp2Requirement";
 import type { CompletionGateInput } from "../lib/management/completion";
 
 const at = 1700000000000;
@@ -47,6 +48,7 @@ function requirement(overrides: Partial<Requirement> = {}): Requirement {
     revision: 1,
     createdAt: at,
     updatedAt: at,
+    ...CP2_REQUIREMENT_FIELDS,
     ...overrides,
   };
 }

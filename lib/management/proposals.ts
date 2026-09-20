@@ -159,6 +159,9 @@ export type ParsedRequirementProposal = {
   title: string;
   mustBeTrue: string;
   scope: string;
+  dependsOnRequirementKeys: string[];
+  requiredResourceClasses: string[];
+  expectedOutput: string | null;
 };
 
 // Semantic requirement proposals. Proof specs are NOT model-authored: the
@@ -197,8 +200,34 @@ export function parseRequirementProposals(raw: unknown): ProposalParseResult<Par
     // Fail safe on priority: an unclear priority becomes REQUIRED, because
     // downgrading a gate to "supporting" is exactly the false-completion move.
     const priority: RequirementPriority = item.priority === "supporting" ? "supporting" : "required";
-    out.push({ requirementKey: key, priority, title, mustBeTrue, scope });
+    const dependsOnRequirementKeys = [
+      ...new Set(stringList(item.dependsOnRequirementKeys, 8, LIMITS.key)),
+    ].filter((dep) => dep !== key);
+    const requiredResourceClasses = [
+      ...new Set(stringList(item.requiredResourceClasses, 8, LIMITS.key)),
+    ];
+    const expectedOutput = text(item.expectedOutput, LIMITS.statement);
+    out.push({
+      requirementKey: key,
+      priority,
+      title,
+      mustBeTrue,
+      scope,
+      dependsOnRequirementKeys,
+      requiredResourceClasses,
+      expectedOutput,
+    });
   });
+  if (errors.length) return { ok: false, errors };
+  const keys = new Set(out.map((requirement) => requirement.requirementKey));
+  for (const requirement of out) {
+    for (const dep of requirement.dependsOnRequirementKeys) {
+      if (!keys.has(dep))
+        errors.push(
+          `requirement ${requirement.requirementKey} depends on unknown key ${dep}`,
+        );
+    }
+  }
   if (errors.length) return { ok: false, errors };
   const hasRequired = out.some((requirement) => requirement.priority === "required");
   if (!hasRequired) return { ok: false, errors: ["proposals contain no required requirement; an objective needs at least one gate"] };

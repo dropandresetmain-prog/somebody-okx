@@ -10,6 +10,7 @@ import {
 import { CURRENT_RESOURCE_INVENTORY } from "../lib/objective/policy";
 import { planWakeForDecision } from "../lib/management/wakes";
 import type { OutcomeContract, Requirement } from "../lib/management/types";
+import { cp2ParsedRequirement } from "./helpers/cp2Requirement";
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -52,13 +53,13 @@ function makeRequirement(
     {
       objectiveKey,
       contract,
-      proposed: {
+      proposed: cp2ParsedRequirement({
         requirementKey: REQ_KEY,
         priority: "required",
         title,
         mustBeTrue,
         scope: "test scope",
-      },
+      }),
       artifactKeyForInternalProof: null,
       at: NOW,
     },

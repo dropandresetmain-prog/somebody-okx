@@ -13,6 +13,7 @@ import {
   parseRequirementProposals,
 } from "../lib/management/proposals";
 import type { ParsedOutcomeContract } from "../lib/management/proposals";
+import { CP2_REQUIREMENT_FIELDS, cp2ParsedRequirement } from "./helpers/cp2Requirement";
 
 const at = 1700000000000;
 
@@ -175,13 +176,13 @@ test("recommendation with unknown alternative keeps valid fields but nulls the i
 
 // ── Requirement construction: proof attachment is application-owned ──────────
 
-const baseProposed = {
+const baseProposed = cp2ParsedRequirement({
   requirementKey: "page_live",
-  priority: "required" as const,
+  priority: "required",
   title: "Landing page is live",
   mustBeTrue: "the page is reachable and the form submits",
   scope: "public URL only",
-};
+});
 
 function contract1() {
   const result = buildContract();
@@ -245,6 +246,7 @@ test("revision bump supersedes unresolved requirements but preserves satisfied/w
     title: key,
     mustBeTrue: "x",
     scope: "x",
+    ...CP2_REQUIREMENT_FIELDS,
     proofs: [],
     state,
     strategy: null,

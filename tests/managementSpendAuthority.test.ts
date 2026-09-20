@@ -22,6 +22,7 @@ import {
 import { buildOutcomeContract } from "../lib/management/contract";
 import { runManagerialDecisionPass } from "../lib/management/decision";
 import type { DecisionPassInput, DecisionPassResult, RegistryOffering } from "../lib/management/decision";
+import { CP2_DECISION_PASS_FIELDS } from "./helpers/cp2Requirement";
 import type { EligibilityFacts } from "../lib/management/options";
 import { factValue } from "../lib/management/options";
 import {
@@ -169,6 +170,7 @@ function buyPass(overrides: Partial<DecisionPassInput> = {}): Promise<DecisionPa
     requirementTitle: "Dataset is acquired",
     mustBeTrue: "the dataset is present in company records",
     priority: "required",
+    ...CP2_DECISION_PASS_FIELDS,
     artifactKeyForInternalProof: null,
     staffing: {
       objectiveKey: "obj_buy",

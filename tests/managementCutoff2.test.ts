@@ -15,6 +15,7 @@ import {
 } from "../lib/management/options";
 import { runManagerialDecisionPass, type DecisionPassInput } from "../lib/management/decision";
 import { reduceManagementState, isCoherentHold, type ReducerFacts } from "../lib/management/reducer";
+import { CP2_DECISION_PASS_FIELDS, CP2_REQUIREMENT_FIELDS } from "./helpers/cp2Requirement";
 import {
   createBudget,
   checkBudget,
@@ -70,6 +71,7 @@ function req(overrides: Partial<Requirement> = {}): Requirement {
     title: "x",
     mustBeTrue: "x holds",
     scope: "x",
+    ...CP2_REQUIREMENT_FIELDS,
     proofs: [{ proofKey: "p1", description: "d", proofKind: "application_observation", params: { sourceId: "ev-1" } }],
     state: "active",
     strategy: null,
@@ -354,6 +356,7 @@ test("replaying the identical decision envelope ten times yields ONE stable work
     requirementTitle: "x",
     mustBeTrue: "x holds",
     priority: "required",
+    ...CP2_DECISION_PASS_FIELDS,
     artifactKeyForInternalProof: "art_x",
     staffing: {
       objectiveKey: "obj_x",

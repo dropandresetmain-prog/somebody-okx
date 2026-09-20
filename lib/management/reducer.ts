@@ -184,15 +184,37 @@ export function reduceManagementState(facts: ReducerFacts): ReducedState {
   //    NO grounding entry has simply never been decided for this revision —
   //    that is decision work, not a dead end. Only requirements that HAVE been
   //    grounded and produced no eligible option count toward "no path".
+  //    Explicit dependsOn edges block decide/dispatch until those keys resolve
+  //    (satisfied/waived) — lexical req_01 ordering is not enough alone.
+  const byKey = new Map(current.map((requirement) => [requirement.requirementKey, requirement]));
+  const prerequisitesMet = (requirement: Requirement): boolean => {
+    const deps = requirement.dependsOnRequirementKeys ?? [];
+    if (!deps.length) return true;
+    return deps.every((dep) => {
+      const row = byKey.get(dep);
+      return !!row && (row.state === "satisfied" || row.state === "waived");
+    });
+  };
   const groundedKnown = (requirement: Requirement) =>
     groundedByRequirement.has(requirement.requirementKey);
   const solvable = open.filter((requirement) => {
+    if (!prerequisitesMet(requirement)) return false;
     if (!groundedKnown(requirement)) return true; // undecided ⇒ work to do
     const grounded = groundedByRequirement.get(requirement.requirementKey) ?? [];
     return grounded.some((option) => option.eligibility.eligible);
   });
+  const waitingOnDeps = open.filter((requirement) => !prerequisitesMet(requirement));
   const stuck = open.filter((requirement) => requirement.state === "blocked");
   if (solvable.length === 0 && open.length > 0) {
+    if (waitingOnDeps.length === open.length) {
+      return {
+        state: "waiting",
+        action: { kind: "await_wake", reason: "timeout" },
+        detail: `open requirements wait on unresolved prerequisites: ${waitingOnDeps
+          .map((r) => r.requirementKey)
+          .join(", ")}`,
+      };
+    }
     return {
       state: stuck.length ? "blocked" : "waiting",
       action: {
@@ -256,6 +278,7 @@ export function reduceManagementState(facts: ReducerFacts): ReducedState {
   const undelivered = [...current]
     .filter(
       (requirement) =>
+        prerequisitesMet(requirement) &&
         requirement.state === "active" &&
         DISPATCHABLE_STRATEGIES.has(requirement.strategy ?? "") &&
         !strategyDelivery(requirement.strategy, {

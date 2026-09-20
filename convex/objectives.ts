@@ -1199,6 +1199,8 @@ export const finishRun = internalMutation({
       };
     }
 
+    const isM4Managed = Boolean(management?.contractId);
+
     // M4-managed rows (management.contractId set) do NOT transition to "completed":
     // the independent gate decides. M2-legacy rows (no contractId) keep the historical
     // spine state transition so canonicalM2 stays green, but the controlNote carries

@@ -28,6 +28,7 @@ import { buildOutcomeContract } from "../lib/management/contract";
 import { buildInternalOption, EMPTY_FACTS, withEligibility, eligibilityInputFor } from "../lib/management/options";
 import type { DecisionPassResult } from "../lib/management/decision";
 import type { GroundedOption, Requirement, ManagerialDecision } from "../lib/management/types";
+import { CP2_REQUIREMENT_FIELDS } from "./helpers/cp2Requirement";
 
 const modules = {
   "../convex/schema.ts": () => import("../convex/schema"),
@@ -265,6 +266,7 @@ test("recordSatisfactionAttempt REFUSES an assignment_run_finished event (requir
     revision: 1,
     createdAt: now,
     updatedAt: now,
+    ...CP2_REQUIREMENT_FIELDS,
   };
 
   await t.mutation(async (ctx) =>

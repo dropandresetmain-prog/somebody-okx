@@ -49,6 +49,7 @@ import type {
   OutcomeContract,
   Requirement,
 } from "../lib/management/types";
+import { cp2ParsedRequirement } from "./helpers/cp2Requirement";
 
 const modules = {
   "../convex/schema.ts": () => import("../convex/schema"),
@@ -98,13 +99,13 @@ function makeRequirement(objectiveKey: string, strategy: "MAKE" | "BUY" = "MAKE"
     {
       objectiveKey,
       contract: contractFor(objectiveKey),
-      proposed: {
+      proposed: cp2ParsedRequirement({
         requirementKey: REQ,
         priority: "required",
         title: "An observation supports the claim",
         mustBeTrue: "the application recorded a sourced observation",
         scope: "one governed observation",
-      },
+      }),
       artifactKeyForInternalProof: null,
       at: now,
     },

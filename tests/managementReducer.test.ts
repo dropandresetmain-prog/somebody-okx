@@ -15,6 +15,7 @@ import type {
   OutcomeContract,
   Requirement,
 } from "../lib/management/types";
+import { CP2_REQUIREMENT_FIELDS } from "./helpers/cp2Requirement";
 
 const at = 1700000000000;
 
@@ -41,6 +42,7 @@ function requirement(overrides: Partial<Requirement> = {}): Requirement {
     title: "page live",
     mustBeTrue: "x",
     scope: "x",
+    ...CP2_REQUIREMENT_FIELDS,
     proofs: [],
     state: "active",
     strategy: null,

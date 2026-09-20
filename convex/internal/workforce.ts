@@ -729,22 +729,124 @@ export const readDecisionContext = internalQuery({
       .withIndex("by_key", (q) => q.eq("key", args.objectiveKey))
       .unique();
     const objectiveData = objectiveRow?.data as
-      | { companyArtifacts?: Array<{ key?: string }> }
+      | {
+          companyArtifacts?: Array<{ key?: string }>;
+          resourceNeeds?: Array<{
+            id?: string;
+            requirementKey?: string | null;
+            resourceClass?: string;
+            purpose?: string;
+            reasonOwnedInsufficient?: string;
+            status?: string;
+          }>;
+          result?: {
+            summary?: string;
+            unknowns?: string[];
+            runId?: string;
+          } | null;
+        }
       | undefined;
     const artifactKeyForInternalProof =
       objectiveData?.companyArtifacts?.find(
         (artifact) => typeof artifact.key === "string" && artifact.key.length > 0,
       )?.key ?? null;
 
+    const requirementData = requirement as unknown as {
+      dependsOnRequirementKeys?: string[];
+      requiredResourceClasses?: string[];
+      expectedOutput?: string | null;
+      requirementKey: string;
+    };
+    const dependsOn = Array.isArray(requirementData.dependsOnRequirementKeys)
+      ? requirementData.dependsOnRequirementKeys
+      : [];
+
+    const openStatuses = new Set(["proposed", "active", "sourcing", "buy_pending"]);
+    const openResourceNeeds = (objectiveData?.resourceNeeds ?? [])
+      .filter(
+        (need) =>
+          need &&
+          openStatuses.has(String(need.status ?? "")) &&
+          (need.requirementKey === args.requirementKey ||
+            // Legacy needs without requirementKey still surface objective-wide
+            // until scoped; prefer exact match when present.
+            (need.requirementKey == null && typeof need.resourceClass === "string")),
+      )
+      .filter((need) =>
+        need.requirementKey === args.requirementKey || need.requirementKey == null,
+      )
+      .slice(0, 8)
+      .map((need) => ({
+        needId: String(need.id ?? ""),
+        resourceClass: String(need.resourceClass ?? ""),
+        purpose: String(need.purpose ?? "").slice(0, 400),
+        reasonOwnedInsufficient: String(need.reasonOwnedInsufficient ?? "").slice(0, 400),
+        status: String(need.status ?? "proposed"),
+      }))
+      .filter((need) => need.needId && need.resourceClass);
+
+    // Accepted prerequisite results: satisfied/waived dependsOn keys with
+    // bounded proof refs + any current objective result unknowns (DATA).
+    const prerequisiteResults: Array<{
+      requirementKey: string;
+      state: string;
+      proofRefs: string[];
+      findings: string[];
+      unknowns: string[];
+    }> = [];
+    if (dependsOn.length) {
+      const allReqRows = await ctx.db
+        .query("requirements")
+        .withIndex("by_objectiveKey", (q) => q.eq("objectiveKey", args.objectiveKey))
+        .collect();
+      for (const depKey of dependsOn.slice(0, 8)) {
+        const dep =
+          allReqRows
+            .map((row) => (row as { data: Record<string, unknown> }).data)
+            .find(
+              (data) =>
+                data.requirementKey === depKey &&
+                data.contractRevision === currentContractRevision,
+            ) ?? null;
+        if (!dep) continue;
+        const state = String(dep.state ?? "");
+        if (state !== "satisfied" && state !== "waived") continue;
+        const resolution = dep.resolution as { proofRefs?: string[] } | null;
+        prerequisiteResults.push({
+          requirementKey: depKey,
+          state,
+          proofRefs: Array.isArray(resolution?.proofRefs)
+            ? resolution!.proofRefs!.slice(0, 8).map(String)
+            : [],
+          findings: [],
+          unknowns: Array.isArray(objectiveData?.result?.unknowns)
+            ? objectiveData!.result!.unknowns!.slice(0, 6).map(String)
+            : [],
+        });
+      }
+    }
+
     return {
       contract,
       currentContractRevision,
-      requirement,
+      requirement: {
+        ...requirement,
+        dependsOnRequirementKeys: dependsOn,
+        requiredResourceClasses: Array.isArray(requirementData.requiredResourceClasses)
+          ? requirementData.requiredResourceClasses
+          : [],
+        expectedOutput:
+          typeof requirementData.expectedOutput === "string"
+            ? requirementData.expectedOutput
+            : null,
+      },
       inventory,
       creationAllowed,
       budget,
       grant: grant ? { limitUsd: grant.limitUsd, approvalId: grant.approvalId } : null,
       artifactKeyForInternalProof,
+      openResourceNeeds,
+      prerequisiteResults,
     };
   },
 });

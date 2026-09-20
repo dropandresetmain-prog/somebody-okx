@@ -67,10 +67,30 @@ export type DecisionPassReads = {
   // The objective's actual controlled artifact key, when it has one. Optional so
   // pure callers without a controlled artifact keep their existing behavior.
   artifactKeyForInternalProof?: string | null;
+  /** Open worker resource proposals scoped to this requirement (DATA, not authority). */
+  openResourceNeeds?: readonly OpenResourceNeedFact[];
+  /** Bounded accepted prerequisite results for dependsOn keys (DATA). */
+  prerequisiteResults?: readonly PrerequisiteResultFact[];
   at: number;
   // Deterministic, stable per (objective, requirement, revision, attempt) so a
   // replay rebuilds the same decision row identity.
   decisionId: string;
+};
+
+export type OpenResourceNeedFact = {
+  needId: string;
+  resourceClass: string;
+  purpose: string;
+  reasonOwnedInsufficient: string;
+  status: string;
+};
+
+export type PrerequisiteResultFact = {
+  requirementKey: string;
+  state: string;
+  proofRefs: string[];
+  findings: string[];
+  unknowns: string[];
 };
 
 export type BuildDecisionPassInputResult =
@@ -117,20 +137,34 @@ export async function buildDecisionPassInput(
   const requiredPermissions = toolPermissionsForCapabilities(requiredCapabilityKeys);
 
   // ── I3: resource classes are DERIVED, never hardcoded arrays ────────────────
-  const requiredResourceClasses = requiredResourceClassesFor(requiredCapabilityKeys);
+  // Capability-derived classes PLUS requirement-declared inputs PLUS open worker
+  // resource proposals (DATA). Ownership gaps surface as eligibility facts.
+  const declaredClasses = [
+    ...requiredResourceClassesFor(requiredCapabilityKeys),
+    ...(requirement.requiredResourceClasses ?? []),
+    ...(reads.openResourceNeeds ?? []).map((need) => need.resourceClass),
+  ];
+  const requiredResourceClasses = [
+    ...new Set(declaredClasses.filter((value): value is ResourceClass => isKnownResourceClass(value))),
+  ];
   const controlledResourceClasses = controlledResourceClassesFor(CURRENT_RESOURCE_INVENTORY);
 
-  // The external class to discover for: the proposal's declared need when it is
-  // a known class, else the first required class the company does not control.
+  // The external class to discover for: open worker proposal first (scoped DATA),
+  // then the proposal's declared need when known, else first uncontrolled required.
   const missing = requiredResourceClasses.filter(
     (resource) => !controlledResourceClasses.includes(resource),
   );
+  const openNeedClass = (reads.openResourceNeeds ?? [])
+    .map((need) => need.resourceClass)
+    .find((value) => isKnownResourceClass(value) && missing.includes(value as ResourceClass));
   const proposedExternal = parsedProposal.value.needsExternalResourceClass;
-  const externalClass: ResourceClass | null = isKnownResourceClass(proposedExternal)
-    ? (proposedExternal as ResourceClass)
-    : missing.length > 0
-      ? (missing[0] as ResourceClass)
-      : null;
+  const externalClass: ResourceClass | null = isKnownResourceClass(openNeedClass ?? null)
+    ? (openNeedClass as ResourceClass)
+    : isKnownResourceClass(proposedExternal)
+      ? (proposedExternal as ResourceClass)
+      : missing.length > 0
+        ? (missing[0] as ResourceClass)
+        : null;
 
   // ── I3: grounding from the static snapshot registry — zero network ──────────
   // createSnapshotDiscovery() reads SNAPSHOT_OFFERINGS + VERIFIED_SERVICE_REGISTRY
@@ -181,6 +215,9 @@ export async function buildDecisionPassInput(
       requirementTitle: requirement.title,
       mustBeTrue: requirement.mustBeTrue,
       priority: requirement.priority,
+      dependsOnRequirementKeys: [...(requirement.dependsOnRequirementKeys ?? [])],
+      requiredResourceClasses: [...(requirement.requiredResourceClasses ?? [])],
+      expectedOutput: requirement.expectedOutput ?? null,
       artifactKeyForInternalProof,
       staffing: {
         objectiveKey: contract.objectiveKey,

@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { bindExecutedProofParams } from "../lib/management/contract";
 import { missingProofs } from "../lib/management/requirements";
 import type { Requirement } from "../lib/management/types";
+import { CP2_REQUIREMENT_FIELDS } from "./helpers/cp2Requirement";
 
 function effectRequirement(): Requirement {
   return {
@@ -11,6 +12,7 @@ function effectRequirement(): Requirement {
     priority: "required", title: "Publish the verified external effect", mustBeTrue: "effect happened", scope: "objective",
     proofs: [{ proofKey: "effect", description: "actual external effect", proofKind: "verified_external_effect", params: {} }],
     state: "active", strategy: "BUY", resolution: null, blockedReason: null, waiver: null, revision: 1, createdAt: 1, updatedAt: 1,
+    ...CP2_REQUIREMENT_FIELDS,
   };
 }
 

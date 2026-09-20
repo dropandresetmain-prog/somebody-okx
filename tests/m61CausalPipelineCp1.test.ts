@@ -11,6 +11,7 @@ import type { ActivityResult } from "../lib/workforce";
 import { assessInternalContractExecutability, deriveAssignmentId } from "../lib/management/dispatch";
 import { attemptRequirementSatisfaction } from "../lib/management/requirements";
 import type { Requirement } from "../lib/management/types";
+import { CP2_REQUIREMENT_FIELDS } from "./helpers/cp2Requirement";
 import {
   attemptFromDecisionId,
   BEGIN_DECISION_CEILING,
@@ -29,6 +30,7 @@ function requirement(overrides: Partial<Requirement> = {}): Requirement {
     title: "Landing page is live",
     mustBeTrue: "page reachable",
     scope: "public URL",
+    ...CP2_REQUIREMENT_FIELDS,
     proofs: [
       {
         proofKey: "observation",

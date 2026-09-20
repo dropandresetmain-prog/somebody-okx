@@ -48,6 +48,7 @@ import type {
   GroundedOption,
   Requirement,
 } from "../lib/management/types";
+import { CP2_REQUIREMENT_FIELDS } from "./helpers/cp2Requirement";
 import type {
   PaymentExecutor,
   PaymentSubmissionResult,
@@ -962,5 +963,6 @@ function buildVerifiedExternalRequirement(contractRevision: number, intentId: st
     revision: 1,
     createdAt: at0,
     updatedAt: at0,
+    ...CP2_REQUIREMENT_FIELDS,
   };
 }

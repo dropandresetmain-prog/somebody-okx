@@ -52,12 +52,86 @@ import { createOkxDiscovery } from "../lib/market/okxDiscovery";
 import { createLocalOnchainosRunner } from "../lib/market/okxCliBridge";
 import { VERIFIED_SERVICE_REGISTRY } from "../lib/market/registryData";
 import { CURRENT_RESOURCE_INVENTORY } from "../lib/objective/policy";
+import { RESOURCE_CLASSES } from "../lib/workforce/catalog";
+import { controlledResourceClassesFor } from "../lib/management/grounding";
+import {
+  buildInterpretationCompanyContext,
+  formatInterpretationContextBlock,
+} from "../lib/management/interpretationContext";
 import type { ResourceClass } from "../lib/workforce/types";
-import type { ResourceNeed } from "../lib/objective/resourceNeed";
+import type { Assignment } from "../lib/management/types";
+import {
+  createResourceNeed,
+  dedupeResourceNeeds,
+  type ResourceNeed,
+} from "../lib/objective/resourceNeed";
 
 // Ceiling for text the application resolves from a source before persisting it.
 // The bounded surface the MODEL sees is owned by lib/worker/runtime.ts.
 const PERSISTED_TEXT_CEILING = 4000;
+
+const KNOWN_RESOURCE_CLASSES = new Set<string>(
+  RESOURCE_CLASSES.map((resource) => resource.class),
+);
+
+function workItemIdForRun(record: ObjectiveRecord, runId: string): string | null {
+  if (record.run?.id === runId && record.run.workItemId) return record.run.workItemId;
+  for (const workItem of record.workItems ?? []) {
+    for (const candidate of workItem.runs ?? []) {
+      if (candidate.id === runId) return workItem.id;
+    }
+  }
+  return null;
+}
+
+async function resolveRequirementKeyForRun(
+  ctx: ActionCtx,
+  objectiveKey: string,
+  runId: string,
+  record: ObjectiveRecord,
+): Promise<{ requirementKey: string; workItemId: string } | null> {
+  const workItemId = workItemIdForRun(record, runId);
+  if (!workItemId?.startsWith("wi:")) return null;
+  const assignmentId = workItemId.slice(3);
+  if (!assignmentId) return null;
+  const assignment = (await ctx.runQuery(internal.internal.workforce.findAssignment, {
+    objectiveKey,
+    assignmentId,
+  })) as Assignment | null;
+  if (!assignment || assignment.objectiveKey !== objectiveKey) return null;
+  if (assignment.runId && assignment.runId !== runId) return null;
+  if (!assignment.requirementKey) return null;
+  return { requirementKey: assignment.requirementKey, workItemId };
+}
+
+async function wakeForPersistedResourceNeed(input: {
+  ctx: ActionCtx;
+  objectiveKey: string;
+  runId: string;
+  resourceClass: string;
+  purpose: string;
+  needId: string;
+  at: number;
+}): Promise<void> {
+  const wake = planWakeForResourceRequest({
+    objectiveKey: input.objectiveKey,
+    runId: input.runId,
+    resourceClass: input.resourceClass,
+    purpose: input.purpose,
+    needId: input.needId,
+    at: input.at,
+  });
+  await input.ctx.runMutation(internal.internal.workforce.appendWakeEvent, {
+    eventId: wake.eventId,
+    objectiveKey: input.objectiveKey,
+    dedupeKey: wake.dedupeKey,
+    data: wake.event,
+  });
+  await input.ctx.scheduler.runAfter(0, internal.management.runManagementPass, {
+    objectiveKey: input.objectiveKey,
+    reason: wake.reason,
+  });
+}
 
 // Observations the model may keep in context, and the per-observation ceiling.
 // Truncation happens at the application boundary, never in the model.
@@ -265,6 +339,79 @@ function makeConvexPort(ctx: ActionCtx, objectiveKey: string, runId: string) {
           );
           const record = row.data as ObjectiveRecord;
           const now = Date.now();
+          const isM4Managed =
+            (record as { management?: { contractId?: string | null } }).management
+              ?.contractId != null;
+
+          if (isM4Managed) {
+            if (
+              !resourceClass ||
+              !purpose ||
+              !reasonOwnedInsufficient ||
+              !KNOWN_RESOURCE_CLASSES.has(resourceClass)
+            ) {
+              return (
+                "Resource request refused: proposal is incomplete or uses an unknown resource class. " +
+                "Nothing was persisted and no acquisition was authorized."
+              );
+            }
+            const scoped = await resolveRequirementKeyForRun(
+              ctx,
+              objectiveKey,
+              runId,
+              record,
+            );
+            if (!scoped) {
+              return (
+                "Resource request refused: this run cannot be scoped to a managed requirement safely. " +
+                "Nothing was persisted and no acquisition was authorized."
+              );
+            }
+            const needId = `need_${now}_${Math.random().toString(36).slice(2, 8)}`;
+            const proposed = createResourceNeed({
+              id: needId,
+              objectiveKey,
+              workItemId: scoped.workItemId,
+              requirementKey: scoped.requirementKey,
+              resourceClass: resourceClass as ResourceClass,
+              purpose,
+              reasonOwnedInsufficient,
+              proposedByRunId: runId,
+              at: now,
+            });
+            const { need, created } = dedupeResourceNeeds(
+              (record.resourceNeeds ?? []) as ResourceNeed[],
+              proposed,
+            );
+            const persisted = await ctx.runMutation(
+              internal.objectives.persistSourcedResource,
+              {
+                objectiveKey,
+                runId,
+                need,
+                created,
+                decision: null,
+                assessments: [],
+                offerings: [],
+              },
+            );
+            await wakeForPersistedResourceNeed({
+              ctx,
+              objectiveKey,
+              runId,
+              resourceClass,
+              purpose,
+              needId: persisted.needId,
+              at: now,
+            });
+            return (
+              `Resource need ${persisted.needId} recorded for requirement ${scoped.requirementKey} ` +
+              `(created=${persisted.created}, status=${persisted.needStatus}). ` +
+              "This is a worker proposal only — no provider, payment, or BUY authority was granted. " +
+              "Somebody has been woken with decision context."
+            );
+          }
+
           const needId = `need_${now}_${Math.random().toString(36).slice(2, 8)}`;
           const decisionId = `dec_${now}_${Math.random().toString(36).slice(2, 8)}`;
 
@@ -306,33 +453,14 @@ function makeConvexPort(ctx: ActionCtx, objectiveKey: string, runId: string) {
             },
           );
 
-          // CP7 integration: the persisted need WAKES Somebody. Locked decision
-          // 9 — the worker requests; Somebody resolves. The request is DATA
-          // (a pointer to the need), never authority: the M2 sourcing seam above
-          // recorded what was discovered, and the wake is only the signal that
-          // a new/unresolved resource need exists for the manager to replan.
-          // appendWakeEvent dedupes by dedupeKey, so a redelivered request
-          // wakes Somebody exactly once.
-          const wake = planWakeForResourceRequest({
+          await wakeForPersistedResourceNeed({
+            ctx,
             objectiveKey,
             runId,
             resourceClass,
             purpose,
             needId: persisted.needId,
             at: now,
-          });
-          await ctx.runMutation(internal.internal.workforce.appendWakeEvent, {
-            eventId: wake.eventId,
-            objectiveKey,
-            dedupeKey: wake.dedupeKey,
-            data: wake.event,
-          });
-          // Wake-scheduler wiring: the stored event schedules Somebody's
-          // management pass (idempotent — the pass re-reads the wakeEvents
-          // cursor, so a duplicate scheduling folds into the same pass).
-          await ctx.scheduler.runAfter(0, internal.management.runManagementPass, {
-            objectiveKey,
-            reason: wake.reason,
           });
 
           const sourceKind =
@@ -650,11 +778,24 @@ export const proposeInterpretation = internalAction({
         | { ok: true; contractId: string; requirementKeys: string[] }
         | { ok: false; errors: string[] };
 
+    const objectiveRow = (await ctx.runQuery(internal.objectives.getObjectiveInternal, {
+      objectiveKey: args.objectiveKey,
+    })) as { data: ObjectiveRecord } | null;
+    const grant = (await ctx.runQuery(internal.internal.workforce.activeSpendGrant, {
+      objectiveKey: args.objectiveKey,
+    })) as { limitUsd: number; approvalId: string } | null;
+    const companyContext = buildInterpretationCompanyContext({
+      companyArtifacts: objectiveRow?.data.companyArtifacts,
+      spendGrantPresent: grant != null,
+    });
+    const contextBlock = formatInterpretationContextBlock(companyContext);
+
     let proposal: { contract: unknown; requirements: unknown };
     try {
       proposal = await interpretWithOpenAI({
         configuration: providerConfiguration(process.env),
         request: args.request,
+        contextBlock,
       });
     } catch (error) {
       // Fail closed through the deterministic parser rather than inventing a
@@ -789,15 +930,50 @@ export const proposeDecision = internalAction({
         if (eligible.length === 0) return null;
         let raw: unknown;
         try {
+          const controlled = controlledResourceClassesFor(CURRENT_RESOURCE_INVENTORY);
+          const declaredClasses = [
+            ...new Set([
+              ...(reads.requirement.requiredResourceClasses ?? []),
+              ...(reads.openResourceNeeds ?? []).map((need) => need.resourceClass),
+            ]),
+          ];
+          const ownedResourceClasses = declaredClasses.filter((value) =>
+            controlled.includes(value as ResourceClass),
+          );
+          const missingResourceClasses = declaredClasses.filter(
+            (value) => !controlled.includes(value as ResourceClass),
+          );
           raw = await recommendWithModel({
             configuration: providerConfiguration(process.env),
             requirementKey: args.requirementKey,
             contractRevision: args.contractRevision,
+            requirementContext: {
+              title: reads.requirement.title,
+              mustBeTrue: reads.requirement.mustBeTrue,
+              priority: reads.requirement.priority,
+              dependsOnRequirementKeys: reads.requirement.dependsOnRequirementKeys ?? [],
+              requiredResourceClasses: reads.requirement.requiredResourceClasses ?? [],
+              expectedOutput: reads.requirement.expectedOutput ?? null,
+              ownedResourceClasses,
+              missingResourceClasses,
+              openResourceNeeds: (reads.openResourceNeeds ?? []).slice(0, 6),
+              prerequisiteResults: (reads.prerequisiteResults ?? []).slice(0, 6),
+            },
             options: eligible.map((option) => ({
               optionId: option.optionId,
               kind: option.kind,
               strategy: option.strategy,
-              // Facts only — never a capability the model may re-authorize.
+              eligible: option.eligibility.eligible,
+              checksPassed:
+                option.eligibility.eligible
+                  ? option.eligibility.checksPassed ?? []
+                  : [],
+              ineligibilityReasons:
+                option.eligibility.eligible
+                  ? []
+                  : option.eligibility.reasons ?? [],
+              internalCapabilities: option.internal?.capabilityKeys ?? [],
+              externalResourceClass: option.external?.resourceClass ?? null,
               externalPriceUsd: option.external?.priceUsd ?? null,
               registryVerified: option.external?.registryVerified ?? null,
             })),
@@ -846,8 +1022,9 @@ export const proposeDecision = internalAction({
 async function interpretWithOpenAI(input: {
   configuration: PlanningConfiguration;
   request: string;
+  contextBlock: string;
 }): Promise<{ contract: unknown; requirements: unknown }> {
-  const { configuration, request } = input;
+  const { configuration, request, contextBlock } = input;
   const client = new OpenAI({
     apiKey: configuration.apiKey,
     baseURL: configuration.baseURL,
@@ -889,12 +1066,21 @@ async function interpretWithOpenAI(input: {
           "never be verified true while the truth it depends on is unverified.",
           "Each requirement states WHAT must be true, never HOW: never name a",
           "strategy, a provider, a purchase, a tool or a spend in a requirement.",
+          "Use dependsOnRequirementKeys for causal ordering (earlier keys first).",
+          "Use requiredResourceClasses when a requirement needs inputs the company",
+          "may not own yet. Use expectedOutput for a short statement of the",
+          "deliverable or state change when helpful.",
+          "",
+          contextBlock,
+          "",
           'Shape: {"contract":{"intent":string,"levels":[{"levelKey":string,',
           '"order":number,"statement":string,"label":string}],',
           '"minimumCompletionBar":string,"ambiguities":[{"question":string,',
           '"materiality":"material"|"ordinary","resolution":string}]},',
           '"requirements":[{"requirementKey":string,"priority":"required"|"supporting",',
-          '"title":string,"mustBeTrue":string,"scope":string}]}',
+          '"title":string,"mustBeTrue":string,"scope":string,',
+          '"dependsOnRequirementKeys":string[],"requiredResourceClasses":string[],',
+          '"expectedOutput":string|null}]}',
         ].join("\n"),
       },
     ],
@@ -949,13 +1135,25 @@ async function interpretWithOpenAI(input: {
               items: {
                 type: "object",
                 additionalProperties: false,
-                required: ["requirementKey", "priority", "title", "mustBeTrue", "scope"],
+                required: [
+                  "requirementKey",
+                  "priority",
+                  "title",
+                  "mustBeTrue",
+                  "scope",
+                  "dependsOnRequirementKeys",
+                  "requiredResourceClasses",
+                  "expectedOutput",
+                ],
                 properties: {
                   requirementKey: { type: "string" },
                   priority: { type: "string", enum: ["required", "supporting"] },
                   title: { type: "string" },
                   mustBeTrue: { type: "string" },
                   scope: { type: "string" },
+                  dependsOnRequirementKeys: { type: "array", items: { type: "string" } },
+                  requiredResourceClasses: { type: "array", items: { type: "string" } },
+                  expectedOutput: { type: ["string", "null"] },
                 },
               },
             },
@@ -1066,15 +1264,11 @@ async function recommendWithModel(input: {
   configuration: PlanningConfiguration;
   requirementKey: string;
   contractRevision: number;
-  options: ReadonlyArray<{
-    optionId: string;
-    kind: string;
-    strategy: string;
-    externalPriceUsd: number | null;
-    registryVerified: boolean | null;
-  }>;
+  requirementContext: Record<string, unknown>;
+  options: ReadonlyArray<Record<string, unknown>>;
 }): Promise<unknown> {
-  const { configuration, requirementKey, contractRevision, options } = input;
+  const { configuration, requirementKey, contractRevision, requirementContext, options } =
+    input;
   const client = new OpenAI({
     apiKey: configuration.apiKey,
     baseURL: configuration.baseURL,
@@ -1090,14 +1284,17 @@ async function recommendWithModel(input: {
           "You recommend ONE option among the eligible options you are given.",
           "Reply with JSON only, matching the given schema.",
           "selectedOptionId MUST be one of the provided optionIds — you may not",
-          "invent, combine, or edit options. Do not restate prices as authority;",
-          "you only choose and justify. Authorization is decided elsewhere.",
+          "invent, combine, or edit options. Use requirementContext (facts),",
+          "openResourceNeeds, prerequisiteResults, and option coverage/eligibility",
+          "to justify — do not restate prices as authority. Authorization is",
+          "decided elsewhere.",
         ].join(" "),
       },
       {
         role: "user",
         content: [
           `REQUIREMENT: ${requirementKey} @ contractRevision ${contractRevision}`,
+          `REQUIREMENT CONTEXT (untrusted facts): ${JSON.stringify(requirementContext).slice(0, 1600)}`,
           `ELIGIBLE OPTIONS (untrusted facts): ${JSON.stringify(options).slice(0, 2000)}`,
           "",
           'Shape: {"requirementKey":string,"contractRevision":number,',

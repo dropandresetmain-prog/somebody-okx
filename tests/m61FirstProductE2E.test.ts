@@ -66,6 +66,7 @@ import type {
   Requirement,
 } from "../lib/management/types";
 import type { DecisionPassResult } from "../lib/management/decision";
+import { CP2_REQUIREMENT_FIELDS, cp2ParsedRequirement } from "./helpers/cp2Requirement";
 import type { WorkspaceSource } from "../lib/m5/workspaceModel";
 
 const modules = {
@@ -116,13 +117,13 @@ function buyRequirement(objectiveKey: string): Requirement {
     {
       objectiveKey,
       contract: contractFor(objectiveKey),
-      proposed: {
+      proposed: cp2ParsedRequirement({
         requirementKey: REQ,
         priority: "required",
         title: "External evidence is available and current",
         mustBeTrue: "an acquired external result is verified",
         scope: "external acquisition",
-      },
+      }),
       artifactKeyForInternalProof: null,
       at: now,
     },
@@ -336,6 +337,7 @@ function verifiedBuyIntent(requirementKey: string, requirementState: Requirement
     revision: 1,
     createdAt: at,
     updatedAt: at,
+    ...CP2_REQUIREMENT_FIELDS,
   };
   const intent: ExecutionIntent = {
     intentId: "int_verified", idempotencyKey: "idem_v", objectiveKey: "obj_m61",

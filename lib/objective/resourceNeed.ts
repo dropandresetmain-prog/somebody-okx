@@ -21,6 +21,8 @@ export type ResourceNeed = {
   id: string;
   objectiveKey: string;
   workItemId: string | null;
+  /** M4: scoped to the Requirement the worker was serving; null for legacy M2. */
+  requirementKey: string | null;
   resourceClass: ResourceClass;
   purpose: string;
   reasonOwnedInsufficient: string;
@@ -41,13 +43,16 @@ export function computeNeedDedupeKey(input: {
   objectiveKey: string;
   resourceClass: string;
   purpose: string;
+  requirementKey?: string | null;
 }): string {
   const payload =
     normalize(input.objectiveKey) +
     "\u0000" +
     normalize(input.resourceClass) +
     "\u0000" +
-    normalize(input.purpose);
+    normalize(input.purpose) +
+    "\u0000" +
+    normalize(input.requirementKey ?? "");
   return createHash("sha256").update(payload).digest("hex");
 }
 
@@ -57,6 +62,7 @@ export type CreateResourceNeedInput = {
   id: string;
   objectiveKey: string;
   workItemId?: string | null;
+  requirementKey?: string | null;
   resourceClass: ResourceClass;
   purpose: string;
   reasonOwnedInsufficient: string;
@@ -69,11 +75,13 @@ export function createResourceNeed(input: CreateResourceNeedInput): ResourceNeed
     objectiveKey: input.objectiveKey,
     resourceClass: input.resourceClass,
     purpose: input.purpose,
+    requirementKey: input.requirementKey ?? null,
   });
   return {
     id: input.id,
     objectiveKey: input.objectiveKey,
     workItemId: input.workItemId ?? null,
+    requirementKey: input.requirementKey ?? null,
     resourceClass: input.resourceClass,
     purpose: input.purpose,
     reasonOwnedInsufficient: input.reasonOwnedInsufficient,

@@ -173,6 +173,12 @@ export type Requirement = {
   title: string;
   mustBeTrue: string;
   scope: string; // what is in / out of this requirement
+  /** Requirement keys that must be satisfied/waived before this one is decidable. */
+  dependsOnRequirementKeys: string[];
+  /** Resource classes / input facts this requirement needs (owned or acquired). */
+  requiredResourceClasses: string[];
+  /** Short statement of the expected output/state change, when known. */
+  expectedOutput: string | null;
   proofs: ProofSpec[];
   state: RequirementState;
   strategy: SatisfactionStrategy | null; // last authorized strategy

@@ -29,9 +29,18 @@ Evidence: `tests/m61CausalPipelineCp1.test.ts` + updated A5-9 / decision-chain r
 
 Rejected from `6f5e2b5`: ceiling 16, `ensureObservableCapabilityKeys` widen, growth artifact assist.
 
-### CP2 — diagnosis → management bridge (IN PROGRESS)
+### CP2 — diagnosis → management bridge (COMPLETE)
 
-### CP3 — genuine MAKE/BUY eligibility (PENDING)
+- Requirement semantics: `dependsOnRequirementKeys`, `requiredResourceClasses`, `expectedOutput`.
+- Interpretation receives bounded company context (owned classes, artifacts, grant presence, not-owned hints) — WHAT-only.
+- Reducer refuses decide/dispatch until explicit prerequisites are satisfied/waived.
+- `readDecisionContext` surfaces `openResourceNeeds` + `prerequisiteResults`.
+- M4 `request_resource`: scopes to requirementKey, dedupes, wakes Somebody as DATA; does NOT authorize BUY/payment/satisfy. Legacy M2 sourcing preserved.
+- Non-launch fixture covered in `tests/m61CausalPipelineCp2.test.ts`.
+
+Evidence: CP2 suite + contract/reducer/decisionPass — 47 pass; `tsc --noEmit` clean.
+
+### CP3 — genuine MAKE/BUY eligibility (IN PROGRESS)
 
 ### CP4 — acquisition → artifact → M5 closure (PENDING)
 

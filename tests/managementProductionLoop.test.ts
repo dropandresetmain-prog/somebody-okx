@@ -29,6 +29,7 @@ import {
 import { buildOutcomeContract, buildRequirement, buildSemanticRequirement } from "../lib/management/contract";
 import { optionIdFor } from "../lib/management/options";
 import type { OutcomeContract, Requirement, Assignment } from "../lib/management/types";
+import { cp2ParsedRequirement } from "./helpers/cp2Requirement";
 
 const modules = {
   "../convex/schema.ts": () => import("../convex/schema"),
@@ -120,13 +121,13 @@ function makeRequirement(objectiveKey: string, reqKey: string, strategy: "MAKE" 
     {
       objectiveKey,
       contract: contractFor(objectiveKey),
-      proposed: {
+      proposed: cp2ParsedRequirement({
         requirementKey: reqKey,
         priority: "required",
         title,
         mustBeTrue,
         scope: "one governed decision",
-      },
+      }),
       artifactKeyForInternalProof: null,
       at: now,
     },
@@ -846,13 +847,13 @@ test("N10 decision retry after refusal: after BUY refusal with eligible options,
   const semanticReq = buildSemanticRequirement({
     objectiveKey: key,
     contract,
-    proposed: {
+    proposed: cp2ParsedRequirement({
       requirementKey: reqKey,
       priority: "required",
       title: "Research X narrative trends",
       mustBeTrue: "twitter data supports the claim",
       scope: "external data",
-    },
+    }),
     at: now,
   });
   if ("errors" in semanticReq) throw new Error(semanticReq.errors.join("; "));

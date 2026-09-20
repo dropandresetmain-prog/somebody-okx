@@ -20,6 +20,7 @@ import { buildConvexManagementPorts, applyDecision, BEGIN_DECISION_CEILING } fro
 import { buildOutcomeContract, buildRequirement } from "../lib/management/contract";
 import { optionIdFor } from "../lib/management/options";
 import type { OutcomeContract, Requirement, GraphState } from "../lib/management/types";
+import { cp2ParsedRequirement } from "./helpers/cp2Requirement";
 
 const modules = {
   "../convex/schema.ts": () => import("../convex/schema"),
@@ -86,13 +87,13 @@ function makeRequirement(
     {
       objectiveKey,
       contract: contractFor(objectiveKey),
-      proposed: {
+      proposed: cp2ParsedRequirement({
         requirementKey,
         priority: "required",
         title: "A decision test requirement",
         mustBeTrue: "the decision chain authorizes correctly",
         scope: "one governed decision",
-      },
+      }),
       artifactKeyForInternalProof,
       at: now,
     },
