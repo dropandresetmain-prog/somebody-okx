@@ -697,12 +697,15 @@ Return only a short operational update, never private reasoning.`;
         signal: options.signal,
       },
     );
+    const admittedTurns = (() => {
+      const turns = (result as unknown as { turns?: unknown }).turns;
+      return typeof turns === "number" ? turns : null;
+    })();
     telemetry.modelResponses = Math.max(
       telemetry.modelResponses,
-      typeof result.turns === "number" ? result.turns : 0,
+      admittedTurns ?? 0,
     );
-    telemetry.turnCount =
-      typeof result.turns === "number" ? result.turns : telemetry.turnCount;
+    telemetry.turnCount = admittedTurns ?? telemetry.turnCount;
     telemetry.finalOutputReceived =
       result.finalOutput !== undefined && result.finalOutput !== null;
 
