@@ -59,11 +59,12 @@ Evidence: `tests/m61CausalPipelineCp3.test.ts` 9/9.
 
 Evidence: `tests/m61CausalPipelineCp4.test.ts` + m61FirstProductE2E — 19/19; typecheck clean.
 
-### CP5 — fresh physical E2E acceptance (IN PROGRESS)
+### CP5 — fresh physical E2e acceptance (IN PROGRESS)
 
-- **Act Now fix:** Convex isolate missing `queueMicrotask` → LangGraph `runManagementPass` died before decide; `decisionAttempts` stayed null (STOP B). Polyfill restored (`lib/management/convexIsolatePolyfill.ts`), imported before graph in `convex/management.ts`. Not a ceiling/growth-assist change.
-- Live model for acceptance only: `nvidia/nemotron-3-ultra-550b-a55b:free`.
-- Mock evidence: polyfill test + production loop 12/12.
+- **Act Now fix 1:** Convex isolate missing `queueMicrotask` → LangGraph died before decide (`1511233`).
+- **Act Now fix 2:** Free Nemotron interpret ~90s; OpenAI client timeout was 60s → catch applied null → `contract proposal is not an object`. Raised to 180s + persist `providerError`.
+- Live model: `nvidia/nemotron-3-ultra-550b-a55b:free`.
+- Mock evidence: polyfill + production loop 12/12.
 
 ---
 

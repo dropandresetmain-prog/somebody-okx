@@ -1071,6 +1071,7 @@ export const applyInterpretation = internalMutation({
     rawRequirements: v.any(),
     founderResolvedQuestions: v.array(v.string()),
     at: v.number(),
+    providerError: v.optional(v.string()),
   },
   returns: v.union(
     v.object({
@@ -1112,7 +1113,13 @@ export const applyInterpretation = internalMutation({
     });
     if (!interpreted.ok) {
       // Typed refusal, persisted as a cursor so the loop cannot retry-storm a
-      // model that keeps producing unusable output.
+      // model that keeps producing unusable output. Prefer the provider error
+      // when the call never produced a proposal (timeout / outage).
+      const detail = (
+        args.providerError
+          ? `${args.providerError}; ${interpreted.errors.join("; ")}`
+          : interpreted.errors.join("; ")
+      ).slice(0, 600);
       await ctx.db.patch(row._id, {
         data: {
           ...data,
@@ -1122,10 +1129,11 @@ export const applyInterpretation = internalMutation({
             interpretationStatus: "refused",
             interpretationRequestId: args.requestId,
             interpretationAttempts: ((mgmt.interpretationAttempts as number | undefined) ?? 0) + 1,
-            interpretationDetail: interpreted.errors.join("; ").slice(0, 600),
+            interpretationDetail: detail,
             controlNotes: boundNotes(mgmt.controlNotes, {
               type: "interpretation_refused",
               errors: interpreted.errors.slice(0, 6),
+              providerError: args.providerError ?? null,
               at: args.at,
             }),
           },

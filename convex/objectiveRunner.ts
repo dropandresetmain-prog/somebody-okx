@@ -524,6 +524,11 @@ export const proposePlan = internalAction({
 
 type PlanningConfiguration = ReturnType<typeof providerConfiguration>;
 
+// Free-router models (e.g. Nemotron) routinely take 60–120s for schema-bound
+// completions. A 60s HTTP timeout aborts a healthy call and applyInterpretation
+// then records "contract proposal is not an object" from the null fallback.
+const MODEL_HTTP_TIMEOUT_MS = 180_000;
+
 // A single non-interactive completion constrained to a strict JSON schema, so
 // the planner cannot return prose or free-form authority. Reasoning is not
 // stored; only the bounded structured proposal is returned.
@@ -535,7 +540,7 @@ async function proposePlanWithOpenAI(input: {
   const client = new OpenAI({
     apiKey: configuration.apiKey,
     baseURL: configuration.baseURL,
-    timeout: 60_000,
+    timeout: MODEL_HTTP_TIMEOUT_MS,
     maxRetries: 1,
   });
   const completion = await client.chat.completions.create({
@@ -766,7 +771,11 @@ export const proposeInterpretation = internalAction({
     ctx,
     args,
   ): Promise<{ ok: boolean; detail: string }> => {
-    const apply = async (rawContract: unknown, rawRequirements: unknown) =>
+    const apply = async (
+      rawContract: unknown,
+      rawRequirements: unknown,
+      providerError?: string,
+    ) =>
       (await ctx.runMutation(internal.management.applyInterpretation, {
         objectiveKey: args.objectiveKey,
         requestId: args.requestId,
@@ -774,6 +783,7 @@ export const proposeInterpretation = internalAction({
         rawRequirements,
         founderResolvedQuestions: args.founderResolvedQuestions,
         at: Date.now(),
+        providerError,
       })) as
         | { ok: true; contractId: string; requirementKeys: string[] }
         | { ok: false; errors: string[] };
@@ -800,10 +810,11 @@ export const proposeInterpretation = internalAction({
     } catch (error) {
       // Fail closed through the deterministic parser rather than inventing a
       // contract: null payloads are structurally unparsable, so the objective
-      // records a typed refusal and stops asking.
+      // records a typed refusal and stops asking. Persist the provider error so
+      // timeouts are not mistaken for malformed JSON.
       const message =
         error instanceof Error ? error.message : "Interpretation failed";
-      const refused = await apply(null, null);
+      const refused = await apply(null, null, `model unavailable: ${message.slice(0, 300)}`);
       return {
         ok: refused.ok,
         detail: refused.ok
@@ -1028,7 +1039,7 @@ async function interpretWithOpenAI(input: {
   const client = new OpenAI({
     apiKey: configuration.apiKey,
     baseURL: configuration.baseURL,
-    timeout: 60_000,
+    timeout: MODEL_HTTP_TIMEOUT_MS,
     maxRetries: 1,
   });
   const completion = await client.chat.completions.create({
@@ -1235,7 +1246,7 @@ async function proposeStrategyWithModel(input: {
   const client = new OpenAI({
     apiKey: configuration.apiKey,
     baseURL: configuration.baseURL,
-    timeout: 60_000,
+    timeout: MODEL_HTTP_TIMEOUT_MS,
     maxRetries: 1,
   });
   const completion = await client.chat.completions.create({
@@ -1316,7 +1327,7 @@ async function recommendWithModel(input: {
   const client = new OpenAI({
     apiKey: configuration.apiKey,
     baseURL: configuration.baseURL,
-    timeout: 60_000,
+    timeout: MODEL_HTTP_TIMEOUT_MS,
     maxRetries: 1,
   });
   const completion = await client.chat.completions.create({
