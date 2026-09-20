@@ -123,9 +123,71 @@ fail; root + Convex TypeScript clean. Restored the sandbox-local esbuild shim
 that `npm install` had clobbered (environment-only; the bundle probe is green
 again).
 
-### CP3 — canonical physical E2E (pending founder-configured deployment)
+### CP3 — canonical physical E2E (PENDING founder-configured deployment — PARTIAL in this sandbox)
 
-### CP4 — M5 renders completed run truthfully (pending)
+Runtime preflight (recorded, no secrets printed):
+
+| Variable | Status in this sandbox |
+|---|---|
+| `LIVE_AI_ENABLED` | NOT SET — live model runs refuse |
+| `AI_PROVIDER` | NOT SET (env contract default `openrouter`) |
+| `AI_MODEL` | NOT SET |
+| `OPENROUTER_API_KEY` | NOT SET |
+| `NEXT_PUBLIC_CONVEX_URL` / `CONVEX_DEPLOYMENT` | NOT SET — no deployment |
+| `SOMEBODY_DEMO_OPERATOR_TOKEN` | NOT SET — demo operator gate fails closed |
+| `M4_M3_DRIVER_TOKEN` / `M4_M3_FACT_ATTESTATION_KEY` | NOT SET — live driver bridge closed (correct for M6.1) |
+
+What IS proven deterministically here (Level 1 + Level 2, real Convex storage
+via convex-test and the real LangGraph pass):
+
+- Full seam walk: authorized BUY intent → operator simulation boundary →
+  verified intent → REAL `runManagementPass(verification_result)` → reducer
+  rule 8b → verify → `external_result_verified` satisfaction → completion gate
+  acceptance → `objectiveState: "completed"` (test 12 in
+  tests/m61FirstProductE2E.test.ts). The simulation never completes the
+  objective; the engine does.
+- Worker surface exposes only verified acquisitions; artifact revisions are
+  evidence-ref enforced; M5 read model renders the simulation truthfully.
+
+**Founder runbook for the physical E2E (live model, real deployment):**
+
+1. `npx convex dev` on a deployment; set `CONVEX_DEPLOYMENT` and
+   `NEXT_PUBLIC_CONVEX_URL` in `.env.local`.
+2. On the deployment, set `LIVE_AI_ENABLED=true`, `AI_PROVIDER=openrouter`,
+   `AI_MODEL=<tool-capable model>`, `OPENROUTER_API_KEY=<key>`, and
+   `SOMEBODY_DEMO_OPERATOR_TOKEN=<operator secret>`. Do NOT set
+   `M4_M3_EXECUTION_ENABLED` or any wallet/attestation variables: M6.1 never
+   touches the financial rail.
+3. `npm run dev`, open `/m5` (or the objective view), then:
+   a. Call mutation `setupCanonicalDemoObjective` (Convex dashboard or a small
+      script) with `{ operatorToken, spendLimitUsd: 2 }` — no request text; the
+      canonical fixture request is used. Interpretation begins automatically.
+   b. Watch the pass: interpretation → ordered requirements (req_01… with the
+      external-evidence truth before the artifact truth) → decision (BUY or
+      HYBRID over newsliquid_twitter_search) → intent minted `authorized`.
+   c. Call query `simulationCandidate` with the operator token → it returns the
+      authorized intent.
+   d. Call mutation `simulateVerifiedAcquisition` with
+      `{ operatorToken, intentId }` → intent verified through the kernel, wake
+      emitted.
+   e. The engine resumes automatically: verify → satisfy → worker observes the
+      acquired inputs (untrusted-wrapped) → artifact v2 citing the evidence →
+      remaining requirements → completion gate → `completed`.
+4. Capture the 18-point E2E evidence list (§13) from the deployment: intent id,
+   resultEvidenceId, wake dedupeKey, satisfaction resolutionId + proofRefs,
+   artifact v1→v2 diff with usedAcquisitionEvidenceIds, gate verdict, M5 view.
+
+If a live-model deployment cannot be configured, M6.1 stands as PARTIAL with
+the deterministic Level 1+2 proof above plus this runbook; the physical run
+moves to the founder session.
+
+### CP4 — M5 renders completed run truthfully
+
+- `app/m5/(live)` page compiles (`next build` clean); `/m5` + `/m5/fixtures`
+  routes present. M5 suites (ReadModel / ConvexSeam / LiveSurface / Fixtures):
+  36 pass / 0 fail, including the M6.1 truthfulness assertions.
+- Preview of the running app requires the deployment configured per CP3; the
+  M5 read model itself is proven against Convex truth by the seam tests.
 
 ### CP5 — M6.1 freeze (pending)
 
