@@ -59,12 +59,11 @@ Evidence: `tests/m61CausalPipelineCp3.test.ts` 9/9.
 
 Evidence: `tests/m61CausalPipelineCp4.test.ts` + m61FirstProductE2E — 19/19; typecheck clean.
 
-### CP5 — fresh physical E2E acceptance (PARTIAL / STOPPED)
+### CP5 — fresh physical E2E acceptance (IN PROGRESS)
 
-- Live physical runs paused: use mocks for remaining causal gaps; live model only for final acceptance.
-- Deployment AI_MODEL set to `nvidia/nemotron-3-ultra-550b-a55b:free` (founder request).
-- Observed STOP B failure on `obj_1789890527895_5bz73w`: interpretation OK, contract persisted, **no `decisionAttempts` / no authorized intent** — management pass never reserved a decision. Diagnose under mock before another live attempt.
-- Robustness landed for deploy: optional CP2 requirement fields in validators; interpretation JSON normalize; minimumCompletionBar prose→levelKey remap.
+- **Act Now fix:** Convex isolate missing `queueMicrotask` → LangGraph `runManagementPass` died before decide; `decisionAttempts` stayed null (STOP B). Polyfill restored (`lib/management/convexIsolatePolyfill.ts`), imported before graph in `convex/management.ts`. Not a ceiling/growth-assist change.
+- Live model for acceptance only: `nvidia/nemotron-3-ultra-550b-a55b:free`.
+- Mock evidence: polyfill test + production loop 12/12.
 
 ---
 

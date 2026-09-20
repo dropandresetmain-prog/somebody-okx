@@ -1,5 +1,9 @@
 "use strict";
 
+// Ensure LangGraph can run inside the Convex default isolate before any
+// management graph import pulls `@langchain/langgraph` in.
+import "../lib/management/convexIsolatePolyfill";
+
 // CP7 — Production Convex-backed ManagementPorts adapter.
 //
 // Every port reads Convex fresh on each call (the reload rule). No caching.
