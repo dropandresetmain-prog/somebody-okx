@@ -126,9 +126,10 @@ export const vRequirement = v.object({
   title: v.string(),
   mustBeTrue: v.string(),
   scope: v.string(),
-  dependsOnRequirementKeys: v.array(v.string()),
-  requiredResourceClasses: v.array(v.string()),
-  expectedOutput: v.union(v.string(), v.null()),
+  // Optional for rows written before M6.1 CP2; readers normalize to [].
+  dependsOnRequirementKeys: v.optional(v.array(v.string())),
+  requiredResourceClasses: v.optional(v.array(v.string())),
+  expectedOutput: v.optional(v.union(v.string(), v.null())),
   proofs: v.array(vProofSpec),
   state: vRequirementState,
   strategy: v.union(vSatisfactionStrategy, v.null()),

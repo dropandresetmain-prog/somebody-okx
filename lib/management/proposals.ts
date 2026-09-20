@@ -106,9 +106,24 @@ export function parseOutcomeContractProposal(raw: unknown): ProposalParseResult<
     });
   });
 
-  const bar = text(candidate.minimumCompletionBar, LIMITS.key);
-  if (!bar) errors.push("contract proposal declares no minimum completion bar");
-  else if (!seenKeys.has(bar)) errors.push(`minimum completion bar ${bar} is not one of the proposed levels`);
+  // Models often put a prose statement in minimumCompletionBar instead of a
+  // levelKey. Resolve against keys/labels/statements before refusing — never
+  // invent a new level, only remap onto one the proposal already declared.
+  const rawBar = text(candidate.minimumCompletionBar, LIMITS.statement);
+  let bar: string | null = null;
+  if (rawBar && seenKeys.has(rawBar)) bar = rawBar;
+  else if (rawBar) {
+    const matched = levels.find(
+      (level) => level.label === rawBar || level.statement === rawBar,
+    );
+    if (matched) bar = matched.levelKey;
+  }
+  if (!bar)
+    errors.push(
+      rawBar
+        ? `minimum completion bar ${rawBar} is not one of the proposed levels`
+        : "contract proposal declares no minimum completion bar",
+    );
 
   const ambiguities: ContractAmbiguity[] = [];
   const rawAmbiguities = Array.isArray(candidate.ambiguities)

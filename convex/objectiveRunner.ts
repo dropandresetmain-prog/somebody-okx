@@ -1164,14 +1164,58 @@ async function interpretWithOpenAI(input: {
   });
   const raw = completion.choices[0]?.message?.content;
   if (!raw) throw new Error("Interpretation model returned no proposal");
-  const parsed: unknown = JSON.parse(raw);
+  const parsed: unknown = JSON.parse(stripJsonFences(raw));
+  const normalized = normalizeInterpretationPayload(parsed);
+  return {
+    contract: normalized.contract,
+    requirements: normalized.requirements,
+  };
+}
+
+/** Free/router models sometimes wrap JSON in fences or flatten the contract. */
+function stripJsonFences(raw: string): string {
+  const trimmed = raw.trim();
+  const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+  return fenced ? fenced[1].trim() : trimmed;
+}
+
+function normalizeInterpretationPayload(parsed: unknown): {
+  contract: unknown;
+  requirements: unknown;
+} {
   if (typeof parsed !== "object" || parsed === null)
     throw new Error("Interpretation proposal is not an object");
   const candidate = parsed as Record<string, unknown>;
-  return {
-    contract: candidate.contract ?? null,
-    requirements: candidate.requirements ?? null,
-  };
+  let contract: unknown = candidate.contract ?? null;
+  if (typeof contract === "string") {
+    try {
+      contract = JSON.parse(contract);
+    } catch {
+      contract = null;
+    }
+  }
+  // Some models emit contract fields at the top level instead of nesting.
+  if (
+    (contract === null || typeof contract !== "object") &&
+    typeof candidate.intent === "string" &&
+    Array.isArray(candidate.levels)
+  ) {
+    contract = {
+      intent: candidate.intent,
+      levels: candidate.levels,
+      minimumCompletionBar: candidate.minimumCompletionBar,
+      ambiguities: candidate.ambiguities ?? [],
+    };
+  }
+  let requirements: unknown = candidate.requirements ?? null;
+  if (typeof requirements === "string") {
+    try {
+      requirements = JSON.parse(requirements);
+    } catch {
+      requirements = null;
+    }
+  }
+  return { contract, requirements };
 }
 
 // R3 CP-4 — Step 1 of proposeDecision: one bounded, schema-constrained
