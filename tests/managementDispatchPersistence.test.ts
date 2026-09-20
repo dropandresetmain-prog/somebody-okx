@@ -400,7 +400,7 @@ test("A2 MAKE: dispatchRequirement creates exactly one assignment, one reserved 
 
 // ── A2-2: BUY dispatch stops at the M3 boundary ─────────────────────────────
 
-test("A2 BUY: dispatch persists exactly ONE intent resting at awaiting_m3 — no hand-off, no payment, no run — and replays add nothing", async () => {
+test("A2 BUY: dispatch persists exactly ONE intent resting AUTHORIZED at the M3 boundary — no hand-off, no payment, no run — and replays add nothing", async () => {
   const t = convexTest(schema, modules);
   const key = "obj_disp_buy";
   const requirement = makeRequirement(key, "BUY");
@@ -414,11 +414,15 @@ test("A2 BUY: dispatch persists exactly ONE intent resting at awaiting_m3 — no
   assert.equal(intents.length, 1);
   const intent = intents[0].data;
   assert.equal(intent.intentId, effectId);
-  assert.equal(intent.state, "awaiting_m3", "no production buyer rail exists; the intent RESTS truthfully");
+  // M6.1: production runs with external authority m3_available_bounded, so the
+  // intent is born AUTHORIZED — a real current execution intent that only the
+  // supervised M3 driver (or the M6.1 simulation boundary) may advance. It is
+  // still truthfully not handed off here: dispatch never contacts a rail.
+  assert.equal(intent.state, "authorized", "authorized execution intent; hand-off belongs to the supervised boundary, not dispatch");
   assert.equal(intent.terms.approvalId, "appr_dispatch_1", "the founder grant identity travels with it");
   assert.ok(
-    /no payment was attempted or made/.test(intent.boundaryNote ?? ""),
-    "the boundary note states truthfully that nothing crossed the M3 seam",
+    /hand-off attempted by the caller/.test(intent.boundaryNote ?? ""),
+    "the boundary note states truthfully that only the caller may attempt hand-off",
   );
 
   assert.equal((await rows.assignments(t)).length, 0, "BUY creates no internal work");

@@ -97,6 +97,16 @@ function makeConvexPort(ctx: ActionCtx, objectiveKey: string, runId: string) {
           ...item,
           text: boundText(item.text),
         })),
+        // Verified acquisitions enter the model surface bounded like any other
+        // observed text; wrapping as untrusted content happens once in the
+        // runtime, not here. Provenance is the persisted enum, not a string.
+        acquiredInputs: observation.acquiredInputs.map(
+          (item): import("../lib/worker/port").WorkerAcquiredInput => ({
+            ...item,
+            text: boundText(item.text),
+            provenance: item.provenance as "simulation" | "live" | "recorded_replay",
+          }),
+        ),
       };
     },
     async act(command: Record<string, unknown>) {
@@ -218,9 +228,28 @@ function makeConvexPort(ctx: ActionCtx, objectiveKey: string, runId: string) {
         case "update_company_artifact": {
           const content = String(command.content ?? "");
           const changeNote = String(command.changeNote ?? "");
+          // Provenance claim: evidence ids the worker cites must reference
+          // verified acquisition results; the mutation is the validator, the
+          // runtime only bounds the claim size.
+          const usedAcquisitionEvidenceIds = Array.isArray(
+            command.usedAcquisitionEvidenceIds,
+          )
+            ? command.usedAcquisitionEvidenceIds
+                .map((id) => String(id))
+                .filter((id) => id.length > 0)
+                .slice(0, 8)
+            : undefined;
           const result = await ctx.runMutation(
             internal.objectives.updateCompanyArtifact,
-            { objectiveKey, runId, content, changeNote },
+            {
+              objectiveKey,
+              runId,
+              content,
+              changeNote,
+              ...(usedAcquisitionEvidenceIds
+                ? { usedAcquisitionEvidenceIds }
+                : {}),
+            },
           );
           return `Company artifact ${result.key} updated to version ${result.version}. Provenance run=${runId}.`;
         }
@@ -852,6 +881,14 @@ async function interpretWithOpenAI(input: {
           "priority 'required' (a completion gate) or 'supporting' (valuable but",
           "not blocking). When in doubt use 'required' — downgrading a gate is",
           "the one mistake that lets work look finished while it is not.",
+          "Order requirements by causal dependency: use stable keys req_01,",
+          "req_02, ... so earlier truths are numbered first. If the objective",
+          "depends on evidence or information the company does not already own,",
+          "that availability is its own required truth and must come BEFORE any",
+          "requirement whose work would use that evidence — a deliverable can",
+          "never be verified true while the truth it depends on is unverified.",
+          "Each requirement states WHAT must be true, never HOW: never name a",
+          "strategy, a provider, a purchase, a tool or a spend in a requirement.",
           'Shape: {"contract":{"intent":string,"levels":[{"levelKey":string,',
           '"order":number,"statement":string,"label":string}],',
           '"minimumCompletionBar":string,"ambiguities":[{"question":string,',

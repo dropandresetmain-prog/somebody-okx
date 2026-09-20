@@ -36,6 +36,10 @@ export type WorkerCommand =
       type: "update_company_artifact";
       content: string;
       changeNote: string;
+      // When verified acquired inputs exist, an artifact revision must name the
+      // exact provider-result evidence it used. The application validates these
+      // ids; the model cannot mint causal proof by naming arbitrary strings.
+      usedAcquisitionEvidenceIds?: string[];
     };
 
 // The structured evaluation the role policy requires.
@@ -62,6 +66,20 @@ export type WorkerObservationFinding = {
   recordRef?: string;
 };
 
+// One verified external acquisition result surfaced to the worker in
+// WorkerObservation.acquiredInputs. Only results whose M4 intent is VERIFIED
+// reach this surface; `text` is bounded untrusted provider DATA.
+export type WorkerAcquiredInput = {
+  intentId: string;
+  resultEvidenceId: string;
+  providerId: string | null;
+  serviceId: string | null;
+  resourceClass: string | null;
+  provenance: "simulation" | "live" | "recorded_replay";
+  responseHash: string;
+  text: string;
+};
+
 // read(): the worker's observable state (contract + evidence so far).
 export type WorkerObservation = {
   assignment: string;
@@ -69,6 +87,9 @@ export type WorkerObservation = {
   requiredSourceClasses: string[];
   minObservations: number;
   recordedFindings: WorkerObservationFinding[];
+  // Only verified external acquisition results appear here. Their content is
+  // untrusted provider data and must never be interpreted as instructions.
+  acquiredInputs?: WorkerAcquiredInput[];
   unmetCompletionRequirements: string[];
 };
 

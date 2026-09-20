@@ -55,13 +55,38 @@ export type SourceObjectiveRow = {
     contractId?: string | null;
     controlNotes?: Array<Record<string, unknown>>;
   };
+  // M6.1 — persisted simulated/verified acquisition results. The read model
+  // treats a result as present ONLY when its intent is verified with the
+  // matching resultEvidenceId; anything else is not yet truth.
+  acquisitionResults?: SourceAcquisitionResult[];
+};
+
+export type SourceAcquisitionResult = {
+  intentId: string;
+  requirementKey: string;
+  contractRevision: number;
+  resultEvidenceId: string;
+  provenance: "simulation" | "live" | "recorded_replay";
+  providerId: string;
+  serviceId: string;
+  offeringId: string;
+  resourceClass: string;
+  content: string;
+  responseHash: string;
+  recordedAt: number;
+  verifiedAt: number;
 };
 
 export type SourceArtifact = {
   key: string;
   label: string;
   version: number;
-  history: { version: number; changeNote: string; changedAt: number }[];
+  history: {
+    version: number;
+    changeNote: string;
+    changedAt: number;
+    usedAcquisitionEvidenceIds?: string[];
+  }[];
 };
 
 export type SourceContract = {
@@ -363,24 +388,42 @@ function externalName(intent: SourceIntent): string {
   return intent.target.providerId ?? intent.target.serviceId ?? intent.target.offeringId ?? "External provider";
 }
 
-function toExternalView(intent: SourceIntent, grants: SourceGrant[]): ExternalView {
+function toExternalView(
+  intent: SourceIntent,
+  grants: SourceGrant[],
+  objective: SourceObjectiveRow,
+): ExternalView {
   const grant = intent.terms.approvalId
     ? grants.find((item) => item.approvalId === intent.terms.approvalId && item.revokedAt === null) ?? null
     : null;
-  const payment = derivePaymentView(intent, grant);
+  // M6.1: a simulated acquisition never renders payment stages beyond
+  // "prepared". The boundary executed, but no financial attempt exists — and
+  // the view must not borrow stages from the intent's verified state.
+  const simulatedResult = (objective.acquisitionResults ?? []).find(
+    (result) =>
+      result.intentId === intent.intentId &&
+      result.resultEvidenceId === intent.resultEvidenceId &&
+      result.provenance === "simulation",
+  ) ?? null;
+  const payment = simulatedResult
+    ? null
+    : derivePaymentView(intent, grant);
   const kindNote =
     intent.kind === "external_acquisition"
       ? "external_acquisition: buying information/resource. It does NOT prove any later external business effect happened."
       : "external_effect: an authorized change in the outside world.";
-  const priceNote =
-    grant
+  const priceNote = simulatedResult
+    ? "SIMULATION ONLY — no provider was contacted and no payment exists. Stage history shows the authorization boundary only."
+    : grant
       ? `Spend bound by founder grant ${grant.approvalId} (limit $${grant.limitUsd.toFixed(2)}).`
       : intent.terms.priceUsd !== null
         ? `M4 expected/quoted price $${intent.terms.priceUsd.toFixed(2)} (${intent.terms.priceProvenance.replaceAll("_", " ")}). A quote is not an executed transaction amount.`
         : "No USD amount persisted.";
-  const paymentNote = payment
-    ? " Payment stage is DERIVED from the M4 intent state; the M3 financial ledger is the separate authority."
-    : " No payment fact exists yet; nothing was attempted.";
+  const paymentNote = simulatedResult
+    ? " No payment fact can exist behind a simulated acquisition."
+    : payment
+      ? " Payment stage is DERIVED from the M4 intent state; the M3 financial ledger is the separate authority."
+      : " No payment fact exists yet; nothing was attempted.";
   return {
     providerId: intent.target.providerId ?? `provider:${intent.intentId}`,
     name: externalName(intent),
@@ -401,7 +444,7 @@ function toExternalView(intent: SourceIntent, grants: SourceGrant[]): ExternalVi
       maximumUsd: grant ? grant.limitUsd : intent.terms.priceUsd ?? 0,
       history: [{ id: `${intent.intentId}:prepared`, state: "prepared" as PaymentState, at: intent.createdAt }],
     },
-    boundaryNote: `${intent.boundaryNote} ${kindNote} ${priceNote}${paymentNote}`,
+    boundaryNote: `${simulatedResult ? "SIMULATION ONLY — " : ""}${intent.boundaryNote} ${kindNote} ${priceNote}${paymentNote}`,
   };
 }
 
@@ -422,7 +465,7 @@ function toEvidenceViews(source: WorkspaceSource): EvidenceView[] {
   for (const assignment of source.assignments) {
     if (assignment.runId) runToRequirement.set(assignment.runId, assignment.requirementKey);
   }
-  return source.evidence.map((row) => ({
+  const fromEvidenceRows: EvidenceView[] = source.evidence.map((row) => ({
     evidenceId: row.evidenceId,
     label: row.label,
     summary: row.text.slice(0, 400),
@@ -439,6 +482,29 @@ function toEvidenceViews(source: WorkspaceSource): EvidenceView[] {
     providerId: source.intents.find((intent) => intent.resultEvidenceId === row.evidenceId)?.target.providerId ?? null,
     observedAt: row.observedAt,
   }));
+  // M6.1 — persisted acquisition results appear as provider-result evidence
+  // ONLY when their intent reached `verified` with the matching evidence id.
+  // The label names the simulation boundary truthfully.
+  const fromAcquisitions: EvidenceView[] = (source.objective.acquisitionResults ?? [])
+    .filter((result) =>
+      source.intents.some(
+        (intent) =>
+          intent.intentId === result.intentId &&
+          intent.state === "verified" &&
+          intent.resultEvidenceId === result.resultEvidenceId,
+      ),
+    )
+    .map((result) => ({
+      evidenceId: result.resultEvidenceId,
+      label: `SIMULATION — acquired external result (${result.serviceId})`,
+      summary: result.content.slice(0, 400),
+      origin: "provider_result" as const,
+      state: "verified" as const,
+      requirementKey: result.requirementKey,
+      providerId: result.providerId,
+      observedAt: result.verifiedAt,
+    }));
+  return [...fromEvidenceRows, ...fromAcquisitions];
 }
 
 function toArtifactViews(objective: SourceObjectiveRow): ArtifactView[] {
@@ -450,9 +516,10 @@ function toArtifactViews(objective: SourceObjectiveRow): ArtifactView[] {
       version: entry.version,
       summary: entry.changeNote,
       at: entry.changedAt,
-      // Artifacts do not persist direct evidence references; an empty list is
-      // truthful. Never fabricate refs.
-      evidenceRefs: [],
+      // Evidence refs are the artifact's OWN persisted provenance (the
+      // verified acquisition ids its revision claims). Versions produced
+      // before the acquisition seam carry none; never fabricate refs.
+      evidenceRefs: entry.usedAcquisitionEvidenceIds ?? [],
     })),
   }));
 }
@@ -773,6 +840,14 @@ export function deriveMissionStory(source: WorkspaceSource): MissionStoryEvent[]
   }
 
   for (const intent of source.intents) {
+    // M6.1: a simulated acquisition's boundary note and story labels must
+    // always carry SIMULATION so the UI never reads as a live provider event.
+    const simulatedResult = (source.objective.acquisitionResults ?? []).find(
+      (result) =>
+        result.intentId === intent.intentId &&
+        result.resultEvidenceId === intent.resultEvidenceId &&
+        result.provenance === "simulation",
+    ) ?? null;
     events.push({
       id: `story:intent:${intent.intentId}`,
       at: intent.createdAt,
@@ -781,7 +856,10 @@ export function deriveMissionStory(source: WorkspaceSource): MissionStoryEvent[]
       kind: "external",
       relatedIds: [intent.intentId, intent.requirementKey, intent.decisionId],
     });
-    if (intent.state === "handed_off" || intent.state === "result_recorded" || intent.state === "verified") {
+    if (
+      !simulatedResult &&
+      (intent.state === "handed_off" || intent.state === "result_recorded" || intent.state === "verified")
+    ) {
       events.push({
         id: `story:intent-submitted:${intent.intentId}`,
         at: intent.updatedAt,
@@ -791,11 +869,24 @@ export function deriveMissionStory(source: WorkspaceSource): MissionStoryEvent[]
         relatedIds: [intent.intentId],
       });
     }
+    if (simulatedResult) {
+      // The simulated boundary executes the same kernel stages; the story
+      // says exactly that, never "payment".
+      events.push({
+        id: `story:intent-boundary:${intent.intentId}`,
+        at: intent.updatedAt,
+        title: "Simulated acquisition boundary executed",
+        detail:
+          "SIMULATION ONLY — the authorized intent was advanced through the application's external boundary with a simulated provider result. No provider was contacted and no payment occurred.",
+        kind: "external",
+        relatedIds: [intent.intentId, simulatedResult.resultEvidenceId],
+      });
+    }
     if (intent.resultEvidenceId) {
       events.push({
         id: `story:intent-result:${intent.intentId}:${intent.resultEvidenceId}`,
         at: intent.updatedAt,
-        title: "Provider result received",
+        title: simulatedResult ? "Simulated provider result recorded" : "Provider result received",
         detail: `Result persisted as evidence ${intent.resultEvidenceId}. Received does not mean verified.`,
         kind: "evidence",
         relatedIds: [intent.intentId, intent.resultEvidenceId],
@@ -805,7 +896,7 @@ export function deriveMissionStory(source: WorkspaceSource): MissionStoryEvent[]
       events.push({
         id: `story:intent-verified:${intent.intentId}:${intent.verificationEvidenceId}`,
         at: intent.updatedAt,
-        title: "External result verified",
+        title: simulatedResult ? "Simulated external result verified" : "External result verified",
         detail: `Independent verification accepted (${intent.verificationEvidenceId}).`,
         kind: "verification",
         relatedIds: [intent.intentId, intent.verificationEvidenceId],
@@ -826,13 +917,19 @@ export function deriveMissionStory(source: WorkspaceSource): MissionStoryEvent[]
 
   for (const artifact of objective.companyArtifacts ?? []) {
     for (const version of artifact.history) {
+      const usedRefs = version.usedAcquisitionEvidenceIds ?? [];
       events.push({
         id: `story:artifact:${objective.key}:${artifact.key}:${version.version}`,
         at: version.changedAt,
         title: `Artifact advanced to v${version.version}`,
-        detail: `${artifact.label} — ${version.changeNote.slice(0, 160)}`,
+        detail: `${artifact.label} — ${version.changeNote.slice(0, 160)}${
+          usedRefs.length > 0 ? ` (Used acquired evidence: ${usedRefs.join(", ")})` : ""
+        }`,
         kind: "artifact",
-        relatedIds: [`artifact:${objective.key}:${artifact.key}`],
+        relatedIds: [
+          `artifact:${objective.key}:${artifact.key}`,
+          ...usedRefs,
+        ],
       });
     }
   }
@@ -907,7 +1004,7 @@ export function composeObjectiveWorkspace(rawSource: WorkspaceSource): Objective
   const workers = source.workers.map((worker) => toWorkerView(worker, objective.key));
   const assignments = source.assignments.map((item) => toAssignmentView(item, currentRevision || item.contractRevision));
   const decisions = source.decisions.map(toDecisionView).filter((item): item is DecisionView => item !== null);
-  const external = source.intents.map((intent) => toExternalView(intent, source.grants));
+  const external = source.intents.map((intent) => toExternalView(intent, source.grants, objective));
   const evidence = toEvidenceViews(source);
   const artifacts = toArtifactViews(objective);
   const missionStory = deriveMissionStory(source);

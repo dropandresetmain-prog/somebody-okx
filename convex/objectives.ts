@@ -58,6 +58,7 @@ import {
 import { providerConfiguration } from "../lib/worker/modelSelection";
 import {
   CANONICAL_LAUNCH_ARTIFACT,
+  CANONICAL_OBJECTIVE_REQUEST,
 } from "../lib/objective/seedData";
 import { createArtifact, applyArtifactChange } from "../lib/objective/artifact";
 import type { ResourceClass } from "../lib/workforce/types";
@@ -723,6 +724,18 @@ export const readWorkerObservation = internalQuery({
         recordRef: v.optional(v.string()),
       }),
     ),
+    acquiredInputs: v.array(
+      v.object({
+        intentId: v.string(),
+        resultEvidenceId: v.string(),
+        providerId: v.string(),
+        serviceId: v.string(),
+        resourceClass: v.string(),
+        provenance: v.string(),
+        responseHash: v.string(),
+        text: v.string(),
+      }),
+    ),
     unmetCompletionRequirements: v.array(v.string()),
   }),
   handler: async (ctx, args) => {
@@ -783,10 +796,56 @@ export const readWorkerObservation = internalQuery({
         ...(item.url ? { url: item.url } : {}),
         ...(item.recordRef ? { recordRef: item.recordRef } : {}),
       })),
+      acquiredInputs: await verifiedAcquiredInputs(ctx.db, record),
       unmetCompletionRequirements: unmet,
     };
   },
 });
+
+// M6.1: acquisitions the worker may read are exactly those whose intent reached
+// `verified`. A recorded-but-unverified provider result is never presented as
+// acquired input, so the worker can only build on truth the application holds.
+async function verifiedAcquiredInputs(
+  db: QueryCtx["db"],
+  record: ObjectiveRecord,
+): Promise<
+  Array<{
+    intentId: string;
+    resultEvidenceId: string;
+    providerId: string;
+    serviceId: string;
+    resourceClass: string;
+    provenance: string;
+    responseHash: string;
+    text: string;
+  }>
+> {
+  const acquisitions = record.acquisitionResults ?? [];
+  if (acquisitions.length === 0) return [];
+  const intentRows = await db
+    .query("executionIntents")
+    .withIndex("by_objective", (q) => q.eq("objectiveKey", record.key))
+    .collect();
+  const verified = new Set(
+    intentRows
+      .filter((row) => row.data.state === "verified")
+      .map((row) => row.data.intentId),
+  );
+  return acquisitions
+    .filter((result) => verified.has(result.intentId))
+    .map((result) => ({
+      intentId: result.intentId,
+      resultEvidenceId: result.resultEvidenceId,
+      // Intent targets are nullable; the read port reports honest "unknown"
+      // placeholders rather than leaking nulls into the worker surface.
+      providerId: result.providerId ?? "unknown",
+      serviceId: result.serviceId ?? "unknown",
+      resourceClass: result.resourceClass ?? "unknown",
+      provenance: result.provenance,
+      responseHash: result.responseHash,
+      text: result.content.slice(0, 2000),
+    }));
+}
 
 // ── Application-owned M2 mutations (artifact + sourced need persistence) ─────
 
@@ -797,6 +856,10 @@ export const updateCompanyArtifact = internalMutation({
     runId: v.string(),
     content: v.string(),
     changeNote: v.string(),
+    // M6.1: provenance the worker CLAIMS for this revision. Claimed ids must
+    // reference acquisition results whose intent is verified with a matching
+    // resultEvidenceId; the application owns the truth, never the model.
+    usedAcquisitionEvidenceIds: v.optional(v.array(v.string())),
   },
   returns: v.object({ key: v.string(), version: v.number() }),
   handler: async (ctx, args) => {
@@ -808,12 +871,49 @@ export const updateCompanyArtifact = internalMutation({
     if (artifacts.length === 0) {
       throw new Error("No company artifact seeded for this objective");
     }
+    // Evidence-ref validation: the verified acquisition set is the authority.
+    // If verified acquisitions exist and the revision cites none, the revision
+    // would silently discard its own provenance — refuse it.
+    const intentRows = await ctx.db
+      .query("executionIntents")
+      .withIndex("by_objective", (q) => q.eq("objectiveKey", args.objectiveKey))
+      .collect();
+    const verifiedIntents = new Map(
+      intentRows
+        .filter((row) => row.data.state === "verified")
+        .map((row) => [row.data.intentId, row.data]),
+    );
+    const verifiedAcquisitions = (record.acquisitionResults ?? []).filter(
+      (result) => {
+        const intent = verifiedIntents.get(result.intentId);
+        return (
+          intent != null && intent.resultEvidenceId === result.resultEvidenceId
+        );
+      },
+    );
+    const claimedIds = [...new Set(args.usedAcquisitionEvidenceIds ?? [])];
+    if (verifiedAcquisitions.length > 0 && claimedIds.length === 0) {
+      throw new Error(
+        "Artifact revision must cite the verified acquisition evidence it used (usedAcquisitionEvidenceIds)",
+      );
+    }
+    for (const id of claimedIds) {
+      const result = verifiedAcquisitions.find(
+        (candidate) => candidate.resultEvidenceId === id,
+      );
+      if (!result) {
+        throw new Error(
+          `usedAcquisitionEvidenceIds: ${id} is not a verified acquisition result for this objective`,
+        );
+      }
+    }
     const idx = 0;
     const next = applyArtifactChange(artifacts[idx], {
       content: args.content,
       changeNote: args.changeNote,
       runId: args.runId,
       at: now,
+      ...(claimedIds.length > 0 ? { usedAcquisitionEvidenceIds: claimedIds } : {}),
     });
     artifacts[idx] = next;
     const updated: ObjectiveRecord = {
@@ -827,7 +927,11 @@ export const updateCompanyArtifact = internalMutation({
       ctx.db,
       args.objectiveKey,
       "evidence",
-      `Artifact ${next.key} updated to version ${next.version} by ${args.runId}`,
+      `Artifact ${next.key} updated to version ${next.version} by ${args.runId}${
+        claimedIds.length > 0
+          ? `; used acquired evidence: ${claimedIds.join(", ")}`
+          : ""
+      }`,
       now,
     );
     return { key: next.key, version: next.version };
@@ -1339,5 +1443,105 @@ export const listObjectives = query({
       })
       .sort((a, b) => b.updatedAt - a.updatedAt)
       .slice(0, 20);
+  },
+});
+
+// ── M6.1 demo setup (operator-gated, no payment path) ───────────────────────
+
+// Operator gate for the M6.1 canonical demo entrypoints. Constant-time compare
+// so the demo operator token is not distinguishable byte-by-byte.
+function assertDemoOperator(token: string): void {
+  const expected = process.env.SOMEBODY_DEMO_OPERATOR_TOKEN;
+  if (!expected || token.length !== expected.length) {
+    throw new Error("demo operator is not authorized");
+  }
+  let difference = 0;
+  for (let index = 0; index < expected.length; index += 1) {
+    difference |= token.charCodeAt(index) ^ expected.charCodeAt(index);
+  }
+  if (difference !== 0) throw new Error("demo operator is not authorized");
+}
+
+// Creates the canonical founder objective with its seeded launch artifact at
+// v1 (runId "seed", so the accepted M5 story holds: the final artifact must be
+// a materially DIFFERENT version produced by worker execution, not the seed),
+// a bounded founder spend grant for justified external acquisition, and the
+// management-engine wake. No scenario vocabulary is injected: the canonical
+// request is the demo's own fixture text, never a runtime branch.
+export const setupCanonicalDemoObjective = mutation({
+  args: {
+    operatorToken: v.string(),
+    request: v.optional(v.string()),
+    spendLimitUsd: v.number(),
+  },
+  returns: v.object({ key: v.string() }),
+  handler: async (ctx, args) => {
+    assertDemoOperator(args.operatorToken);
+    if (!(args.spendLimitUsd > 0) || args.spendLimitUsd > 5) {
+      throw new Error("spendLimitUsd must be within (0, 5] for the demo");
+    }
+    const request = (args.request ?? CANONICAL_OBJECTIVE_REQUEST).trim();
+    if (request.length < 8 || request.length > 2000) {
+      throw new Error("Objective request is unbounded");
+    }
+    const now = Date.now();
+    const key = `obj_${now}_${Math.random().toString(36).slice(2, 8)}`;
+    const record: ObjectiveRecord = {
+      key,
+      request,
+      createdAt: now,
+      updatedAt: now,
+      state: "received",
+      activity: "Canonical demo objective received.",
+      plan: null,
+      workItems: [],
+      run: null,
+      result: null,
+      companyArtifacts: [
+        createArtifact({
+          key: CANONICAL_LAUNCH_ARTIFACT.key,
+          objectiveKey: key,
+          label: CANONICAL_LAUNCH_ARTIFACT.label,
+          content: CANONICAL_LAUNCH_ARTIFACT.initialContent,
+          runId: "seed",
+          at: now,
+        }),
+      ],
+      // Verified acquisitions are appended by the M6.1 simulation boundary.
+      acquisitionResults: [],
+      // The management engine owns this row from the start (contractId null
+      // until beginInterpretation rewrites it with the durable contract; the
+      // engine's own guard sets interpretationStatus itself).
+      management: {
+        contractId: null,
+      },
+    } as ObjectiveRecord;
+    await ctx.db.insert("objectives", { key, data: record });
+    await appendEvent(
+      ctx.db,
+      key,
+      "system",
+      "Canonical demo objective received (M6.1 setup).",
+      now,
+    );
+    await ctx.runMutation(internal.internal.workforce.putSpendGrant, {
+      approvalId: `demo_grant_${key}`,
+      objectiveKey: key,
+      limitUsd: args.spendLimitUsd,
+      at: now,
+      note: "Founder-approved demo spend limit for justified external acquisition; this grant authorizes no payment and reaches no payment rail.",
+    });
+    await appendEvent(
+      ctx.db,
+      key,
+      "system",
+      `Founder spend grant recorded (limit ${args.spendLimitUsd} USD); payment rail untouched.`,
+      now,
+    );
+    await ctx.scheduler.runAfter(0, internal.management.beginInterpretation, {
+      objectiveKey: key,
+      at: now,
+    });
+    return { key };
   },
 });

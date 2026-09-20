@@ -219,7 +219,14 @@ export function reduceManagementState(facts: ReducerFacts): ReducedState {
     );
     if (assignmentIn.some((assignment) => assignment.state === "result_submitted")) return true;
     const intentsIn = intents.filter((intent) => intent.requirementKey === requirement.requirementKey);
-    return intentsIn.some((intent) => intent.state === "result_recorded");
+    // `result_recorded` awaits verification of a provider result. `verified`
+    // routes here too: satisfaction itself only counts verified intents
+    // (external_result_verified), so a verified intent without a satisfaction
+    // attempt yet must still reach the verify step, not stall forever.
+    return intentsIn.some(
+      (intent) =>
+        intent.state === "result_recorded" || intent.state === "verified",
+    );
   });
   if (needsVerification)
     return {

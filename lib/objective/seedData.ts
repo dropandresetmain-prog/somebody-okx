@@ -3,15 +3,18 @@
 // adapters, the verified service registry data and fixtures) where the launch
 // scenario strings appear.
 //
-// The canonical objective: "Our launch isn't working. Fix it and relaunch today."
-// The company owns a launch artifact (page/message) that the internal growth
-// worker actually mutates — MAKE is real owned-state change, not advice.
+// The canonical objective asks for a better relaunch and permits bounded spend
+// when justified. The company owns a launch artifact (page/message) that the
+// internal growth worker actually mutates — MAKE is real owned-state change,
+// not advice.
 
 import type { ResourceClass } from "../workforce/types";
 
 // The canonical failing-launch objective request. This is seed text, not logic.
+// It asks for a better relaunch, permits bounded spend when justified, and
+// deliberately leaves MAKE/BUY to Somebody.
 export const CANONICAL_OBJECTIVE_REQUEST =
-  "Our launch isn't working. Fix it and relaunch today.";
+  "Our launch messaging isn’t working. Figure out what’s wrong and get a better relaunch ready. You can spend within the approved limit if it’s justified.";
 
 // The controlled company artifact the growth worker reads and mutates. The
 // launch page/message is DATA owned by the company; the worker changes it.
@@ -59,6 +62,23 @@ export const CANONICAL_SOCIAL_INTELLIGENCE_NEED = {
     "Obtain current privileged social intelligence about how target one-person-company founders describe their launch/workflow pain in their own words.",
   reasonOwnedInsufficient:
     "Owned resources cover generic reasoning and public web pages, but not the platform-derived private/privileged social dataset needed to ground the message in how the actual audience phrases the problem.",
+} as const;
+
+
+// M6.1-only external-boundary fixture. This is explicitly SIMULATED evidence,
+// never represented as live NewsLiquid/X data. Its content is useful enough that
+// a worker can materially improve the launch artifact with it, while real
+// provider/payment uncertainty stays out of the first product E2E.
+export const CANONICAL_SIMULATED_SOCIAL_RESULT = {
+  resourceClass: "proprietary_data" as ResourceClass,
+  label: "SIMULATED founder-language social intelligence",
+  content: `SIMULATED proprietary social evidence — no live provider was called.
+Observed audience-language patterns for one-person-company founders:
+- They describe the pain as "I keep switching between selling, researching, following up, and actually doing the work."
+- "AI manager" is often read as another dashboard or advisor unless the copy makes clear that work is actually carried through.
+- The strongest desired outcome is one accountable system that can notice missing capability, get what it needs, do the work, and return with a finished result.
+- Generic "automate your workflows" language feels broad and tool-like; concrete language about owning an outcome and finishing the job is easier to understand.
+Recommended messaging implication: lead with the founder outcome and accountability, then explain the make-versus-buy capability underneath.`,
 } as const;
 
 // A second, LATER need used only to prove the seam is repeatable: after the

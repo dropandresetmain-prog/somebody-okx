@@ -164,6 +164,9 @@ export const objectiveRecord = v.object({
   candidateAssessments: v.optional(v.array(v.any())),
   marketOfferings: v.optional(v.array(v.any())),
   companyArtifacts: v.optional(v.array(v.any())),
+  // M6.1 — persisted verified external acquisition results. Storage only; the
+  // truth a result carries is whatever its execution intent verified.
+  acquisitionResults: v.optional(v.array(v.any())),
   // M4 management engine fields — optional so M2 rows keep loading.
   // Storage only; business rules live in lib/management/*.
   management: v.optional(

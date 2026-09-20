@@ -5,6 +5,11 @@ import { query, mutation } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { advanceIntent, applyRailEvent } from "../lib/management/intents";
 import { canonicalM3DriverFact, type M3DriverFact } from "../lib/management/m3DriverFacts";
+import { sha256Hex } from "../lib/management/sha256";
+import {
+  CANONICAL_SIMULATED_SOCIAL_RESULT,
+} from "../lib/objective/seedData";
+import type { ExternalAcquisitionResult } from "../lib/objective/types";
 import { vExecutionIntent } from "./managementValidators";
 import type { ExecutionIntent, WakeEvent, WakeReason } from "../lib/management/types";
 import type { FounderSpendGrant } from "./internal/workforce";
@@ -17,6 +22,20 @@ const vDriverEvent = v.union(
   v.literal("pre_submission_failed"),
   v.literal("reconciliation_required"),
 );
+
+// M6.1-only demo operator gate. Same constant-time discipline as fact
+// attestation: token equality is never decided with a short-circuit compare.
+function assertDemoOperator(token: string): void {
+  const expected = process.env.SOMEBODY_DEMO_OPERATOR_TOKEN;
+  if (!expected || token.length !== expected.length) {
+    throw new Error("demo operator is not authorized");
+  }
+  let difference = 0;
+  for (let index = 0; index < expected.length; index += 1) {
+    difference |= token.charCodeAt(index) ^ expected.charCodeAt(index);
+  }
+  if (difference !== 0) throw new Error("demo operator is not authorized");
+}
 
 function authorize(driverToken: string): void {
   const expected = process.env.M4_M3_DRIVER_TOKEN;
@@ -201,5 +220,269 @@ export const apply = mutation({
       }
     }
     return { changed: true, duplicate: false, state: moved.intent.state, stale };
+  },
+});
+
+// ── M6.1 deterministic acquisition simulation (external boundary) ────────────
+//
+// The ONLY sanctioned place where a provider result enters M4 without M3
+// contacting a real provider. It is a demo operator mutation, not a code path:
+// the operator supplies the canonical simulated fixture, and this mutation then
+// drives the SAME intent kernel the live M3 rail drives — handed_off →
+// provider_result → verification_result — while persisting provenance that
+// says SIMULATION in durable truth. No wallet, key, signature or rail call
+// exists anywhere behind this seam.
+
+// Read-only candidate discovery for the operator: the oldest authorized
+// external_acquisition intent whose target resource class matches the
+// simulated fixture. Everything else is deliberately invisible here.
+export const simulationCandidate = query({
+  args: { operatorToken: v.string() },
+  returns: v.union(
+    v.null(),
+    v.object({
+      intentId: v.string(),
+      objectiveKey: v.string(),
+      requirementKey: v.string(),
+      contractRevision: v.number(),
+      strategy: v.string(),
+      providerId: v.union(v.string(), v.null()),
+      serviceId: v.union(v.string(), v.null()),
+      resourceClass: v.union(v.string(), v.null()),
+      priceUsd: v.union(v.number(), v.null()),
+      approvalId: v.union(v.string(), v.null()),
+      state: v.string(),
+      updatedAt: v.number(),
+    }),
+  ),
+  handler: async (ctx, args) => {
+    assertDemoOperator(args.operatorToken);
+    const rows = await ctx.db.query("executionIntents").collect();
+    const candidates = rows
+      .map((row) => row.data as ExecutionIntent)
+      .filter(
+        (intent) =>
+          intent.kind === "external_acquisition" &&
+          intent.state === "authorized" &&
+          intent.target.resourceClass ===
+            CANONICAL_SIMULATED_SOCIAL_RESULT.resourceClass,
+      )
+      .sort((left, right) => left.updatedAt - right.updatedAt);
+    const intent = candidates[0];
+    if (!intent) return null;
+    return {
+      intentId: intent.intentId,
+      objectiveKey: intent.objectiveKey,
+      requirementKey: intent.requirementKey,
+      contractRevision: intent.contractRevision,
+      strategy: intent.strategy,
+      providerId: intent.target.providerId,
+      serviceId: intent.target.serviceId,
+      resourceClass: intent.target.resourceClass,
+      priceUsd: intent.terms.priceUsd,
+      approvalId: intent.terms.approvalId,
+      state: intent.state,
+      updatedAt: intent.updatedAt,
+    };
+  },
+});
+
+/**
+ * Records the canonical SIMULATED provider result against the oldest matching
+ * authorized intent and advances it through the real intent kernel to
+ * `verified`, then wakes the engine through the normal path.
+ *
+ * Fail-closed properties:
+ *  - operator-gated; unknown token refuses;
+ *  - the intent must be `authorized` and its contract/requirement revisions
+ *    must still be current — stale intents are never simulated over;
+ *  - the intent's resource class must match the fixture exactly;
+ *  - a priced intent requires a live founder grant bound to it (same
+ *    objective, unrevoked, limit ≥ price) — the same authority check the
+ *    pre-submission gate applies;
+ *  - result identity is derived, so re-running on a new intent produces a
+ *    distinct evidence id while re-running on the SAME verified intent with
+ *    the same content returns the same id (idempotent duplicate).
+ */
+export const simulateVerifiedAcquisition = mutation({
+  args: {
+    operatorToken: v.string(),
+    intentId: v.string(),
+  },
+  returns: v.object({
+    verified: v.boolean(),
+    duplicate: v.boolean(),
+    resultEvidenceId: v.string(),
+    intentState: v.string(),
+  }),
+  handler: async (ctx, args) => {
+    assertDemoOperator(args.operatorToken);
+    const now = Date.now();
+    const row = await ctx.db.query("executionIntents")
+      .withIndex("by_intentId", (q) => q.eq("intentId", args.intentId)).unique();
+    if (!row) throw new Error(`execution intent not found: ${args.intentId}`);
+    let intent = row.data as ExecutionIntent;
+
+    // Idempotent duplicate: same intent already verified with the same
+    // simulated result identity → report, change nothing.
+    const content = CANONICAL_SIMULATED_SOCIAL_RESULT.content;
+    const responseHash = sha256Hex(content);
+    const identity = sha256Hex(
+      [intent.intentId, responseHash, "m6-1-simulation"].join("\u0000"),
+    ).slice(0, 24);
+    const resultEvidenceId = `sim_result_${identity}`;
+    if (intent.state === "verified") {
+      if (intent.resultEvidenceId === resultEvidenceId) {
+        return { verified: true, duplicate: true, resultEvidenceId, intentState: intent.state };
+      }
+      throw new Error("intent is already verified with a different result");
+    }
+    if (intent.state !== "authorized") {
+      throw new Error(`intent ${args.intentId} is ${intent.state}, expected authorized`);
+    }
+    // Revision currency: a stale intent must not be simulated over, exactly as
+    // the live rail refuses stale submissions.
+    const contract = await ctx.db.query("outcomeContracts")
+      .withIndex("by_objectiveRevision", (q) => q.eq("objectiveKey", intent.objectiveKey))
+      .order("desc").first();
+    const requirement = await ctx.db.query("requirements")
+      .withIndex("by_objectiveRequirement", (q) => q.eq("objectiveKey", intent.objectiveKey).eq("requirementKey", intent.requirementKey))
+      .unique();
+    if (contract?.revision !== intent.contractRevision
+      || (requirement?.data as { contractRevision?: number } | undefined)?.contractRevision !== intent.contractRevision) {
+      throw new Error("intent is stale: contract or requirement revision has moved on");
+    }
+    if (intent.target.resourceClass !== CANONICAL_SIMULATED_SOCIAL_RESULT.resourceClass) {
+      throw new Error("intent target resource class does not match the simulated fixture");
+    }
+    // Spend authority: a priced intent must still be covered by a live grant.
+    const priceUsd = intent.terms.priceUsd;
+    if (priceUsd !== null && priceUsd > 0) {
+      const approvalId = intent.terms.approvalId;
+      const grantRow = approvalId === null ? null : await ctx.db.query("founderSpendGrants")
+        .withIndex("by_approvalId", (q) => q.eq("approvalId", approvalId)).unique();
+      const grant = grantRow?.data as FounderSpendGrant | undefined;
+      if (!grant
+        || grant.objectiveKey !== intent.objectiveKey
+        || grant.revokedAt !== null
+        || grant.limitUsd < priceUsd) {
+        throw new Error("priced intent is not covered by a live founder spend grant");
+      }
+    }
+
+    // Drive the SAME kernel the live rail drives: handoff, provider result,
+    // independent verification. Event ids are derived, so a replay of the same
+    // simulation is a kernel-level duplicate, not a second effect.
+    const handoffEventId = `sim_event_${identity}_handoff`;
+    const handedOff = advanceIntent(intent, "handed_off", now, {
+      eventId: handoffEventId,
+      note: "SIMULATION: handed off at the external boundary (no rail call)",
+    });
+    if (!handedOff.ok) throw new Error(`simulation handoff refused: ${handedOff.reason}`);
+    intent = handedOff.intent;
+    await ctx.db.patch(row._id, { data: intent });
+
+    const providerEventId = `sim_event_${identity}_provider`;
+    const providerResult = applyRailEvent(intent, {
+      kind: "provider_result",
+      intentId: intent.intentId,
+      eventId: providerEventId,
+      resultEvidenceId,
+      at: now,
+    });
+    if (!providerResult.ok) throw new Error(`simulation provider result refused: ${providerResult.reason}`);
+    intent = providerResult.intent;
+    await ctx.db.patch(row._id, { data: intent });
+
+    const verificationEventId = `sim_event_${identity}_verification`;
+    const verification = applyRailEvent(intent, {
+      kind: "verification_result",
+      intentId: intent.intentId,
+      eventId: verificationEventId,
+      verified: true,
+      verificationEvidenceId: `sim_verification_${identity}`,
+      at: now,
+    });
+    if (!verification.ok) throw new Error(`simulation verification refused: ${verification.reason}`);
+    intent = verification.intent;
+    await ctx.db.patch(row._id, { data: intent });
+
+    // Persist the simulated acquisition result on the objective so the worker
+    // read port and the M5 read model can present it truthfully as a
+    // simulation. One result per intent; a re-run replaces only its own row.
+    const objectiveRows = await ctx.db.query("objectives")
+      .withIndex("by_key", (q) => q.eq("key", intent.objectiveKey)).collect();
+    const objectiveRow = objectiveRows[0];
+    if (!objectiveRow) throw new Error(`objective not found: ${intent.objectiveKey}`);
+    const record = objectiveRow.data as {
+      key: string;
+      acquisitionResults?: ExternalAcquisitionResult[];
+      updatedAt: number;
+      [key: string]: unknown;
+    };
+    const result: ExternalAcquisitionResult = {
+      intentId: intent.intentId,
+      requirementKey: intent.requirementKey,
+      contractRevision: intent.contractRevision,
+      resultEvidenceId,
+      provenance: "simulation",
+      providerId: intent.target.providerId ?? "unknown",
+      serviceId: intent.target.serviceId ?? "unknown",
+      offeringId: intent.target.offeringId ?? "unknown",
+      resourceClass: intent.target.resourceClass ?? "unknown",
+      content,
+      responseHash,
+      recordedAt: now,
+      verifiedAt: now,
+    };
+    const acquisitions = (record.acquisitionResults ?? []).filter(
+      (existing) => existing.intentId !== intent.intentId,
+    );
+    // The objectives table stores free-form aggregate data; the patch keeps the
+    // whole record and swaps only the acquisition set (same pattern as
+    // beginInterpretation's management patch).
+    await ctx.db.patch(objectiveRow._id, {
+      data: {
+        ...record,
+        acquisitionResults: [...acquisitions, result],
+        updatedAt: now,
+      },
+    } as never);
+    await ctx.db.insert("objectiveEvents", {
+      objectiveKey: intent.objectiveKey,
+      data: {
+        at: now,
+        kind: "system" as const,
+        text: `SIMULATION: external acquisition verified at the simulated boundary for intent ${intent.intentId} (evidence ${resultEvidenceId}); no provider was contacted and no payment occurred.`,
+      },
+    });
+
+    // Wake Somebody through the normal path: verification_result on the intent.
+    const dedupeKey = `intent:${intent.intentId}:simulation_verified:${identity}`;
+    const existingWake = await ctx.db.query("wakeEvents")
+      .withIndex("by_dedupe", (q) => q.eq("dedupeKey", dedupeKey)).unique();
+    if (!existingWake) {
+      const wake: WakeEvent = {
+        eventId: `wake_sim_${identity}`,
+        objectiveKey: intent.objectiveKey,
+        reason: "verification_result" as WakeReason,
+        refKind: "intent",
+        refId: intent.intentId,
+        summary: "SIMULATION: verified external acquisition result recorded at the simulated boundary.",
+        at: now,
+        consumedAt: null,
+      };
+      await ctx.db.insert("wakeEvents", {
+        eventId: wake.eventId,
+        objectiveKey: wake.objectiveKey,
+        dedupeKey,
+        data: wake,
+      });
+      await ctx.scheduler.runAfter(0, internal.management.runManagementPass, {
+        objectiveKey: intent.objectiveKey,
+        reason: wake.reason,
+      });
+    }
+    return { verified: true, duplicate: false, resultEvidenceId, intentState: intent.state };
   },
 });

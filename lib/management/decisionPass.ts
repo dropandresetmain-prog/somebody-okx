@@ -64,6 +64,9 @@ export type DecisionPassReads = {
   creationAllowed: boolean;
   budget: ObjectiveBudget | null;
   grant: SpendGrantRead;
+  // The objective's actual controlled artifact key, when it has one. Optional so
+  // pure callers without a controlled artifact keep their existing behavior.
+  artifactKeyForInternalProof?: string | null;
   at: number;
   // Deterministic, stable per (objective, requirement, revision, attempt) so a
   // replay rebuilds the same decision row identity.
@@ -153,15 +156,17 @@ export async function buildDecisionPassInput(
       };
 
   // artifactKeyForInternalProof: the governed internal proof this requirement
-  // declares, if any (unchanged discipline — read from the requirement, not
-  // assumed). A non-launch requirement simply carries none.
-  let artifactKeyForInternalProof: string | null = null;
-  for (const proof of requirement.proofs) {
-    if (proof.proofKind === "company_artifact_version" && proof.params.artifactKey) {
-      artifactKeyForInternalProof = String(proof.params.artifactKey);
-      break;
-    }
-  }
+  // binds, derived from what the AUTHORIZED ENVELOPE can actually do. A semantic
+  // requirement starts proof-free (R3 A1); when the model proposes a capability
+  // whose envelope may mutate company state, proof binds to the objective's real
+  // controlled artifact (read fresh by the caller) so artifact-producing work can
+  // never be satisfied by advice alone. Everything else stays proof-free here;
+  // strategy-derived proofs attach at authorization (decision.ts).
+  const artifactKeyForInternalProof = requiredPermissions.includes(
+    "update_company_artifact",
+  )
+    ? (reads.artifactKeyForInternalProof ?? null)
+    : null;
 
   const grant = reads.grant;
   const budget = reads.budget;
@@ -211,7 +216,13 @@ export async function buildDecisionPassInput(
       decisionId: reads.decisionId,
       spendAuthorityUsd: grant ? grant.limitUsd : null,
       spendApprovalId: grant ? grant.approvalId : null,
-      externalAuthority: "m3_unavailable",
+      // M6.1: the accepted M4×M3 production driver is available as a bounded
+      // hand-off boundary, so authorized external intents may be born hand-off-
+      // eligible (with the founder approval record bound). M3 remains the ONLY
+      // financial authority: this mode grants no payment, and this module never
+      // contacts M3. "m3_unavailable" remains the truthful mode where the
+      // boundary is genuinely absent.
+      externalAuthority: "m3_available_bounded",
       waiverRequested: false,
     },
   };

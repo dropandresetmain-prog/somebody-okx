@@ -2,7 +2,136 @@
 
 Authoritative integrated code baseline: `main@a9a0b3d31a7125e83fe0771a783ee62cbd96914a`.
 
-## Current truth
+## M6.1 FIRST PRODUCT E2E — LIVE LEDGER (branch `feat/m6-1-first-product-e2e`)
+
+Started 2026-09-20 from `main@2bc3e06a60e32fe5e987b1dced35627f7dae2827`
+(docs-only reconciliation on accepted M5 baseline `a9a0b3d31a7125e83fe0771a783ee62cbd96914a`;
+ancestry verified). Untrusted experimental branch
+`shipping/m1-first-product-e2e@36ce608e6824b2269e16ca55dad9d63422245491` inspected;
+only bounded ideas are reused (see checkpoint notes); no wholesale merge.
+
+Goal: the canonical founder Objective physically completes end-to-end through the
+real management engine, real worker/model execution and the real M5 surface, with
+ONLY the external provider/payment boundary deterministically simulated.
+
+Constraints carried for every checkpoint:
+
+- No live payment, signing, wallet use, transaction submission, or paid provider call.
+- The simulation is operator-token-gated, fails closed on stale/unauthorized state,
+  never fabricates payment/settlement/M3 truth, and persists provenance="simulation".
+- No scenario-specific orchestration in generic kernels; no reopening accepted
+  M3/M4/M5 architecture; no product-scope expansion.
+- M5 must render simulated acquisitions as SIMULATION ONLY, never as payment.
+
+### CP1 — recon + bounded implementation plan (complete)
+
+- Git state verified; M6.1 branch created from exact main HEAD.
+- Runtime preflight: this sandbox has NO Convex deployment and NO
+  OPENROUTER_API_KEY / LIVE_AI_ENABLED / AI_MODEL / SOMEBODY_DEMO_OPERATOR_TOKEN /
+  M4_M3_DRIVER_TOKEN / M4_M3_FACT_ATTESTATION_KEY configured. Code changes and
+  deterministic tests run here; the physical live-model E2E (CP3) requires the
+  founder to configure a deployment. Exact founder steps recorded at CP3.
+- Implementation plan (smallest generic path, no architecture change):
+  1. External authority: production `EXTERNAL_AUTHORITY_MODE` becomes
+     `m3_available_bounded` (intent minting + hand-off eligibility only; M3 stays
+     the sole financial authority and no production code path invokes it here).
+  2. Artifact-proof binding: the decision pass binds artifact proof to the
+     objective's actual controlled artifact (via readDecisionContext) whenever the
+     authorized envelope can mutate artifacts — semantic requirements stay
+     strategy-agnostic (R3 A1 preserved).
+  3. Useful acquisition results: `ExternalAcquisitionResult` persisted on the
+     objective aggregate; workers observe verified content through the bounded
+     port (untrusted DATA wrapping); artifact writes must cite validated evidence
+     ids once verified acquisitions exist; refs persist on artifact versions.
+  4. Ordering: generic reducer sequencing already serializes requirements;
+     HYBRID delivery becomes two-phase (external intent verified → then internal
+     assignment dispatchable) inside dispatch/strategyDelivery only.
+  5. Simulation boundary: operator-gated `simulateVerifiedAcquisition` + read-only
+     `simulationCandidate` in convex/m3Driver.ts driving the SAME intent kernels.
+  6. Operator setup: `setupCanonicalDemoObjective` seeds artifact v1 + founder
+     spend grant, then enters the normal interpretation path (no product shortcut).
+  7. M5 truthfulness: simulated acquisitions never render payment facts; labels,
+     evidence views, artifact refs and mission story updated from persisted rows.
+
+### CP2 — M6.1 causal seams implemented (complete — commit pending)
+
+Implementation is generic (no scenario branches in kernels); the canonical story
+emerges from the demo objective text + seeded artifacts only.
+
+1. **Authority mode**: `EXTERNAL_AUTHORITY_MODE = "m3_available_bounded"` in
+   convex/management.ts; decision-pass builder takes `m3_available_bounded`.
+   Intents are now born `authorized` (real current execution intent). Dispatch
+   still never contacts a rail; M3 stays the sole financial authority.
+2. **Artifact-proof binding (R3 A1 preserved)**: decision pass binds
+   `company_artifact_version` proof to the objective's actual controlled artifact
+   via `readDecisionContext.artifactKeyForInternalProof` (first companyArtifacts
+   key) whenever the envelope grants `update_company_artifact`; no requirement
+   text is scanned.
+3. **Acquisition results**: `ExternalAcquisitionResult` type
+   (lib/objective/types.ts) persisted on the objective
+   (`acquisitionResults`, validator optional). Workers see verified results only
+   via `readWorkerObservation.acquiredInputs` (2000-char bound; unverified never
+   exposed); runtime wraps each as `<untrusted_content source="external_acquisition:…">`.
+4. **Evidence-ref provenance**: `updateCompanyArtifact` validates
+   `usedAcquisitionEvidenceIds` fail-closed (must exist, be verified, intent
+   resultEvidenceId match; verified acquisitions present ⇒ must be cited) and
+   persists them on the artifact version (`usedAcquisitionEvidenceIds`, deduped).
+5. **Reducer rule 8b** (my addition beyond the experimental branch): a VERIFIED
+   intent with no satisfaction attempt routes to `verify_requirement` — else a
+   verified BUY stalls forever because satisfaction only counts verified intents.
+6. **Simulation boundary** (convex/m3Driver.ts, operator-gated): read-only
+   `simulationCandidate` (oldest authorized intent matching the fixture's
+   resourceClass) + `simulateVerifiedAcquisition` driving the SAME kernel as the
+   live rail: `handed_off → provider_result → verification_result` via
+   `advanceIntent`/`applyRailEvent`, derived result identity
+   (`sha256(intentId ⊹ responseHash ⊹ "m6-1-simulation")`, 24 hex), provenance
+   "simulation" persisted, SIMULATION objective event, normal-path
+   `verification_result` wake → `runManagementPass`. Fails closed: no/wrong
+   token (constant-time), non-authorized state, stale contract/requirement
+   revision, resourceClass mismatch, priced intent without a live grant bound to
+   it. Replay on the same verified intent+content is an idempotent duplicate.
+7. **Demo setup**: `setupCanonicalDemoObjective` (operator-gated, spend limit
+   (0,5]) seeds the canonical request, artifact v1 (runId "seed"), empty
+   acquisitions, `management.contractId: null` engine record, a non-payment
+   founder grant (`demo_grant_<key>`), and enters the NORMAL interpretation
+   path (beginInterpretation). Interpretation prompt now instructs stable
+   `req_01…` keys ordered by causal dependency with external-evidence
+   availability as its own required truth BEFORE the dependent artifact truth,
+   still WHAT-only (no strategy/provider/spend vocabulary).
+8. **M5 truthfulness**: simulated acquisitions never render payment stages
+   beyond "prepared" (1-entry history), boundaryNote prefixed "SIMULATION ONLY —",
+   mission story says "Simulated acquisition boundary executed"/"Simulated
+   provider result recorded"/"Simulated external result verified" and never
+   "Payment submitted"; evidence view origin "provider_result" (labelled
+   SIMULATION, verified state) only when the intent is verified with matching
+   resultEvidenceId; artifact versions carry their own evidenceRefs.
+9. **REJECTED from the experimental branch**: its two-phase HYBRID delivery
+   (strategyDelivery treating an open intent as delivered, dispatch gating the
+   internal half on intent verification). It silently breaks the accepted A2
+   semantics ("one dispatch delivers assignment AND intent"); accepted HYBRID
+   semantics restored and pinned by test. Causal ordering comes from
+   requirement ordering (req_01 diagnosis → req_02 evidence → req_03 artifact),
+   not from staged dispatch.
+
+Evidence: `tests/m61FirstProductE2E.test.ts` 11/11 (rule 8b verified-intent
+routing; A2 HYBRID semantics pinned; simulation happy path — kernel stages,
+provenance, wake, idempotent replay; fail-closed token/class/grant/stale;
+worker surface verified-only exposure; artifact evidence-ref validation both
+directions; demo setup gating + seed shape; M5 never renders payment for a
+simulation, evidence/artifact refs). Broad gate once: `npm test` 668 pass / 0
+fail; root + Convex TypeScript clean. Restored the sandbox-local esbuild shim
+that `npm install` had clobbered (environment-only; the bundle probe is green
+again).
+
+### CP3 — canonical physical E2E (pending founder-configured deployment)
+
+### CP4 — M5 renders completed run truthfully (pending)
+
+### CP5 — M6.1 freeze (pending)
+
+---
+
+## Historical current-truth snapshot (pre-M6.1)
 
 - M3 + M4 application/payment boundary: integrated and accepted by R3.
 - M5 Executive Mission Control: visually accepted and wired to the authoritative normalized Convex read model.

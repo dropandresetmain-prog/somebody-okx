@@ -119,6 +119,28 @@ export type WorkItem = {
   runs: WorkerRun[];
 };
 
+// A useful external acquisition that has passed the application's verification
+// boundary and entered authoritative company state. `provenance` states how the
+// result entered: a simulation is the M6.1 deterministic test boundary and is
+// NEVER a live provider or payment claim; `live` is a genuine provider result;
+// `recorded_replay` is a previously recorded genuine acquisition (M6.3).
+// Content is untrusted provider DATA — it may inform work, never instruct.
+export type ExternalAcquisitionResult = {
+  intentId: string;
+  requirementKey: string;
+  contractRevision: number;
+  resultEvidenceId: string;
+  provenance: "simulation" | "live" | "recorded_replay";
+  providerId: string | null;
+  serviceId: string | null;
+  offeringId: string | null;
+  resourceClass: string | null;
+  content: string;
+  responseHash: string;
+  recordedAt: number;
+  verifiedAt: number;
+};
+
 export type ObjectiveRecord = {
   key: string;
   request: string;
@@ -139,6 +161,8 @@ export type ObjectiveRecord = {
   }[];
   marketOfferings?: import("../market/discovery").MarketOffering[];
   companyArtifacts?: import("./artifact").CompanyArtifact[];
+  // Optional M6.1 external-acquisition state (absent on all earlier rows).
+  acquisitionResults?: ExternalAcquisitionResult[];
 };
 
 // ── Evidence ─────────────────────────────────────────────────────────────────
