@@ -117,9 +117,22 @@ async function probeA_tool(label, modelId) {
     name: "Tool Probe",
     model: modelId,
     instructions:
-      "You MUST call the ping tool exactly once before answering. After the tool returns, reply with DONE.",
+      "You MUST call the ping tool exactly once. Do not invent other tools.",
+    // Match live runWorker path (lib/worker/runtime.ts):
+    // toolChoice stays required; finish is decided by toolUseBehavior, not prose.
     modelSettings: { parallelToolCalls: false, toolChoice: "required" },
+    resetToolChoice: false,
     tools: [ping],
+    toolUseBehavior: async () => {
+      if (pingCalls >= 1) {
+        return {
+          isFinalOutput: true,
+          isInterrupted: undefined,
+          finalOutput: "DONE_AFTER_PING",
+        };
+      }
+      return { isFinalOutput: false };
+    },
   });
   const runner = new Runner({ modelProvider: provider, tracingDisabled: true });
   const started = Date.now();
@@ -129,15 +142,18 @@ async function probeA_tool(label, modelId) {
       typeof result.finalOutput === "string"
         ? result.finalOutput
         : JSON.stringify(result.finalOutput);
+    const finishedNormally = String(final).includes("DONE_AFTER_PING");
     const summary = {
-      ok: pingCalls >= 1,
+      ok: pingCalls >= 1 && finishedNormally,
       ms: Date.now() - started,
       pingCalls,
       finalOutput: String(final).slice(0, 200),
       verdict:
-        pingCalls >= 1
-          ? "PASS: tool called through OpenAIProvider+Runner+OpenRouter"
-          : "FAIL: model returned without calling ping",
+        pingCalls >= 1 && finishedNormally
+          ? "PASS: real tool call → local execute → result → finish via toolUseBehavior"
+          : pingCalls >= 1
+            ? "FAIL: tool ran but run did not finish normally"
+            : "FAIL: model returned without calling ping",
     };
     console.log(JSON.stringify(summary, null, 2));
     return summary;

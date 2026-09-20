@@ -571,8 +571,42 @@ Rules for Folio:
 4. A free endpoint's uptime, tool support, context limit, provider order and privacy terms can change independently of the model weights.
 5. If a free route fails or rate-limits, fall back. Do not spend engineering time stabilizing a route whose main value is being free.
 
+### Somebody × OKX — OpenRouter free models for M6.1 (structured JSON + tools)
+
+Somebody management/worker paths need **both**:
+
+- `response_format` / `structured_outputs` (interpretation + decision JSON schema), and
+- `tools` / `tool_choice` (MAKE worker).
+
+Catalog check via OpenRouter `GET /api/v1/models` (snapshot **2026-09-20**). Re-query before trusting; free pool churns.
+
+**Use these (advertise structured + tools):**
+
+| Slug | Notes |
+| --- | --- |
+| `nex-agi/nex-n2.5-pro:free` | Tried — tool OK; management interp timed out / weak schema |
+| `nex-agi/nex-n2.5-mini:free` | Isolated probe promising (tool + JSON). Prior live STOP A refused — levels/`minimumCompletionBar` contract validation |
+| `nvidia/nemotron-3-super-120b-a12b:free` | Tried — text OK; fake tool JSON (no call); empty schema body |
+| `google/gemma-4-31b-it:free` | Tried — 429 on tools; `require_parameters` → no endpoints for schema |
+| `google/gemma-4-26b-a4b-it:free` | Also catalogs structured + tools |
+| `liquid/lfm-2.5-2.6b:free` | Catalogs structured + tools |
+| `dots-studio/dots-3-note-preview:free` | Catalogs structured + tools |
+| `qwen/qwen3.8-27b:free` | `structured_outputs` yes; no separate `response_format` flag |
+| `openrouter/free` | Router — only with `provider.require_parameters: true` on schema calls |
+
+**Do not put on the M6.1 schema path (free, but no structured/response_format in catalog):**
+
+- `nvidia/nemotron-3.5-content-safety:free` — returns classifier prose (`User Safety: safe`), not JSON
+- `nvidia/nemotron-3-ultra-550b-a55b:free` — tools yes, structured flag **no**
+- InclusionAI `ling-3.0-flash-* :free`, Poolside Laguna `:free`, Inkling `:free`, `cohere/north-mini-code:free`, `z-ai/glm-5.2:free`, etc.
+
+Runtime note: schema-bound OpenRouter calls send `provider: { require_parameters: true }` so non-structured free endpoints are excluded (`convex/objectiveRunner.ts`). HTTP timeout remains **180s** (300s stash raise rejected — masks slow/broken routes).
+
 References:
 
+- https://openrouter.ai/docs/guides/routing/routers/free-router
+- https://openrouter.ai/docs/guides/features/structured-outputs
+- https://openrouter.ai/docs/guides/routing/provider-selection
 - https://openrouter.ai/docs/guides/privacy/data-collection
 - https://openrouter.ai/providers/
 - https://openrouter.ai/blog/tutorials/kilo-code-openrouter/

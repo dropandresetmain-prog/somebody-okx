@@ -110,7 +110,7 @@ When local latency matters, prefer Cursor/Codex/Claude Code over Qoder. For boun
 - **GLM:** GLM-5.3-Flash for Bounded/Normal-defined implementation; GLM-5.3 for Complex implementation/debugging/review.
 - **Nex-AGI N2.5:** only Mini and Pro are operational Folio routes through OpenRouter. Use as specialist/experimental agentic browser/computer-use routes, not Normal defaults.
 - **Kimi:** Kimi K3 is a Complex/long-horizon alternative, not a universal default.
-- **NVIDIA Nemotron:** specialist/challenger for non-sensitive bounded work; 3.5 Lightning is not promoted to primary coding based on speed alone.
+- **NVIDIA Nemotron:** specialist/challenger for non-sensitive bounded work; 3.5 Lightning is not promoted to primary coding based on speed alone. For Somebody × OKX M6 free OpenRouter runs, prefer catalog-flagged structured+tools slugs (see `MODEL_ARSENAL.md` — Somebody × OKX free list); avoid content-safety and Ultra free unless re-checked.
 
 See [`MODEL_ARSENAL.md`](MODEL_ARSENAL.md) before changing the roster or model-specific claims.
 

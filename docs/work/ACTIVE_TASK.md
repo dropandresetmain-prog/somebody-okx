@@ -6,6 +6,50 @@ Authoritative integrated code baseline: `main@a9a0b3d31a7125e83fe0771a783ee62cbd
 
 Started 2026-09-20 from accepted M6.1 candidate `feat/m6-1-first-product-e2e@50acb6b`.
 
+### CP-FINAL — fresh free-model physical convergence (2026-09-21) — PARTIAL
+
+Starting SHA: `c57625f`. Runtime model: `nex-agi/nex-n2.5-mini:free` (FREE only).
+
+**Stash `stash@{0}` reconciliation:**
+- KEEP/COMMIT: OpenRouter `provider.require_parameters: true` on schema calls
+  (`convex/objectiveRunner.ts`) — SDK probe confirmed the field is forwarded;
+  timeout left at **180s** (300s DISCARD — Mini schema ~16s, tools ~1s).
+- KEEP/COMMIT: free-model evidence notes in `MODEL_ARSENAL.md` /
+  `AGENT_MODEL_SELECTION.md`; tool-probe alignment with live `toolUseBehavior`.
+- DISCARD: 300s HTTP timeout + e2e poll 90 expansion (still in stash; do not pop).
+
+**Qualification (before Objective):** Mini tool PASS; Mini interpretation schema
+PASS via production `parseOutcomeContractProposal` / `parseRequirementProposals`
+(~15.7s). Pro not tested.
+
+**Fresh Objective:** `obj_1789923758925_0dfrsh` (canonical request; spend $2;
+no seeded BUY/HYBRID/gap).
+
+| Gate | Result | Evidence |
+| --- | --- | --- |
+| STOP A | PASS | interp ~205s; 7 requirements; contract applied |
+| STOP A1 | PASS | MAKE → tools → validated `proprietary_data` → INPUT_BLOCKED (`need_1789924037821_y6l3jd`, `evidence_sufficiency`) |
+| STOP B/B1 | PASS | redecide → HYBRID → `int_af64766e7e437615302a752a` / `proprietary_data` / rev 1 |
+| Simulation | PASS once | `sim_result_88f72adbcd9aee4f0cacd3b5`; duplicate idempotent; NO wallet/signing/provider/tx/payment |
+| Post-acq resume | PASS (partial) | Need → `fulfilled`; management wake; dependent run `run_14553e47867bb8f28712e599` dispatched |
+| Dependent worker | **FAIL** | tools=1; re-INPUT_BLOCKED; artifact stayed `launch/page-message` **v1**; no consumption of acquired content |
+| Completion / M5 | NOT REACHED | — |
+
+**Act Now root cause (blocks M6.1 acceptance):**
+`convex/objectives.ts` observation builder sets
+`yieldReason` when `record.lastDeliveryFailureClass === "INPUT_BLOCKED"` **or**
+a gap proposed by this run. After verified acquisition the class remains
+`INPUT_BLOCKED`, so the dependent worker observation is poisoned with
+`yieldReason` even though `acquiredInputs` includes
+`sim_result_88f72adbcd9aee4f0cacd3b5`. Runtime instructs immediate stop → no
+artifact revision → management authorizes a **second** HYBRID
+(`int_17ccc4ae5de49d4d35cad0a7`) while prior need is already fulfilled.
+Do **not** simulate that second intent.
+
+**Do not:** raise elapsed ceiling; patch Objective state; create another
+purchase; start M6.2. Next: minimal yieldReason fix (this-run gap only /
+clear failure class on material progress) + one new physical Objective.
+
 ### CP-STOP-B — redecide after validated INPUT_BLOCKED (COMPLETE — PASS)
 
 Starting SHA: `273861c`. Final: this commit.

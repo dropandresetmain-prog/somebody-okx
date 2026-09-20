@@ -686,7 +686,30 @@ type PlanningConfiguration = ReturnType<typeof providerConfiguration>;
 // Free-router models (e.g. Nemotron) routinely take 60–120s for schema-bound
 // completions. A 60s HTTP timeout aborts a healthy call and applyInterpretation
 // then records "contract proposal is not an object" from the null fallback.
+// Keep the smallest bound that supports the selected free route; do not raise
+// to 300s merely because one slow probe needed several minutes.
 const MODEL_HTTP_TIMEOUT_MS = 180_000;
+
+/**
+ * OpenRouter structured-output routing.
+ * Set provider.require_parameters so endpoints that ignore response_format
+ * (json_schema) are not selected — otherwise free routers can land on models
+ * that return prose (e.g. content-safety classifiers).
+ * Confirmed: OpenAI SDK forwards this field in the request body.
+ * @see https://openrouter.ai/docs/guides/features/structured-outputs
+ * @see https://openrouter.ai/docs/guides/routing/provider-selection
+ */
+type OpenRouterChatCreate = OpenAI.Chat.ChatCompletionCreateParamsNonStreaming & {
+  provider?: { require_parameters?: boolean };
+};
+
+function structuredChatCreateParams(
+  configuration: PlanningConfiguration,
+  params: OpenAI.Chat.ChatCompletionCreateParamsNonStreaming,
+): OpenRouterChatCreate {
+  if (configuration.provider !== "openrouter") return params;
+  return { ...params, provider: { require_parameters: true } };
+}
 
 // A single non-interactive completion constrained to a strict JSON schema, so
 // the planner cannot return prose or free-form authority. Reasoning is not
@@ -702,7 +725,8 @@ async function proposePlanWithOpenAI(input: {
     timeout: MODEL_HTTP_TIMEOUT_MS,
     maxRetries: 1,
   });
-  const completion = await client.chat.completions.create({
+  const completion = await client.chat.completions.create(
+    structuredChatCreateParams(configuration, {
     model: configuration.model,
     messages: [
       {
@@ -761,7 +785,8 @@ async function proposePlanWithOpenAI(input: {
         },
       },
     },
-  });
+    }),
+  );
   const raw = completion.choices[0]?.message?.content;
   if (!raw) throw new Error("Planner returned no proposal");
   const parsed: unknown = JSON.parse(raw);
@@ -1263,7 +1288,8 @@ async function interpretWithOpenAI(input: {
     timeout: MODEL_HTTP_TIMEOUT_MS,
     maxRetries: 1,
   });
-  const completion = await client.chat.completions.create({
+  const completion = await client.chat.completions.create(
+    structuredChatCreateParams(configuration, {
     model: configuration.model,
     messages: [
       {
@@ -1404,7 +1430,8 @@ async function interpretWithOpenAI(input: {
         },
       },
     },
-  });
+    }),
+  );
   const raw = completion.choices[0]?.message?.content;
   if (!raw) throw new Error("Interpretation model returned no proposal");
   const parsed: unknown = JSON.parse(stripJsonFences(raw));
@@ -1481,7 +1508,8 @@ async function proposeStrategyWithModel(input: {
     timeout: MODEL_HTTP_TIMEOUT_MS,
     maxRetries: 1,
   });
-  const completion = await client.chat.completions.create({
+  const completion = await client.chat.completions.create(
+    structuredChatCreateParams(configuration, {
     model: configuration.model,
     messages: [
       {
@@ -1531,7 +1559,8 @@ async function proposeStrategyWithModel(input: {
         },
       },
     },
-  });
+    }),
+  );
   const raw = completion.choices[0]?.message?.content;
   if (!raw) throw new Error("Strategy proposal model returned no content");
   const parsed: unknown = JSON.parse(raw);
@@ -1562,7 +1591,8 @@ async function recommendWithModel(input: {
     timeout: MODEL_HTTP_TIMEOUT_MS,
     maxRetries: 1,
   });
-  const completion = await client.chat.completions.create({
+  const completion = await client.chat.completions.create(
+    structuredChatCreateParams(configuration, {
     model: configuration.model,
     messages: [
       {
@@ -1619,7 +1649,8 @@ async function recommendWithModel(input: {
         },
       },
     },
-  });
+    }),
+  );
   const raw = completion.choices[0]?.message?.content;
   if (!raw) throw new Error("Recommendation model returned no content");
   const parsed: unknown = JSON.parse(raw);
