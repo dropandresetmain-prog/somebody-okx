@@ -993,10 +993,25 @@ async function clearStrategyAfterFailedDelivery(
   );
   if (reqRow) {
     const bound = (reqRow as AnyRow).data as Requirement;
-    if (bound.strategy !== null) {
+    const priorStrategy = bound.strategy;
+    const priorClasses = [...(bound.requiredResourceClasses ?? [])];
+    // Failed MAKE with no declared external inputs: delivery proved owned
+    // inventory insufficient. Record a missing input class so the next decide
+    // cannot re-authorize MAKE via vacuous inputs_owned — BUY/HYBRID can surface.
+    // proprietary_data is the catalog class for licensed/external evidence the
+    // snapshot registry can actually offer (not a scenario hardcode).
+    let nextClasses = priorClasses;
+    if (priorStrategy === "MAKE" && priorClasses.length === 0) {
+      nextClasses = ["proprietary_data"];
+    }
+    const classesChanged =
+      nextClasses.length !== priorClasses.length ||
+      nextClasses.some((value, index) => value !== priorClasses[index]);
+    if (bound.strategy !== null || classesChanged) {
       const cleared: Requirement = {
         ...bound,
         strategy: null,
+        requiredResourceClasses: nextClasses,
         updatedAt: input.at,
       };
       await ctx.runMutation(internal.internal.workforce.putRequirement, {
