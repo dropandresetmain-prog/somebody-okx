@@ -18,7 +18,8 @@ relaunch recommendation.
 
 ## Checkpoint
 
-- Pushed SHA: _(set after this push)_
+- Pushed SHA: `83f4d1fabb4cd638e83bce36ed42d27578b732e0`
+- Prior act-now: `4177916` (requirementKind), `a01e6d2` (worker/acq/artifact)
 - Next: **OWNER REVIEW** of act-now candidate. Do not deploy / physical Gate 1.
 
 ## Done (act-now)
