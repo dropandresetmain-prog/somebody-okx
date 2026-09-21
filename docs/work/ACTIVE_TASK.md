@@ -1,7 +1,7 @@
 # ACTIVE TASK — M6.1 manager–execution mini-refactor
 
 Updated: 21 September 2026 (Singapore)
-Status: **FIXER FINALIZATION/EVIDENCE CLOSURE COMPLETE / NOT GATE 1 PASS**
+Status: **GATE 1 CANDIDATE DEPLOYED / PHYSICAL GATE 1 NOT RUN**
 
 ## Goal
 
@@ -12,10 +12,52 @@ relaunch recommendation.
 ## Branch / base
 
 - Branch: `refactor/m6-1-manager-execution-loop`
-- Pass-3 start SHA: `7d49913`
+- Astra-approved Gate 1 candidate SHA: `a0ee4fe18febda01cd049513e08f9bd7e196b50d`
+- Implementation closure SHA (code under candidate): `0feefcd`
 - Preserved: `stash@{0}`; untracked `scripts/_tmp-*`
 
-## Checkpoint
+## Deployment checkpoint (Gate 1 preflight)
+
+- **Deployed SHA:** `a0ee4fe18febda01cd049513e08f9bd7e196b50d`
+- **Environment:** Convex development `clean-tapir-151` (`dropandreset-main` /
+  `somebody-okx`, dev deployment `somebody-okx-m1`)
+- **URL host:** `clean-tapir-151.convex.cloud` (from local `NEXT_PUBLIC_CONVEX_URL`)
+- **Command:** `npx convex dev --once` (21 Sep 2026 ~19:43 +08)
+- **Result:** success — Convex functions ready (~14.7s)
+- **Convex CLI / package:** `1.45.0`
+- **Gate 1 physical run:** **NOT RUN** (no fresh canonical Objective created in
+  this pass)
+- **Next action:** fresh execution chat for **physical Gate 1 Run #1** on this
+  deployment and pinned runtime configuration
+
+### Sanitized runtime configuration (deployment env)
+
+| Variable | Present | Notes |
+| --- | --- | --- |
+| `AI_PROVIDER` | yes | `openrouter` |
+| `AI_MODEL` | yes | `deepseek/deepseek-v4.1-flash` (founder-approved paid pin) |
+| `LIVE_AI_ENABLED` | yes | `true` |
+| `SOMEBODY_DEMO_OPERATOR_TOKEN` | yes | operator gate configured |
+| `OPENROUTER_API_KEY` | yes | not logged |
+| `M4_M3_EXECUTION_ENABLED` | **absent** | live M3/payment execution disabled |
+
+Local `.env.local` still lists a free-tier `AI_MODEL` for probes; **server-side**
+model selection for Gate 1 follows Convex deployment env above.
+
+### Post-deploy smoke (minimal)
+
+- `scripts/_tmp-m61-conn-preflight.mjs`: 8/8 `listObjectives` reads OK; operator
+  path OK; IPv4 TCP/TLS OK
+- `objectives.listObjectives` reachable; `m3Driver.simulationCandidate` operator
+  gate refuses bad token; read path OK on historical objective
+- No fresh Objective created; no physical loop attempted
+
+### Prior accepted evidence (not re-run this pass)
+
+- Pass-3 fixer finalization / focused closure tests and clean `typecheck:convex`
+  recorded at `0feefcd` / `a0ee4fe` docs checkpoint
+
+## Checkpoint (finalization pass — complete)
 
 - Starting SHA: `7d49913990ff3ea8dd8251b62c0b65ecea235e42`
 - Final pushed SHA: `0feefcd`
@@ -43,11 +85,13 @@ relaunch recommendation.
 - [x] `executeWorker` seam completed + wake evidence
 - [x] F/G production whole-chain regressions still pass
 
-### Remaining physical acceptance (do not run in this pass)
+### Remaining physical acceptance
 
-- [ ] Physical Gate 1 (live models / deploy / real payments)
+- [ ] Physical Gate 1 Run #1 (live models on deployed candidate; acquisition
+      boundary simulated only)
 - [ ] Gate 2
 
 ## Do not
 
-Deploy / physical Gate 1 / live models / live payment / Gate 2 / touch stash@{0}
+Resume historical failed Objectives / live payment / Gate 2 / M6.2 / merge to
+main / touch `stash@{0}` without explicit instruction
