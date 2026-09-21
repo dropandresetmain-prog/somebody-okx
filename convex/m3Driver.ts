@@ -443,6 +443,12 @@ export const simulateVerifiedAcquisition = mutation({
       responseHash,
       recordedAt: now,
       verifiedAt: now,
+      ...(intent.needDedupeKey
+        ? { needDedupeKey: intent.needDedupeKey }
+        : {}),
+      ...(intent.resourceNeedId
+        ? { resourceNeedId: intent.resourceNeedId }
+        : {}),
     };
     const acquisitions = (record.acquisitionResults ?? []).filter(
       (existing) => existing.intentId !== intent.intentId,

@@ -55,6 +55,12 @@ export type MissingInputFindingInput = {
   purpose: string;
   reasonOwnedInsufficient: string;
   supportingEvidenceIds: string[];
+  /** Serial semantic adequacy gap — does NOT require NOT_AVAILABLE. */
+  semanticGap?: boolean;
+  unansweredQuestion?: string;
+  observedEvidenceIds?: string[];
+  whyInsufficient?: string;
+  howAdditionalWouldChange?: string;
 };
 
 /** Tagged terminal handoff for the serial manager–execution path. */

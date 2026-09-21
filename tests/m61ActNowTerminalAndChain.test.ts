@@ -194,7 +194,123 @@ test("terminal: NEEDS_INPUT without validated gap does not set INPUT_BLOCKED", a
     return (row as { data: ObjectiveRecord }).data;
   });
   assert.notEqual(data.lastDeliveryFailureClass, "INPUT_BLOCKED");
-  assert.equal(data.acceptedTerminal?.outcome, "refused_unconfirmed");
+  assert.equal(data.acceptedTerminal, null);
+  assert.equal(data.lastUnconfirmedTerminal?.terminal, "NEEDS_INPUT");
+});
+
+test("terminal: refused NEEDS_INPUT then corrected valid NEEDS_INPUT same run accepted", async () => {
+  const t = convexTest(schema, modules);
+  const key = "obj_term_correct";
+  const runId = "run_correct";
+  await seedRunningSerial(t, key, runId, {
+    acquisition: true,
+  });
+
+  // Seed application observation evidence the gap can cite.
+  await t.mutation(async (ctx) => {
+    await ctx.db.insert("evidence", {
+      objectiveKey: key,
+      evidenceId: "ev_obs_1",
+      data: {
+        sourceClass: "company_record",
+        label: "Launch context",
+        text: "owned launch context without audience language",
+        recordRef: "launch/context",
+        observedAt: now,
+        recordedBy: "app",
+        runId,
+        origin: "application_observation",
+        sourceId: "record:launch/context",
+      },
+    });
+    await ctx.db.insert("evidence", {
+      objectiveKey: key,
+      evidenceId: "ev_obs_2",
+      data: {
+        sourceClass: "public_web",
+        label: "Public page",
+        text: "public page without proprietary audience language",
+        url: "https://example.com/launch",
+        observedAt: now,
+        recordedBy: "app",
+        runId,
+        origin: "application_observation",
+        sourceId: "url:https://example.com/launch",
+      },
+    });
+  });
+
+  const refused = (await t.mutation(async (ctx) =>
+    (submitResult as unknown as Handler)._handler(ctx, {
+      objectiveKey: key,
+      runId,
+      result: {
+        summary: "need more",
+        fit: "incomplete",
+        risks: [],
+        unknowns: ["audience"],
+        recommendedNextAction: "acquire",
+        terminal: "NEEDS_INPUT",
+        validatedGapAccepted: false,
+      },
+    }),
+  )) as { status: string; terminalAccepted: boolean };
+  assert.equal(refused.status, "refused");
+  assert.equal(refused.terminalAccepted, false);
+
+  // Application-side: mark gap accepted for the corrected submission (production
+  // runner sets this after reportMissingInput validates semanticGap).
+  const accepted = (await t.mutation(async (ctx) =>
+    (submitResult as unknown as Handler)._handler(ctx, {
+      objectiveKey: key,
+      runId,
+      result: {
+        summary: "need proprietary audience language",
+        fit: "incomplete until acquisition",
+        risks: [],
+        unknowns: ["audience language"],
+        recommendedNextAction: "BUY proprietary_data",
+        terminal: "NEEDS_INPUT",
+        validatedGapAccepted: true,
+      },
+    }),
+  )) as { status: string; terminalAccepted: boolean };
+  assert.equal(accepted.status, "accepted");
+  assert.equal(accepted.terminalAccepted, true);
+
+  const replay = (await t.mutation(async (ctx) =>
+    (submitResult as unknown as Handler)._handler(ctx, {
+      objectiveKey: key,
+      runId,
+      result: {
+        summary: "need proprietary audience language",
+        fit: "incomplete until acquisition",
+        risks: [],
+        unknowns: ["audience language"],
+        recommendedNextAction: "BUY proprietary_data",
+        terminal: "NEEDS_INPUT",
+        validatedGapAccepted: true,
+      },
+    }),
+  )) as { status: string; terminalAccepted: boolean };
+  assert.equal(replay.status, "idempotent_replay");
+  assert.equal(replay.terminalAccepted, true);
+
+  const conflict = (await t.mutation(async (ctx) =>
+    (submitResult as unknown as Handler)._handler(ctx, {
+      objectiveKey: key,
+      runId,
+      result: {
+        summary: "actually delivered",
+        fit: "done",
+        risks: [],
+        unknowns: [],
+        recommendedNextAction: "complete",
+        terminal: "DELIVERED",
+      },
+    }),
+  )) as { status: string };
+  assert.equal(conflict.status, "refused");
 });
 
 test("terminal: first accepted wins; exact replay idempotent; conflict refused; post-terminal mutate refused", async () => {
@@ -1007,4 +1123,142 @@ test("concurrent management wakes cannot create two current actions", async () =
       .collect(),
   );
   assert.equal(intents.length, 0);
+});
+
+test("stale-revision verified BUY does not release current requirement strategy", async () => {
+  const t = convexTest(schema, modules);
+  const key = "obj_stale_buy_release";
+  const reqKey = "req_relaunch";
+  await t.mutation(async (ctx) => {
+    await ctx.db.insert("objectives", {
+      key,
+      data: {
+        key,
+        request: "relaunch",
+        createdAt: now,
+        updatedAt: now,
+        state: "executing",
+        activity: "running",
+        plan: null,
+        workItems: [],
+        run: null,
+        result: null,
+        companyArtifacts: [
+          { key: "launch/page-message", version: 1, content: "seed", history: [] },
+        ],
+        acquisitionResults: [
+          {
+            intentId: `int_${key}`,
+            requirementKey: reqKey,
+            contractRevision: 1,
+            resultEvidenceId: `sim_${key}`,
+            provenance: "simulation",
+            providerId: "2135",
+            serviceId: "newsliquid_twitter_search",
+            offeringId: "2135:newsliquid_twitter_search",
+            resourceClass: "proprietary_data",
+            content: "old",
+            responseHash: "h",
+            recordedAt: now,
+            verifiedAt: now,
+            needDedupeKey: "dedupe_old",
+          },
+        ],
+        management: {
+          contractId: `contract_${key}`,
+          executionProtocol: M61_SERIAL_V1,
+          currentContractRevision: 2,
+        },
+      } as never,
+    });
+    await (putIntent as unknown as Handler)._handler(ctx, {
+      intentId: `int_${key}`,
+      objectiveKey: key,
+      idempotencyKey: `idem_${key}`,
+      data: {
+        intentId: `int_${key}`,
+        idempotencyKey: `idem_${key}`,
+        objectiveKey: key,
+        requirementKey: reqKey,
+        contractRevision: 1,
+        decisionId: `dec_${key}`,
+        kind: "external_acquisition",
+        strategy: "BUY",
+        target: {
+          offeringId: "2135:newsliquid_twitter_search",
+          providerId: "2135",
+          serviceId: "newsliquid_twitter_search",
+          resourceClass: "proprietary_data",
+          endpointRef: null,
+        },
+        terms: {
+          priceUsd: 2,
+          priceProvenance: "provider_quote",
+          requiresApproval: true,
+          approvalId: `grant_${key}`,
+        },
+        state: "verified",
+        attempts: 1,
+        lastEventId: "evt",
+        resultEvidenceId: `sim_${key}`,
+        verificationEvidenceId: `ver_${key}`,
+        boundaryNote: "sim",
+        createdAt: now,
+        updatedAt: now,
+      },
+    });
+    await (putRequirement as unknown as Handler)._handler(ctx, {
+      objectiveKey: key,
+      requirementKey: reqKey,
+      data: {
+        requirementKey: reqKey,
+        objectiveKey: key,
+        contractId: `contract_${key}`,
+        contractRevision: 2,
+        priority: "required",
+        title: "Relaunch",
+        mustBeTrue: "recommendation saved",
+        scope: "deliverable",
+        dependsOnRequirementKeys: [],
+        requiredResourceClasses: ["proprietary_data"],
+        expectedOutput: "saved recommendation",
+        requirementKind: "deliverable",
+        proofs: [
+          {
+            proofKey: "artifact_change",
+            description: "artifact",
+            proofKind: "company_artifact_version",
+            params: { artifactKey: "launch/page-message", minVersion: 2 },
+          },
+        ],
+        state: "active",
+        strategy: "BUY",
+        resolution: null,
+        blockedReason: null,
+        waiver: null,
+        revision: 2,
+        createdAt: now,
+        updatedAt: now,
+      },
+      currentContractRevision: 2,
+    });
+  });
+
+  await t.mutation(async (ctx) =>
+    (runManagementPass as unknown as Handler)._handler(ctx, {
+      objectiveKey: key,
+      reason: "verification_result",
+    }),
+  );
+
+  const req = await t.query(async (ctx) => {
+    const row = await ctx.db
+      .query("requirements")
+      .withIndex("by_objectiveRequirement", (q) =>
+        q.eq("objectiveKey", key).eq("requirementKey", reqKey),
+      )
+      .unique();
+    return (row as { data: Requirement }).data;
+  });
+  assert.equal(req.strategy, "BUY", "stale r1 BUY must not clear r2 strategy");
 });

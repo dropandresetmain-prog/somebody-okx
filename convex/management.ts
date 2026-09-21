@@ -1,10 +1,10 @@
-"use strict";
+﻿"use strict";
 
 // Ensure LangGraph can run inside the Convex default isolate before any
 // management graph import pulls `@langchain/langgraph` in.
 import "../lib/management/convexIsolatePolyfill";
 
-// CP7 — Production Convex-backed ManagementPorts adapter.
+// CP7 â€” Production Convex-backed ManagementPorts adapter.
 //
 // Every port reads Convex fresh on each call (the reload rule). No caching.
 // External authority defaults to "m3_unavailable"; the recommendation seam is
@@ -40,6 +40,7 @@ import { interpretObjective } from "../lib/management/interpretation";
 import { planWakeForDecision, planWakeForInterpretation, planWakeForTimer } from "../lib/management/wakes";
 import {
   computeDecisionInputFingerprint,
+  isValidatedInputGap,
   validatedMissingClassesAfterAcquisitions,
   verifiedAcquisitionCoversNeed,
 } from "../lib/objective/inputDiagnosis";
@@ -80,33 +81,33 @@ import type {
   WorkerRecord,
 } from "../lib/management/types";
 
-// ── R3 I2 — the recommendation seam is DURABLE, not module-global ────────────
+// â”€â”€ R3 I2 â€” the recommendation seam is DURABLE, not module-global â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 //
 // A Convex MUTATION cannot perform a production model call, so a module-global
 // injected recommender (`_recommender`) only ever existed while one process
-// happened to hold it — with it null, every production decision pass parsed
+// happened to hold it â€” with it null, every production decision pass parsed
 // `null` into a typed refusal and could never authorize anything. The decision
 // pass is therefore split exactly like interpretation into a durable three-step:
 //
 //   beginDecision (the runDecisionPass port below, in mutation context)
 //       reserves the pass identity (pending cursor + deterministic decisionId)
 //       and schedules the action; it grants NO authority and returns null.
-//   proposeDecision (action, "use node") — the ONLY step that talks to a model.
+//   proposeDecision (action, "use node") â€” the ONLY step that talks to a model.
 //       It discovers (zero-network snapshot), proposes capabilities, and
 //       recommends among eligible options; it returns RAW proposal data.
-//   applyDecision (mutation) — reloads fresh truth, re-runs the pure kernel with
+//   applyDecision (mutation) â€” reloads fresh truth, re-runs the pure kernel with
 //       the stored raw recommendation, deterministically revalidates and
 //       reauthorizes, persists, dispatches idempotently, and wakes the loop.
 //
 // Malformed output, an outage, or a hallucinated option therefore all land as
-// typed refusals persisted on the objective — never as authority granted in an
+// typed refusals persisted on the objective â€” never as authority granted in an
 // action, and never as an exception that corrupts state.
 
-// ── Row shape helpers (loose reads — the schema carries the real types) ──────
+// â”€â”€ Row shape helpers (loose reads â€” the schema carries the real types) â”€â”€â”€â”€â”€â”€
 
 type AnyRow = { _id: unknown; [k: string]: unknown };
 
-// The accepted production M4×M3 driver is available as a bounded hand-off
+// The accepted production M4Ã—M3 driver is available as a bounded hand-off
 // boundary. One constant states it, so both the decision pass and the dispatch
 // seam share the SAME truth instead of repeating a string literal (and so nobody
 // "fixes" one without the other). M4 still cannot pay: it may only mint an
@@ -114,16 +115,16 @@ type AnyRow = { _id: unknown; [k: string]: unknown };
 // the sole financial authority and no production code path here invokes it.
 const EXTERNAL_AUTHORITY_MODE: ExternalAuthorityMode = "m3_available_bounded";
 
-// R3 CP-4 — cumulative per-requirement ceiling on decision attempts. The begin
+// R3 CP-4 â€” cumulative per-requirement ceiling on decision attempts. The begin
 // step (runDecisionPass port) refuses to schedule another proposeDecision action
 // once this many attempts have been recorded for a requirement, so a model that
 // keeps producing unusable output cannot be re-scheduled forever. Mirrors
 // BEGIN_INTERPRETATION_CEILING. Counts are retained after authorization so a
-// failed delivery can re-decide under a NEW decision identity (`…_aN+1`); the
+// failed delivery can re-decide under a NEW decision identity (`â€¦_aN+1`); the
 // ceiling is what stops a refuse/re-ask storm.
 export const BEGIN_DECISION_CEILING = 3;
 
-/** Parse `…_aN` from a deterministic decision id; null if the suffix is absent. */
+/** Parse `â€¦_aN` from a deterministic decision id; null if the suffix is absent. */
 export function attemptFromDecisionId(decisionId: string): number | null {
   const match = /_a(\d+)$/.exec(decisionId);
   if (!match) return null;
@@ -131,17 +132,17 @@ export function attemptFromDecisionId(decisionId: string): number | null {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
-// ── Bounded control notes (R3 A3, persistence side) ─────────────────────────
+// â”€â”€ Bounded control notes (R3 A3, persistence side) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 //
 // Control notes are the read model's "what is the engine doing and why" trail.
-// They are NOT business truth — contracts, requirements, decisions, assignments
-// and intents are — so this list may be bounded without losing any authority.
+// They are NOT business truth â€” contracts, requirements, decisions, assignments
+// and intents are â€” so this list may be bounded without losing any authority.
 // Before CP8 it grew unboundedly: every pass appended a `control_state` note and
 // every approval-required decision appended another, on a loop that re-woke
 // itself at zero delay.
 //
 // Two rules fix that without deleting history wholesale:
-//   1. same identity ⇒ REPLACE in place (advancing `at`), so a state that has
+//   1. same identity â‡’ REPLACE in place (advancing `at`), so a state that has
 //      not changed does not add a row;
 //   2. hard ceiling, oldest first, so a long-running objective cannot grow the
 //      aggregate without bound.
@@ -193,11 +194,11 @@ export function boundNotes(
   return [...notes, note].slice(-CONTROL_NOTE_LIMIT);
 }
 
-// ── The adapter ──────────────────────────────────────────────────────────────
+// â”€â”€ The adapter â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export function buildConvexManagementPorts(ctx: MutationCtx): ManagementPorts {
   const ports: ManagementPorts = {
-    // ── Authoritative reads ───────────────────────────────────────────────────
+    // â”€â”€ Authoritative reads â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     async loadContract(objectiveKey: string): Promise<{ contract: OutcomeContract | null; currentContractRevision: number }> {
       const rows = await ctx.db
@@ -330,7 +331,7 @@ export function buildConvexManagementPorts(ctx: MutationCtx): ManagementPorts {
       return rows.map((row) => (row as AnyRow).data as WakeEvent);
     },
 
-    // ── Effects ───────────────────────────────────────────────────────────────
+    // â”€â”€ Effects â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     async consumeWakeEvents(_objectiveKey: string, eventIds: string[], at: number): Promise<void> {
       await ctx.runMutation(internal.internal.workforce.markWakeConsumed, { eventIds, at });
@@ -344,7 +345,7 @@ export function buildConvexManagementPorts(ctx: MutationCtx): ManagementPorts {
       });
     },
 
-    // R3 CP-4 (I2/A7/I3) — the decision pass is the BEGIN step of a durable
+    // R3 CP-4 (I2/A7/I3) â€” the decision pass is the BEGIN step of a durable
     // three-step chain, NOT a synchronous model call. A Convex mutation cannot
     // make the production model call, so this port reserves the pass identity
     // (pending cursor + deterministic requestId) and schedules the ONLY model
@@ -354,7 +355,7 @@ export function buildConvexManagementPorts(ctx: MutationCtx): ManagementPorts {
     // recommendation, revalidates, reauthorizes, persists, and wakes this loop to
     // dispatch. The wake re-enters runManagementPass; by then the decision row
     // exists and the reducer routes to dispatch. This is the exact interpretation
-    // pattern (beginInterpretation → proposeInterpretation → applyInterpretation).
+    // pattern (beginInterpretation â†’ proposeInterpretation â†’ applyInterpretation).
     async runDecisionPass(state: GraphState, _ports: ManagementPorts, _at: number): Promise<DecisionPassResult | null> {
       if (!state.focusRequirementKey) return null;
 
@@ -480,7 +481,7 @@ export function buildConvexManagementPorts(ctx: MutationCtx): ManagementPorts {
       const requirement = requirements.find((r) => r.requirementKey === requirementKey);
       if (!requirement) return false;
 
-      // R3 A5 — the facts the kernel judges are the CURRENT revision's, scoped
+      // R3 A5 â€” the facts the kernel judges are the CURRENT revision's, scoped
       // through a live delivery (an assignment for this requirement, or an
       // intent FOR THIS REQUIREMENT). Never "whatever is lying around".
       const facts = await readScopedProofFacts(ctx, state.objectiveKey, requirement, currentContractRevision);
@@ -491,7 +492,7 @@ export function buildConvexManagementPorts(ctx: MutationCtx): ManagementPorts {
 
       // Determine the event from live delivery rows SCOPED to this requirement
       // and revision. R3 A5: `result_submitted` is not satisfaction, but it IS
-      // the thing the verify pass exists to check — and only the application's
+      // the thing the verify pass exists to check â€” and only the application's
       // own re-derived facts decide whether it passes. A submitted row whose
       // proofs recompute gets advanced to `verified` HERE, in the same
       // transaction that records the resolution; nothing else may.
@@ -514,7 +515,7 @@ export function buildConvexManagementPorts(ctx: MutationCtx): ManagementPorts {
             .sort((a, b) => a.assignmentId.localeCompare(b.assignmentId))[0] ?? null);
       const acceptedAssignment = verifiedAssignment ?? submittedAssignment;
       // `verifiedIntentIds` in scoped facts is ALREADY requirement- and
-      // revision-filtered (see readScopedProofFacts) — the sorted first id is
+      // revision-filtered (see readScopedProofFacts) â€” the sorted first id is
       // a deterministic pick, never "whatever row came back first".
       const verifiedIntentId = [...facts.verifiedIntentIds].sort()[0] ?? null;
 
@@ -542,7 +543,7 @@ export function buildConvexManagementPorts(ctx: MutationCtx): ManagementPorts {
       // The bindings go to storage WHETHER OR NOT the attempt passes: they
       // restate where the existing obligations point (ids the application
       // verified), and the completion gate re-derives proof against THIS
-      // revision — carrying a stale claim into a new revision gains nothing.
+      // revision â€” carrying a stale claim into a new revision gains nothing.
       if (bound.proofs.some((proof, index) => proof !== requirement.proofs[index])) {
         await ctx.runMutation(internal.internal.workforce.putRequirement, {
           objectiveKey: bound.objectiveKey,
@@ -620,7 +621,7 @@ export function buildConvexManagementPorts(ctx: MutationCtx): ManagementPorts {
       // Submitted but proofs do not recompute: FAILED delivery, not a permanent
       // verify loop. Leaving `result_submitted` forever re-routes every pass to
       // verify_requirement with identical facts. Fail the assignment, clear the
-      // bound strategy (KEEP proofs — wiping them enabled vacuous satisfaction),
+      // bound strategy (KEEP proofs â€” wiping them enabled vacuous satisfaction),
       // pin decisionAttempts so the next begin mints a new identity, and wake.
       if (submittedAssignment) {
         const moved = advanceAssignment(submittedAssignment, "failed", at, {
@@ -662,7 +663,7 @@ export function buildConvexManagementPorts(ctx: MutationCtx): ManagementPorts {
     async proposeCompletion(proposal: CompletionProposal, at: number): Promise<CompletionVerdict> {
       const { contract, currentContractRevision } = await ports.loadContract(proposal.objectiveKey);
       if (!contract) {
-        // No contract → rejected verdict WITHOUT persisting
+        // No contract â†’ rejected verdict WITHOUT persisting
         return {
           accepted: false,
           objectiveState: "planning",
@@ -670,7 +671,70 @@ export function buildConvexManagementPorts(ctx: MutationCtx): ManagementPorts {
         };
       }
 
-      // R3 A5 — reload the CURRENT revision fresh and RECOMPUTE every required
+      // Serial: require a current matching final semantic assessment before the
+      // deterministic gate. Schedule the model assessment action when missing.
+      const objectiveRow = await ctx.db
+        .query("objectives")
+        .withIndex("by_key", (q) => q.eq("key", proposal.objectiveKey))
+        .unique();
+      const odata = objectiveRow
+        ? ((objectiveRow as AnyRow).data as Record<string, unknown>)
+        : null;
+      const omgmt = (odata?.management ?? {}) as Record<string, unknown>;
+      if (isSerialManagerProtocol(omgmt)) {
+        const assessment = (odata as { finalSemanticAssessment?: {
+          meetsMinimumBar: boolean;
+          contractRevision: number;
+          rationale: string;
+        } | null })?.finalSemanticAssessment ?? null;
+        const pendingAssessment = omgmt.pendingFinalAssessment as
+          | { requestId: string; contractRevision: number }
+          | null
+          | undefined;
+        if (
+          !assessment ||
+          assessment.contractRevision !== currentContractRevision
+        ) {
+          if (
+            !pendingAssessment ||
+            pendingAssessment.contractRevision !== currentContractRevision
+          ) {
+            await ctx.scheduler.runAfter(
+              0,
+              internal.management.beginFinalSemanticAssessment,
+              {
+                objectiveKey: proposal.objectiveKey,
+                at,
+              },
+            );
+          }
+          return {
+            accepted: false,
+            objectiveState: "executing",
+            unmet: [
+              "serial protocol requires a current final semantic assessment before completion",
+            ],
+          };
+        }
+        if (assessment.meetsMinimumBar !== true) {
+          await reopenSerialDeliverableAfterNegativeAssessment(
+            ctx,
+            proposal.objectiveKey,
+            currentContractRevision,
+            at,
+            assessment.rationale,
+          );
+          return {
+            accepted: false,
+            objectiveState: "executing",
+            unmet: [
+              `final semantic assessment: not ready â€” ${assessment.rationale.slice(0, 240)}`,
+            ],
+          };
+        }
+      }
+
+      // R3 A5 â€” reload the CURRENT revision fresh and RECOMPUTE every required
       // proof against scoped application facts. The gate's input is facts, not
       // the persisted resolutions: a row whose stored `state`/`resolution` says
       // "satisfied" but whose proofs do not recompute NOW is refused out loud,
@@ -706,11 +770,11 @@ export function buildConvexManagementPorts(ctx: MutationCtx): ManagementPorts {
         at,
       });
 
-      // R3 A5 — the rejected verdict is PERSISTED below (the gate decision row)
+      // R3 A5 â€” the rejected verdict is PERSISTED below (the gate decision row)
       // and the reducer honours it: rule 7a routes "gate rejected with every
       // required row claiming satisfied" to recovery_required, so a forged
       // `satisfied` can neither complete the objective nor re-propose. No new
-      // write authority is invented here — the engine only ever READS claims
+      // write authority is invented here â€” the engine only ever READS claims
       // and re-DERIVES; rejection is loud and durable, never self-healing.
 
       // Persist the verdict: putDecision with decisionId gate_<objectiveKey>_r<revision>
@@ -767,7 +831,7 @@ export function buildConvexManagementPorts(ctx: MutationCtx): ManagementPorts {
       } as any);
     },
 
-    // ── R3 A3: a TIMER, never a re-wake ────────────────────────────────────────
+    // â”€â”€ R3 A3: a TIMER, never a re-wake â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     //
     // The rule this enforces: (a) the delay must be non-zero, (b) at most ONE
     // outstanding timer per logical condition, (c) arming the next one requires
@@ -782,7 +846,7 @@ export function buildConvexManagementPorts(ctx: MutationCtx): ManagementPorts {
         timerKey,
       })) as { outstanding: boolean; armed: number };
       // One outstanding timer per condition. A previous one already consumed
-      // means this is sequence+1 — a genuinely new deadline, not a duplicate.
+      // means this is sequence+1 â€” a genuinely new deadline, not a duplicate.
       if (state.outstanding) return false;
       const wake = planWakeForTimer({
         objectiveKey,
@@ -804,7 +868,7 @@ export function buildConvexManagementPorts(ctx: MutationCtx): ManagementPorts {
       return true;
     },
 
-    // R3 A3 — the pass result is recorded against the PERSISTED no-progress
+    // R3 A3 â€” the pass result is recorded against the PERSISTED no-progress
     // budget, which is what makes the finite ceiling reachable at all.
     async recordPassProgress(objectiveKey, progressed, at): Promise<void> {
       await ctx.runMutation(internal.internal.workforce.applyPassProgress, {
@@ -814,7 +878,7 @@ export function buildConvexManagementPorts(ctx: MutationCtx): ManagementPorts {
       });
     },
 
-    // ── R3 A2: dispatch — make an authorized plan real, exactly once ───────────
+    // â”€â”€ R3 A2: dispatch â€” make an authorized plan real, exactly once â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     //
     // Zero production callers existed before CP8: `reserveWorker`, `putAssignment`,
     // `createIntentFromAuthorization` and `putIntent` were reachable only from
@@ -926,7 +990,7 @@ export function buildConvexManagementPorts(ctx: MutationCtx): ManagementPorts {
 
       // The option the authorization names is recovered from that same decision
       // row (persistDecision stores the grounded set with it), so the dispatch
-      // acts on the option the application actually built — never a new one.
+      // acts on the option the application actually built â€” never a new one.
       const option = (decodeOptions(persisted.coarsePlanSummary).find(
         (candidate) => candidate.optionId === persisted.authorization.optionId,
       ) ?? null) as GroundedOption | null;
@@ -942,7 +1006,7 @@ export function buildConvexManagementPorts(ctx: MutationCtx): ManagementPorts {
         effectId = target.kind === "internal"
           ? await dispatchInternal(ctx, state.objectiveKey, requirement, persisted, option, at)
           : await dispatchExternal(ctx, state.objectiveKey, persisted, option, at);
-        // A null means "deferred, nothing written" — stop and let a later,
+        // A null means "deferred, nothing written" â€” stop and let a later,
         // meaningful wake finish the job rather than half-delivering a HYBRID.
         if (effectId === null) return null;
       }
@@ -953,7 +1017,7 @@ export function buildConvexManagementPorts(ctx: MutationCtx): ManagementPorts {
   return ports;
 }
 
-// R3 CP-4 — the single decision writer, shared by the graph's persistDecision
+// R3 CP-4 â€” the single decision writer, shared by the graph's persistDecision
 // port and by applyDecision. Extracted so the durable apply path and the in-graph
 // path can never drift in HOW a decision row is stored: options + bound
 // requirement + recommendation are encoded into coarsePlanSummary (the schema
@@ -1024,9 +1088,9 @@ async function persistDecisionRow(
   }
 }
 
-// ── The scheduled entry point ────────────────────────────────────────────────
+// â”€â”€ The scheduled entry point â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-// R3 A5 — before a pass reads ANY delivery row, the assignments are reconciled
+// R3 A5 â€” before a pass reads ANY delivery row, the assignments are reconciled
 // against what the run actually did. `finishRun`/`expireRun` own the runtime
 // aggregate; they must not also own M4 bookkeeping, but until now NOTHING did,
 // so `result_submitted` was unreachable from a real wake: the verify node could
@@ -1104,7 +1168,7 @@ async function reconcileAssignmentRunFacts(ctx: MutationCtx, objectiveKey: strin
       });
       // Same failed-delivery exit as proof-reject verify: clear the bound
       // strategy (KEEP proofs), pin decisionAttempts so the next begin mints
-      // …_aN+1, and let this pass's reduce route to decide instead of
+      // â€¦_aN+1, and let this pass's reduce route to decide instead of
       // dispatch_deferred forever on the dead assignment.
       await clearStrategyAfterFailedDelivery(ctx, {
         objectiveKey,
@@ -1181,7 +1245,7 @@ async function clearStrategyAfterFailedDelivery(
   if (reqRow) {
     const bound = (reqRow as AnyRow).data as Requirement;
     // Clear strategy only. Failure alone MUST NOT invent a resource class
-    // (e.g. proprietary_data) — validated missing-input diagnosis owns that.
+    // (e.g. proprietary_data) â€” validated missing-input diagnosis owns that.
     if (bound.strategy !== null) {
       const cleared: Requirement = {
         ...bound,
@@ -1251,12 +1315,19 @@ async function releaseSerialAcquisitionForReassessment(
     .query("executionIntents")
     .withIndex("by_objective", (q) => q.eq("objectiveKey", objectiveKey))
     .collect();
-  const verifiedByReq = new Map<string, string>();
+  const verifiedByReq = new Map<string, { intentId: string; contractRevision: number }>();
   for (const row of intentRows) {
     const intent = (row as AnyRow).data as ExecutionIntent;
     if (intent.state !== "verified") continue;
     if (intent.strategy !== "BUY" && intent.strategy !== "HYBRID") continue;
-    verifiedByReq.set(intent.requirementKey, intent.intentId);
+    // Keep the latest verified intent per requirement; revision checked below.
+    const prev = verifiedByReq.get(intent.requirementKey);
+    if (!prev || intent.contractRevision >= prev.contractRevision) {
+      verifiedByReq.set(intent.requirementKey, {
+        intentId: intent.intentId,
+        contractRevision: intent.contractRevision,
+      });
+    }
   }
   if (verifiedByReq.size === 0) return;
 
@@ -1276,6 +1347,16 @@ async function releaseSerialAcquisitionForReassessment(
       .map((a) => a.requirementKey),
   );
 
+  const objectiveData = odata as {
+    acquisitionResults?: Array<{
+      intentId: string;
+      resultEvidenceId: string;
+      verifiedAt?: number | null;
+      contractRevision: number;
+    }>;
+  };
+  const acquisitions = objectiveData.acquisitionResults ?? [];
+
   const reqRows = await ctx.db
     .query("requirements")
     .withIndex("by_objectiveKey", (q) => q.eq("objectiveKey", objectiveKey))
@@ -1283,13 +1364,23 @@ async function releaseSerialAcquisitionForReassessment(
   for (const row of reqRows) {
     const req = (row as AnyRow).data as Requirement;
     if (req.strategy !== "BUY" && req.strategy !== "HYBRID") continue;
-    if (!verifiedByReq.has(req.requirementKey)) continue;
+    const verified = verifiedByReq.get(req.requirementKey);
+    if (!verified) continue;
+    // Stale verified BUY from an older revision must not clear current strategy.
+    if (verified.contractRevision !== req.contractRevision) continue;
+    const matchingResult = acquisitions.find(
+      (a) =>
+        a.intentId === verified.intentId &&
+        a.contractRevision === req.contractRevision &&
+        a.verifiedAt != null,
+    );
+    if (!matchingResult) continue;
     if (activeAssignmentReqs.has(req.requirementKey)) continue;
     // Explicit requirementKind (or legacy proof-derived input-only) keeps
     // strategy so verify may accept a scoped external result. Deliverable
-    // requirements clear so Somebody reassesses — BUY receipt ≠ output proof.
+    // requirements clear so Somebody reassesses â€” BUY receipt â‰  output proof.
     if (isSerialInputRequirement(req)) continue;
-    // Clear without inventing a failed attempt pin — acquisition succeeded.
+    // Clear without inventing a failed attempt pin â€” acquisition succeeded.
     const cleared: Requirement = {
       ...req,
       strategy: null,
@@ -1329,7 +1420,7 @@ export const runManagementPass = internalMutation({
     const ports = buildConvexManagementPorts(ctx);
     const graph = buildManagementGraph({ ports, now: () => Date.now() });
 
-    // R3 A5 — delivery rows reflect RUN FACTS before the graph reads them, so
+    // R3 A5 â€” delivery rows reflect RUN FACTS before the graph reads them, so
     // the verify node routes real submitted/failed results, not hand-placed
     // ones. This is bookkeeping-only: it never starts, stops, or re-decides
     // work, and every transition it makes is one the dispatch kernel already
@@ -1361,22 +1452,22 @@ export const runManagementPass = internalMutation({
   },
 });
 
-// ── R3 A1: the interpretation entry — where an Objective becomes managed ─────
+// â”€â”€ R3 A1: the interpretation entry â€” where an Objective becomes managed â”€â”€â”€â”€â”€
 //
 // Before CP8 no production path created an Outcome Contract, persisted
 // Requirements, or set `management.contractId`, so every downstream kernel was
 // unreachable from `submitObjective`. This closes that seam durably:
 //
-//   submitObjective (mutation) → schedule proposeInterpretation (action, real
-//   model, "use node") → applyInterpretation (this mutation) → persist contract
-//   + semantic requirements + management.contractId → appendWakeEvent
-//   (objective_submitted, deduped by interpretation identity) → schedule
+//   submitObjective (mutation) â†’ schedule proposeInterpretation (action, real
+//   model, "use node") â†’ applyInterpretation (this mutation) â†’ persist contract
+//   + semantic requirements + management.contractId â†’ appendWakeEvent
+//   (objective_submitted, deduped by interpretation identity) â†’ schedule
 //   runManagementPass.
 //
 // The model is only ever an INPUT here: `interpretObjective` re-parses its raw
 // output through the same bounded parsers the pure tests use, and this mutation
 // writes only what those parsers accept. A rejected interpretation leaves the
-// objective exactly as it was — with a typed detail, never a partial contract.
+// objective exactly as it was â€” with a typed detail, never a partial contract.
 
 export const applyInterpretation = internalMutation({
   args: {
@@ -1548,24 +1639,24 @@ export const applyInterpretation = internalMutation({
   },
 });
 
-// R3 I2 — a Convex MUTATION cannot perform the production network model call,
+// R3 I2 â€” a Convex MUTATION cannot perform the production network model call,
 // and a module-global injected recommender is not a production architecture: it
 // only exists while one process happens to hold it. So the interpretation seam
 // is the durable three-step the platform requires:
 //
-//   beginInterpretation (this mutation)  → loads and grounds the request, and
+//   beginInterpretation (this mutation)  â†’ loads and grounds the request, and
 //                                         RESERVES the pass identity by writing
 //                                         the pending cursor. Only one action
 //                                         may be in flight per objective, and a
 //                                         replayed wake cannot start a second.
-//   proposeInterpretation (action, "use node") → the ONLY step that talks to a
+//   proposeInterpretation (action, "use node") â†’ the ONLY step that talks to a
 //                                         real model. It never mutates business
 //                                         truth; it returns raw proposal data.
-//   applyInterpretation (mutation above)  → reloads fresh state, parses
+//   applyInterpretation (mutation above)  â†’ reloads fresh state, parses
 //                                         deterministically, persists, wakes.
 //
 // Malformed output, an outage, or a nonexistent option therefore all land as
-// typed refusals persisted on the objective — never as an exception that corrupts
+// typed refusals persisted on the objective â€” never as an exception that corrupts
 // state, and never as a silently skipped interpretation.
 
 export const BEGIN_INTERPRETATION_CEILING = 2;
@@ -1653,7 +1744,7 @@ function notesOfType(existing: unknown, type: string): Array<Record<string, unkn
   return notes.filter((note) => note.type === type);
 }
 
-// R3 CP-4 (I2/A7/I3) — the APPLY step of the decision chain, and the ONLY place
+// R3 CP-4 (I2/A7/I3) â€” the APPLY step of the decision chain, and the ONLY place
 // a decision is authorized and persisted.
 //
 // It receives RAW model output from proposeDecision (a strategy proposal + a
@@ -1661,7 +1752,7 @@ function notesOfType(existing: unknown, type: string): Array<Record<string, unkn
 //   1. validates the requestId against the reservation the begin step wrote, and
 //      rejects it if the contract revision has moved (STALE action output can
 //      never authorize against a truth that no longer holds);
-//   2. RELOADS fresh Convex truth via readDecisionContext — contract, revision,
+//   2. RELOADS fresh Convex truth via readDecisionContext â€” contract, revision,
 //      requirement, inventory, budget, grant;
 //   3. RE-RUNS the pure kernel runManagerialDecisionPass against that fresh truth
 //      with `recommend: async () => rawRecommendation`, so parseManagerialRecommendation
@@ -1800,7 +1891,7 @@ export const applyDecision = internalMutation({
     const authorized = result.authorization.kind === "authorized";
 
     // Keep decisionAttempts after authorization. Resetting to zero reminted the
-    // same `…_a1` decisionId on a post-failure retry, which derived the same
+    // same `â€¦_a1` decisionId on a post-failure retry, which derived the same
     // assignment id as the failed delivery and deferred forever. The cumulative
     // counter gives each re-decision a new identity; BEGIN_DECISION_CEILING
     // still stops a refuse/re-ask storm.
@@ -1835,7 +1926,7 @@ export const applyDecision = internalMutation({
 
 // Append the decision wake (deduped by decision identity) and schedule the next
 // management pass. The wake is a POINTER to the decision row; it carries no
-// payload and grants no authority — the reducer re-reads business state.
+// payload and grants no authority â€” the reducer re-reads business state.
 async function scheduleDecisionWake(
   ctx: MutationCtx,
   objectiveKey: string,
@@ -1865,7 +1956,7 @@ function summarizeDecisionAuthorization(result: DecisionPassResult): string {
   return "not authorized";
 }
 
-// ── R3 A2: the dispatch seam's helpers ──────────────────────────────────────
+// â”€â”€ R3 A2: the dispatch seam's helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 //
 // A dispatch that cannot be honoured is NOT a silent no-op: the reason is
 // recorded where the read model shows it, and the objective then rests. It is
@@ -1894,7 +1985,7 @@ function decodeOptions(summary: string): GroundedOption[] {
   }
 }
 
-// ── R3 A5: scoped proof facts ────────────────────────────────────────────────
+// â”€â”€ R3 A5: scoped proof facts â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 //
 // The ONE way the satisfaction kernel and the completion gate learn what is
 // factually provable for a requirement. Everything here names a row the
@@ -1909,7 +2000,7 @@ function decodeOptions(summary: string): GroundedOption[] {
 // An observation from another requirement's delivery can no longer leak into
 // this one's proof, and no id list is ever "everything on the objective".
 // `founderConfirmationRefs` stays empty because no production founder-answer
-// seam exists yet — an ASK_FOUNDER proof therefore fails closed rather than
+// seam exists yet â€” an ASK_FOUNDER proof therefore fails closed rather than
 // accepting a fabricated ref.
 const PROOF_SCOPED_ASSIGNMENT_STATES: Assignment["state"][] = [
   "dispatched",
@@ -2101,6 +2192,17 @@ async function resolveSerialMakeActionScope(
   }
 
   const acquisitions = (objectiveData?.acquisitionResults ?? []) as ExternalAcquisitionResult[];
+  const needs = (objectiveData?.resourceNeeds ?? []) as ResourceNeed[];
+  const relevantNeedKeys = new Set(
+    needs
+      .filter(
+        (need) =>
+          allowedReqKeys.has(need.requirementKey ?? "") &&
+          (need.contractRevision == null ||
+            need.contractRevision === requirement.contractRevision),
+      )
+      .map((need) => need.dedupeKey),
+  );
   const inputEvidenceIds: string[] = [];
   for (const result of acquisitions) {
     if (!allowedReqKeys.has(result.requirementKey)) continue;
@@ -2109,6 +2211,12 @@ async function resolveSerialMakeActionScope(
     if (!intent) continue;
     if (intent.resultEvidenceId !== result.resultEvidenceId) continue;
     if (!result.verifiedAt) continue;
+    // Purpose scope: when the acquisition carries a need identity, only expose
+    // it if that need is (or was) on this requirement/dependency set.
+    const acqNeedKey = result.needDedupeKey ?? intent.needDedupeKey ?? null;
+    if (acqNeedKey && relevantNeedKeys.size > 0 && !relevantNeedKeys.has(acqNeedKey)) {
+      continue;
+    }
     inputEvidenceIds.push(result.resultEvidenceId);
   }
   // Deterministic order for stable contract identity.
@@ -2159,7 +2267,7 @@ async function dispatchInternal(
 
   // The worker must exist before it can be reserved: REUSE names a live row,
   // CREATE is funded by the persisted worker-creation ceiling (the same budget
-  // the staffing decision consulted — spend is applied here, atomically).
+  // the staffing decision consulted â€” spend is applied here, atomically).
   const inventory = (await ctx.runQuery(internal.internal.workforce.listWorkers, {})) as WorkerRecord[];
   let worker = inventory.find((candidate) => candidate.workerKey === workerKey) ?? null;
   if (!worker) {
@@ -2357,7 +2465,7 @@ async function dispatchInternal(
   }
 
   // The runtime accepted (or already had) this run. `started` moves the
-  // assignment to running; a REPLAY means the run row already existed — this
+  // assignment to running; a REPLAY means the run row already existed â€” this
   // pass did not start new work, so the assignment stays where it truthfully
   // is (dispatched, or running from the pass that really started it).
   if (started.started) {
@@ -2394,12 +2502,41 @@ async function dispatchExternal(
   if (!created.ok)
     return await noteDispatchDeferred(ctx, objectiveKey, persisted.requirementKey, at, created.reason);
 
+  // Bind purpose identity from the current validated ResourceNeed this BUY answers.
+  const objectiveRow = await ctx.db
+    .query("objectives")
+    .withIndex("by_key", (q) => q.eq("key", objectiveKey))
+    .unique();
+  const objectiveData = objectiveRow
+    ? ((objectiveRow as AnyRow).data as {
+        resourceNeeds?: ResourceNeed[];
+      })
+    : null;
+  const needs = objectiveData?.resourceNeeds ?? [];
+  const matchingNeed = needs.find(
+    (need) =>
+      need.requirementKey === persisted.requirementKey &&
+      isValidatedInputGap(need) &&
+      need.status !== "fulfilled" &&
+      need.status !== "rejected" &&
+      need.resourceClass === (option.external?.resourceClass ?? need.resourceClass) &&
+      (need.contractRevision == null ||
+        need.contractRevision === persisted.authorization.contractRevision),
+  );
+  const intentWithNeed: ExecutionIntent = matchingNeed
+    ? {
+        ...created.intent,
+        needDedupeKey: matchingNeed.dedupeKey,
+        resourceNeedId: matchingNeed.id,
+      }
+    : created.intent;
+
   const existing = (await ctx.runQuery(internal.internal.workforce.findIntent, {
     objectiveKey,
-    intentId: created.intent.intentId,
+    intentId: intentWithNeed.intentId,
   })) as ExecutionIntent | null;
   // Replay: never overwrite a row that has already moved on, and never report
-  // a DEAD intent as a delivered effect — same rule as the assignment guard:
+  // a DEAD intent as a delivered effect â€” same rule as the assignment guard:
   // `failed`/`reconciliation_required` defers loudly; a retry is a new
   // authorization, which mints a new intent identity.
   if (existing) {
@@ -2410,10 +2547,227 @@ async function dispatchExternal(
   }
 
   await ctx.runMutation(internal.internal.workforce.putIntent, {
-    intentId: created.intent.intentId,
+    intentId: intentWithNeed.intentId,
     objectiveKey,
-    idempotencyKey: created.intent.idempotencyKey,
-    data: created.intent,
+    idempotencyKey: intentWithNeed.idempotencyKey,
+    data: intentWithNeed,
   });
-  return created.intent.intentId;
+  return intentWithNeed.intentId;
 }
+
+export const BEGIN_FINAL_ASSESSMENT_CEILING = 2;
+
+/**
+ * Serial: reopen the primary deliverable for one bounded redecision after a
+ * negative final semantic assessment. Caps via finalAssessmentAttempts.
+ */
+async function reopenSerialDeliverableAfterNegativeAssessment(
+  ctx: MutationCtx,
+  objectiveKey: string,
+  contractRevision: number,
+  at: number,
+  rationale: string,
+): Promise<void> {
+  const row = await ctx.db
+    .query("objectives")
+    .withIndex("by_key", (q) => q.eq("key", objectiveKey))
+    .unique();
+  if (!row) return;
+  const data = (row as AnyRow).data as Record<string, unknown>;
+  const mgmt = (data.management ?? {}) as Record<string, unknown>;
+  const attempts = (mgmt.finalAssessmentAttempts as number | undefined) ?? 0;
+  if (attempts >= BEGIN_FINAL_ASSESSMENT_CEILING) return;
+
+  const reqRows = await ctx.db
+    .query("requirements")
+    .withIndex("by_objectiveKey", (q) => q.eq("objectiveKey", objectiveKey))
+    .collect();
+  for (const reqRow of reqRows) {
+    const req = (reqRow as AnyRow).data as Requirement;
+    if (req.contractRevision !== contractRevision) continue;
+    if (req.priority !== "required") continue;
+    if (req.state !== "satisfied") continue;
+    if (isSerialInputRequirement(req)) continue;
+    const reopened: Requirement = {
+      ...req,
+      state: "active",
+      strategy: null,
+      resolution: null,
+      updatedAt: at,
+    };
+    await ctx.runMutation(internal.internal.workforce.putRequirement, {
+      objectiveKey,
+      requirementKey: req.requirementKey,
+      data: reopened,
+      currentContractRevision: contractRevision,
+    });
+  }
+  await ctx.db.patch(row._id, {
+    data: {
+      ...data,
+      finalSemanticAssessment: null,
+      management: {
+        ...mgmt,
+        contractId: (mgmt.contractId as string | null) ?? null,
+        finalAssessmentAttempts: attempts + 1,
+        pendingFinalAssessment: null,
+      },
+      updatedAt: at,
+    },
+  } as never);
+  await ctx.db.insert("objectiveEvents", {
+    objectiveKey,
+    data: {
+      at,
+      kind: "decision",
+      text: `Final semantic assessment not ready; deliverable reopened for bounded revision: ${rationale.slice(0, 400)}`,
+    },
+  });
+}
+
+/**
+ * Begin the durable final-semantic-assessment chain (serial only).
+ * Mirrors beginDecision: reserve, schedule model action, grant no authority.
+ */
+export const beginFinalSemanticAssessment = internalMutation({
+  args: { objectiveKey: v.string(), at: v.number() },
+  returns: v.union(
+    v.object({ proceed: v.literal(true), requestId: v.string() }),
+    v.object({ proceed: v.literal(false), reason: v.string() }),
+  ),
+  handler: async (ctx, args) => {
+    const row = await ctx.db
+      .query("objectives")
+      .withIndex("by_key", (q) => q.eq("key", args.objectiveKey))
+      .unique();
+    if (!row) return { proceed: false as const, reason: "objective row missing" };
+    const data = (row as AnyRow).data as Record<string, unknown>;
+    const mgmt = (data.management ?? {}) as Record<string, unknown>;
+    if (!isSerialManagerProtocol(mgmt))
+      return { proceed: false as const, reason: "not serial manager protocol" };
+    const revision = (mgmt.currentContractRevision as number | undefined) ?? 1;
+    const pending = mgmt.pendingFinalAssessment as
+      | { requestId: string; contractRevision: number }
+      | null
+      | undefined;
+    if (pending && pending.contractRevision === revision)
+      return { proceed: false as const, reason: "final assessment already in flight" };
+    const attempts = (mgmt.finalAssessmentAttempts as number | undefined) ?? 0;
+    if (attempts >= BEGIN_FINAL_ASSESSMENT_CEILING)
+      return {
+        proceed: false as const,
+        reason: `final assessment ceiling reached (${attempts}/${BEGIN_FINAL_ASSESSMENT_CEILING})`,
+      };
+    const existing = (
+      data as { finalSemanticAssessment?: { contractRevision?: number } | null }
+    ).finalSemanticAssessment;
+    if (existing && existing.contractRevision === revision)
+      return { proceed: false as const, reason: "current assessment already persisted" };
+
+    const requestId = `assess_${args.objectiveKey}_r${revision}_a${attempts + 1}`;
+    await ctx.db.patch(row._id, {
+      data: {
+        ...data,
+        management: {
+          ...mgmt,
+          contractId: (mgmt.contractId as string | null) ?? null,
+          pendingFinalAssessment: {
+            requestId,
+            contractRevision: revision,
+            attempts: attempts + 1,
+          },
+          finalAssessmentAttempts: attempts + 1,
+        },
+      },
+    } as never);
+    await ctx.scheduler.runAfter(
+      0,
+      internal.objectiveRunner.proposeFinalSemanticAssessment,
+      {
+        objectiveKey: args.objectiveKey,
+        requestId,
+        contractRevision: revision,
+      },
+    );
+    return { proceed: true as const, requestId };
+  },
+});
+
+/**
+ * APPLY step: persist a structured assessment from the model action (or test).
+ * Validates via submitFinalSemanticAssessment, then wakes management.
+ */
+export const applyFinalSemanticAssessment = internalMutation({
+  args: {
+    objectiveKey: v.string(),
+    requestId: v.string(),
+    meetsMinimumBar: v.boolean(),
+    rationale: v.string(),
+    artifactKey: v.union(v.string(), v.null()),
+    artifactVersion: v.union(v.number(), v.null()),
+    evidenceRefs: v.array(v.string()),
+    assumptionsUnknowns: v.array(v.string()),
+    recommendedNextAction: v.string(),
+    contractRevision: v.number(),
+    at: v.number(),
+  },
+  returns: v.union(
+    v.object({ ok: v.literal(true) }),
+    v.object({ ok: v.literal(false), reason: v.string() }),
+  ),
+  handler: async (ctx, args) => {
+    const row = await ctx.db
+      .query("objectives")
+      .withIndex("by_key", (q) => q.eq("key", args.objectiveKey))
+      .unique();
+    if (!row) return { ok: false as const, reason: "objective missing" };
+    const data = (row as AnyRow).data as Record<string, unknown>;
+    const mgmt = (data.management ?? {}) as Record<string, unknown>;
+    const pending = mgmt.pendingFinalAssessment as
+      | { requestId: string; contractRevision: number }
+      | null
+      | undefined;
+    if (!pending || pending.requestId !== args.requestId)
+      return { ok: false as const, reason: "no matching pending final assessment" };
+    if (pending.contractRevision !== args.contractRevision)
+      return { ok: false as const, reason: "stale assessment revision" };
+
+    const stored = await ctx.runMutation(
+      internal.objectives.submitFinalSemanticAssessment,
+      {
+        objectiveKey: args.objectiveKey,
+        meetsMinimumBar: args.meetsMinimumBar,
+        rationale: args.rationale,
+        artifactKey: args.artifactKey,
+        artifactVersion: args.artifactVersion,
+        evidenceRefs: args.evidenceRefs,
+        assumptionsUnknowns: args.assumptionsUnknowns,
+        recommendedNextAction: args.recommendedNextAction,
+        contractRevision: args.contractRevision,
+      },
+    );
+    if (stored.status !== "accepted")
+      return { ok: false as const, reason: stored.detail };
+
+    const fresh = await ctx.db.get(row._id);
+    const freshData = (fresh as AnyRow).data as Record<string, unknown>;
+    const freshMgmt = (freshData.management ?? {}) as Record<string, unknown>;
+    await ctx.db.patch(row._id, {
+      data: {
+        ...freshData,
+        management: {
+          ...freshMgmt,
+          contractId: (freshMgmt.contractId as string | null) ?? null,
+          pendingFinalAssessment: null,
+        },
+      },
+    } as never);
+
+    await ctx.scheduler.runAfter(0, internal.management.runManagementPass, {
+      objectiveKey: args.objectiveKey,
+      reason: "final_semantic_assessment",
+    });
+    return { ok: true as const };
+  },
+});
+

@@ -139,6 +139,13 @@ export type ExternalAcquisitionResult = {
   responseHash: string;
   recordedAt: number;
   verifiedAt: number;
+  /**
+   * Stable ResourceNeed identity this acquisition answered (dedupeKey).
+   * Required for purpose-scoped coverage — same class alone is insufficient.
+   */
+  needDedupeKey?: string | null;
+  /** Optional ResourceNeed id when known at authorization time. */
+  resourceNeedId?: string | null;
 };
 
 export type ObjectiveRecord = {
@@ -176,11 +183,19 @@ export type ObjectiveRecord = {
     terminal: "DELIVERED" | "NEEDS_INPUT" | "EXECUTION_ERROR";
     fingerprint: string;
     acceptedAt: number;
-    /**
-     * `accepted` — application accepted the terminal handoff.
-     * `refused_unconfirmed` — NEEDS_INPUT without a valid evidence-gap proposal.
-     */
-    outcome: "accepted" | "refused_unconfirmed";
+    /** Only `accepted` closes the terminal slot. */
+    outcome: "accepted";
+  } | null;
+  /**
+   * Diagnostic only: last refused/unconfirmed terminal attempt. Does NOT close
+   * the terminal slot; the worker may correct within remaining turns.
+   */
+  lastUnconfirmedTerminal?: {
+    runId: string;
+    terminal: "DELIVERED" | "NEEDS_INPUT" | "EXECUTION_ERROR";
+    fingerprint: string;
+    at: number;
+    reason: string;
   } | null;
   /**
    * M6.1 serial: bounded final semantic assessment against the locked outcome.

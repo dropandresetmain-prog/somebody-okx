@@ -567,6 +567,12 @@ export type ExecutionIntent = {
   boundaryNote: string; // truthful statement of where M4 stopped and why
   createdAt: number;
   updatedAt: number;
+  /**
+   * When this BUY answers a validated ResourceNeed, the need's dedupeKey
+   * (purpose-scoped). Same resource class alone must not cross-cover.
+   */
+  needDedupeKey?: string | null;
+  resourceNeedId?: string | null;
 };
 
 // ── Wake events (Convex-owned, idempotent) ───────────────────────────────────

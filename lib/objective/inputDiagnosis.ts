@@ -549,8 +549,9 @@ export function isValidatedInputGap(need: ResourceNeed): boolean {
 
 /**
  * Scoped coverage: a verified acquisition supplies one need only when
- * requirement, contract revision (when the need recorded one), and resource
- * class all match. Never global "proprietary_data is owned".
+ * requirement, contract revision (when the need recorded one), resource
+ * class, AND purpose identity (needDedupeKey) all match.
+ * Same class alone never covers a different question/purpose.
  */
 export function verifiedAcquisitionCoversNeed(
   need: ResourceNeed,
@@ -559,6 +560,7 @@ export function verifiedAcquisitionCoversNeed(
     contractRevision: number;
     resourceClass: string | null;
     verifiedAt?: number | null;
+    needDedupeKey?: string | null;
   },
 ): boolean {
   if (acquisition.verifiedAt == null) return false;
@@ -571,7 +573,14 @@ export function verifiedAcquisitionCoversNeed(
     return false;
   }
   if (!acquisition.resourceClass) return false;
-  return need.resourceClass === acquisition.resourceClass;
+  if (need.resourceClass !== acquisition.resourceClass) return false;
+  // Purpose identity: when the need has a dedupeKey, the acquisition must
+  // carry the matching key. Missing acquisition identity fails closed.
+  if (need.dedupeKey) {
+    if (!acquisition.needDedupeKey) return false;
+    if (acquisition.needDedupeKey !== need.dedupeKey) return false;
+  }
+  return true;
 }
 
 /** Validated gap classes still missing after applying scoped verified acquisitions. */

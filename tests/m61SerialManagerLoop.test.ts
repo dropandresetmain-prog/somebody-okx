@@ -788,6 +788,7 @@ test("acquisition consume: wrong scope / unverified cannot cover need", () => {
     responseHash: "abc",
     recordedAt: now,
     verifiedAt: now,
+    needDedupeKey: need.dedupeKey,
   };
   assert.equal(verifiedAcquisitionCoversNeed(need, matching), true);
   assert.equal(
@@ -864,16 +865,29 @@ test("two purposes same resource class do not collapse (dedupe + coverage scope)
       requirementKey: REQ,
     }),
   );
-  // Acquisition scoped to requirement+revision+class covers the class gap,
-  // but distinct purposes remain distinct need rows (ids / dedupe keys).
-  const acq = {
+  // Acquisition for purpose A covers A only — not B (same class, different question).
+  const acqA = {
     requirementKey: REQ,
     contractRevision: 1,
     resourceClass: "proprietary_data",
     verifiedAt: now,
+    needDedupeKey: a.dedupeKey,
   };
-  assert.equal(verifiedAcquisitionCoversNeed(a, acq), true);
-  assert.equal(verifiedAcquisitionCoversNeed(b, acq), true);
+  assert.equal(verifiedAcquisitionCoversNeed(a, acqA), true);
+  assert.equal(verifiedAcquisitionCoversNeed(b, acqA), false);
+  const acqB = { ...acqA, needDedupeKey: b.dedupeKey };
+  assert.equal(verifiedAcquisitionCoversNeed(b, acqB), true);
+  assert.equal(verifiedAcquisitionCoversNeed(a, acqB), false);
+  // Missing purpose identity fails closed against a purpose-keyed need.
+  assert.equal(
+    verifiedAcquisitionCoversNeed(a, {
+      requirementKey: REQ,
+      contractRevision: 1,
+      resourceClass: "proprietary_data",
+      verifiedAt: now,
+    }),
+    false,
+  );
   assert.notEqual(a.id, b.id);
   assert.notEqual(a.inputCheckId, b.inputCheckId);
 });

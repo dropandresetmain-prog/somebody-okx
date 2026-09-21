@@ -21,6 +21,7 @@ import type {
   WorkerObservation,
   WorkerObservationFinding,
 } from "./port";
+import { isToolStatusError, type SerialToolStatus } from "./toolStatus";
 import { providerConfiguration } from "./modelSelection";
 
 export const MAX_TURNS = 8;
@@ -287,13 +288,7 @@ export async function runWorker(
     );
   };
   /** Serial tool outcomes — never inferred from prose. */
-  type SerialToolStatus =
-    | "accepted"
-    | "refused"
-    | "unavailable"
-    | "stale"
-    | "transient_error"
-    | "idempotent_replay";
+  // SerialToolStatus imported from ./toolStatus
 
   const normalizeSerialToolStatus = (raw: string | null): SerialToolStatus | null => {
     if (!raw) return null;
@@ -421,12 +416,9 @@ export async function runWorker(
       return payload;
     } catch (error) {
       const message = error instanceof Error ? error.message : "Tool action failed";
-      const typed: SerialToolStatus =
-        message.includes("TERMINAL_CLOSED") || message.startsWith("INVALID_REQUEST")
-          ? "refused"
-          : message.includes("stale") || message.includes("lease")
-            ? "stale"
-            : "transient_error";
+      const typed: SerialToolStatus = isToolStatusError(error)
+        ? error.toolStatus
+        : "transient_error";
       trackActionOutcome(toolName, command, message, serial ? typed : null);
       const boundedObservation = modelSafeObservation(await port.read());
       return JSON.stringify({
@@ -463,12 +455,9 @@ export async function runWorker(
       return payload;
     } catch (error) {
       const message = error instanceof Error ? error.message : "Tool action failed";
-      const typed: SerialToolStatus =
-        message.startsWith("INVALID_REQUEST") || message.includes("TERMINAL_CLOSED")
-          ? "refused"
-          : message.includes("stale") || message.includes("lease")
-            ? "stale"
-            : "transient_error";
+      const typed: SerialToolStatus = isToolStatusError(error)
+        ? error.toolStatus
+        : "transient_error";
       trackActionOutcome(toolName, command, message, serial ? typed : null);
       const boundedObservation = modelSafeObservation(await port.read());
       return JSON.stringify({
@@ -497,7 +486,7 @@ export async function runWorker(
       return tool({
         name: "submit_result",
         description: serial
-          ? "Terminal handoff: submit structured evaluation with terminal=DELIVERED (work done), NEEDS_INPUT (evidence-linked gap in missingInputs), or EXECUTION_ERROR. Application owns validation and wake. Do not call request_completion after this."
+          ? "Terminal handoff: DELIVERED (work done), NEEDS_INPUT (evidence-linked gap in missingInputs — use semanticGap=true when owned sources were inspected but are inadequate for the business question; NOT_AVAILABLE is not required for that case), or EXECUTION_ERROR. Application owns validation and wake."
           : "Submit the structured evaluation: summary, fit, risks, unknowns and the recommended next action. Optionally include missingInputs findings for application validation (resourceClass must be a governed external class such as proprietary_data).",
         parameters: z.object({
           summary: z.string().min(1).max(2000),
@@ -523,6 +512,14 @@ export async function runWorker(
                   .array(z.string().min(1).max(160))
                   .min(1)
                   .max(16),
+                semanticGap: z.boolean().optional(),
+                unansweredQuestion: z.string().min(1).max(500).optional(),
+                observedEvidenceIds: z
+                  .array(z.string().min(1).max(160))
+                  .max(16)
+                  .optional(),
+                whyInsufficient: z.string().min(1).max(500).optional(),
+                howAdditionalWouldChange: z.string().min(1).max(500).optional(),
               }),
             )
             .max(4)
@@ -824,7 +821,7 @@ export async function runWorker(
     );
     if (hasResourcePermission) {
       orderSteps.push(
-        `If owned inputs are insufficient for the unanswered question, call check_input_availability then request_resource / submit_result with terminal=NEEDS_INPUT and missingInputs citing supportingEvidenceIds. Stop when yieldReason is set.`,
+        `If owned sources are AVAILABLE but still inadequate for the business question, submit_result with terminal=NEEDS_INPUT and missingInputs using semanticGap=true, unansweredQuestion, observedEvidenceIds, whyInsufficient, howAdditionalWouldChange, and a governed resourceClass — NOT_AVAILABLE is not required. Use check_input_availability only for literal access gaps. Stop when yieldReason is set.`,
       );
     }
     if (hasArtifactPermission) {

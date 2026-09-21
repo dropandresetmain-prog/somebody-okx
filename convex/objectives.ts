@@ -43,6 +43,7 @@ import {
 } from "../lib/workforce";
 import { CURRENT_RESOURCE_INVENTORY, RESEARCH_ROLE, GROWTH_ROLE, COMPANY_RECORDS } from "../lib/objective/policy";
 import { sourceIdentity } from "../lib/objective/contract";
+import { ToolStatusError } from "../lib/worker/toolStatus";
 import { toolPermissionsForCapabilities } from "../lib/workforce/permissions";
 import { createWorkerSpec } from "../lib/workforce/workers";
 import {
@@ -206,7 +207,9 @@ async function requirementProofKinds(
 // the lifecycle tests prove, so deployment behavior and test behavior agree.
 function assertActiveRun(record: ObjectiveRecord, runId: string, now: number) {
   const fence = fenceRunWrite({ run: record.run, runId, now });
-  if (!fence.ok) throw new Error(fence.reason);
+  if (!fence.ok) {
+    throw new ToolStatusError("stale", fence.reason);
+  }
   // Serial: after an accepted terminal for this run, refuse further material
   // worker writes (durable fence — not only in-memory runtime state).
   const accepted = record.acceptedTerminal;
@@ -215,7 +218,8 @@ function assertActiveRun(record: ObjectiveRecord, runId: string, now: number) {
     accepted.runId === runId &&
     accepted.outcome === "accepted"
   ) {
-    throw new Error(
+    throw new ToolStatusError(
+      "refused",
       `TERMINAL_CLOSED: run ${runId} already accepted terminal ${accepted.terminal}; further material actions refused`,
     );
   }
@@ -228,6 +232,7 @@ function terminalFingerprint(input: {
   risks: string[];
   unknowns: string[];
   recommendedNextAction: string;
+  validatedGapAccepted?: boolean;
 }): string {
   return [
     input.terminal,
@@ -236,6 +241,7 @@ function terminalFingerprint(input: {
     input.risks.join("|"),
     input.unknowns.join("|"),
     input.recommendedNextAction.trim(),
+    input.validatedGapAccepted === true ? "gap:1" : "gap:0",
   ].join("::");
 }
 
@@ -863,15 +869,18 @@ export const submitResult = internalMutation({
       risks: resultFields.risks,
       unknowns: resultFields.unknowns,
       recommendedNextAction: resultFields.recommendedNextAction,
+      validatedGapAccepted: validatedGapAccepted === true,
     });
 
     const prior = record.acceptedTerminal;
-    if (prior && prior.runId === args.runId) {
+    // Only an ACCEPTED terminal closes the slot. Refused/unconfirmed attempts
+    // must not block a corrected submission on the same run.
+    if (prior && prior.runId === args.runId && prior.outcome === "accepted") {
       if (prior.fingerprint === fingerprint && prior.terminal === terminal) {
         return {
           status: "idempotent_replay" as const,
           detail: `exact terminal replay for ${terminal}`,
-          terminalAccepted: prior.outcome === "accepted",
+          terminalAccepted: true,
         };
       }
       return {
@@ -880,26 +889,24 @@ export const submitResult = internalMutation({
         terminalAccepted: false,
       };
     }
-    if (prior && prior.runId !== args.runId && prior.outcome === "accepted") {
-      // Different run after a prior accepted terminal on the Objective is fine
-      // for a later assignment; only same-run conflicts matter here.
-    }
 
     // NEEDS_INPUT: INPUT_BLOCKED is authoritative only after a validated gap.
+    // Persist a diagnostic event only — do NOT write acceptedTerminal.
     if (serial && terminal === "NEEDS_INPUT" && validatedGapAccepted !== true) {
-      const refusedTerminal = {
-        runId: args.runId,
-        terminal,
-        fingerprint,
-        acceptedAt: now,
-        outcome: "refused_unconfirmed" as const,
-      };
       await ctx.db.patch(row._id, {
         data: {
           ...record,
           result,
-          acceptedTerminal: refusedTerminal,
-          // Do NOT manufacture INPUT_BLOCKED from the tag alone.
+          // Keep any prior refused diagnostic off the accepted-terminal slot.
+          acceptedTerminal:
+            prior?.outcome === "accepted" ? prior : null,
+          lastUnconfirmedTerminal: {
+            runId: args.runId,
+            terminal,
+            fingerprint,
+            at: now,
+            reason: "NEEDS_INPUT without accepted evidence-gap proposal",
+          },
           updatedAt: now,
         },
       });
@@ -907,7 +914,7 @@ export const submitResult = internalMutation({
         ctx.db,
         args.objectiveKey,
         "result",
-        "NEEDS_INPUT refused/unconfirmed: no accepted evidence-gap proposal.",
+        "NEEDS_INPUT refused/unconfirmed: no accepted evidence-gap proposal; terminal slot remains open.",
         now,
       );
       return {
@@ -938,6 +945,7 @@ export const submitResult = internalMutation({
         ...record,
         result,
         acceptedTerminal,
+        lastUnconfirmedTerminal: null,
         lastDeliveryFailureClass: lastDeliveryFailureClass ?? null,
         updatedAt: now,
       },
@@ -2351,6 +2359,26 @@ export const submitFinalSemanticAssessment = internalMutation({
           status: "refused" as const,
           detail: `artifact version mismatch: assessed v${args.artifactVersion} vs current v${art.version}`,
         };
+      }
+    }
+    // Evidence refs must exist on this Objective (ids or sourceIds).
+    if (args.evidenceRefs.length > 0) {
+      const evidenceRows = await listEvidence(ctx.db, args.objectiveKey);
+      const known = new Set<string>();
+      for (const ev of evidenceRows) {
+        known.add(ev.id);
+        if (ev.sourceId) known.add(ev.sourceId);
+      }
+      for (const acq of record.acquisitionResults ?? []) {
+        known.add(acq.resultEvidenceId);
+      }
+      for (const ref of args.evidenceRefs) {
+        if (!known.has(ref)) {
+          return {
+            status: "refused" as const,
+            detail: `evidence ref ${ref} is not present on this Objective`,
+          };
+        }
       }
     }
     const assessment = {

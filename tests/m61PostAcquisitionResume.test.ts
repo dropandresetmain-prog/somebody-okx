@@ -172,6 +172,7 @@ function acquisitionFor(
     responseHash: "abc",
     recordedAt: now,
     verifiedAt: now,
+    needDedupeKey: needFor(key).dedupeKey,
     ...overrides,
   };
 }

@@ -520,6 +520,8 @@ export const vExecutionIntent = v.object({
   boundaryNote: v.string(),
   createdAt: v.number(),
   updatedAt: v.number(),
+  needDedupeKey: v.optional(nullableString),
+  resourceNeedId: v.optional(nullableString),
 });
 
 // ── Wake events ──────────────────────────────────────────────────────────────

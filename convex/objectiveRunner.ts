@@ -43,6 +43,11 @@ import {
 import type { WorkerRunTelemetry } from "../lib/worker/runtime";
 import { providerConfiguration } from "../lib/worker/modelSelection";
 import type { ModelNoteInput } from "../lib/worker/port";
+import {
+  isToolStatusError,
+  serialAcceptedResult,
+  type SerialToolStatus,
+} from "../lib/worker/toolStatus";
 import { fetchPublicHtml, htmlToExtractableText } from "../lib/web/fetchPublicHtml";
 import type {
   FindingInput,
@@ -161,7 +166,22 @@ type ObservationIntent = {
 // mutation, so all observations and results are application-persisted truth
 // rather than model claims. Read tools return the BOUNDED observed content so
 // the structured result is genuinely based on what the worker saw.
-function makeConvexPort(ctx: ActionCtx, objectiveKey: string, runId: string) {
+function makeConvexPort(
+  ctx: ActionCtx,
+  objectiveKey: string,
+  runId: string,
+  serialManagerProtocol = false,
+) {
+  const wrap = (raw: string): string => {
+    if (!serialManagerProtocol) return raw;
+    try {
+      const parsed = JSON.parse(raw) as { status?: unknown };
+      if (typeof parsed.status === "string") return raw;
+    } catch {
+      /* plain string success */
+    }
+    return serialAcceptedResult(raw);
+  };
   return {
     async read() {
       const observation = await ctx.runQuery(
@@ -190,6 +210,28 @@ function makeConvexPort(ctx: ActionCtx, objectiveKey: string, runId: string) {
       };
     },
     async act(command: Record<string, unknown>) {
+      try {
+        const raw = await actCommand(ctx, objectiveKey, runId, command);
+        return wrap(raw);
+      } catch (error) {
+        if (serialManagerProtocol && isToolStatusError(error)) {
+          return JSON.stringify({
+            status: error.toolStatus,
+            error: error.message,
+          });
+        }
+        throw error;
+      }
+    },
+  };
+}
+
+async function actCommand(
+  ctx: ActionCtx,
+  objectiveKey: string,
+  runId: string,
+  command: Record<string, unknown>,
+): Promise<string> {
       switch (command.type) {
         case "record_observation": {
           const intent = command as unknown as ObservationIntent;
@@ -684,8 +726,6 @@ function makeConvexPort(ctx: ActionCtx, objectiveKey: string, runId: string) {
             `Unknown worker command: ${String((command as { type?: unknown }).type)}`,
           );
       }
-    },
-  };
 }
 
 // ── Server-side planning model call (R1 Blocker D) ───────────────────────────
@@ -951,7 +991,12 @@ export const executeWorker = internalAction({
           management?: { executionProtocol?: string | null };
         }
       ).management?.executionProtocol === "m61_serial_v1";
-    const port = makeConvexPort(ctx, args.objectiveKey, args.runId);
+    const port = makeConvexPort(
+      ctx,
+      args.objectiveKey,
+      args.runId,
+      serialManagerProtocol,
+    );
     const surface = toolNamesForContract(contract, { serialManagerProtocol });
     const registeredToolNames = [
       ...surface.materialized,
@@ -1733,3 +1778,110 @@ async function recommendWithModel(input: {
     throw new Error("Recommendation is not an object");
   return parsed;
 }
+
+/**
+ * Serial final semantic assessment model step.
+ * Never completes the Objective — only produces a bounded structured assessment
+ * that applyFinalSemanticAssessment persists before management re-wakes.
+ *
+ * When no live model is configured, leaves the pending reservation for an
+ * explicit apply (tests inject deterministic assessments that way).
+ */
+export const proposeFinalSemanticAssessment = internalAction({
+  args: {
+    objectiveKey: v.string(),
+    requestId: v.string(),
+    contractRevision: v.number(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const row = (await ctx.runQuery(internal.objectives.getObjectiveInternal, {
+      objectiveKey: args.objectiveKey,
+    })) as { data: ObjectiveRecord & { management?: Record<string, unknown> } };
+    const record = row.data;
+    const mgmt = (record.management ?? {}) as Record<string, unknown>;
+    const pending = mgmt.pendingFinalAssessment as
+      | { requestId: string; contractRevision: number }
+      | null
+      | undefined;
+    if (!pending || pending.requestId !== args.requestId) return null;
+    if (
+      record.finalSemanticAssessment &&
+      record.finalSemanticAssessment.contractRevision === args.contractRevision
+    ) {
+      return null;
+    }
+
+    const artifact = (record.companyArtifacts ?? [])[0] ?? null;
+    const evidenceIds = [
+      ...(record.acquisitionResults ?? []).map((a) => a.resultEvidenceId),
+    ];
+
+    const configuration = providerConfiguration(process.env);
+    if (!configuration) {
+      // No live model in this environment — leave pending for applyFinalSemanticAssessment.
+      return null;
+    }
+
+    const openai = new OpenAI({
+      apiKey: configuration.apiKey,
+      baseURL: configuration.baseURL,
+    });
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      temperature: 0,
+      messages: [
+        {
+          role: "system",
+          content:
+            "You assess whether a deliverable meets the locked Outcome Contract minimum bar. Reply JSON only. Do not complete the objective. Do not invent evidence ids.",
+        },
+        {
+          role: "user",
+          content: JSON.stringify({
+            contractRevision: args.contractRevision,
+            artifact: artifact
+              ? {
+                  key: artifact.key,
+                  version: artifact.version,
+                  content: artifact.content.slice(0, 2000),
+                }
+              : null,
+            evidenceIds: evidenceIds.slice(0, 16),
+            request: record.request?.slice(0, 500),
+          }),
+        },
+      ],
+      response_format: { type: "json_object" },
+    });
+    const raw = completion.choices[0]?.message?.content;
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as {
+      meetsMinimumBar?: boolean;
+      rationale?: string;
+      evidenceRefs?: string[];
+      assumptionsUnknowns?: string[];
+      recommendedNextAction?: string;
+    };
+    await ctx.runMutation(internal.management.applyFinalSemanticAssessment, {
+      objectiveKey: args.objectiveKey,
+      requestId: args.requestId,
+      meetsMinimumBar: parsed.meetsMinimumBar === true,
+      rationale: String(parsed.rationale ?? "model assessment"),
+      artifactKey: artifact?.key ?? null,
+      artifactVersion: artifact?.version ?? null,
+      evidenceRefs: Array.isArray(parsed.evidenceRefs)
+        ? parsed.evidenceRefs.map(String).slice(0, 16)
+        : [],
+      assumptionsUnknowns: Array.isArray(parsed.assumptionsUnknowns)
+        ? parsed.assumptionsUnknowns.map(String).slice(0, 12)
+        : [],
+      recommendedNextAction: String(
+        parsed.recommendedNextAction ?? "redecide",
+      ).slice(0, 500),
+      contractRevision: args.contractRevision,
+      at: Date.now(),
+    });
+    return null;
+  },
+});

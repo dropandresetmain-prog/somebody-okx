@@ -195,10 +195,23 @@ export const objectiveRecord = v.object({
         ),
         fingerprint: v.string(),
         acceptedAt: v.number(),
-        outcome: v.union(
-          v.literal("accepted"),
-          v.literal("refused_unconfirmed"),
+        outcome: v.literal("accepted"),
+      }),
+      v.null(),
+    ),
+  ),
+  lastUnconfirmedTerminal: v.optional(
+    v.union(
+      v.object({
+        runId: v.string(),
+        terminal: v.union(
+          v.literal("DELIVERED"),
+          v.literal("NEEDS_INPUT"),
+          v.literal("EXECUTION_ERROR"),
         ),
+        fingerprint: v.string(),
+        at: v.number(),
+        reason: v.string(),
       }),
       v.null(),
     ),
