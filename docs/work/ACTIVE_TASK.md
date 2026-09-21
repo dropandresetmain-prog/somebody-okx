@@ -1,7 +1,7 @@
 # ACTIVE TASK — M6.1 manager–execution mini-refactor
 
 Updated: 21 September 2026 (Singapore)
-Status: **FIXER CLOSURE PASS 3 COMPLETE / NOT GATE 1 PASS**
+Status: **FIXER FINALIZATION/EVIDENCE CLOSURE COMPLETE / NOT GATE 1 PASS**
 
 ## Goal
 
@@ -12,36 +12,36 @@ relaunch recommendation.
 ## Branch / base
 
 - Branch: `refactor/m6-1-manager-execution-loop`
-- Pass-2 start SHA: `1793684`
-- Pass-2 final: `4d9b516` (ledger) / `79a670e` (code)
+- Pass-3 start SHA: `7d49913`
 - Preserved: `stash@{0}`; untracked `scripts/_tmp-*`
 
 ## Checkpoint
 
-- Starting SHA: `4d9b516`
-- Final pushed SHA: `e38744af01f74df59e9f0c08712438eee59b845a`
+- Starting SHA: `7d49913990ff3ea8dd8251b62c0b65ecea235e42`
+- Final pushed SHA: `0feefcd`
 
-## This pass (remaining production paths)
+## This pass (finalization-and-evidence)
 
 ### Completed implementation
 
-- [x] Corrective execution scoped to current authorized action (satisfaction +
-      reopen supersede + reducer ignores superseded/failed delivery)
-- [x] Manager-initiated serial BUY allowed when no open validated ResourceNeed;
-      stale bound need still refused
-- [x] Assessment grounding: action-linked acquisitions + owned observations;
-      `PlanningConfiguration | null` for provider config
-- [x] `proposeDecision` uses structured-chat doubles without LIVE_AI
+- [x] Serial result-contract alignment: `allowEmptyRisksUnknowns` on serial
+      WorkContracts; `evaluateCompletion` accepts empty risks/unknowns arrays
+      when permitted; missing/malformed arrays still fail; legacy nonempty kept
+- [x] Correction test uses production `executeWorker` + worker-model double;
+      no workItems/run replacement after dispatch; no force-delivery bookkeeping
+- [x] `executeWorker` seam asserts `completed===true`, empty `unmet`, durable
+      run/WI state, matching `worker_result` wake; Objective stays separate
+- [x] Convex tsc: assessment return typing + observation provenance narrowing
 
 ### Tested seams (behavioral regressions; not physical Gate 1)
 
-- [x] MAKE→BUY→MAKE→negative→corrective new run/artifact→assessment #2→complete
-- [x] Second negative → explicit `blocked` stop (not a fourth pending alone)
-- [x] Manager BUY without worker ResourceNeed; stale bound refused
-- [x] `proposeDecision` doubles assert result-package/critique content
-- [x] `executeWorker` production seam with worker model double
-- [x] Assessment excludes unrelated Objective-wide acquisitions
-- [x] F causality: missing observed acquisition content fails (no sim fallback)
+- [x] Serial empty risks/unknowns finalize via production WorkContract + finishRun
+- [x] Negative → corrective new run → real artifact revision → WI finalize →
+      assessment #2 → completed (no post-rejection state repair)
+- [x] Old assignment cannot satisfy corrective action
+- [x] Second negative → explicit `blocked` stop
+- [x] `executeWorker` seam completed + wake evidence
+- [x] F/G production whole-chain regressions still pass
 
 ### Remaining physical acceptance (do not run in this pass)
 
