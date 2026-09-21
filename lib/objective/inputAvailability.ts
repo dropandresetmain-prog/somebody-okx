@@ -52,6 +52,8 @@ export type ScopedAcquisitionCoverage = {
   contractRevision: number;
   resourceClass: string;
   verifiedAt?: number | null;
+  /** Purpose-scoped need identity when known. */
+  needDedupeKey?: string | null;
 };
 
 const PROOF_ORIGIN = "application_observation";

@@ -272,19 +272,22 @@ export function validateMissingInputProposal(
       `resource class ${resourceClass} is owned vocabulary, not an acquisition gap`,
     );
 
-  // Already-covered Requirement-scoped obligation must not reacquire.
+  // Already-covered Requirement-scoped obligation must not reacquire —
+  // but only when the SAME question/purpose is already answered. Same resource
+  // class alone must not suppress a different validated question.
   if (
     obligationAlreadyCovered({
       requirementKey: ctx.requirementKey,
       contractRevision: ctx.contractRevision,
       resourceClass,
+      purpose: proposal.purpose,
       existingNeeds: ctx.existingNeeds,
       acquisitions: ctx.acquisitions ?? [],
     })
   ) {
     return refuse(
       "already_covered",
-      `requirement ${ctx.requirementKey} already has verified coverage for ${resourceClass}`,
+      `requirement ${ctx.requirementKey} already has verified coverage for this question (${resourceClass})`,
     );
   }
 
@@ -490,14 +493,32 @@ export function currentUnresolvedValidatedGap(
   return null;
 }
 
-/** Requirement-scoped obligation already satisfied by fulfilled need or acquisition. */
+/** Requirement-scoped obligation already satisfied for THIS question/purpose. */
 export function obligationAlreadyCovered(input: {
   requirementKey: string;
   contractRevision: number;
   resourceClass: string;
+  /** Purpose/question of the NEW proposal — distinguishes same-class needs. */
+  purpose?: string | null;
+  needDedupeKey?: string | null;
   existingNeeds: readonly ResourceNeed[];
   acquisitions: readonly ScopedAcquisitionCoverage[];
 }): boolean {
+  const purposeNorm = (input.purpose ?? "").trim().toLowerCase();
+  const proposalDedupe = input.needDedupeKey ?? null;
+  const hasQuestionIdentity = purposeNorm.length > 0 || proposalDedupe != null;
+
+  const sameQuestionAs = (need: ResourceNeed): boolean => {
+    if (proposalDedupe != null && need.dedupeKey === proposalDedupe) return true;
+    if (
+      purposeNorm.length > 0 &&
+      need.purpose.trim().toLowerCase() === purposeNorm
+    ) {
+      return true;
+    }
+    return false;
+  };
+
   for (const need of input.existingNeeds) {
     if (need.requirementKey !== input.requirementKey) continue;
     if (need.resourceClass !== input.resourceClass) continue;
@@ -507,7 +528,12 @@ export function obligationAlreadyCovered(input: {
     ) {
       continue;
     }
-    if (need.status === "fulfilled") return true;
+    if (hasQuestionIdentity && !sameQuestionAs(need)) continue;
+
+    if (need.status === "fulfilled") {
+      if (!hasQuestionIdentity || sameQuestionAs(need)) return true;
+      continue;
+    }
     if (
       (need.status === "active" ||
         need.status === "sourcing" ||
@@ -519,6 +545,11 @@ export function obligationAlreadyCovered(input: {
       return true;
     }
   }
+
+  // Distinct question identity: never cover from bare class acquisition alone.
+  if (hasQuestionIdentity) return false;
+
+  // Legacy callers with no purpose: class-level acquisition may cover.
   return input.acquisitions.some(
     (acquisition) =>
       acquisition.verifiedAt != null &&

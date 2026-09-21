@@ -12,10 +12,13 @@ import schema from "../convex/schema";
 import {
   applyInterpretation,
   applyDecision,
-  applyFinalSemanticAssessment,
   beginFinalSemanticAssessment,
   runManagementPass,
 } from "../convex/management";
+import {
+  makeConvexPort,
+  proposeFinalSemanticAssessment,
+} from "../convex/objectiveRunner";
 import { initBudget } from "../convex/internal/workforce";
 import {
   finishRun,
@@ -30,7 +33,7 @@ import { runWorker } from "../lib/worker/runtime";
 import type { WorkerCommand, WorkerPort } from "../lib/worker/port";
 import { optionIdFor } from "../lib/management/options";
 import { M61_SERIAL_V1 } from "../lib/management/executionProtocol";
-import { CANONICAL_SIMULATED_SOCIAL_RESULT } from "../lib/objective/seedData";
+import { installStructuredChatDouble } from "../lib/management/modelBoundary";
 import type { Assignment, Requirement } from "../lib/management/types";
 import type { ObjectiveRecord } from "../lib/objective/types";
 import type { WorkContract } from "../lib/workforce";
@@ -465,10 +468,13 @@ test("F production whole-chain: founder → MAKE → gap → BUY sim → MAKE ar
       },
     };
 
-    await runWorker(makeConvexBackedPort(t, key, runId1, reqKey), contract1, {
-      model: modelGap,
-      serialManagerProtocol: true,
-      maxTurns: 4,
+    await t.action(async (ctx) => {
+      const port = makeConvexPort(ctx, key, runId1, true);
+      await runWorker(port, contract1, {
+        model: modelGap,
+        serialManagerProtocol: true,
+        maxTurns: 4,
+      });
     });
 
     await t.mutation(async (ctx) =>
@@ -722,16 +728,34 @@ test("F production whole-chain: founder → MAKE → gap → BUY sim → MAKE ar
           };
         }
         if (step2 === 2) {
-          const finding = CANONICAL_SIMULATED_SOCIAL_RESULT.content.slice(0, 400);
+          const obs = (await t.query(async (ctx) =>
+            (readWorkerObservation as unknown as Handler)._handler(ctx, {
+              objectiveKey: key,
+              runId: runId2,
+            }),
+          )) as {
+            acquiredInputs?: Array<{ resultEvidenceId?: string; text?: string }>;
+            loadedInputPackage?: { inputEvidenceIds?: string[] };
+          };
+          const acquired = obs.acquiredInputs?.[0];
+          const evidenceId =
+            acquired?.resultEvidenceId ??
+            obs.loadedInputPackage?.inputEvidenceIds?.[0] ??
+            sim.resultEvidenceId;
+          const finding = String(acquired?.text ?? "").slice(0, 400);
+          assert.ok(
+            evidenceId,
+            "second MAKE worker must see action-scoped acquisition in observation",
+          );
           return {
             usage: new Usage(),
             output: [
               toolCall(
                 "update_company_artifact",
                 {
-                  content: `Relaunch recommendation grounded in acquired evidence.\n${finding}`,
-                  changeNote: "Apply simulated audience language to relaunch copy",
-                  usedAcquisitionEvidenceIds: [sim.resultEvidenceId],
+                  content: `Relaunch recommendation grounded in acquired evidence.\n${finding || "acquired audience language"}`,
+                  changeNote: "Apply observed acquisition to relaunch copy",
+                  usedAcquisitionEvidenceIds: [evidenceId],
                 },
                 "d2",
               ),
@@ -761,10 +785,13 @@ test("F production whole-chain: founder → MAKE → gap → BUY sim → MAKE ar
       },
     };
 
-    await runWorker(makeConvexBackedPort(t, key, runId2, reqKey), contract2, {
-      model: modelDeliver,
-      serialManagerProtocol: true,
-      maxTurns: 5,
+    await t.action(async (ctx) => {
+      const port = makeConvexPort(ctx, key, runId2, true);
+      await runWorker(port, contract2, {
+        model: modelDeliver,
+        serialManagerProtocol: true,
+        maxTurns: 5,
+      });
     });
 
     await t.mutation(async (ctx) =>
@@ -789,9 +816,41 @@ test("F production whole-chain: founder → MAKE → gap → BUY sim → MAKE ar
       "artifact content must reflect worker update",
     );
 
-    // Wake management to verify/satisfy from worker delivery + proofs.
+    // Final assessment through production proposeFinalSemanticAssessment via
+    // structured-chat double (not applyFinalSemanticAssessment bypass).
+    const assessmentRequests: Array<{ user: string; system: string }> = [];
+    installStructuredChatDouble((req) => {
+      if (req.kind === "final_assessment") {
+        assessmentRequests.push({ user: req.user, system: req.system });
+        const parsed = JSON.parse(req.user) as {
+          artifact?: { key?: string; version?: number };
+          lockedContract?: { minimumCompletionBar?: string };
+          deliverableCriteria?: { mustBeTrue?: string };
+          evidenceIds?: string[];
+        };
+        assert.equal(parsed.artifact?.key, ARTIFACT);
+        assert.equal(parsed.artifact?.version, art!.version);
+        assert.ok(
+          parsed.lockedContract?.minimumCompletionBar === "relaunch" ||
+            String(req.user).includes("relaunch"),
+          "assessment request must carry locked minimum bar / criteria",
+        );
+        return {
+          meetsMinimumBar: true,
+          rationale:
+            "Artifact meets the locked relaunch bar with owned observation and verified acquisition evidence.",
+          artifactKey: ARTIFACT,
+          artifactVersion: art!.version,
+          evidenceRefs: [sim.resultEvidenceId, ...seenEv].slice(0, 8),
+          assumptionsUnknowns: ["live conversion unknown"],
+          recommendedNextAction: "complete",
+        };
+      }
+      throw new Error(`unexpected structured chat kind ${req.kind}`);
+    });
+
     let settle = await invokePass(t, key, "worker_result");
-    for (let i = 0; i < 4 && settle.objectiveState !== "completed"; i++) {
+    for (let i = 0; i < 6 && settle.objectiveState !== "completed"; i++) {
       const reqs = await readReqs(t, key);
       const req = reqs[0]!;
       if (req.state === "satisfied" && !((await readObj(t, key)).finalSemanticAssessment)) {
@@ -801,27 +860,26 @@ test("F production whole-chain: founder → MAKE → gap → BUY sim → MAKE ar
             at: now + i,
           }),
         )) as { proceed: boolean; requestId?: string; reason?: string };
-        if (began.proceed && began.requestId) {
-          await t.mutation(async (ctx) =>
-            (applyFinalSemanticAssessment as unknown as Handler)._handler(ctx, {
-              objectiveKey: key,
-              requestId: began.requestId!,
-              meetsMinimumBar: true,
-              rationale:
-                "Artifact meets the locked relaunch bar with owned observation and verified acquisition evidence.",
-              artifactKey: ARTIFACT,
-              artifactVersion: art!.version,
-              evidenceRefs: [sim.resultEvidenceId, ...seenEv].slice(0, 8),
-              assumptionsUnknowns: ["live conversion unknown"],
-              recommendedNextAction: "complete",
-              contractRevision: 1,
-              at: now + i,
-            }),
-          );
-        }
+        assert.ok(
+          began.proceed,
+          `beginFinal must proceed: ${began.reason ?? "unknown"}`,
+        );
+        await t.action(async (ctx) =>
+          (proposeFinalSemanticAssessment as unknown as Handler)._handler(ctx, {
+            objectiveKey: key,
+            requestId: began.requestId!,
+            contractRevision: 1,
+          }),
+        );
       }
       settle = await invokePass(t, key, `settle_${i}`);
     }
+    installStructuredChatDouble(null);
+
+    assert.ok(
+      assessmentRequests.length >= 1,
+      "proposeFinalSemanticAssessment must call structured-chat boundary",
+    );
 
     const finalObj = await readObj(t, key);
     const finalReqs = await readReqs(t, key);
@@ -837,7 +895,6 @@ test("F production whole-chain: founder → MAKE → gap → BUY sim → MAKE ar
       settle.objectiveState === "completed" || completedNote,
       `expected completed pass/note; settle=${settle.objectiveState} note=${completedNote?.summary} db=${finalObj.state} req=${finalReqs[0]?.state} last=${settle.summary}`,
     );
-    // Durable objective.state must mirror the gate-accepted control state.
     assert.equal(
       finalObj.state,
       "completed",
@@ -848,8 +905,11 @@ test("F production whole-chain: founder → MAKE → gap → BUY sim → MAKE ar
         .join(">")} assess=${JSON.stringify(finalObj.finalSemanticAssessment)}`,
     );
     assert.equal(finalObj.finalSemanticAssessment?.meetsMinimumBar, true);
+    assert.equal(finalObj.finalSemanticAssessment?.artifactKey, ARTIFACT);
+    assert.equal(finalObj.finalSemanticAssessment?.artifactVersion, art!.version);
     void make2Assign;
   } finally {
+    installStructuredChatDouble(null);
     if (previousToken === undefined) delete process.env.SOMEBODY_DEMO_OPERATOR_TOKEN;
     else process.env.SOMEBODY_DEMO_OPERATOR_TOKEN = previousToken;
   }
@@ -866,7 +926,30 @@ test("G supplied-evidence: MAKE completes without BUY when owned evidence suffic
 
   await seedFounderOnly(t, key, {
     request:
-      "Save a relaunch recommendation using only our owned launch context — no spend.",
+      "Our launch messaging isn’t working. Figure out what’s wrong and get a better relaunch ready.",
+  });
+  // Richer owned evidence — same objective/authority as F; no "no spend" instruction.
+  await t.mutation(async (ctx) => {
+    const row = await ctx.db
+      .query("objectives")
+      .withIndex("by_key", (q) => q.eq("key", key))
+      .unique();
+    assert.ok(row);
+    const data = (row as { data: ObjectiveRecord }).data;
+    await ctx.db.patch((row as { _id: string })._id as never, {
+      data: {
+        ...data,
+        companyArtifacts: [
+          {
+            key: ARTIFACT,
+            version: 1,
+            content:
+              "Owned relaunch brief: one-person founders need an accountable system that finishes work. Audience language is already captured in company records.",
+            history: [],
+          },
+        ],
+      } as never,
+    });
   });
   await interpretDeliverable(t, key, reqKey);
   await invokePass(t, key, "objective_submitted");
@@ -913,7 +996,7 @@ test("G supplied-evidence: MAKE completes without BUY when owned evidence suffic
   assert.deepEqual(contract.inputEvidenceIds ?? [], []);
 
   let step = 0;
-  const model: Model = {
+  const modelG: Model = {
     async getResponse() {
       step += 1;
       if (step === 1) {
@@ -929,14 +1012,29 @@ test("G supplied-evidence: MAKE completes without BUY when owned evidence suffic
         };
       }
       if (step === 2) {
+        const obs = (await t.query(async (ctx) =>
+          (readWorkerObservation as unknown as Handler)._handler(ctx, {
+            objectiveKey: key,
+            runId,
+          }),
+        )) as {
+          recordedFindings: Array<{ text?: string }>;
+          loadedInputPackage?: { targetArtifact?: { content?: string } };
+        };
+        const seen = [
+          ...(obs.recordedFindings ?? []).map((f) => String(f.text ?? "")),
+          String(obs.loadedInputPackage?.targetArtifact?.content ?? ""),
+        ]
+          .join(" ")
+          .slice(0, 500);
+        assert.ok(seen.length > 20, "G worker must observe owned evidence");
         return {
           usage: new Usage(),
           output: [
             toolCall(
               "update_company_artifact",
               {
-                content:
-                  "Relaunch from owned context: one-person founders need an accountable system that finishes work.",
+                content: `Relaunch from owned observation: ${seen.slice(0, 280)}`,
                 changeNote: "Owned-evidence relaunch draft",
                 usedAcquisitionEvidenceIds: [],
               },
@@ -968,11 +1066,15 @@ test("G supplied-evidence: MAKE completes without BUY when owned evidence suffic
     },
   };
 
-  await runWorker(makeConvexBackedPort(t, key, runId, reqKey), contract, {
-    model,
-    serialManagerProtocol: true,
-    maxTurns: 5,
+  await t.action(async (ctx) => {
+    const port = makeConvexPort(ctx, key, runId, true);
+    await runWorker(port, contract, {
+      model: modelG,
+      serialManagerProtocol: true,
+      maxTurns: 5,
+    });
   });
+
   await t.mutation(async (ctx) =>
     (finishRun as unknown as Handler)._handler(ctx, {
       objectiveKey: key,
@@ -985,17 +1087,15 @@ test("G supplied-evidence: MAKE completes without BUY when owned evidence suffic
   const art = (await readObj(t, key)).companyArtifacts?.find((a) => a.key === ARTIFACT);
   assert.ok(art && art.version >= 2);
 
-  const began = (await t.mutation(async (ctx) =>
-    (beginFinalSemanticAssessment as unknown as Handler)._handler(ctx, {
-      objectiveKey: key,
-      at: now,
-    }),
-  )) as { proceed: boolean; requestId?: string; reason?: string };
-  assert.equal(began.proceed, true, began.reason);
-  const applied = (await t.mutation(async (ctx) =>
-    (applyFinalSemanticAssessment as unknown as Handler)._handler(ctx, {
-      objectiveKey: key,
-      requestId: began.requestId!,
+  installStructuredChatDouble((req) => {
+    if (req.kind !== "final_assessment") {
+      throw new Error(`unexpected kind ${req.kind}`);
+    }
+    const parsed = JSON.parse(req.user) as {
+      artifact?: { key?: string; version?: number };
+    };
+    assert.equal(parsed.artifact?.key, ARTIFACT);
+    return {
       meetsMinimumBar: true,
       rationale: "Owned evidence suffices; artifact meets relaunch bar without BUY.",
       artifactKey: ARTIFACT,
@@ -1003,14 +1103,28 @@ test("G supplied-evidence: MAKE completes without BUY when owned evidence suffic
       evidenceRefs: [],
       assumptionsUnknowns: [],
       recommendedNextAction: "complete",
-      contractRevision: 1,
+    };
+  });
+
+  const began = (await t.mutation(async (ctx) =>
+    (beginFinalSemanticAssessment as unknown as Handler)._handler(ctx, {
+      objectiveKey: key,
       at: now,
     }),
-  )) as { ok: boolean; reason?: string };
-  assert.equal(applied.ok, true, applied.reason);
+  )) as { proceed: boolean; requestId?: string; reason?: string };
+  assert.equal(began.proceed, true, began.reason);
+  await t.action(async (ctx) =>
+    (proposeFinalSemanticAssessment as unknown as Handler)._handler(ctx, {
+      objectiveKey: key,
+      requestId: began.requestId!,
+      contractRevision: 1,
+    }),
+  );
+  installStructuredChatDouble(null);
 
   await invokePass(t, key, "final_assessment_applied");
   const finalObj = await readObj(t, key);
   assert.equal(finalObj.state, "completed");
+  assert.equal(finalObj.finalSemanticAssessment?.meetsMinimumBar, true);
   assert.equal((await readIntents(t, key)).length, 0);
 });

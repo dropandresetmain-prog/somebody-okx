@@ -158,7 +158,14 @@ async function seedObjective(t: Backend, key: string, extra: Record<string, unkn
   });
 }
 
-async function seedContractRequirementBudget(t: Backend, key: string, requirement: Requirement, revision = 1, decisionAttempts: Record<string, number> = {}) {
+async function seedContractRequirementBudget(
+  t: Backend,
+  key: string,
+  requirement: Requirement,
+  revision = 1,
+  decisionAttempts: Record<string, number> = {},
+  decisionRefusalAttempts: Record<string, number> = {},
+) {
   await t.mutation(async (ctx) =>
     (putContract as unknown as Handler)._handler(ctx, {
       objectiveKey: key,
@@ -195,6 +202,7 @@ async function seedContractRequirementBudget(t: Backend, key: string, requiremen
           controlNotes: [],
           pendingDecision: null,
           decisionAttempts,
+          decisionRefusalAttempts,
         },
       },
     } as never);
@@ -441,6 +449,55 @@ test("production loop: interpret → decide → dispatch → verify → propose 
 
   const assignments3 = await readAssignments(t, key);
   assert.equal(assignments3[0].state, "verified", "assignment verified");
+
+  // Serial protocol (set at interpretation): final semantic assessment required.
+  const { beginFinalSemanticAssessment, applyFinalSemanticAssessment } =
+    await import("../convex/management");
+  // Ensure a sole governed artifact exists for unambiguous assessment target.
+  await t.mutation(async (ctx) => {
+    const row = await looseDb(ctx)
+      .query("objectives")
+      .withIndex("by_key", (q) => q.eq("key", key))
+      .unique();
+    if (!row) throw new Error("objective missing");
+    const data = (row as { data: Record<string, unknown> }).data;
+    await ctx.db.patch((row as { _id: string })._id as never, {
+      data: {
+        ...data,
+        companyArtifacts: [
+          {
+            key: "loop/deliverable",
+            version: 1,
+            content: "loop deliverable content",
+            history: [],
+          },
+        ],
+      } as never,
+    });
+  });
+  const began = (await t.mutation(async (ctx) =>
+    (beginFinalSemanticAssessment as unknown as Handler)._handler(ctx, {
+      objectiveKey: key,
+      at: now,
+    }),
+  )) as { proceed: boolean; requestId?: string; reason?: string };
+  assert.equal(began.proceed, true, began.reason);
+  const assessed = (await t.mutation(async (ctx) =>
+    (applyFinalSemanticAssessment as unknown as Handler)._handler(ctx, {
+      objectiveKey: key,
+      requestId: began.requestId!,
+      meetsMinimumBar: true,
+      rationale: "loop deliverable meets minimum bar",
+      artifactKey: "loop/deliverable",
+      artifactVersion: 1,
+      evidenceRefs: ["ev_loop_1"],
+      assumptionsUnknowns: [],
+      recommendedNextAction: "complete",
+      contractRevision: 1,
+      at: now,
+    }),
+  )) as { ok: boolean; reason?: string };
+  assert.equal(assessed.ok, true, assessed.reason);
 
   // Phase 6: runManagementPass → propose → completed (may already be done via continue cycles)
   const outcome5 = await invokeRunManagementPass(t, {
@@ -820,21 +877,28 @@ test("N8 ungoverned capability proposal: MAKE with only ungoverned capabilities 
   assert.equal(intents.length, 0, "no intent row created");
 });
 
-test("N9 decision ceiling: decisionAttempts at ceiling prevents new reservation", async () => {
+test("N9 decision ceiling: decisionRefusalAttempts at ceiling prevents new reservation", async () => {
   const t = convexTest(schema, modules);
   const key = "obj_n9_ceiling";
   const reqKey = "req_n9";
   const requirement = makeRequirement(key, reqKey);
   await seedObjective(t, key);
-  await seedContractRequirementBudget(t, key, requirement, 1, { [reqKey]: BEGIN_DECISION_CEILING });
+  await seedContractRequirementBudget(
+    t,
+    key,
+    requirement,
+    1,
+    {},
+    { [reqKey]: BEGIN_DECISION_CEILING },
+  );
 
   await invokeRunManagementPass(t, { objectiveKey: key, reason: "objective_submitted" });
 
   const obj = await readObjective(t, key);
   assert.equal(obj.management.pendingDecision, null, "pendingDecision NOT created at ceiling");
 
-  const attempts = obj.management.decisionAttempts as Record<string, number>;
-  assert.equal(attempts[reqKey], BEGIN_DECISION_CEILING, "decisionAttempts unchanged");
+  const refusals = obj.management.decisionRefusalAttempts as Record<string, number>;
+  assert.equal(refusals[reqKey], BEGIN_DECISION_CEILING, "decisionRefusalAttempts unchanged");
 });
 
 test("N10 decision retry after refusal: after BUY refusal with eligible options, reducer routes to decide_requirement and allows retry", async () => {

@@ -391,13 +391,19 @@ export function buildConvexManagementPorts(ctx: MutationCtx): ManagementPorts {
       )
         return null;
 
-      // Cumulative, per-requirement ceiling: attempts are counted across
-      // revisions and NEVER reset, so a model that keeps producing unusable
-      // output cannot be re-scheduled forever. This is the decision analogue of
-      // BEGIN_INTERPRETATION_CEILING and the outer guard against a decide storm.
+      // Storm ceiling: only REFUSED decision attempts burn BEGIN_DECISION_CEILING.
+      // Authorized MAKE→BUY→MAKE progress must still leave room for one bounded
+      // correction after a negative final assessment. Sequence (decisionAttempts)
+      // continues for stable identity and is bounded by maxManagementDecisions.
+      const refusalMap = (mgmt.decisionRefusalAttempts ?? {}) as Record<
+        string,
+        number
+      >;
+      const refusals = refusalMap[requirement.requirementKey] ?? 0;
+      if (refusals >= BEGIN_DECISION_CEILING) return null;
+
       const attemptsMap = (mgmt.decisionAttempts ?? {}) as Record<string, number>;
       const cumulative = attemptsMap[requirement.requirementKey] ?? 0;
-      if (cumulative >= BEGIN_DECISION_CEILING) return null;
 
       // Fact-change fingerprint: duplicate wakes with unchanged material
       // management facts must not burn another strategic decision attempt.
@@ -1907,7 +1913,12 @@ export const applyDecision = internalMutation({
     // against must still be current. If it moved, the grounded options the model
     // saw no longer exist at this revision.
     if (!reads || reads.currentContractRevision !== pending.contractRevision) {
-      await clearPending();
+      const refusalMap = {
+        ...((mgmt.decisionRefusalAttempts ?? {}) as Record<string, number>),
+      };
+      refusalMap[pending.requirementKey] =
+        (refusalMap[pending.requirementKey] ?? 0) + 1;
+      await clearPending({ decisionRefusalAttempts: refusalMap });
       return { ok: false as const, reason: "contract revision moved since the decision pass began; action output is stale" };
     }
 
@@ -1934,7 +1945,12 @@ export const applyDecision = internalMutation({
           text: `decision refused for ${pending.requirementKey}: strategy proposal unusable (${built.errors.slice(0, 4).join("; ").slice(0, 300)})`,
         },
       });
-      await clearPending();
+      const refusalMap = {
+        ...((mgmt.decisionRefusalAttempts ?? {}) as Record<string, number>),
+      };
+      refusalMap[pending.requirementKey] =
+        (refusalMap[pending.requirementKey] ?? 0) + 1;
+      await clearPending({ decisionRefusalAttempts: refusalMap });
       await scheduleDecisionWake(ctx, args.objectiveKey, decisionId, false, args.at);
       return { ok: false as const, reason: built.errors.join("; ").slice(0, 400) };
     }
@@ -1944,14 +1960,24 @@ export const applyDecision = internalMutation({
 
     const authorized = result.authorization.kind === "authorized";
 
-    // Keep decisionAttempts after authorization. Resetting to zero reminted the
-    // same `â€¦_a1` decisionId on a post-failure retry, which derived the same
-    // assignment id as the failed delivery and deferred forever. The cumulative
-    // counter gives each re-decision a new identity; BEGIN_DECISION_CEILING
-    // still stops a refuse/re-ask storm.
+    // Keep decisionAttempts (sequence) after authorization for identity. Storm
+    // ceiling uses decisionRefusalAttempts — only unauthorized outcomes burn it.
     const attemptsMap = { ...((mgmt.decisionAttempts ?? {}) as Record<string, number>) };
+    const refusalMap = {
+      ...((mgmt.decisionRefusalAttempts ?? {}) as Record<string, number>),
+    };
+    if (!authorized) {
+      refusalMap[pending.requirementKey] =
+        (refusalMap[pending.requirementKey] ?? 0) + 1;
+    }
 
-    await clearPending({ decisionAttempts: attemptsMap }, authorized);
+    await clearPending(
+      {
+        decisionAttempts: attemptsMap,
+        decisionRefusalAttempts: refusalMap,
+      },
+      authorized,
+    );
 
     await ctx.db.insert("objectiveEvents", {
       objectiveKey: args.objectiveKey,
@@ -2565,9 +2591,11 @@ async function dispatchExternal(
   const objectiveData = objectiveRow
     ? ((objectiveRow as AnyRow).data as {
         resourceNeeds?: ResourceNeed[];
+        management?: Record<string, unknown>;
       })
     : null;
   const needs = objectiveData?.resourceNeeds ?? [];
+  const serialBuy = isSerialManagerProtocol(objectiveData?.management);
   let boundNeedDedupeKey: string | null = null;
   let boundResourceNeedId: string | null = null;
   try {
@@ -2608,13 +2636,33 @@ async function dispatchExternal(
       : candidateNeeds.length === 1
         ? candidateNeeds[0]!
         : null;
-  if (candidateNeeds.length > 1 && !matchingNeed) {
+  // Serial BUY: refuse stale/missing bound need and refuse accidentally unbound
+  // intents. Ambiguous multi-need without binding was already deferred above.
+  if (boundNeedDedupeKey || boundResourceNeedId) {
+    if (!matchingNeed) {
+      return await noteDispatchDeferred(
+        ctx,
+        objectiveKey,
+        persisted.requirementKey,
+        at,
+        "bound ResourceNeed is stale or missing; refusing unbound BUY intent",
+      );
+    }
+  } else if (candidateNeeds.length > 1 && !matchingNeed) {
     return await noteDispatchDeferred(
       ctx,
       objectiveKey,
       persisted.requirementKey,
       at,
       "ambiguous validated ResourceNeed for this BUY; decision must bind need identity before dispatch",
+    );
+  } else if (serialBuy && !matchingNeed) {
+    return await noteDispatchDeferred(
+      ctx,
+      objectiveKey,
+      persisted.requirementKey,
+      at,
+      "serial BUY requires a bound validated ResourceNeed; refusing unbound intent",
     );
   }
   const intentWithNeed: ExecutionIntent = matchingNeed
@@ -2650,6 +2698,103 @@ async function dispatchExternal(
 }
 
 export const BEGIN_FINAL_ASSESSMENT_CEILING = 2;
+
+/**
+ * Resolve the exact governed artifact for final assessment.
+ * Prefer company_artifact_version proof params; otherwise require a single
+ * unambiguous company artifact. Never regex-match or pick an arbitrary first.
+ */
+export function resolveGovernedAssessmentTarget(input: {
+  requirements: readonly Requirement[];
+  artifacts: readonly { key: string; version: number; content?: string }[];
+  contractRevision: number;
+}):
+  | {
+      ok: true;
+      artifactKey: string;
+      artifactVersion: number;
+      requirementKey: string;
+      minVersionRequired: number | null;
+    }
+  | { ok: false; reason: string } {
+  const deliverables = input.requirements.filter(
+    (req) =>
+      req.contractRevision === input.contractRevision &&
+      req.priority === "required" &&
+      !isSerialInputRequirement(req),
+  );
+  const proofTargets: Array<{
+    requirementKey: string;
+    artifactKey: string;
+    minVersion: number | null;
+  }> = [];
+  for (const req of deliverables) {
+    for (const proof of req.proofs) {
+      if (proof.proofKind !== "company_artifact_version") continue;
+      const key = String(proof.params?.artifactKey ?? "").trim();
+      if (!key) continue;
+      const minRaw = proof.params?.minVersion;
+      const minVersion =
+        typeof minRaw === "number" && Number.isFinite(minRaw) ? minRaw : null;
+      proofTargets.push({
+        requirementKey: req.requirementKey,
+        artifactKey: key,
+        minVersion,
+      });
+    }
+  }
+  const uniqueKeys = [...new Set(proofTargets.map((t) => t.artifactKey))];
+  if (uniqueKeys.length > 1) {
+    return {
+      ok: false,
+      reason: `ambiguous governed artifact targets: ${uniqueKeys.join(", ")}`,
+    };
+  }
+  if (uniqueKeys.length === 1) {
+    const artifactKey = uniqueKeys[0]!;
+    const art = input.artifacts.find((a) => a.key === artifactKey);
+    if (!art) {
+      return {
+        ok: false,
+        reason: `governed artifact ${artifactKey} is not present on this Objective`,
+      };
+    }
+    const hit = proofTargets.find((t) => t.artifactKey === artifactKey)!;
+    return {
+      ok: true,
+      artifactKey,
+      artifactVersion: art.version,
+      requirementKey: hit.requirementKey,
+      minVersionRequired: hit.minVersion,
+    };
+  }
+  // No proof-named target: only unambiguous when exactly one artifact exists.
+  if (input.artifacts.length === 1) {
+    const art = input.artifacts[0]!;
+    const req = deliverables[0];
+    if (!req) {
+      return {
+        ok: false,
+        reason: "no deliverable requirement for sole company artifact",
+      };
+    }
+    return {
+      ok: true,
+      artifactKey: art.key,
+      artifactVersion: art.version,
+      requirementKey: req.requirementKey,
+      minVersionRequired: null,
+    };
+  }
+  if (input.artifacts.length === 0) {
+    return { ok: false, reason: "no company artifact present for assessment" };
+  }
+  return {
+    ok: false,
+    reason:
+      "no explicit governed artifact target and multiple company artifacts present",
+  };
+}
 
 /**
  * Serial: reopen the primary deliverable for one bounded redecision after a
@@ -2765,6 +2910,25 @@ export const beginFinalSemanticAssessment = internalMutation({
     if (existing && existing.contractRevision === revision)
       return { proceed: false as const, reason: "current assessment already persisted" };
 
+    const reqRows = await ctx.db
+      .query("requirements")
+      .withIndex("by_objectiveKey", (q) => q.eq("objectiveKey", args.objectiveKey))
+      .collect();
+    const requirements = reqRows.map((r) => (r as AnyRow).data as Requirement);
+    const artifacts = (data.companyArtifacts ?? []) as Array<{
+      key: string;
+      version: number;
+      content?: string;
+    }>;
+    const target = resolveGovernedAssessmentTarget({
+      requirements,
+      artifacts,
+      contractRevision: revision,
+    });
+    if (!target.ok) {
+      return { proceed: false as const, reason: target.reason };
+    }
+
     const requestId = `assess_${args.objectiveKey}_r${revision}_a${attempts + 1}`;
     await ctx.db.patch(row._id, {
       data: {
@@ -2776,6 +2940,10 @@ export const beginFinalSemanticAssessment = internalMutation({
             requestId,
             contractRevision: revision,
             attempts: attempts + 1,
+            targetArtifactKey: target.artifactKey,
+            targetArtifactVersion: target.artifactVersion,
+            deliverableRequirementKey: target.requirementKey,
+            minVersionRequired: target.minVersionRequired,
           },
           finalAssessmentAttempts: attempts + 1,
         },
@@ -2825,7 +2993,12 @@ export const applyFinalSemanticAssessment = internalMutation({
     const data = (row as AnyRow).data as Record<string, unknown>;
     const mgmt = (data.management ?? {}) as Record<string, unknown>;
     const pending = mgmt.pendingFinalAssessment as
-      | { requestId: string; contractRevision: number }
+      | {
+          requestId: string;
+          contractRevision: number;
+          targetArtifactKey?: string;
+          targetArtifactVersion?: number;
+        }
       | null
       | undefined;
     if (!pending || pending.requestId !== args.requestId)
@@ -2833,14 +3006,35 @@ export const applyFinalSemanticAssessment = internalMutation({
     if (pending.contractRevision !== args.contractRevision)
       return { ok: false as const, reason: "stale assessment revision" };
 
+    // Preserve exact governed artifact/version binding from begin — model may
+    // echo keys but cannot retarget a different artifact at apply time.
+    const boundArtifactKey =
+      typeof pending.targetArtifactKey === "string"
+        ? pending.targetArtifactKey
+        : args.artifactKey;
+    const boundArtifactVersion =
+      typeof pending.targetArtifactVersion === "number"
+        ? pending.targetArtifactVersion
+        : args.artifactVersion;
+    if (
+      args.artifactKey != null &&
+      boundArtifactKey != null &&
+      args.artifactKey !== boundArtifactKey
+    ) {
+      return {
+        ok: false as const,
+        reason: `assessment artifactKey ${args.artifactKey} does not match governed target ${boundArtifactKey}`,
+      };
+    }
+
     const stored = await ctx.runMutation(
       internal.objectives.submitFinalSemanticAssessment,
       {
         objectiveKey: args.objectiveKey,
         meetsMinimumBar: args.meetsMinimumBar,
         rationale: args.rationale,
-        artifactKey: args.artifactKey,
-        artifactVersion: args.artifactVersion,
+        artifactKey: boundArtifactKey,
+        artifactVersion: boundArtifactVersion,
         evidenceRefs: args.evidenceRefs,
         assumptionsUnknowns: args.assumptionsUnknowns,
         recommendedNextAction: args.recommendedNextAction,

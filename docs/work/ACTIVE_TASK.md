@@ -1,7 +1,7 @@
 # ACTIVE TASK — M6.1 manager–execution mini-refactor
 
 Updated: 21 September 2026 (Singapore)
-Status: **FIXER CLOSURE CANDIDATE RETURNED FOR OWNER REVIEW / NOT GATE 1 PASS**
+Status: **FIXER CLOSURE PASS 2 COMPLETE / NOT GATE 1 PASS**
 
 ## Goal
 
@@ -12,40 +12,23 @@ relaunch recommendation.
 ## Branch / base
 
 - Branch: `refactor/m6-1-manager-execution-loop`
-- Fixer start SHA: `8a9d671`
+- Pass-2 start SHA: `1793684`
 - Preserved: `stash@{0}`; untracked `scripts/_tmp-*`
 
 ## Checkpoint
 
-- Starting SHA: `8a9d671`
-- Checkpoint SHAs this fixer pass:
-  - `84a02e7` — deliverable independence, manager context, need identity,
-    current-action release, final assessment, correction accounting, typed
-    mutation control, terminal replay early-check, snapshot discovery rank,
-    validators, focused regressions
-- Final pushed SHA: `a273b87`
-- Fix cluster SHA: `84a02e7`
-- Prior owner-review history: `b19269b` → `4db0393` → `c730eec` → `8a9d671`
+- Starting SHA: `1793684`
+- Final pushed SHA: _(pending push)_
 
-## This fixer pass
+## This pass (architecture-reviewer required closures)
 
-- [x] 1. Deliverable acceptance independent of capability choice + interpretation schema
-- [x] 2. Manager reassessment result/context package
-- [x] 3. Need/question identity through BUY (bound before dispatch)
-- [x] 4. Current-action identity scoping (releasedAcquisitionIntentIds)
-- [x] 5. Production final semantic assessment (configured model + schema + cleanup)
-- [x] 6. Negative-assessment correction lifecycle (no double-count on reopen)
-- [x] 7. Typed artifact-mutation control (no prose NOT_AVAILABLE)
-- [x] 8. Production terminal replay before gap side effects
-- [x] 9. Snapshot discovery: class hard filter, keyword rank only
-- [x] 10–12. Production-chain F/G harness retained + focused A/B/E/F/H/I
-
-## Next action
-
-Return candidate to architecture reviewer. Do NOT declare Gate 1 PASS.
-Do NOT deploy / physical Gate 1 / live payment.
+- [x] Final assessment loads locked contract/target; no regex/first-artifact fallback
+- [x] Correction path within BEGIN_DECISION_CEILING=3 (refusal-storm accounting)
+- [x] obligationAlreadyCovered is purpose/need-identity scoped
+- [x] Serial BUY refuses unbound/stale need at dispatch
+- [x] Terminal replay/conflict typed envelopes via production port
+- [x] Production harness at real model boundary (not applyDecision bypass)
 
 ## Do not
 
-Deploy / physical Gate 1 / live model Gate 1 / live M3 / Gate 2 / touch stash@{0}
- / redesign engine / reopen M3 payment / compound HYBRID / raise worker turn limits
+Deploy / physical Gate 1 / live models / live payment / Gate 2 / touch stash@{0}

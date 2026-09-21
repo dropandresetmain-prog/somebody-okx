@@ -284,6 +284,9 @@ export const objectiveRecord = v.object({
       // is the decision analogue of `interpretationAttempts`; it survives the
       // clearing of `pendingDecision` on each terminal apply.
       decisionAttempts: v.optional(v.record(v.string(), v.number())),
+      // Refused decision attempts only — BEGIN_DECISION_CEILING bounds this storm
+      // counter, not successful authorized MAKE/BUY progress.
+      decisionRefusalAttempts: v.optional(v.record(v.string(), v.number())),
       // Last authorized decision-input fingerprint per requirement. Duplicate
       // wakes with unchanged material facts do not burn another attempt.
       decisionInputFingerprints: v.optional(v.record(v.string(), v.string())),
@@ -300,6 +303,10 @@ export const objectiveRecord = v.object({
             requestId: v.string(),
             contractRevision: v.number(),
             attempts: v.number(),
+            targetArtifactKey: v.optional(v.string()),
+            targetArtifactVersion: v.optional(v.number()),
+            deliverableRequirementKey: v.optional(v.string()),
+            minVersionRequired: v.optional(v.union(v.number(), v.null())),
           }),
           v.null(),
         ),
