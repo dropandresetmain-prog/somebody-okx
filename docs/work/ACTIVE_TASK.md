@@ -19,7 +19,7 @@ relaunch recommendation.
 ## Checkpoint
 
 - Starting SHA: `4d9b516`
-- Final pushed SHA: *(filled after push)*
+- Final pushed SHA: `e38744af01f74df59e9f0c08712438eee59b845a`
 
 ## This pass (remaining production paths)
 
