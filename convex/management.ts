@@ -60,7 +60,7 @@ import type { ExternalAuthorityMode } from "../lib/management/authorization";
 import { createWorkerSpec } from "../lib/workforce/workers";
 import { evaluateCompletionGate } from "../lib/management/completion";
 import { bindExecutedProofParams } from "../lib/management/contract";
-import { attemptRequirementSatisfaction } from "../lib/management/requirements";
+import { artifactVersionsAuthoredByRuns, attemptRequirementSatisfaction } from "../lib/management/requirements";
 import type { ProofFacts, RequirementEvent } from "../lib/management/requirements";
 import { checkBudget } from "../lib/management/budget";
 import type {
@@ -2263,10 +2263,7 @@ async function readScopedProofFacts(
     if (objectiveRow) {
       const data = (objectiveRow as AnyRow).data as Record<string, unknown>;
       const artifacts = (data.companyArtifacts ?? []) as Array<Record<string, unknown>>;
-      for (const artifact of artifacts) {
-        if (runIds.has(String(artifact.provenanceRunId ?? "")))
-          artifactVersions[artifact.key as string] = artifact.version as number;
-      }
+      Object.assign(artifactVersions, artifactVersionsAuthoredByRuns(artifacts, runIds));
     }
   }
 
