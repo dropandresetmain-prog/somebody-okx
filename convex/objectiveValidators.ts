@@ -292,6 +292,19 @@ export const objectiveRecord = v.object({
       executionProtocol: v.optional(
         v.union(v.literal("m61_serial_v1"), v.null()),
       ),
+      // Final semantic assessment cursor (serial only). begin → model action →
+      // apply, mirroring pendingDecision so completion cannot skip the model.
+      pendingFinalAssessment: v.optional(
+        v.union(
+          v.object({
+            requestId: v.string(),
+            contractRevision: v.number(),
+            attempts: v.number(),
+          }),
+          v.null(),
+        ),
+      ),
+      finalAssessmentAttempts: v.optional(v.number()),
     }),
   ),
 });

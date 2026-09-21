@@ -397,10 +397,17 @@ async function actCommand(
                         proposal.unansweredQuestion ?? proposal.purpose ?? "",
                       ),
                       reasonOwnedInsufficient: String(
-                        proposal.whyInsufficient ??
-                          proposal.reasonOwnedInsufficient ??
-                          "",
-                      ),
+                        [
+                          proposal.whyInsufficient ??
+                            proposal.reasonOwnedInsufficient ??
+                            "",
+                          proposal.howAdditionalWouldChange
+                            ? `How additional would change: ${proposal.howAdditionalWouldChange}`
+                            : "",
+                        ]
+                          .filter((s) => s.trim().length > 0)
+                          .join(" | "),
+                      ).slice(0, 500),
                       supportingEvidenceIds: Array.isArray(
                         proposal.observedEvidenceIds ??
                           proposal.supportingEvidenceIds,

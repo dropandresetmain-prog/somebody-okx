@@ -822,13 +822,18 @@ export function buildConvexManagementPorts(ctx: MutationCtx): ManagementPorts {
       await ctx.db.patch(row._id, {
         data: {
           ...data,
+          // Durable objective state mirrors the management reducer verdict so
+          // reads (and Gate-1 evidence) see `completed` after the gate accepts.
+          state,
+          activity: summary.slice(0, 500),
+          updatedAt: at,
           management: {
             ...mgmt,
             contractId: (mgmt.contractId as string | null) ?? null,
             controlNotes: notes,
           },
         },
-      } as any);
+      } as never);
     },
 
     // â”€â”€ R3 A3: a TIMER, never a re-wake â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

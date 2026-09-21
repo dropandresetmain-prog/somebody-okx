@@ -322,6 +322,14 @@ async function settleNode(state: Ann, deps: GraphDeps): Promise<NodeResult> {
     groundedByRequirement: grounded, assignments, intents, budgetVerdict,
     pendingApproval, completionProposal: completionVerdict, at,
   });
+  // Persist the post-action control state (including gate-accepted `completed`).
+  // reduceNode writes the pre-action state; settle owns the final pass verdict.
+  await deps.ports.writeObjectiveState(
+    state.objectiveKey,
+    reduced.state,
+    reduced.detail,
+    at,
+  );
   let nextWakeExpected: WakeReason | null = null;
   switch (reduced.action.kind) {
     case "await_wake":

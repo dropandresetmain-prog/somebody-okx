@@ -404,11 +404,11 @@ test("terminal: EXECUTION_ERROR persists EXECUTION_FAILED class", async () => {
 });
 
 /**
- * Unbroken deterministic chain through production builders/handlers/storage.
- * Injects model-shaped payloads only; does not preseed authorized decisions,
- * satisfied requirements, completed worker results, or objective completion.
+ * Unbroken deterministic SEAM coverage through production builders/handlers.
+ * Manually advances some mid-chain state for isolated seam checks.
+ * NOT Gate-1 whole-loop proof — see m61ProductionWholeChain.test.ts for F.
  */
-test("whole-chain: interpret → MAKE proofs → BUY release → linked MAKE artifact → assessment → gate", async () => {
+test("seam coverage (not Gate-1 F): interpret → MAKE proofs → BUY release → linked MAKE artifact → assessment → gate", async () => {
   const t = convexTest(schema, modules);
   const key = "obj_chain_full";
   const reqKey = "req_relaunch";
