@@ -189,31 +189,82 @@ export function makeConvexPort(
     return serialAcceptedResult(raw);
   };
   return {
-    async read() {
+    async read(): Promise<import("../lib/worker/port").WorkerObservation> {
       const observation = await ctx.runQuery(
         internal.objectives.readWorkerObservation,
         { objectiveKey, runId },
       );
+      type Provenance = "simulation" | "live" | "recorded_replay";
+      type ObservationFinding = {
+        id: string;
+        sourceClass: string;
+        label: string;
+        origin: string;
+        text: string;
+        url?: string;
+        recordRef?: string;
+      };
+      type ObservationAcquisition = {
+        intentId: string;
+        resultEvidenceId: string;
+        providerId: string;
+        serviceId: string;
+        resourceClass: string;
+        provenance: string;
+        responseHash: string;
+        text: string;
+      };
+      const findings = observation.recordedFindings as ObservationFinding[];
+      const acquisitions = observation.acquiredInputs as ObservationAcquisition[];
+      const toAcquired = (
+        item: ObservationAcquisition & { truncated?: boolean },
+      ): import("../lib/worker/port").WorkerAcquiredInput & {
+        truncated?: boolean;
+      } => ({
+        intentId: item.intentId,
+        resultEvidenceId: item.resultEvidenceId,
+        providerId: item.providerId,
+        serviceId: item.serviceId,
+        resourceClass: item.resourceClass,
+        responseHash: item.responseHash,
+        text: boundText(item.text),
+        provenance: item.provenance as Provenance,
+        ...(typeof item.truncated === "boolean"
+          ? { truncated: item.truncated }
+          : {}),
+      });
       // Enforce the model-facing bound here as well as in the runtime, so the
       // durable full text can never reach the context window through the
       // observation surface even if a caller forgets to bound it.
+      const loaded = observation.loadedInputPackage;
+      const base = { ...observation };
+      delete (base as { loadedInputPackage?: unknown }).loadedInputPackage;
       return {
-        ...observation,
-        recordedFindings: observation.recordedFindings.map((item) => ({
+        ...base,
+        recordedFindings: findings.map((item) => ({
           ...item,
           text: boundText(item.text),
         })),
         // Verified acquisitions enter the model surface bounded like any other
         // observed text; wrapping as untrusted content happens once in the
         // runtime, not here. Provenance is the persisted enum, not a string.
-        acquiredInputs: observation.acquiredInputs.map(
-          (item): import("../lib/worker/port").WorkerAcquiredInput => ({
-            ...item,
-            text: boundText(item.text),
-            provenance: item.provenance as "simulation" | "live" | "recorded_replay",
-          }),
-        ),
-      };
+        acquiredInputs: acquisitions.map((item) => toAcquired(item)),
+        ...(loaded
+          ? {
+              loadedInputPackage: {
+                companyRecords: loaded.companyRecords,
+                targetArtifact: loaded.targetArtifact,
+                priorActionOutputs: loaded.priorActionOutputs,
+                targetArtifactKey: loaded.targetArtifactKey,
+                inputEvidenceIds: loaded.inputEvidenceIds,
+                linkedAcquisitions: loaded.linkedAcquisitions.map((item) => ({
+                  ...toAcquired(item),
+                  truncated: item.truncated,
+                })),
+              },
+            }
+          : {}),
+      } as import("../lib/worker/port").WorkerObservation;
     },
     async act(command: Record<string, unknown>) {
       try {
@@ -667,14 +718,20 @@ async function actCommand(
                 internal.objectives.readWorkerObservation,
                 { objectiveKey, runId },
               );
-              const notAvailable = observation.recordedFindings.filter(
+              const findings = observation.recordedFindings as Array<{
+                id: string;
+                origin: string;
+                label: string;
+                text: string;
+              }>;
+              const notAvailable = findings.filter(
                 (f) =>
                   f.origin === "application_observation" &&
                   (String(f.label ?? "").toLowerCase().includes("not_available") ||
                     String(f.text ?? "").toLowerCase().includes("availability: not_available")),
               );
               supportIds = (
-                notAvailable.length > 0 ? notAvailable : observation.recordedFindings
+                notAvailable.length > 0 ? notAvailable : findings
               )
                 .filter((f) => f.origin === "application_observation")
                 .map((f) => f.id)

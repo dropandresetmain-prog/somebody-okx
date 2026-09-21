@@ -3075,7 +3075,10 @@ export const applyFinalSemanticAssessment = internalMutation({
     v.object({ ok: v.literal(true) }),
     v.object({ ok: v.literal(false), reason: v.string() }),
   ),
-  handler: async (ctx, args) => {
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{ ok: true } | { ok: false; reason: string }> => {
     const row = await ctx.db
       .query("objectives")
       .withIndex("by_key", (q) => q.eq("key", args.objectiveKey))
@@ -3118,7 +3121,7 @@ export const applyFinalSemanticAssessment = internalMutation({
       };
     }
 
-    const stored = await ctx.runMutation(
+    const stored = (await ctx.runMutation(
       internal.objectives.submitFinalSemanticAssessment,
       {
         objectiveKey: args.objectiveKey,
@@ -3131,7 +3134,7 @@ export const applyFinalSemanticAssessment = internalMutation({
         recommendedNextAction: args.recommendedNextAction,
         contractRevision: args.contractRevision,
       },
-    );
+    )) as { status: "accepted" | "refused"; detail: string };
     if (stored.status !== "accepted")
       return { ok: false as const, reason: stored.detail };
 

@@ -429,6 +429,64 @@ test("incomplete work cannot claim completion via a partial result", () => {
   assert.equal(emptyFields.complete, false);
 });
 
+test("serial WorkContract permits empty risks/unknowns; missing arrays still fail", () => {
+  const serial = createWorkContract({
+    assignment: "Deliver relaunch recommendation",
+    idempotencyScope: "objective-test:serial-empty-ru",
+    worker: createWorkerSpec([
+      "company_records_lookup",
+      "public_information_research",
+      "growth_launch_operations",
+    ]),
+    sourceProofs: [{ sourceClass: "company_record", minDistinctSources: 1 }],
+    inputEvidenceIds: [],
+    targetArtifactKey: "launch/page-message",
+  });
+  assert.equal(serial.resultRequirements.allowEmptyRisksUnknowns, true);
+  const ev = [
+    evidence({
+      id: "ev-int",
+      sourceClass: "company_record",
+      recordRef: "company/profile",
+      url: undefined,
+    }),
+  ];
+  const emptyOk = evaluateCompletion({
+    contract: serial,
+    evidence: ev,
+    result: result({ risks: [], unknowns: [] }),
+  });
+  assert.equal(emptyOk.complete, true, emptyOk.unmet.join("; "));
+
+  const missing = evaluateCompletion({
+    contract: serial,
+    evidence: ev,
+    result: {
+      summary: "ok",
+      fit: "ok",
+      recommendedNextAction: "complete",
+      completedAt: now,
+    } as ActivityResult,
+  });
+  assert.equal(missing.complete, false);
+  assert.ok(missing.unmet.some((u) => /risks/i.test(u)));
+  assert.ok(missing.unmet.some((u) => /unknowns/i.test(u)));
+
+  const legacy = contract();
+  assert.equal(legacy.resultRequirements.allowEmptyRisksUnknowns, undefined);
+  const legacyEmpty = evaluateCompletion({
+    contract: legacy,
+    evidence: [
+      ...ev,
+      evidence({ id: "ev-web1", url: "https://example.com" }),
+      evidence({ id: "ev-web2", url: "https://example.com/pricing" }),
+    ],
+    result: result({ risks: [], unknowns: [] }),
+  });
+  assert.equal(legacyEmpty.complete, false);
+  assert.equal(legacyEmpty.unmet.length, 2);
+});
+
 test("unauthorized external effects are rejected by the contract boundary", () => {
   assert.throws(
     () =>

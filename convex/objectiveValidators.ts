@@ -64,6 +64,7 @@ export const resultRequirements = v.object({
   risks: v.boolean(),
   unknowns: v.boolean(),
   recommendedNextAction: v.boolean(),
+  allowEmptyRisksUnknowns: v.optional(v.boolean()),
 });
 
 export const sourceProof = v.object({

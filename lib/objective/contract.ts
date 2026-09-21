@@ -99,7 +99,14 @@ export function createWorkContract(input: {
     (sum, proof) => sum + proof.minDistinctSources,
     0
   );
-  
+
+  // Serial contracts persist inputEvidenceIds and/or targetArtifactKey. Align
+  // resultRequirements with the serial submit_result schema: empty risks /
+  // unknowns arrays are valid when warranted; missing arrays are not.
+  const serialEnvelope =
+    input.inputEvidenceIds !== undefined ||
+    input.targetArtifactKey !== undefined;
+
   return {
     assignment,
     idempotencyScope: input.idempotencyScope,
@@ -117,6 +124,7 @@ export function createWorkContract(input: {
       risks: true,
       unknowns: true,
       recommendedNextAction: true,
+      ...(serialEnvelope ? { allowEmptyRisksUnknowns: true } : {}),
       ...input.resultRequirements,
     },
     ...(input.inputEvidenceIds !== undefined
@@ -189,16 +197,26 @@ export function evaluateCompletion(input: {
     unmet.push("Structured result missing a summary");
   if (contract.resultRequirements.fit && !result?.fit?.trim())
     unmet.push("Structured result missing the fit assessment");
-  if (
-    contract.resultRequirements.risks &&
-    !(result?.risks?.length)
-  )
-    unmet.push("Structured result missing risks");
-  if (
-    contract.resultRequirements.unknowns &&
-    !(result?.unknowns?.length)
-  )
-    unmet.push("Structured result missing unknowns");
+  if (contract.resultRequirements.risks) {
+    if (!Array.isArray(result?.risks)) {
+      unmet.push("Structured result missing risks");
+    } else if (
+      result.risks.length === 0 &&
+      !contract.resultRequirements.allowEmptyRisksUnknowns
+    ) {
+      unmet.push("Structured result missing risks");
+    }
+  }
+  if (contract.resultRequirements.unknowns) {
+    if (!Array.isArray(result?.unknowns)) {
+      unmet.push("Structured result missing unknowns");
+    } else if (
+      result.unknowns.length === 0 &&
+      !contract.resultRequirements.allowEmptyRisksUnknowns
+    ) {
+      unmet.push("Structured result missing unknowns");
+    }
+  }
   if (
     contract.resultRequirements.recommendedNextAction &&
     !result?.recommendedNextAction?.trim()

@@ -26,15 +26,13 @@ import {
 import {
   finishRun,
   recordFinding,
-  submitResult,
-  updateCompanyArtifact,
 } from "../convex/objectives";
 import { buildOutcomeContract, buildRequirement } from "../lib/management/contract";
 import { optionIdFor } from "../lib/management/options";
 import { M61_SERIAL_V1 } from "../lib/management/executionProtocol";
 import { installStructuredChatDouble } from "../lib/management/modelBoundary";
 import { installWorkerModelDouble } from "../lib/worker/workerModelBoundary";
-import { createWorkContract, createWorkerSpec } from "../lib/workforce";
+import { createWorkContract, createWorkerSpec, evaluateCompletion } from "../lib/workforce";
 import type { Assignment, Requirement } from "../lib/management/types";
 import type { ObjectiveRecord } from "../lib/objective/types";
 
@@ -181,6 +179,158 @@ function makeDeliverable(key: string, reqKey: string) {
   assert.ok(!("errors" in reqBuilt));
   return (reqBuilt as { requirement: Requirement }).requirement;
 }
+
+test("pass3: serial WorkContract + empty risks/unknowns finalizes via finishRun", async () => {
+  const t = convexTest(schema, modules);
+  const key = "obj_p3_empty_ru";
+  const runId = "run_p3_empty_ru";
+  const workContract = createWorkContract({
+    assignment: "Deliver relaunch recommendation",
+    idempotencyScope: `${key}:empty_ru`,
+    worker: createWorkerSpec([...MAKE_CAPS]),
+    sourceProofs: [{ sourceClass: "company_record", minDistinctSources: 1 }],
+    inputEvidenceIds: [],
+    targetArtifactKey: ARTIFACT,
+  });
+  assert.equal(
+    workContract.resultRequirements.allowEmptyRisksUnknowns,
+    true,
+    "production serial createWorkContract must set allowEmptyRisksUnknowns",
+  );
+
+  await t.mutation(async (ctx) => {
+    await ctx.db.insert("objectives", {
+      key,
+      data: {
+        key,
+        request: "relaunch",
+        createdAt: now,
+        updatedAt: now,
+        state: "executing",
+        activity: "running",
+        plan: null,
+        workItems: [
+          {
+            id: "wi_1",
+            objectiveKey: key,
+            title: "relaunch",
+            assignment: workContract.assignment,
+            workerKey: workContract.workerKey,
+            state: "running",
+            contract: workContract,
+            runs: [
+              {
+                id: runId,
+                workItemId: "wi_1",
+                status: "running",
+                startedAt: now,
+                leaseUntil: now + 300_000,
+                model: "mock",
+                modelSelectionReason: "test",
+                toolCalls: 0,
+                summary: "",
+              },
+            ],
+          },
+        ],
+        run: {
+          id: runId,
+          workItemId: "wi_1",
+          status: "running",
+          startedAt: now,
+          leaseUntil: now + 300_000,
+          model: "mock",
+          modelSelectionReason: "test",
+          toolCalls: 0,
+          summary: "",
+        },
+        result: {
+          summary: "Delivered with no material risks or unknowns",
+          fit: "ok",
+          risks: [],
+          unknowns: [],
+          recommendedNextAction: "complete",
+          completedAt: now,
+          runId,
+        },
+        companyArtifacts: [
+          {
+            key: ARTIFACT,
+            version: 2,
+            content: "EMPTY_RU: relaunch recommendation",
+            history: [],
+            provenanceRunId: runId,
+          },
+        ],
+        management: {
+          contractId: `c_${key}`,
+          currentContractRevision: 1,
+          executionProtocol: M61_SERIAL_V1,
+          controlNotes: [],
+        },
+      } as never,
+    });
+    await (recordFinding as unknown as Handler)._handler(ctx, {
+      objectiveKey: key,
+      runId,
+      finding: {
+        sourceClass: "company_record",
+        label: "launch context",
+        text: "Owned launch context",
+        origin: "application_observation",
+        sourceId: "record:launch/context",
+        recordRef: "launch/context",
+        observedAt: now,
+      },
+    });
+  });
+
+  const finished = (await t.mutation(async (ctx) =>
+    (finishRun as unknown as Handler)._handler(ctx, {
+      objectiveKey: key,
+      runId,
+      toolCalls: 1,
+    }),
+  )) as { completed: boolean; unmet: string[] };
+  assert.equal(
+    finished.completed,
+    true,
+    `serial empty risks/unknowns must finalize; unmet=${finished.unmet.join("; ")}`,
+  );
+  assert.deepEqual(finished.unmet, []);
+  const obj = await readObj(t, key);
+  assert.equal(obj.workItems?.[0]?.state, "completed");
+  assert.notEqual(obj.state, "completed");
+
+  // Missing arrays must still fail (malformed / not silently accepted).
+  const missing = evaluateCompletion({
+    contract: workContract,
+    evidence: [
+      {
+        id: "ev1",
+        sourceClass: "company_record",
+        label: "x",
+        text: "y",
+        origin: "application_observation",
+        sourceId: "record:launch/context",
+        recordRef: "launch/context",
+        observedAt: now,
+        recordedBy: "test",
+        runId,
+      },
+    ],
+    result: {
+      summary: "ok",
+      fit: "ok",
+      recommendedNextAction: "complete",
+      completedAt: now,
+      runId,
+    } as never,
+  });
+  assert.equal(missing.complete, false);
+  assert.ok(missing.unmet.some((u) => /risks/i.test(u)));
+  assert.ok(missing.unmet.some((u) => /unknowns/i.test(u)));
+});
 
 test("pass3: negative assessment reopens → corrective MAKE new run/artifact → assessment #2 completes", async () => {
   const t = convexTest(schema, modules);
@@ -415,154 +565,137 @@ test("pass3: negative assessment reopens → corrective MAKE new run/artifact �
   assert.ok(corrective.runId, "corrective assignment must have a run id");
   assert.notEqual(corrective.runId, oldRunId, "must be a new run, not the rejected one");
   const newRunId = corrective.runId!;
+  assert.equal(
+    corrective.workContract?.resultRequirements?.allowEmptyRisksUnknowns,
+    true,
+    "serial corrective WorkContract must permit empty risks/unknowns",
+  );
 
-  // Materially revise artifact on the new run (production port + finish).
-  await t.mutation(async (ctx) => {
-    const row = await ctx.db
-      .query("objectives")
-      .withIndex("by_key", (q) => q.eq("key", key))
-      .unique();
-    const data = (row as { data: ObjectiveRecord }).data;
-    const wc = corrective.workContract!;
-    await ctx.db.patch((row as { _id: string })._id as never, {
-      data: {
-        ...data,
-        workItems: [
-          {
-            id: "wi_correct",
-            objectiveKey: key,
-            title: "corrective relaunch",
-            assignment: wc.assignment,
-            workerKey: wc.workerKey,
-            state: "running",
-            contract: wc,
-            runs: [
+  // Production startManagedRun already created workItems/run — do not replace them.
+  const objDispatched = await readObj(t, key);
+  assert.equal(objDispatched.run?.id, newRunId);
+  assert.equal(objDispatched.workItems?.[0]?.state, "running");
+  assert.equal(
+    objDispatched.workItems?.[0]?.contract?.resultRequirements?.allowEmptyRisksUnknowns,
+    true,
+  );
+  const preArtVersion =
+    objDispatched.companyArtifacts?.find((a) => a.key === ARTIFACT)?.version ?? 0;
+
+  // Real executeWorker path: worker-model double fulfils the generated contract.
+  let step = 0;
+  const correctiveModel: Model = {
+    async getResponse() {
+      step += 1;
+      if (step === 1) {
+        return {
+          usage: new Usage(),
+          output: [
+            toolCall(
+              "read_company_record",
+              { recordRef: "launch/context" },
+              "corr_e1",
+            ),
+          ],
+        };
+      }
+      if (step === 2) {
+        return {
+          usage: new Usage(),
+          output: [
+            toolCall(
+              "update_company_artifact",
               {
-                id: newRunId,
-                workItemId: "wi_correct",
-                status: "running",
-                startedAt: now + 3,
-                leaseUntil: now + 3 + 120_000,
-                model: "mock",
-                modelSelectionReason: "test",
-                toolCalls: 0,
-                summary: "",
+                content:
+                  "REVISED_AFTER_CRITIQUE: concrete audience language CTA and channel plan using BUY evidence",
+                changeNote: "Address negative assessment critique",
+                usedAcquisitionEvidenceIds: [],
               },
-            ],
-          },
+              "corr_e2",
+            ),
+          ],
+        };
+      }
+      return {
+        usage: new Usage(),
+        output: [
+          toolCall(
+            "submit_result",
+            {
+              summary: "Revised relaunch after critique",
+              fit: "meets bar after correction",
+              risks: [],
+              unknowns: [],
+              recommendedNextAction: "complete",
+              terminal: "DELIVERED",
+            },
+            "corr_e3",
+          ),
         ],
-        run: {
-          id: newRunId,
-          workItemId: "wi_correct",
-          status: "running",
-          startedAt: now + 3,
-          leaseUntil: now + 3 + 120_000,
-          model: "mock",
-          modelSelectionReason: "test",
-          toolCalls: 0,
-          summary: "",
-        },
-      } as never,
-    });
-  });
-
-  await t.mutation(async (ctx) =>
-    (recordFinding as unknown as Handler)._handler(ctx, {
+      };
+    },
+    async *getStreamedResponse() {
+      throw new Error("unused");
+    },
+  };
+  installWorkerModelDouble(correctiveModel);
+  const finished = (await t.action(async (ctx) =>
+    (executeWorker as unknown as Handler)._handler(ctx, {
       objectiveKey: key,
       runId: newRunId,
-      finding: {
-        sourceClass: "company_record",
-        label: "launch context",
-        text: "Owned launch context for corrective revision",
-        origin: "application_observation",
-        sourceId: "record:launch/context",
-        recordRef: "launch/context",
-        observedAt: now + 4,
-      },
-    }),
-  );
-  await t.mutation(async (ctx) =>
-    (updateCompanyArtifact as unknown as Handler)._handler(ctx, {
-      objectiveKey: key,
-      runId: newRunId,
-      content:
-        "REVISED_AFTER_CRITIQUE: concrete audience language CTA and channel plan using BUY evidence",
-      changeNote: "Address negative assessment critique",
-      usedAcquisitionEvidenceIds: [],
-    }),
-  );
-  await t.mutation(async (ctx) =>
-    (submitResult as unknown as Handler)._handler(ctx, {
-      objectiveKey: key,
-      runId: newRunId,
-      result: {
-        summary: "Revised relaunch after critique",
-        fit: "meets bar after correction",
-        risks: [],
-        unknowns: [],
-        recommendedNextAction: "complete",
-        terminal: "DELIVERED",
-      },
-    }),
-  );
-  const finished = (await t.mutation(async (ctx) =>
-    (finishRun as unknown as Handler)._handler(ctx, {
-      objectiveKey: key,
-      runId: newRunId,
-      toolCalls: 2,
     }),
   )) as { completed: boolean; unmet: string[] };
-  // Force delivery bookkeeping if spine proof is incomplete for this seeded run:
-  // the concrete new-run + revised artifact are the corrective-execution proof.
-  await t.mutation(async (ctx) => {
-    const row = await ctx.db
-      .query("objectives")
-      .withIndex("by_key", (q) => q.eq("key", key))
-      .unique();
-    const data = (row as { data: ObjectiveRecord }).data;
-    const wi = data.workItems?.[0];
-    if (wi && wi.state !== "completed") {
-      const runs = wi.runs.map((r) =>
-        r.id === newRunId ? { ...r, status: "stopped" as const } : r,
-      );
-      await ctx.db.patch((row as { _id: string })._id as never, {
-        data: {
-          ...data,
-          workItems: [{ ...wi, state: "completed", runs }],
-          run: data.run ? { ...data.run, status: "stopped" } : data.run,
-        } as never,
-      });
-    }
-    const asgRows = await ctx.db
-      .query("assignments")
+  installWorkerModelDouble(null);
+
+  assert.equal(
+    finished.completed,
+    true,
+    `corrective executeWorker incomplete: ${finished.unmet.join("; ") || "(no unmet listed)"}`,
+  );
+  assert.deepEqual(finished.unmet, []);
+
+  const afterExec = await readObj(t, key);
+  assert.equal(afterExec.workItems?.[0]?.state, "completed");
+  assert.ok(
+    afterExec.run == null || afterExec.run.status === "stopped" || afterExec.run.status === "completed",
+    `expected durable run terminal; got ${afterExec.run?.status}`,
+  );
+  assert.notEqual(afterExec.state, "completed", "worker completion must not complete the Objective");
+
+  const artMid = afterExec.companyArtifacts?.find((a) => a.key === ARTIFACT);
+  assert.ok(
+    artMid && artMid.version > preArtVersion,
+    `expected new artifact version after v${preArtVersion}; got v${artMid?.version}`,
+  );
+  assert.match(String(artMid!.content), /REVISED_AFTER_CRITIQUE/);
+  assert.equal(artMid!.provenanceRunId, newRunId);
+  assert.notEqual(corrective.runId, oldRunId);
+
+  // Old rejected assignment/run cannot satisfy the new corrective action.
+  const oldStill = (await readAssignments(t, key)).find(
+    (a) => a.assignmentId === oldAssignmentId,
+  )!;
+  assert.equal(oldStill.state, "superseded");
+  const oldFinish = (await t.mutation(async (ctx) =>
+    (finishRun as unknown as Handler)._handler(ctx, {
+      objectiveKey: key,
+      runId: oldRunId,
+      toolCalls: 0,
+    }),
+  )) as { completed: boolean; unmet: string[] };
+  assert.equal(oldFinish.completed, false, "old run must not finalize the corrective work-item");
+
+  const wakes = await t.query(async (ctx) => {
+    const rows = await ctx.db
+      .query("wakeEvents")
       .withIndex("by_objective", (q) => q.eq("objectiveKey", key))
       .collect();
-    for (const raw of asgRows) {
-      const a = (raw as { data: Assignment }).data;
-      if (a.assignmentId !== corrective.assignmentId) continue;
-      if (a.state === "dispatched" || a.state === "running") {
-        await (putAssignment as unknown as Handler)._handler(ctx, {
-          assignmentId: a.assignmentId,
-          objectiveKey: key,
-          data: {
-            ...a,
-            state: "result_submitted",
-            resultSummary: finished.completed
-              ? "corrective result"
-              : `forced after corrective revision; unmet=${finished.unmet.join(";")}`,
-            updatedAt: now + 5,
-          },
-        });
-      }
-    }
+    return rows.map((r) => (r as { data: { reason: string; refId?: string } }).data);
   });
-
-  const artMid = (await readObj(t, key)).companyArtifacts?.find(
-    (a) => a.key === ARTIFACT,
+  assert.ok(
+    wakes.some((w) => w.reason === "worker_result" && w.refId === newRunId),
+    `expected worker_result wake for ${newRunId}; got ${JSON.stringify(wakes)}`,
   );
-  assert.ok(artMid && artMid.version >= 3, `expected new artifact version; got v${artMid?.version}`);
-  assert.match(String(artMid!.content), /REVISED_AFTER_CRITIQUE/);
-  assert.notEqual(corrective.runId, oldRunId);
 
   await invokePass(t, key, "worker_result");
   // Advance result_submitted → verified → satisfied via management passes.
@@ -571,7 +704,14 @@ test("pass3: negative assessment reopens → corrective MAKE new run/artifact �
     if (reqs[0]?.state === "satisfied") break;
     await invokePass(t, key, `verify_${i}`);
   }
-  assert.equal((await readReqs(t, key))[0]?.state, "satisfied");
+  const satisfiedReq = (await readReqs(t, key))[0]!;
+  assert.equal(satisfiedReq.state, "satisfied");
+  assert.equal(
+    satisfiedReq.resolution?.acceptedAssignmentId,
+    corrective.assignmentId,
+    "satisfaction must bind the corrective assignment, not the superseded one",
+  );
+  assert.notEqual(satisfiedReq.resolution?.acceptedAssignmentId, oldAssignmentId);
 
   installStructuredChatDouble((req) => {
     if (req.kind !== "final_assessment") throw new Error(`unexpected ${req.kind}`);
@@ -1299,17 +1439,41 @@ test("pass3: executeWorker production seam with worker model double finalizes + 
   )) as { completed: boolean; unmet: string[] };
   installWorkerModelDouble(null);
 
-  assert.equal(typeof out.completed, "boolean");
-  const obj = await readObj(t, key);
-  assert.ok(
-    obj.run == null || obj.run.status === "completed" || obj.workItems?.[0]?.state === "completed" ||
-      obj.acceptedTerminal?.terminal === "DELIVERED" ||
-      obj.result != null,
-    `executeWorker must finalize run/result; run=${obj.run?.status} wi=${obj.workItems?.[0]?.state}`,
+  assert.equal(
+    out.completed,
+    true,
+    `executeWorker incomplete: ${out.unmet.join("; ") || "(no unmet listed)"}`,
   );
+  assert.deepEqual(out.unmet, []);
+
+  const obj = await readObj(t, key);
+  assert.equal(obj.workItems?.[0]?.state, "completed");
+  assert.ok(
+    obj.run == null ||
+      obj.run.status === "stopped" ||
+      obj.run.status === "completed",
+    `durable run must be terminal; got ${obj.run?.status}`,
+  );
+  assert.ok(obj.result != null, "structured result must be persisted");
+  assert.equal(obj.result?.runId, runId);
+  assert.notEqual(obj.state, "completed", "Objective completion is separate from worker completion");
+
+  const wakes = await t.query(async (ctx) => {
+    const rows = await ctx.db
+      .query("wakeEvents")
+      .withIndex("by_objective", (q) => q.eq("objectiveKey", key))
+      .collect();
+    return rows.map((r) => (r as { data: { reason: string; refId: string } }).data);
+  });
+  assert.ok(
+    wakes.some((w) => w.reason === "worker_result" && w.refId === runId),
+    `expected matching worker_result wake; got ${JSON.stringify(wakes)}`,
+  );
+
   const art = obj.companyArtifacts?.find((a) => a.key === ARTIFACT);
   assert.ok(art && art.version >= 2);
   assert.match(String(art!.content), /EXECUTE_WORKER_SEAM/);
+  assert.equal(art!.provenanceRunId, runId);
 });
 
 test("pass3: assessment grounding excludes unrelated Objective-wide acquisitions", async () => {

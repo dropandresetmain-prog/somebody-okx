@@ -312,6 +312,12 @@ export type ResultRequirements = {
   risks: boolean;
   unknowns: boolean;
   recommendedNextAction: boolean;
+  /**
+   * Serial protocol: when true, risks/unknowns must be present as arrays but
+   * may be empty (aligned with submit_result schema). Legacy contracts leave
+   * this unset/false and still require non-empty lists when the field is required.
+   */
+  allowEmptyRisksUnknowns?: boolean;
 };
 
 // ── Structured result ────────────────────────────────────────────────────────
