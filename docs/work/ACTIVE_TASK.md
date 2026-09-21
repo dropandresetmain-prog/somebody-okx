@@ -19,10 +19,11 @@ relaunch recommendation.
 
 - Starting SHA: `8a9d671`
 - Checkpoint SHAs this fixer pass:
-  - _(pending push)_ — deliverable independence, manager context, need identity,
+  - `84a02e7` — deliverable independence, manager context, need identity,
     current-action release, final assessment, correction accounting, typed
     mutation control, terminal replay early-check, snapshot discovery rank,
     validators, focused regressions
+- Final pushed SHA: `84a02e7` _(pending push confirmation)_
 - Prior owner-review history: `b19269b` → `4db0393` → `c730eec` → `8a9d671`
 
 ## This fixer pass
