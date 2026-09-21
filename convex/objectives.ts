@@ -41,7 +41,7 @@ import {
   resolveWorker,
   validatePlannerProposal,
 } from "../lib/workforce";
-import { CURRENT_RESOURCE_INVENTORY, RESEARCH_ROLE, GROWTH_ROLE } from "../lib/objective/policy";
+import { CURRENT_RESOURCE_INVENTORY, RESEARCH_ROLE, GROWTH_ROLE, COMPANY_RECORDS } from "../lib/objective/policy";
 import { sourceIdentity } from "../lib/objective/contract";
 import { toolPermissionsForCapabilities } from "../lib/workforce/permissions";
 import { createWorkerSpec } from "../lib/workforce/workers";
@@ -835,6 +835,52 @@ export const readWorkerObservation = internalQuery({
         text: v.string(),
       }),
     ),
+    // Application-loaded input package (serial). Not a fictional tool call.
+    loadedInputPackage: v.optional(
+      v.object({
+        companyRecords: v.array(
+          v.object({
+            ref: v.string(),
+            label: v.string(),
+            text: v.string(),
+            truncated: v.boolean(),
+          }),
+        ),
+        targetArtifact: v.union(
+          v.object({
+            key: v.string(),
+            version: v.number(),
+            content: v.string(),
+            truncated: v.boolean(),
+          }),
+          v.null(),
+        ),
+        priorActionOutputs: v.array(
+          v.object({
+            runId: v.string(),
+            summary: v.string(),
+            fit: v.string(),
+            recommendedNextAction: v.string(),
+            truncated: v.boolean(),
+          }),
+        ),
+        linkedAcquisitions: v.array(
+          v.object({
+            intentId: v.string(),
+            resultEvidenceId: v.string(),
+            providerId: v.string(),
+            serviceId: v.string(),
+            resourceClass: v.string(),
+            provenance: v.string(),
+            responseHash: v.string(),
+            text: v.string(),
+            truncated: v.boolean(),
+          }),
+        ),
+        targetArtifactKey: v.union(v.string(), v.null()),
+        inputEvidenceIds: v.array(v.string()),
+      }),
+    ),
     unmetCompletionRequirements: v.array(v.string()),
     yieldReason: v.union(v.string(), v.null()),
   }),
@@ -842,12 +888,13 @@ export const readWorkerObservation = internalQuery({
     const row = await loadObjective(ctx.db, args.objectiveKey);
     const record = row.data;
     const workItem = record.workItems[0];
+    const contract = workItem.contract;
     const evidence = evidenceForRun(
       await listEvidence(ctx.db, args.objectiveKey),
       args.runId,
     );
     const check = evaluateCompletion({
-      contract: workItem.contract,
+      contract,
       evidence,
       result: record.result,
       currentRunId: args.runId,
@@ -865,13 +912,17 @@ export const readWorkerObservation = internalQuery({
       workItem,
     );
     const requiresArtifactMutation = assignmentRequiresArtifactMutation({
-      allowedToolPermissions: workItem.contract.allowedToolPermissions,
+      allowedToolPermissions: contract.allowedToolPermissions,
       proofKinds,
       serialProtocol: serial,
     });
     if (requiresArtifactMutation) {
+      const targetKey = contract.targetArtifactKey ?? null;
       const artifactChanged = (record.companyArtifacts ?? []).some(
-        (a) => a.provenanceRunId === args.runId && a.version > 1,
+        (a) =>
+          a.provenanceRunId === args.runId &&
+          a.version > 1 &&
+          (targetKey == null || a.key === targetKey),
       );
       if (!artifactChanged) {
         unmet.push("company_artifact: no version change by this run");
@@ -902,12 +953,31 @@ export const readWorkerObservation = internalQuery({
       ? `INPUT_BLOCKED: validated gap ${validatedGap.resourceClass} — stop and yield to management`
       : null;
 
+    const linkedIds = contract.inputEvidenceIds;
+    const allAcquired = await verifiedAcquiredInputs(ctx.db, record);
+    // Serial with explicit linkage: workers see only linked acquisitions.
+    // Legacy / absent field: historical broad-objective verified set.
+    const acquiredInputs =
+      serial && linkedIds !== undefined
+        ? allAcquired.filter((a) => linkedIds.includes(a.resultEvidenceId))
+        : allAcquired;
+
+    const TEXT_CAP = 2000;
+    const loadedInputPackage = serial
+      ? buildLoadedInputPackage({
+          contract,
+          record,
+          acquiredInputs,
+          textCap: TEXT_CAP,
+        })
+      : undefined;
+
     return {
-      assignment: workItem.contract.assignment,
-      responsibility: workItem.contract.assignment,
-      requiredSourceClasses: [...workItem.contract.requiredSourceClasses],
-      minObservations: workItem.contract.minObservations,
-      sourceProofs: workItem.contract.sourceProofs.map((proof) => ({
+      assignment: contract.assignment,
+      responsibility: contract.assignment,
+      requiredSourceClasses: [...contract.requiredSourceClasses],
+      minObservations: contract.minObservations,
+      sourceProofs: contract.sourceProofs.map((proof) => ({
         sourceClass: proof.sourceClass,
         minDistinctSources: proof.minDistinctSources,
       })),
@@ -920,12 +990,105 @@ export const readWorkerObservation = internalQuery({
         ...(item.url ? { url: item.url } : {}),
         ...(item.recordRef ? { recordRef: item.recordRef } : {}),
       })),
-      acquiredInputs: await verifiedAcquiredInputs(ctx.db, record),
+      acquiredInputs,
+      ...(loadedInputPackage ? { loadedInputPackage } : {}),
       unmetCompletionRequirements: unmet,
       yieldReason,
     };
   },
 });
+
+function buildLoadedInputPackage(input: {
+  contract: WorkContract;
+  record: ObjectiveRecord;
+  acquiredInputs: Array<{
+    intentId: string;
+    resultEvidenceId: string;
+    providerId: string;
+    serviceId: string;
+    resourceClass: string;
+    provenance: string;
+    responseHash: string;
+    text: string;
+  }>;
+  textCap: number;
+}) {
+  const { contract, record, acquiredInputs, textCap } = input;
+  const canReadCompany = contract.allowedToolPermissions.includes(
+    "read_company_record",
+  );
+  const companyRecords = canReadCompany
+    ? COMPANY_RECORDS.slice(0, 8).map((rec) => {
+        const truncated = rec.text.length > textCap;
+        return {
+          ref: rec.ref,
+          label: rec.label,
+          text: truncated ? rec.text.slice(0, textCap) : rec.text,
+          truncated,
+        };
+      })
+    : [];
+
+  const targetKey = contract.targetArtifactKey ?? null;
+  let targetArtifact: {
+    key: string;
+    version: number;
+    content: string;
+    truncated: boolean;
+  } | null = null;
+  if (targetKey) {
+    const art = (record.companyArtifacts ?? []).find((a) => a.key === targetKey);
+    if (art) {
+      const truncated = art.content.length > textCap;
+      targetArtifact = {
+        key: art.key,
+        version: art.version,
+        content: truncated ? art.content.slice(0, textCap) : art.content,
+        truncated,
+      };
+    }
+  }
+
+  const priorActionOutputs: Array<{
+    runId: string;
+    summary: string;
+    fit: string;
+    recommendedNextAction: string;
+    truncated: boolean;
+  }> = [];
+  if (
+    record.result &&
+    record.result.runId &&
+    record.result.runId !== record.run?.id
+  ) {
+    const summary = record.result.summary ?? "";
+    const fit = record.result.fit ?? "";
+    const next = record.result.recommendedNextAction ?? "";
+    const truncated =
+      summary.length > textCap || fit.length > textCap || next.length > textCap;
+    priorActionOutputs.push({
+      runId: record.result.runId,
+      summary: summary.slice(0, textCap),
+      fit: fit.slice(0, textCap),
+      recommendedNextAction: next.slice(0, 500),
+      truncated,
+    });
+  }
+
+  const linkedAcquisitions = acquiredInputs.map((a) => ({
+    ...a,
+    truncated: a.text.length >= textCap,
+  }));
+
+  return {
+    companyRecords,
+    targetArtifact,
+    priorActionOutputs,
+    linkedAcquisitions,
+    targetArtifactKey: targetKey,
+    inputEvidenceIds: [...(contract.inputEvidenceIds ?? [])],
+  };
+}
 
 // M6.1: acquisitions the worker may read are exactly those whose intent reached
 // `verified`. A recorded-but-unverified provider result is never presented as
@@ -996,9 +1159,32 @@ export const updateCompanyArtifact = internalMutation({
     if (artifacts.length === 0) {
       throw new Error("No company artifact seeded for this objective");
     }
-    // Evidence-ref validation: the verified acquisition set is the authority.
-    // If verified acquisitions exist and the revision cites none, the revision
-    // would silently discard its own provenance — refuse it.
+    const workItem = record.workItems[0];
+    const contract = workItem?.contract;
+    const management = (
+      record as unknown as { management?: { executionProtocol?: string | null } }
+    ).management;
+    const serial = isSerialManagerProtocol(management);
+
+    // Serial: mutate the exact bound target only — never artifacts[0].
+    let targetIdx = 0;
+    if (serial && contract?.targetArtifactKey != null) {
+      const idx = artifacts.findIndex((a) => a.key === contract.targetArtifactKey);
+      if (idx < 0) {
+        throw new Error(
+          `targetArtifactKey ${contract.targetArtifactKey} is absent or unauthorized on this Objective`,
+        );
+      }
+      targetIdx = idx;
+    } else if (serial && contract && "targetArtifactKey" in contract) {
+      // Explicit null target on serial = analysis-only; refuse mutation.
+      if (contract.targetArtifactKey === null) {
+        throw new Error(
+          "This assignment has no targetArtifactKey; artifact mutation is not authorized",
+        );
+      }
+    }
+
     const intentRows = await ctx.db
       .query("executionIntents")
       .withIndex("by_objective", (q) => q.eq("objectiveKey", args.objectiveKey))
@@ -1017,30 +1203,62 @@ export const updateCompanyArtifact = internalMutation({
       },
     );
     const claimedIds = [...new Set(args.usedAcquisitionEvidenceIds ?? [])];
-    if (verifiedAcquisitions.length > 0 && claimedIds.length === 0) {
-      throw new Error(
-        "Artifact revision must cite the verified acquisition evidence it used (usedAcquisitionEvidenceIds)",
-      );
-    }
-    for (const id of claimedIds) {
-      const result = verifiedAcquisitions.find(
-        (candidate) => candidate.resultEvidenceId === id,
-      );
-      if (!result) {
+
+    // Serial action-scoped: only evidence linked on THIS contract may be cited.
+    // Do not force a citation merely because some acquisition exists elsewhere.
+    const linkedIds = contract?.inputEvidenceIds;
+    if (serial && linkedIds !== undefined) {
+      const linkedSet = new Set(linkedIds);
+      for (const id of claimedIds) {
+        if (!linkedSet.has(id)) {
+          throw new Error(
+            `usedAcquisitionEvidenceIds: ${id} is not linked to this action (inputEvidenceIds)`,
+          );
+        }
+        const result = verifiedAcquisitions.find(
+          (candidate) => candidate.resultEvidenceId === id,
+        );
+        if (!result) {
+          throw new Error(
+            `usedAcquisitionEvidenceIds: ${id} is not a verified acquisition result for this objective`,
+          );
+        }
+      }
+      // When the action declares linked acquisitions and the worker cites use,
+      // those exact IDs must be present (material use → must cite).
+      // If the worker cites none while links exist, allow only when content does
+      // not claim use — still refuse silent discard when they claim use via ids.
+      // Require citation when linked IDs exist AND worker provided a non-empty
+      // claim list that must match; if claim list empty with links, do NOT
+      // force-require (worker may revise without consuming acquisition).
+    } else {
+      // Legacy: if any verified acquisitions exist on the Objective and the
+      // revision cites none, refuse silent provenance discard.
+      if (verifiedAcquisitions.length > 0 && claimedIds.length === 0) {
         throw new Error(
-          `usedAcquisitionEvidenceIds: ${id} is not a verified acquisition result for this objective`,
+          "Artifact revision must cite the verified acquisition evidence it used (usedAcquisitionEvidenceIds)",
         );
       }
+      for (const id of claimedIds) {
+        const result = verifiedAcquisitions.find(
+          (candidate) => candidate.resultEvidenceId === id,
+        );
+        if (!result) {
+          throw new Error(
+            `usedAcquisitionEvidenceIds: ${id} is not a verified acquisition result for this objective`,
+          );
+        }
+      }
     }
-    const idx = 0;
-    const next = applyArtifactChange(artifacts[idx], {
+
+    const next = applyArtifactChange(artifacts[targetIdx], {
       content: args.content,
       changeNote: args.changeNote,
       runId: args.runId,
       at: now,
       ...(claimedIds.length > 0 ? { usedAcquisitionEvidenceIds: claimedIds } : {}),
     });
-    artifacts[idx] = next;
+    artifacts[targetIdx] = next;
     const updated: ObjectiveRecord = {
       ...record,
       companyArtifacts: artifacts,

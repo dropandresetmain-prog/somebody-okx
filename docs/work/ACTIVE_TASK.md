@@ -13,35 +13,30 @@ relaunch recommendation.
 
 - Branch: `refactor/m6-1-manager-execution-loop`
 - Recovery: `recovery/m61-b5e6d52-pre-actnow` @ `b5e6d52`
-- Started act-now from: `b5e6d52c2a21aeadb35062de978a37be6b0be0d0`
-- Preserved: `stash@{0}` free-model experiments; untracked `scripts/_tmp-*`
-- Worktrees left alone
+- Act-now start: `b5e6d52`
+- Preserved: `stash@{0}`; untracked `scripts/_tmp-*`
 
 ## Checkpoint
 
 - Pushed SHA: _(pending this commit)_
-- Next: worker input package + action-scoped acquisition + artifact target
+- Next: terminal lifecycle + typed tool status; then semantic gap/spend;
+  final assessment + whole-chain harness
 
-## Shared contracts (act-now progress)
+## Done
 
-- [x] `requirementKind: "deliverable" | "input"` — explicit semantic discriminator
-- [x] Serial deliverable + BUY keeps deliverable proofs (receipt ≠ output)
-- [x] `isSerialInputRequirement` replaces proof-derived input-only on serial path
-- [x] Production seam: DELIVERABLE + verified BUY → clear strategy, stay active
-- [ ] Worker input package (application-loaded)
-- [ ] Action-scoped `inputEvidenceIds` + `targetArtifactKey`
-- [ ] Terminal lifecycle / typed tool status
+- [x] `requirementKind` + BUY does not satisfy deliverable (prod seam)
+- [x] Worker `loadedInputPackage` (company records, artifact, prior, linked)
+- [x] Action-scoped `inputEvidenceIds` + `targetArtifactKey` on WorkContract
+- [x] `update_company_artifact` mutates bound key; cites only linked IDs
+
+## Remaining act-now
+
+- [ ] Terminal idempotency / NEEDS_INPUT ≠ auto INPUT_BLOCKED / post-terminal refuse
+- [ ] Typed tool status (no string-based failure class on serial)
 - [ ] Semantic evidence-gap (no NOT_AVAILABLE required)
 - [ ] Serial spend bound as factual context (no keyword demotion)
-- [ ] Final semantic assessment + whole-chain harness
+- [ ] Final semantic assessment + unbroken chain harness
 
 ## Do not
 
-- Deploy or run physical Gate 1
-- Live model / live M3 / Gate 2
-- Pop `stash@{0}` or touch unrelated untracked files
-
-## Next (implementer)
-
-Continue same branch/chat: worker package + acquisition scope + artifact target,
-then terminal hardening, semantic gap/spend, final assessment + chain harness.
+Deploy / physical Gate 1 / live model / live M3 / Gate 2 / touch stash@{0}

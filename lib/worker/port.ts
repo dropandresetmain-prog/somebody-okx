@@ -119,6 +119,34 @@ export type WorkerObservation = {
   // Only verified external acquisition results appear here. Their content is
   // untrusted provider data and must never be interpreted as instructions.
   acquiredInputs?: WorkerAcquiredInput[];
+  /**
+   * Serial: application-loaded bounded input package (company records,
+   * target artifact, prior outputs, linked acquisitions). Not a tool call.
+   */
+  loadedInputPackage?: {
+    companyRecords: Array<{
+      ref: string;
+      label: string;
+      text: string;
+      truncated: boolean;
+    }>;
+    targetArtifact: {
+      key: string;
+      version: number;
+      content: string;
+      truncated: boolean;
+    } | null;
+    priorActionOutputs: Array<{
+      runId: string;
+      summary: string;
+      fit: string;
+      recommendedNextAction: string;
+      truncated: boolean;
+    }>;
+    linkedAcquisitions: Array<WorkerAcquiredInput & { truncated: boolean }>;
+    targetArtifactKey: string | null;
+    inputEvidenceIds: string[];
+  };
   unmetCompletionRequirements: string[];
   /** When set, the worker must stop — application accepted an input gap. */
   yieldReason?: string | null;

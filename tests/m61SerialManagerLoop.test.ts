@@ -18,7 +18,7 @@ import {
   runManagementPass,
 } from "../convex/management";
 import { initBudget, putContract, putIntent, putRequirement } from "../convex/internal/workforce";
-import { readWorkerObservation } from "../convex/objectives";
+import { readWorkerObservation, updateCompanyArtifact } from "../convex/objectives";
 import { buildOutcomeContract, buildRequirement } from "../lib/management/contract";
 import { runManagerialDecisionPass } from "../lib/management/decision";
 import type { GroundingContext, RegistryOffering } from "../lib/management/decision";
@@ -1472,4 +1472,314 @@ test("integration: founder request → interpret(m61_serial_v1) → authorize MA
   });
   assert.equal(finalObj.management?.executionProtocol, M61_SERIAL_V1);
   assert.equal(finalObj.result, null, "must not fabricate a completed result");
+});
+
+// ── Action-scoped acquisition + exact artifact target ────────────────────────
+
+test("serial: observation exposes only linked acquisitions; unrelated verified is excluded", async () => {
+  const t = convexTest(schema, modules);
+  const key = "obj_serial_scoped_acq";
+  const runId = "run_scoped";
+  const linkedId = "sim_linked";
+  const unrelatedId = "sim_unrelated";
+  const artifactKey = "launch/page-message";
+
+  const workContract = createWorkContract({
+    assignment: "Revise launch message using linked acquisition",
+    idempotencyScope: `${key}:scoped`,
+    worker: createWorkerSpec([
+      "public_information_research",
+      "company_records_lookup",
+      "growth_launch_operations",
+    ]),
+    sourceProofs: [{ sourceClass: "company_record", minDistinctSources: 1 }],
+    inputEvidenceIds: [linkedId],
+    targetArtifactKey: artifactKey,
+  });
+
+  await t.mutation(async (ctx) => {
+    await ctx.db.insert("objectives", {
+      key,
+      data: {
+        key,
+        request: "revise message",
+        createdAt: now,
+        updatedAt: now,
+        state: "executing",
+        activity: "running",
+        plan: null,
+        workItems: [
+          {
+            id: "wi_1",
+            objectiveKey: key,
+            title: "revise",
+            assignment: workContract.assignment,
+            workerKey: workContract.workerKey,
+            state: "running",
+            contract: workContract,
+            runs: [
+              {
+                id: runId,
+                workItemId: "wi_1",
+                status: "running",
+                startedAt: now,
+                leaseUntil: now + 60_000,
+                model: "mock",
+                modelSelectionReason: "test",
+                toolCalls: 0,
+                summary: "",
+              },
+            ],
+          },
+        ],
+        run: {
+          id: runId,
+          workItemId: "wi_1",
+          status: "running",
+          startedAt: now,
+          leaseUntil: now + 60_000,
+          model: "mock",
+          modelSelectionReason: "test",
+          toolCalls: 0,
+          summary: "",
+        },
+        result: null,
+        companyArtifacts: [
+          { key: artifactKey, version: 1, content: "seed A", history: [] },
+          { key: "other/artifact", version: 1, content: "seed B", history: [] },
+        ],
+        acquisitionResults: [
+          {
+            intentId: "int_linked",
+            requirementKey: REQ,
+            contractRevision: 1,
+            resultEvidenceId: linkedId,
+            provenance: "simulation",
+            providerId: "2135",
+            serviceId: "newsliquid_twitter_search",
+            offeringId: "2135:newsliquid_twitter_search",
+            resourceClass: "proprietary_data",
+            content: "LINKED finding text",
+            responseHash: "h1",
+            recordedAt: now,
+            verifiedAt: now,
+          },
+          {
+            intentId: "int_unrelated",
+            requirementKey: "req_other",
+            contractRevision: 1,
+            resultEvidenceId: unrelatedId,
+            provenance: "simulation",
+            providerId: "2135",
+            serviceId: "newsliquid_twitter_search",
+            offeringId: "2135:newsliquid_twitter_search",
+            resourceClass: "proprietary_data",
+            content: "UNRELATED finding text",
+            responseHash: "h2",
+            recordedAt: now,
+            verifiedAt: now,
+          },
+        ],
+        management: {
+          contractId: "contract_scoped",
+          executionProtocol: M61_SERIAL_V1,
+        },
+      } as never,
+    });
+    await (putIntent as unknown as Handler)._handler(ctx, {
+      intentId: "int_linked",
+      objectiveKey: key,
+      idempotencyKey: "idem_linked",
+      data: {
+        ...verifiedBuyIntent(key),
+        intentId: "int_linked",
+        idempotencyKey: "idem_linked",
+        requirementKey: REQ,
+        resultEvidenceId: linkedId,
+        state: "verified",
+      },
+    });
+    await (putIntent as unknown as Handler)._handler(ctx, {
+      intentId: "int_unrelated",
+      objectiveKey: key,
+      idempotencyKey: "idem_unrelated",
+      data: {
+        ...verifiedBuyIntent(key),
+        intentId: "int_unrelated",
+        idempotencyKey: "idem_unrelated",
+        requirementKey: "req_other",
+        resultEvidenceId: unrelatedId,
+        state: "verified",
+      },
+    });
+  });
+
+  const obs = (await t.query(async (ctx) =>
+    (readWorkerObservation as unknown as Handler)._handler(ctx, {
+      objectiveKey: key,
+      runId,
+    }),
+  )) as {
+    acquiredInputs: Array<{ resultEvidenceId: string }>;
+    loadedInputPackage: {
+      linkedAcquisitions: Array<{ resultEvidenceId: string }>;
+      targetArtifact: { key: string; version: number } | null;
+      inputEvidenceIds: string[];
+      companyRecords: Array<{ ref: string }>;
+    };
+  };
+  assert.deepEqual(
+    obs.acquiredInputs.map((a) => a.resultEvidenceId),
+    [linkedId],
+  );
+  assert.ok(!obs.acquiredInputs.some((a) => a.resultEvidenceId === unrelatedId));
+  assert.deepEqual(obs.loadedInputPackage.inputEvidenceIds, [linkedId]);
+  assert.equal(obs.loadedInputPackage.targetArtifact?.key, artifactKey);
+  assert.ok(obs.loadedInputPackage.companyRecords.length > 0);
+
+  // Unrelated evidence id refused even though verified on Objective.
+  await assert.rejects(
+    () =>
+      t.mutation(async (ctx) =>
+        (updateCompanyArtifact as unknown as Handler)._handler(ctx, {
+          objectiveKey: key,
+          runId,
+          content: "new content",
+          changeNote: "cite unrelated",
+          usedAcquisitionEvidenceIds: [unrelatedId],
+        }),
+      ),
+    /not linked to this action/,
+  );
+
+  // Correct link + exact target key succeeds (not artifacts[0] by accident).
+  const updated = (await t.mutation(async (ctx) =>
+    (updateCompanyArtifact as unknown as Handler)._handler(ctx, {
+      objectiveKey: key,
+      runId,
+      content: "revised with LINKED finding text",
+      changeNote: "use linked acquisition",
+      usedAcquisitionEvidenceIds: [linkedId],
+    }),
+  )) as { key: string; version: number };
+  assert.equal(updated.key, artifactKey);
+  assert.equal(updated.version, 2);
+
+  const after = await t.query(async (ctx) => {
+    const row = await ctx.db
+      .query("objectives")
+      .withIndex("by_key", (q) => q.eq("key", key))
+      .unique();
+    return (row as { data: ObjectiveRecord }).data.companyArtifacts ?? [];
+  });
+  assert.equal(after.find((a) => a.key === artifactKey)?.version, 2);
+  assert.equal(after.find((a) => a.key === "other/artifact")?.version, 1);
+
+  // Empty claim list with linked IDs present must NOT force cite (no silent
+  // force from unrelated Objective acquisitions either).
+  const key2 = "obj_serial_no_force_cite";
+  const run2 = "run_noforce";
+  const wc2 = createWorkContract({
+    assignment: "analysis only revise without acquisition use",
+    idempotencyScope: `${key2}:nf`,
+    worker: createWorkerSpec(["growth_launch_operations", "company_records_lookup"]),
+    sourceProofs: [{ sourceClass: "company_record", minDistinctSources: 1 }],
+    inputEvidenceIds: [],
+    targetArtifactKey: artifactKey,
+  });
+  await t.mutation(async (ctx) => {
+    await ctx.db.insert("objectives", {
+      key: key2,
+      data: {
+        key: key2,
+        request: "revise",
+        createdAt: now,
+        updatedAt: now,
+        state: "executing",
+        activity: "running",
+        plan: null,
+        workItems: [
+          {
+            id: "wi_2",
+            objectiveKey: key2,
+            title: "t",
+            assignment: wc2.assignment,
+            workerKey: wc2.workerKey,
+            state: "running",
+            contract: wc2,
+            runs: [
+              {
+                id: run2,
+                workItemId: "wi_2",
+                status: "running",
+                startedAt: now,
+                leaseUntil: now + 60_000,
+                model: "mock",
+                modelSelectionReason: "test",
+                toolCalls: 0,
+                summary: "",
+              },
+            ],
+          },
+        ],
+        run: {
+          id: run2,
+          workItemId: "wi_2",
+          status: "running",
+          startedAt: now,
+          leaseUntil: now + 60_000,
+          model: "mock",
+          modelSelectionReason: "test",
+          toolCalls: 0,
+          summary: "",
+        },
+        result: null,
+        companyArtifacts: [
+          { key: artifactKey, version: 1, content: "seed", history: [] },
+        ],
+        acquisitionResults: [
+          {
+            intentId: "int_elsewhere",
+            requirementKey: "req_elsewhere",
+            contractRevision: 1,
+            resultEvidenceId: "sim_elsewhere",
+            provenance: "simulation",
+            providerId: "2135",
+            serviceId: "x",
+            offeringId: "x",
+            resourceClass: "proprietary_data",
+            content: "elsewhere",
+            responseHash: "hx",
+            recordedAt: now,
+            verifiedAt: now,
+          },
+        ],
+        management: {
+          contractId: "c2",
+          executionProtocol: M61_SERIAL_V1,
+        },
+      } as never,
+    });
+    await (putIntent as unknown as Handler)._handler(ctx, {
+      intentId: "int_elsewhere",
+      objectiveKey: key2,
+      idempotencyKey: "idem_elsewhere",
+      data: {
+        ...verifiedBuyIntent(key2),
+        intentId: "int_elsewhere",
+        requirementKey: "req_elsewhere",
+        resultEvidenceId: "sim_elsewhere",
+        state: "verified",
+      },
+    });
+  });
+  const noForce = (await t.mutation(async (ctx) =>
+    (updateCompanyArtifact as unknown as Handler)._handler(ctx, {
+      objectiveKey: key2,
+      runId: run2,
+      content: "internal revision without acquisition",
+      changeNote: "no acquisition used",
+    }),
+  )) as { key: string; version: number };
+  assert.equal(noForce.version, 2);
 });

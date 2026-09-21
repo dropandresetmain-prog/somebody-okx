@@ -94,6 +94,10 @@ export const workContract = v.object({
   // Authority snapshot for gated actions. Always null in M1 MAKE work.
   approvalVersion: v.union(v.number(), v.null()),
   resultRequirements,
+  // M6.1 serial: action-scoped acquisition evidence + artifact target.
+  // Absent on legacy rows.
+  inputEvidenceIds: v.optional(v.array(v.string())),
+  targetArtifactKey: v.optional(v.union(v.string(), v.null())),
 });
 
 export const workerRun = v.object({

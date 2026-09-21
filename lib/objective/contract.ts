@@ -70,6 +70,10 @@ export function createWorkContract(input: {
   worker: WorkerSpec;
   sourceProofs: SourceProof[];
   resultRequirements?: Partial<WorkContract["resultRequirements"]>;
+  /** Serial: exact verified acquisition evidence IDs this action may consume. */
+  inputEvidenceIds?: string[];
+  /** Serial: exact artifact key this writing action may mutate. */
+  targetArtifactKey?: string | null;
 }): WorkContract {
   const assignment = input.assignment.trim();
   if (!assignment)
@@ -115,6 +119,12 @@ export function createWorkContract(input: {
       recommendedNextAction: true,
       ...input.resultRequirements,
     },
+    ...(input.inputEvidenceIds !== undefined
+      ? { inputEvidenceIds: [...input.inputEvidenceIds] }
+      : {}),
+    ...(input.targetArtifactKey !== undefined
+      ? { targetArtifactKey: input.targetArtifactKey }
+      : {}),
   };
 }
 

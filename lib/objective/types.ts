@@ -242,6 +242,17 @@ export type WorkContract = {
   approvalVersion: number | null;
   // The structured result the worker must produce.
   resultRequirements: ResultRequirements;
+  /**
+   * M6.1 serial: exact verified acquisition evidence IDs this action may
+   * consume. Absent on legacy contracts → historical broad-objective read.
+   * Empty array = deliberately no linked acquisitions.
+   */
+  inputEvidenceIds?: string[];
+  /**
+   * M6.1 serial: exact controlled artifact key this writing action may mutate.
+   * Null/absent = analysis-only (no artifact mutation authority by key).
+   */
+  targetArtifactKey?: string | null;
 };
 
 export type ResultRequirements = {

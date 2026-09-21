@@ -2037,6 +2037,84 @@ async function noteDispatchDeferred(
   return null;
 }
 
+/**
+ * Serial MAKE dispatch: bind exact artifact target + verified acquisition
+ * evidence IDs that belong to this requirement (or an explicit dependsOn
+ * prerequisite). Broad resource-class equality alone is never enough.
+ */
+async function resolveSerialMakeActionScope(
+  ctx: MutationCtx,
+  input: {
+    objectiveKey: string;
+    requirement: Requirement;
+    objectiveData: Record<string, unknown> | null;
+  },
+): Promise<
+  | { ok: true; inputEvidenceIds: string[]; targetArtifactKey: string | null }
+  | { ok: false; reason: string }
+> {
+  const { requirement, objectiveData } = input;
+  const needsArtifact = requirement.proofs.some(
+    (p) => p.proofKind === "company_artifact_version",
+  );
+  let targetArtifactKey: string | null = null;
+  if (needsArtifact) {
+    const fromProof = requirement.proofs.find(
+      (p) => p.proofKind === "company_artifact_version",
+    );
+    const key = String(fromProof?.params?.artifactKey ?? "").trim();
+    if (!key) {
+      return {
+        ok: false,
+        reason: "deliverable requires company_artifact_version proof with artifactKey",
+      };
+    }
+    const artifacts = (objectiveData?.companyArtifacts ?? []) as Array<{
+      key?: string;
+    }>;
+    if (!artifacts.some((a) => a.key === key)) {
+      return {
+        ok: false,
+        reason: `target artifact ${key} is not present on this Objective`,
+      };
+    }
+    targetArtifactKey = key;
+  }
+
+  const allowedReqKeys = new Set<string>([
+    requirement.requirementKey,
+    ...(requirement.dependsOnRequirementKeys ?? []),
+  ]);
+  const intentRows = await ctx.db
+    .query("executionIntents")
+    .withIndex("by_objective", (q) => q.eq("objectiveKey", input.objectiveKey))
+    .collect();
+  const verifiedByIntent = new Map<string, ExecutionIntent>();
+  for (const row of intentRows) {
+    const intent = (row as AnyRow).data as ExecutionIntent;
+    if (intent.state !== "verified") continue;
+    if (intent.contractRevision !== requirement.contractRevision) continue;
+    if (!allowedReqKeys.has(intent.requirementKey)) continue;
+    verifiedByIntent.set(intent.intentId, intent);
+  }
+
+  const acquisitions = (objectiveData?.acquisitionResults ?? []) as ExternalAcquisitionResult[];
+  const inputEvidenceIds: string[] = [];
+  for (const result of acquisitions) {
+    if (!allowedReqKeys.has(result.requirementKey)) continue;
+    if (result.contractRevision !== requirement.contractRevision) continue;
+    const intent = verifiedByIntent.get(result.intentId);
+    if (!intent) continue;
+    if (intent.resultEvidenceId !== result.resultEvidenceId) continue;
+    if (!result.verifiedAt) continue;
+    inputEvidenceIds.push(result.resultEvidenceId);
+  }
+  // Deterministic order for stable contract identity.
+  inputEvidenceIds.sort();
+
+  return { ok: true, inputEvidenceIds, targetArtifactKey };
+}
+
 // MAKE / HYBRID-internal: one assignment, one reserved worker, one bounded run.
 // Every identity below is derived from the authorization, never invented, so a
 // replayed wake lands on the same rows and the storage upserts collapse it.
@@ -2141,6 +2219,44 @@ async function dispatchInternal(
       `worker ${workerKey} refused the reservation (${reserved.reason ?? "unknown"})`);
   }
 
+  // Serial: bind exact artifact target + action-scoped acquisition evidence.
+  // Legacy dispatch omits these fields (historical broad-objective read).
+  const objectiveRow = await ctx.db
+    .query("objectives")
+    .withIndex("by_key", (q) => q.eq("key", objectiveKey))
+    .unique();
+  const objectiveData = objectiveRow
+    ? ((objectiveRow as AnyRow).data as Record<string, unknown>)
+    : null;
+  const serial = isSerialManagerProtocol(
+    (objectiveData?.management as { executionProtocol?: string | null } | undefined) ?? null,
+  );
+  let inputEvidenceIds: string[] | undefined;
+  let targetArtifactKey: string | null | undefined;
+  if (serial) {
+    const scope = await resolveSerialMakeActionScope(ctx, {
+      objectiveKey,
+      requirement,
+      objectiveData,
+    });
+    if (!scope.ok) {
+      await ctx.runMutation(internal.internal.workforce.releaseWorker, {
+        workerKey,
+        assignmentId,
+        at,
+      });
+      return await noteDispatchDeferred(
+        ctx,
+        objectiveKey,
+        requirement.requirementKey,
+        at,
+        scope.reason,
+      );
+    }
+    inputEvidenceIds = scope.inputEvidenceIds;
+    targetArtifactKey = scope.targetArtifactKey;
+  }
+
   const built = buildAssignmentContract({
     requirement,
     option,
@@ -2148,6 +2264,13 @@ async function dispatchInternal(
     workerKey,
     worker,
     at,
+    ...(serial
+      ? {
+          serialManagerProtocol: true,
+          inputEvidenceIds,
+          targetArtifactKey: targetArtifactKey ?? null,
+        }
+      : {}),
   });
   if (!built.ok) {
     await ctx.runMutation(internal.internal.workforce.releaseWorker, { workerKey, assignmentId, at });

@@ -221,6 +221,19 @@ export function buildAssignmentContract(input: {
   // worker. The contract may only carry permissions that envelope grants.
   worker?: WorkerRecord | null;
   at: number;
+  /**
+   * Serial: verified acquisition evidence IDs this MAKE may consume.
+   * Must already be validated by the caller (same Objective, compatible
+   * requirement/dependency scope, verified).
+   */
+  inputEvidenceIds?: string[];
+  /**
+   * Serial: exact artifact key this writing assignment may mutate.
+   * Null = analysis-only; omit for legacy contracts.
+   */
+  targetArtifactKey?: string | null;
+  /** When true, always persist inputEvidenceIds/targetArtifactKey fields. */
+  serialManagerProtocol?: boolean;
 }): AssignmentContractBuild {
   const errors: string[] = [];
   const internal = input.option.internal;
@@ -255,6 +268,7 @@ export function buildAssignmentContract(input: {
   ].join("\n");
 
   try {
+    const serial = input.serialManagerProtocol === true;
     const built = createWorkContract({
       assignment,
       idempotencyScope: deriveIdempotencyScope({
@@ -265,6 +279,12 @@ export function buildAssignmentContract(input: {
       }),
       worker: spec,
       sourceProofs,
+      ...(serial || input.inputEvidenceIds !== undefined
+        ? { inputEvidenceIds: [...(input.inputEvidenceIds ?? [])] }
+        : {}),
+      ...(serial || input.targetArtifactKey !== undefined
+        ? { targetArtifactKey: input.targetArtifactKey ?? null }
+        : {}),
     });
     // The AUTHORIZED option's capability envelope owns the permissions; the
     // worker KEY says who runs it. They are separate on purpose: a REUSE target
