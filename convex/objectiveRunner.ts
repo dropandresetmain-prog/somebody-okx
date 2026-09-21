@@ -23,7 +23,11 @@ import {
   listCompanyInputCatalog,
   lookupCompanyRecord,
 } from "../lib/objective/inputAvailability";
-import { currentUnresolvedValidatedGap } from "../lib/objective/inputDiagnosis";
+import {
+  currentUnresolvedValidatedGap,
+  normalizeGapSubmission,
+  type GapSubmissionInput,
+} from "../lib/objective/inputDiagnosis";
 import type { ResourceNeed } from "../lib/objective/resourceNeed";
 import { normalizePublicUrl } from "../lib/objective/contract";
 import {
@@ -407,18 +411,7 @@ async function actCommand(
             unknowns: string[];
             recommendedNextAction: string;
             terminal?: "DELIVERED" | "NEEDS_INPUT" | "EXECUTION_ERROR";
-            missingInputs?: Array<{
-              inputCheckId: string;
-              resourceClass: string;
-              purpose: string;
-              reasonOwnedInsufficient: string;
-              supportingEvidenceIds: string[];
-              unansweredQuestion?: string;
-              observedEvidenceIds?: string[];
-              whyInsufficient?: string;
-              howAdditionalWouldChange?: string;
-              semanticGap?: boolean;
-            }>;
+            missingInputs?: GapSubmissionInput[];
           };
           // Production-port: accepted terminal replay/conflict BEFORE gap side effects.
           if (resultInput.terminal) {
@@ -483,7 +476,8 @@ async function actCommand(
               ).data as ObjectiveRecord,
             );
             if (scoped) {
-              for (const proposal of missing) {
+              for (const raw of missing) {
+                const proposal = normalizeGapSubmission(raw);
                 const report = await ctx.runMutation(
                   internal.objectives.reportMissingInput,
                   {
@@ -491,40 +485,7 @@ async function actCommand(
                     runId,
                     requirementKey: scoped.requirementKey,
                     workItemId: scoped.workItemId,
-                    proposal: {
-                      inputCheckId: String(proposal.inputCheckId ?? "evidence_sufficiency"),
-                      resourceClass: String(proposal.resourceClass ?? ""),
-                      purpose: String(
-                        proposal.unansweredQuestion ?? proposal.purpose ?? "",
-                      ),
-                      reasonOwnedInsufficient: String(
-                        [
-                          proposal.whyInsufficient ??
-                            proposal.reasonOwnedInsufficient ??
-                            "",
-                          proposal.howAdditionalWouldChange
-                            ? `How additional would change: ${proposal.howAdditionalWouldChange}`
-                            : "",
-                        ]
-                          .filter((s) => s.trim().length > 0)
-                          .join(" | "),
-                      ).slice(0, 500),
-                      supportingEvidenceIds: Array.isArray(
-                        proposal.observedEvidenceIds ??
-                          proposal.supportingEvidenceIds,
-                      )
-                        ? (
-                            proposal.observedEvidenceIds ??
-                            proposal.supportingEvidenceIds ??
-                            []
-                          )
-                            .map(String)
-                            .slice(0, 16)
-                        : [],
-                      ...(proposal.semanticGap === true
-                        ? { semanticAdequacyGap: true }
-                        : {}),
-                    },
+                    proposal,
                   },
                 );
                 if (report.validated) {
@@ -536,8 +497,8 @@ async function actCommand(
                     ctx,
                     objectiveKey,
                     runId,
-                    resourceClass: String(proposal.resourceClass ?? ""),
-                    purpose: String(proposal.purpose ?? ""),
+                    resourceClass: proposal.resourceClass,
+                    purpose: proposal.purpose,
                     needId: report.needId!,
                     at: Date.now(),
                   });
@@ -566,12 +527,16 @@ async function actCommand(
             status: string;
             detail: string;
             terminalAccepted: boolean;
+            unmetObligations?: string[];
           };
 
           const typed = JSON.stringify({
             status: submitOutcome.status,
             detail: submitOutcome.detail,
             terminalAccepted: submitOutcome.terminalAccepted,
+            ...(submitOutcome.unmetObligations
+              ? { unmetObligations: submitOutcome.unmetObligations }
+              : {}),
             reports,
           });
           if (resultInput.terminal === "DELIVERED") {
@@ -659,22 +624,13 @@ async function actCommand(
           return `${formatAvailabilityToolResult(report)} (evidence ${report.evidenceId})`;
         }
         case "request_resource": {
-          const resourceClass = String(command.resourceClass ?? "");
-          const purpose = String(command.purpose ?? "");
-          const reasonOwnedInsufficient = String(
-            command.reasonOwnedInsufficient ?? "",
-          );
-          const inputCheckId = String(
-            (command as { inputCheckId?: string }).inputCheckId ??
-              "evidence_sufficiency",
-          );
-          const supportingEvidenceIds = Array.isArray(
-            (command as { supportingEvidenceIds?: string[] }).supportingEvidenceIds,
-          )
-            ? (command as { supportingEvidenceIds: string[] }).supportingEvidenceIds
-                .map(String)
-                .slice(0, 16)
-            : [];
+          // ONE model-facing gap shape (canonical) with legacy aliases mapped by
+          // the application. Nothing here grants authority; validation decides.
+          const gap = normalizeGapSubmission(command as GapSubmissionInput);
+          const resourceClass = gap.resourceClass;
+          const purpose = gap.purpose;
+          const reasonOwnedInsufficient = gap.reasonOwnedInsufficient;
+          const supportingEvidenceIds = gap.supportingEvidenceIds;
           const row = await ctx.runQuery(
             internal.objectives.getObjectiveInternal,
             { objectiveKey },
@@ -692,9 +648,10 @@ async function actCommand(
               !reasonOwnedInsufficient ||
               !KNOWN_RESOURCE_CLASSES.has(resourceClass)
             ) {
-              return (
+              return serialStatusResult(
+                "refused",
                 "Resource request refused: proposal is incomplete or uses an unknown resource class. " +
-                "Nothing authoritative was persisted and no acquisition was authorized."
+                  "Nothing authoritative was persisted and no acquisition was authorized.",
               );
             }
             const scoped = await resolveRequirementKeyForRun(
@@ -704,9 +661,10 @@ async function actCommand(
               record,
             );
             if (!scoped) {
-              return (
+              return serialStatusResult(
+                "refused",
                 "Resource request refused: this run cannot be scoped to a managed requirement safely. " +
-                "Nothing was persisted and no acquisition was authorized."
+                  "Nothing was persisted and no acquisition was authorized.",
               );
             }
 
@@ -746,19 +704,24 @@ async function actCommand(
                 requirementKey: scoped.requirementKey,
                 workItemId: scoped.workItemId,
                 proposal: {
-                  inputCheckId,
+                  ...(gap.inputCheckId ? { inputCheckId: gap.inputCheckId } : {}),
                   resourceClass,
                   purpose,
                   reasonOwnedInsufficient,
                   supportingEvidenceIds: supportIds,
+                  ...(gap.semanticAdequacyGap
+                    ? { semanticAdequacyGap: gap.semanticAdequacyGap }
+                    : {}),
                 },
               },
             );
 
             if (!report.validated) {
-              return (
+              return serialStatusResult(
+                "refused",
                 `Resource request not validated (${report.refusalCode}): ${report.detail}. ` +
-                "An unconfirmed diagnostic may have been recorded; MAKE/BUY eligibility is unchanged."
+                  "An unconfirmed diagnostic may have been recorded; MAKE/BUY eligibility is unchanged.",
+                { refusalCode: report.refusalCode },
               );
             }
 

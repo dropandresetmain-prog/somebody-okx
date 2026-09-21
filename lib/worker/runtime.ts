@@ -25,6 +25,31 @@ import { isToolStatusError, type SerialToolStatus } from "./toolStatus";
 import { providerConfiguration } from "./modelSelection";
 
 export const MAX_TURNS = 8;
+
+// Serial model-facing evidence gap: ONE shape. Legacy aliases (purpose,
+// reasonOwnedInsufficient, supportingEvidenceIds, semanticGap, inputCheckId) are
+// derived by the application (normalizeGapSubmission); the serial model never
+// sees them. Literal scarcity and semantic inadequacy use the same shape — the
+// application distinguishes them from the cited evidence.
+const canonicalGapShape = {
+  resourceClass: z.string().min(1).max(120),
+  unansweredQuestion: z.string().min(1).max(500),
+  observedEvidenceIds: z.array(z.string().min(1).max(160)).max(16),
+  whyInsufficient: z.string().min(1).max(500),
+  howAdditionalWouldChange: z.string().min(1).max(500).optional(),
+};
+const legacyGapShape = {
+  inputCheckId: z.string().min(1).max(120),
+  resourceClass: z.string().min(1).max(120),
+  purpose: z.string().min(1).max(500),
+  reasonOwnedInsufficient: z.string().min(1).max(500),
+  supportingEvidenceIds: z.array(z.string().min(1).max(160)).min(1).max(16),
+  semanticGap: z.boolean().optional(),
+  unansweredQuestion: z.string().min(1).max(500).optional(),
+  observedEvidenceIds: z.array(z.string().min(1).max(160)).max(16).optional(),
+  whyInsufficient: z.string().min(1).max(500).optional(),
+  howAdditionalWouldChange: z.string().min(1).max(500).optional(),
+};
 /** Identical failing tool actions allowed before no-progress termination. */
 export const MAX_DUPLICATE_FAILURES = 2;
 
@@ -395,6 +420,22 @@ export async function runWorker(
     return null;
   };
 
+  // Serial control envelope: deterministic, application-owned guidance the model
+  // cannot infer from prose — exact unmet action obligations and remaining turn
+  // budget. Turns are counted as tool calls (serial = one call per turn).
+  const maxTurns = options.maxTurns ?? MAX_TURNS;
+  const controlFor = (observation: WorkerObservation) =>
+    serial
+      ? {
+          control: {
+            maxTurns,
+            turnsUsed: telemetry.toolCallCount,
+            turnsRemaining: Math.max(0, maxTurns - telemetry.toolCallCount),
+            unmetObligations: observation.unmetCompletionRequirements.slice(0, 8),
+          },
+        }
+      : {};
+
   // act() returns the bounded observed content to the model, not just a label.
   // The envelope is { result, observation } where observation is the bounded
   // WorkerObservation with text fields populated.
@@ -407,13 +448,13 @@ export async function runWorker(
       const typed = serial
         ? normalizeSerialToolStatus(parsed) ?? "accepted"
         : parsed;
-      const payload = JSON.stringify({
+      trackActionOutcome(toolName, command, resultStr, typed);
+      return JSON.stringify({
         result,
         ...(typed ? { status: typed } : {}),
         observation: boundedObservation,
+        ...controlFor(boundedObservation),
       });
-      trackActionOutcome(toolName, command, resultStr, typed);
-      return payload;
     } catch (error) {
       const message = error instanceof Error ? error.message : "Tool action failed";
       const typed: SerialToolStatus = isToolStatusError(error)
@@ -425,6 +466,7 @@ export async function runWorker(
         error: message,
         status: typed,
         observation: boundedObservation,
+        ...controlFor(boundedObservation),
       });
     }
   };
@@ -446,13 +488,13 @@ export async function runWorker(
       const typed = serial
         ? normalizeSerialToolStatus(parsed) ?? "accepted"
         : parsed;
-      const payload = JSON.stringify({
+      trackActionOutcome(toolName, command, resultStr, typed);
+      return JSON.stringify({
         result: content,
         ...(typed ? { status: typed } : {}),
         observation: boundedObservation,
+        ...controlFor(boundedObservation),
       });
-      trackActionOutcome(toolName, command, resultStr, typed);
-      return payload;
     } catch (error) {
       const message = error instanceof Error ? error.message : "Tool action failed";
       const typed: SerialToolStatus = isToolStatusError(error)
@@ -464,6 +506,7 @@ export async function runWorker(
         error: message,
         status: typed,
         observation: boundedObservation,
+        ...controlFor(boundedObservation),
       });
     }
   };
@@ -486,7 +529,7 @@ export async function runWorker(
       return tool({
         name: "submit_result",
         description: serial
-          ? "Terminal handoff: DELIVERED (work done), NEEDS_INPUT (evidence-linked gap in missingInputs — use semanticGap=true when owned sources were inspected but are inadequate for the business question; NOT_AVAILABLE is not required for that case), or EXECUTION_ERROR. Application owns validation and wake."
+          ? "Terminal handoff: DELIVERED (work done), NEEDS_INPUT (evidence gap in missingInputs: resourceClass, unansweredQuestion, observedEvidenceIds you actually inspected, whyInsufficient, howAdditionalWouldChange), or EXECUTION_ERROR. The application validates the handoff: a DELIVERED with unmet action obligations is REFUSED (status=refused, unmetObligations listed) and you may perform the missing action and resubmit in this same run."
           : "Submit the structured evaluation: summary, fit, risks, unknowns and the recommended next action. Optionally include missingInputs findings for application validation (resourceClass must be a governed external class such as proprietary_data).",
         parameters: z.object({
           summary: z.string().min(1).max(2000),
@@ -502,26 +545,7 @@ export async function runWorker(
             ? z.enum(["DELIVERED", "NEEDS_INPUT", "EXECUTION_ERROR"])
             : z.enum(["DELIVERED", "NEEDS_INPUT", "EXECUTION_ERROR"]).optional(),
           missingInputs: z
-            .array(
-              z.object({
-                inputCheckId: z.string().min(1).max(120),
-                resourceClass: z.string().min(1).max(120),
-                purpose: z.string().min(1).max(500),
-                reasonOwnedInsufficient: z.string().min(1).max(500),
-                supportingEvidenceIds: z
-                  .array(z.string().min(1).max(160))
-                  .min(1)
-                  .max(16),
-                semanticGap: z.boolean().optional(),
-                unansweredQuestion: z.string().min(1).max(500).optional(),
-                observedEvidenceIds: z
-                  .array(z.string().min(1).max(160))
-                  .max(16)
-                  .optional(),
-                whyInsufficient: z.string().min(1).max(500).optional(),
-                howAdditionalWouldChange: z.string().min(1).max(500).optional(),
-              }),
-            )
+            .array(z.object(serial ? canonicalGapShape : legacyGapShape))
             .max(4)
             .optional(),
         }),
@@ -678,32 +702,26 @@ export async function runWorker(
       return tool({
         name: "request_resource",
         description:
-          "Propose a missing input the application should validate. Pass supportingEvidenceIds from same-run application observations and/or linked verified acquisition resultEvidenceIds already on this action. resourceClass MUST be a governed external class such as proprietary_data, privileged_access, specialist_compute, human_voice_contact, physical_presence, or attestation — never a free-form phrase and never an already-owned class (company_records, public_web, llm_reasoning, company_tools, ordinary_compute). Citing a linked acquisition explains what it does or does not establish; it does not satisfy the Requirement by itself. The application decides whether the gap is authoritative; you cannot mark a resource fulfilled, choose a provider, or force BUY.",
-        parameters: z.object({
-          resourceClass: z.string().min(1).max(120),
-          purpose: z.string().min(1).max(500),
-          reasonOwnedInsufficient: z.string().min(1).max(500),
-          inputCheckId: z.string().min(1).max(120).optional(),
-          supportingEvidenceIds: z
-            .array(z.string().min(1).max(160))
-            .max(16)
-            .optional(),
-        }),
-        execute: ({
-          resourceClass,
-          purpose,
-          reasonOwnedInsufficient,
-          inputCheckId,
-          supportingEvidenceIds,
-        }) =>
+          "Propose a missing input the application should validate. Pass observedEvidenceIds from same-run application observations and/or linked verified acquisition resultEvidenceIds already on this action. resourceClass MUST be a governed external class such as proprietary_data, privileged_access, specialist_compute, human_voice_contact, physical_presence, or attestation — never a free-form phrase and never an already-owned class (company_records, public_web, llm_reasoning, company_tools, ordinary_compute). Citing a linked acquisition explains what it does or does not establish; it does not satisfy the Requirement by itself. The application decides whether the gap is authoritative; you cannot mark a resource fulfilled, choose a provider, or force BUY.",
+        parameters: serial
+          ? z.object(canonicalGapShape)
+          : z.object({
+              resourceClass: z.string().min(1).max(120),
+              purpose: z.string().min(1).max(500),
+              reasonOwnedInsufficient: z.string().min(1).max(500),
+              inputCheckId: z.string().min(1).max(120).optional(),
+              supportingEvidenceIds: z
+                .array(z.string().min(1).max(160))
+                .max(16)
+                .optional(),
+            }),
+        // Canonical (serial) and legacy shapes both pass through unchanged; the
+        // application maps them (normalizeGapSubmission) and validates.
+        execute: (args) =>
           act({
             type: "request_resource",
-            resourceClass,
-            purpose,
-            reasonOwnedInsufficient,
-            ...(inputCheckId ? { inputCheckId } : {}),
-            ...(supportingEvidenceIds ? { supportingEvidenceIds } : {}),
-          }),
+            ...(args as { resourceClass: string }),
+          } as WorkerCommand),
       });
     if (permission === "update_company_artifact")
       return tool({
@@ -735,6 +753,7 @@ export async function runWorker(
               error: message,
               status: "refused",
               observation: current,
+              ...controlFor(current),
             });
           }
           return act({
@@ -816,7 +835,7 @@ export async function runWorker(
     );
     if (hasResourcePermission) {
       orderSteps.push(
-        `If owned sources are AVAILABLE but still inadequate for the Requirement's accepted obligation, submit_result with terminal=NEEDS_INPUT and missingInputs using semanticGap=true, unansweredQuestion, observedEvidenceIds (same-run application observations and/or linked verified acquisition resultEvidenceIds), whyInsufficient, howAdditionalWouldChange, and a governed resourceClass — NOT_AVAILABLE is not required. A linked acquisition does not automatically satisfy the Requirement; cite it when explaining what it does or does not establish. After a linked verified acquisition of the proposed class is already on this action, disclose residual uncertainty as unknowns — do not invent a stronger mandatory success condition. Use check_input_availability only for literal access gaps. Stop when yieldReason is set.`,
+        `If the sources you inspected are inadequate for the Requirement's accepted obligation, submit_result with terminal=NEEDS_INPUT and missingInputs: a governed resourceClass, the unansweredQuestion, observedEvidenceIds (same-run application observations and/or linked verified acquisition resultEvidenceIds you actually inspected), whyInsufficient, and howAdditionalWouldChange. A literal NOT_AVAILABLE check is not required. A linked acquisition does not automatically satisfy the Requirement; cite it when explaining what it does or does not establish. After a linked verified acquisition of the proposed class is already on this action, disclose residual uncertainty as unknowns — do not invent a stronger mandatory success condition. Use check_input_availability only for literal access gaps. Stop when yieldReason is set.`,
       );
     }
     if (hasArtifactPermission) {
@@ -825,7 +844,7 @@ export async function runWorker(
       );
     }
     orderSteps.push(
-      `End with ONE submit_result that includes terminal=DELIVERED, NEEDS_INPUT, or EXECUTION_ERROR. Empty risks/unknowns arrays are valid when warranted. Do not call request_completion.`,
+      `End with ONE submit_result that includes terminal=DELIVERED, NEEDS_INPUT, or EXECUTION_ERROR. Empty risks/unknowns arrays are valid when warranted. Do not call request_completion. Every tool result carries control.unmetObligations (exact application-checked obligations still open) and control.turnsRemaining: keep at least two turns for submit_result. A DELIVERED submitted while obligations remain is refused (status=refused) without ending your run — perform the missing action, then submit again.`,
     );
   } else {
     orderSteps.push(
@@ -877,6 +896,7 @@ RULES:
 - No spend/payment/publishing authority.
 - Do not invent company record ids.
 - Do not retry the same failing tool/arguments after an identical failure.
+- Do not call read tools once control.unmetObligations is empty and you have what you need: submit.
 - Empty risks/unknowns are valid when warranted — do not invent filler.
 - When yieldReason is set, stop immediately.
 Return only a short operational update, never private reasoning.`

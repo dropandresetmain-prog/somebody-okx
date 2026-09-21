@@ -16,6 +16,7 @@ import {
 } from "../convex/internal/workforce";
 import {
   readWorkerObservation,
+  recordFinding,
   submitFinalSemanticAssessment,
   submitResult,
   updateCompanyArtifact,
@@ -318,6 +319,37 @@ test("terminal: first accepted wins; exact replay idempotent; conflict refused; 
   const key = "obj_term_idem";
   const runId = "run_idem";
   const { artifactKey } = await seedRunningSerial(t, key, runId);
+  // DELIVERED is only sealed once this run's deterministic proof exists.
+  await t.mutation(async (ctx) =>
+    (recordFinding as unknown as Handler)._handler(ctx, {
+      objectiveKey: key,
+      runId,
+      finding: {
+        sourceClass: "company_record",
+        label: "Company record customer_interviews",
+        text: "Observed customer interview content for the relaunch.",
+        origin: "application_observation",
+        sourceId: "record:customer_interviews",
+        recordRef: "customer_interviews",
+        observedAt: now,
+      },
+    }),
+  );
+  await t.mutation(async (ctx) =>
+    (recordFinding as unknown as Handler)._handler(ctx, {
+      objectiveKey: key,
+      runId,
+      finding: {
+        sourceClass: "public_web",
+        label: "Public page: pricing",
+        text: "Observed public page content about competitor pricing.",
+        origin: "application_observation",
+        sourceId: "url:https://example.com/pricing",
+        url: "https://example.com/pricing",
+        observedAt: now,
+      },
+    }),
+  );
 
   const payload = {
     summary: "delivered draft",

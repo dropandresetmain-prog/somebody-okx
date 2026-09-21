@@ -37,7 +37,12 @@ export function isExternalResourceClass(value: string): boolean {
 
 /** Worker proposal — untrusted until validateMissingInputProposal accepts it. */
 export type MissingInputProposal = {
-  inputCheckId: string;
+  /**
+   * Accepted obligation id. Empty/omitted means "derive": the application maps
+   * the proposed class to the Requirement's declared class obligation, else to
+   * evidence_sufficiency. Legacy callers may still name it explicitly.
+   */
+  inputCheckId?: string;
   resourceClass: string;
   purpose: string;
   reasonOwnedInsufficient: string;
@@ -46,9 +51,79 @@ export type MissingInputProposal = {
    * Serial semantic adequacy gap: owned sources were inspected but are
    * insufficient for the business question. Does NOT require a NOT_AVAILABLE
    * token. Literal missing access continues to use availability checks.
+   * `"derive"` (canonical model-facing submission): semantic when NO cited
+   * evidence is a NOT_AVAILABLE application check, literal scarcity otherwise.
+   * An explicit boolean (legacy callers) is honored exactly.
    */
-  semanticAdequacyGap?: boolean;
+  semanticAdequacyGap?: boolean | "derive";
 };
+
+/**
+ * ONE model-facing evidence-gap representation for the serial worker.
+ * Legacy aliases (purpose, reasonOwnedInsufficient, supportingEvidenceIds,
+ * semanticGap, inputCheckId) are derived by `normalizeGapSubmission`.
+ */
+export type CanonicalGapSubmission = {
+  resourceClass: string;
+  unansweredQuestion: string;
+  observedEvidenceIds: readonly string[];
+  whyInsufficient: string;
+  howAdditionalWouldChange?: string;
+};
+
+/** Loose input: canonical fields and/or historical aliases (adapter only). */
+export type GapSubmissionInput = Partial<
+  Omit<CanonicalGapSubmission, "observedEvidenceIds">
+> & {
+  resourceClass: string;
+  observedEvidenceIds?: string[];
+  inputCheckId?: string;
+  purpose?: string;
+  reasonOwnedInsufficient?: string;
+  supportingEvidenceIds?: string[];
+  semanticGap?: boolean;
+};
+
+/**
+ * Map the canonical model-facing gap (or a legacy-shaped one) to the internal
+ * MissingInputProposal. Canonical fields win over aliases. Pure; the caller
+ * still runs validateMissingInputProposal — this grants nothing.
+ */
+export function normalizeGapSubmission(input: GapSubmissionInput): {
+  inputCheckId?: string;
+  resourceClass: string;
+  purpose: string;
+  reasonOwnedInsufficient: string;
+  supportingEvidenceIds: string[];
+  semanticAdequacyGap?: boolean | "derive";
+} {
+  const canonical =
+    input.unansweredQuestion !== undefined ||
+    input.observedEvidenceIds !== undefined ||
+    input.whyInsufficient !== undefined;
+  const reason = [
+    input.whyInsufficient ?? input.reasonOwnedInsufficient ?? "",
+    input.howAdditionalWouldChange
+      ? `How additional would change: ${input.howAdditionalWouldChange}`
+      : "",
+  ]
+    .filter((part) => part.trim().length > 0)
+    .join(" | ")
+    .slice(0, 500);
+  const ids = input.observedEvidenceIds ?? input.supportingEvidenceIds ?? [];
+  return {
+    ...(input.inputCheckId ? { inputCheckId: input.inputCheckId } : {}),
+    resourceClass: String(input.resourceClass ?? ""),
+    purpose: String(input.unansweredQuestion ?? input.purpose ?? ""),
+    reasonOwnedInsufficient: reason,
+    supportingEvidenceIds: ids.map(String).slice(0, 16),
+    ...(input.semanticGap === true
+      ? { semanticAdequacyGap: true as const }
+      : canonical && input.semanticGap === undefined
+        ? { semanticAdequacyGap: "derive" as const }
+        : {}),
+  };
+}
 
 export type InputObligationKind =
   | "required_resource_class"
@@ -214,7 +289,10 @@ function resolveObligation(
   proposal: MissingInputProposal,
   obligations: readonly InputObligation[],
 ): InputObligation | null {
-  const byId = obligations.find((o) => o.inputCheckId === proposal.inputCheckId);
+  const checkId = (proposal.inputCheckId ?? "").trim();
+  const byId = checkId
+    ? obligations.find((o) => o.inputCheckId === checkId)
+    : undefined;
   if (byId) {
     if (
       byId.kind === "required_resource_class" &&
@@ -233,8 +311,9 @@ function resolveObligation(
   if (byClass) return byClass;
   // Evidence-sufficiency: worker may name any external class to fill the gap.
   if (
-    proposal.inputCheckId === "evidence_sufficiency" ||
-    proposal.inputCheckId.startsWith("evidence_")
+    !checkId ||
+    checkId === "evidence_sufficiency" ||
+    checkId.startsWith("evidence_")
   ) {
     return (
       obligations.find((o) => o.kind === "evidence_sufficiency") ?? null
@@ -315,7 +394,7 @@ export function validateMissingInputProposal(
   if (!obligation)
     return refuse(
       "obligation_mismatch",
-      `proposal inputCheckId=${proposal.inputCheckId} / class=${resourceClass} does not map to an accepted obligation`,
+      `proposal inputCheckId=${proposal.inputCheckId ?? "(derived)"} / class=${resourceClass} does not map to an accepted obligation`,
     );
 
   // evidence_sufficiency: application owns the ResourceNeed purpose from the
@@ -425,11 +504,14 @@ export function validateMissingInputProposal(
   // Authoritative literal scarcity requires at least one NOT_AVAILABLE check.
   // Serial semantic adequacy gaps may cite inspected application observations
   // and/or linked verified acquisitions without manufacturing a NOT_AVAILABLE token.
-  const semanticGap = proposal.semanticAdequacyGap === true;
   const notAvailableSupport = supportingIds.filter((id) => {
     const item = evidenceById.get(id);
     return item ? isNotAvailableObservation(item) : false;
   });
+  const semanticGap =
+    proposal.semanticAdequacyGap === "derive"
+      ? notAvailableSupport.length === 0
+      : proposal.semanticAdequacyGap === true;
   if (!semanticGap && notAvailableSupport.length === 0)
     return refuse(
       "missing_not_available_evidence",

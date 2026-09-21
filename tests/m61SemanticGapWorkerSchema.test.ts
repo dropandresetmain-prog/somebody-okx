@@ -16,7 +16,7 @@ function toolCall(name: string, args: unknown, callId: string) {
   };
 }
 
-test("serial worker schema accepts semanticGap NEEDS_INPUT without NOT_AVAILABLE", async () => {
+test("serial worker schema accepts the canonical gap NEEDS_INPUT without NOT_AVAILABLE", async () => {
   const contract = createWorkContract({
     assignment: "Assess relaunch evidence adequacy",
     idempotencyScope: "obj:semantic-gap-schema",
@@ -96,13 +96,7 @@ test("serial worker schema accepts semanticGap NEEDS_INPUT without NOT_AVAILABLE
               terminal: "NEEDS_INPUT",
               missingInputs: [
                 {
-                  inputCheckId: "evidence_sufficiency",
                   resourceClass: "proprietary_data",
-                  purpose: "audience language for relaunch",
-                  reasonOwnedInsufficient:
-                    "owned company_record and public_web do not answer the audience question",
-                  supportingEvidenceIds: ["ev_rec", "ev_web"],
-                  semanticGap: true,
                   unansweredQuestion:
                     "What messaging resonates with early adopters?",
                   observedEvidenceIds: ["ev_rec", "ev_web"],
@@ -135,7 +129,12 @@ test("serial worker schema accepts semanticGap NEEDS_INPUT without NOT_AVAILABLE
   assert.equal(submitted!.type, "submit_result");
   if (submitted!.type !== "submit_result") return;
   const gap = submitted!.result.missingInputs?.[0];
-  assert.equal(gap?.semanticGap, true);
+  // ONE canonical model-facing shape: legacy aliases are not part of the serial
+  // schema (the application derives them).
+  assert.equal(gap?.resourceClass, "proprietary_data");
+  assert.equal(gap?.semanticGap, undefined);
+  assert.equal(gap?.purpose, undefined);
+  assert.equal(gap?.supportingEvidenceIds, undefined);
   assert.equal(
     gap?.unansweredQuestion,
     "What messaging resonates with early adopters?",

@@ -31,9 +31,15 @@ export type WorkerCommand =
   | {
       type: "request_resource";
       resourceClass: string;
-      purpose: string;
-      reasonOwnedInsufficient: string;
-      /** Obligation id when known; defaults to evidence_sufficiency for M4. */
+      // Canonical serial gap shape (preferred):
+      unansweredQuestion?: string;
+      observedEvidenceIds?: string[];
+      whyInsufficient?: string;
+      howAdditionalWouldChange?: string;
+      // Legacy aliases, mapped by the application (normalizeGapSubmission):
+      purpose?: string;
+      reasonOwnedInsufficient?: string;
+      /** Obligation id when known; derived by the application when omitted. */
       inputCheckId?: string;
       /** Application observation ids supporting the gap claim. */
       supportingEvidenceIds?: string[];
@@ -50,17 +56,19 @@ export type WorkerCommand =
 
 /** Bounded missing-input finding a worker may propose with submit_result. */
 export type MissingInputFindingInput = {
-  inputCheckId: string;
   resourceClass: string;
-  purpose: string;
-  reasonOwnedInsufficient: string;
-  supportingEvidenceIds: string[];
-  /** Serial semantic adequacy gap — does NOT require NOT_AVAILABLE. */
-  semanticGap?: boolean;
+  // Canonical serial gap shape (preferred; the only one serial models see):
   unansweredQuestion?: string;
   observedEvidenceIds?: string[];
   whyInsufficient?: string;
   howAdditionalWouldChange?: string;
+  // Legacy aliases, mapped by the application:
+  inputCheckId?: string;
+  purpose?: string;
+  reasonOwnedInsufficient?: string;
+  supportingEvidenceIds?: string[];
+  /** Legacy explicit flag; the canonical shape derives literal vs semantic. */
+  semanticGap?: boolean;
 };
 
 /** Tagged terminal handoff for the serial manager–execution path. */

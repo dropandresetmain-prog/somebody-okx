@@ -7,6 +7,7 @@ import {
   classifyDeliveryFailure,
   listInputObligations,
   isValidatedInputGap,
+  normalizeGapSubmission,
 } from "../lib/objective/inputDiagnosis";
 import { createResourceNeed } from "../lib/objective/resourceNeed";
 import type { EvidenceRecord } from "../lib/objective/types";
@@ -865,4 +866,135 @@ test("Finding B: distinct required question without linked acquisition remains a
     result.need.purpose,
     "accepted audience-language evidence for the requirement",
   );
+});
+
+// ── Milestone 1 / F4: ONE canonical model-facing gap submission ─────────────────
+// The serial model supplies resourceClass, unansweredQuestion, observedEvidenceIds,
+// whyInsufficient (+ optional howAdditionalWouldChange). The application derives
+// purpose / reason / supporting ids / obligation id / literal-vs-semantic mode.
+
+const canonicalGap = {
+  resourceClass: "proprietary_data",
+  unansweredQuestion: "licensed audience language for relaunch wording",
+  observedEvidenceIds: ["ev_inspected_rec", "ev_inspected_web"],
+  whyInsufficient:
+    "owned company_record and public_web were inspected but do not answer the audience-language question",
+  howAdditionalWouldChange: "verified audience language would ground the wording",
+};
+
+test("F4 canonical: submission without any legacy alias validates as a semantic gap", () => {
+  const proposal = normalizeGapSubmission(canonicalGap);
+  assert.equal(proposal.semanticAdequacyGap, "derive");
+  assert.equal(proposal.inputCheckId, undefined);
+  assert.equal(proposal.purpose, canonicalGap.unansweredQuestion);
+  assert.match(proposal.reasonOwnedInsufficient, /How additional would change/);
+  assert.deepEqual(proposal.supportingEvidenceIds, canonicalGap.observedEvidenceIds);
+  const result = validateMissingInputProposal(proposal, baseCtx());
+  assert.equal(result.ok, true, result.ok ? "" : result.detail);
+  if (!result.ok) return;
+  assert.ok(isValidatedInputGap(result.need));
+  assert.equal(result.need.inputCheckId, "evidence_sufficiency");
+});
+
+test("F4 canonical: obligation id is derived from the Requirement's declared class", () => {
+  const result = validateMissingInputProposal(
+    normalizeGapSubmission(canonicalGap),
+    baseCtx({ requiredResourceClasses: ["proprietary_data"] }),
+  );
+  assert.equal(result.ok, true, result.ok ? "" : result.detail);
+  if (!result.ok) return;
+  assert.equal(result.need.inputCheckId, "req_class:proprietary_data");
+});
+
+test("F4 canonical: citing a NOT_AVAILABLE check is derived as literal scarcity", () => {
+  const result = validateMissingInputProposal(
+    normalizeGapSubmission({ ...canonicalGap, observedEvidenceIds: ["ev_rec", "ev_web"] }),
+    baseCtx(),
+  );
+  assert.equal(result.ok, true, result.ok ? "" : result.detail);
+});
+
+test("F4 canonical: literal scarcity vs semantic adequacy stay distinct (legacy flagless stays strict)", () => {
+  const legacyStrict = validateMissingInputProposal(
+    normalizeGapSubmission({
+      inputCheckId: "evidence_sufficiency",
+      resourceClass: "proprietary_data",
+      purpose: "licensed audience language",
+      reasonOwnedInsufficient: "insufficient without availability token",
+      supportingEvidenceIds: ["ev_inspected_rec", "ev_inspected_web"],
+    }),
+    baseCtx(),
+  );
+  assert.equal(legacyStrict.ok, false);
+  if (legacyStrict.ok) return;
+  assert.equal(legacyStrict.refusalCode, "missing_not_available_evidence");
+  // An explicit legacy semanticGap flag maps to the explicit semantic mode.
+  assert.equal(
+    normalizeGapSubmission({ ...canonicalGap, semanticGap: true }).semanticAdequacyGap,
+    true,
+  );
+});
+
+test("F4 canonical: foreign, unlinked, unknown-class and optional-residual gaps remain refused", () => {
+  const foreign = validateMissingInputProposal(
+    normalizeGapSubmission({ ...canonicalGap, observedEvidenceIds: ["ev_foreign"] }),
+    baseCtx(),
+  );
+  assert.equal(foreign.ok, false);
+  if (!foreign.ok) assert.equal(foreign.refusalCode, "foreign_evidence");
+
+  const unlinked = validateMissingInputProposal(
+    normalizeGapSubmission({
+      ...canonicalGap,
+      observedEvidenceIds: ["sim_result_linked_1", "ev_inspected_rec"],
+    }),
+    baseCtx({
+      citeableAcquisitions: [linkedAcquisition],
+      linkedInputEvidenceIds: ["some_other_linked_id"],
+    }),
+  );
+  assert.equal(unlinked.ok, false);
+  if (!unlinked.ok) assert.equal(unlinked.refusalCode, "foreign_evidence");
+
+  const unknown = validateMissingInputProposal(
+    normalizeGapSubmission({ ...canonicalGap, resourceClass: "magic_crystal_data" }),
+    baseCtx(),
+  );
+  assert.equal(unknown.ok, false);
+  if (!unknown.ok) assert.equal(unknown.refusalCode, "unknown_resource_class");
+
+  // Already-linked verified acquisition of the class: residual optional
+  // uncertainty must not become another mandatory ResourceNeed.
+  const residual = validateMissingInputProposal(
+    normalizeGapSubmission({
+      ...canonicalGap,
+      observedEvidenceIds: ["sim_result_linked_1", "ev_inspected_rec"],
+    }),
+    baseCtx({
+      citeableAcquisitions: [linkedAcquisition],
+      linkedInputEvidenceIds: ["sim_result_linked_1"],
+    }),
+  );
+  assert.equal(residual.ok, false);
+  if (!residual.ok) assert.equal(residual.refusalCode, "optional_unknown_not_mandatory");
+});
+
+test("F4 canonical: canonical fields win over legacy aliases; alias-only input keeps legacy semantics", () => {
+  const mixed = normalizeGapSubmission({
+    ...canonicalGap,
+    purpose: "legacy purpose",
+    supportingEvidenceIds: ["ev_legacy"],
+  });
+  assert.equal(mixed.purpose, canonicalGap.unansweredQuestion);
+  assert.deepEqual(mixed.supportingEvidenceIds, canonicalGap.observedEvidenceIds);
+  const legacyOnly = normalizeGapSubmission({
+    inputCheckId: "evidence_sufficiency",
+    resourceClass: "proprietary_data",
+    purpose: "legacy purpose",
+    reasonOwnedInsufficient: "legacy reason",
+    supportingEvidenceIds: ["ev_rec"],
+  });
+  assert.equal(legacyOnly.semanticAdequacyGap, undefined);
+  assert.equal(legacyOnly.inputCheckId, "evidence_sufficiency");
+  assert.equal(legacyOnly.purpose, "legacy purpose");
 });

@@ -219,6 +219,10 @@ export const objectiveRecord = v.object({
         fingerprint: v.string(),
         at: v.number(),
         reason: v.string(),
+        // Non-authoritative diagnostic payload for manager inspection.
+        summary: v.optional(v.string()),
+        recommendedNextAction: v.optional(v.string()),
+        unmetObligations: v.optional(v.array(v.string())),
       }),
       v.null(),
     ),

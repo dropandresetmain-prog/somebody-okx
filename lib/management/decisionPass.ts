@@ -94,12 +94,25 @@ export type DecisionPassReads = {
 
 /** Bounded facts Somebody needs after an action to reassess — not authority. */
 export type ManagerResultPackage = {
+  /**
+   * ONLY output the application accepted for a matching run identity
+   * (accepted DELIVERED / validated-gap NEEDS_INPUT). Never a refused,
+   * unconfirmed, failed or stale submission — see `latestWorkerDiagnostic`.
+   */
   latestAcceptedWorkerOutput: {
     runId: string;
+    terminal: "DELIVERED" | "NEEDS_INPUT";
+    acceptedAt: number;
     summary: string;
     fit: string;
     recommendedNextAction: string;
   } | null;
+  /**
+   * Explicitly NON-authoritative worker diagnostic: refused/unconfirmed
+   * terminals, failed (EXECUTION_ERROR) actions, or stored output with no
+   * matching application acceptance. Inspectable, never accepted output.
+   */
+  latestWorkerDiagnostic?: WorkerDiagnostic | null;
   scopedVerifiedAcquisitions: Array<{
     resultEvidenceId: string;
     resourceClass: string;
@@ -127,6 +140,132 @@ export type ManagerResultPackage = {
   finalReviewCritique: string | null;
   provenanceEvidenceIds: string[];
 };
+
+export type WorkerDiagnostic = {
+  authoritative: false;
+  kind:
+    | "refused_terminal"
+    | "failed_action"
+    | "unaccepted_result";
+  runId: string;
+  terminal: "DELIVERED" | "NEEDS_INPUT" | "EXECUTION_ERROR" | null;
+  reason: string;
+  summary: string;
+  unmetObligations: string[];
+};
+
+type StoredResult = {
+  runId?: string;
+  summary?: string;
+  fit?: string;
+  recommendedNextAction?: string;
+} | null;
+
+/**
+ * Deterministic projection of worker output for manager context. Acceptance is
+ * read from the application's durable terminal record — never inferred from
+ * prose or from the mere presence of a stored result. Legacy (non-serial)
+ * objectives have no terminal record and keep their historical projection.
+ */
+export function projectWorkerOutput(input: {
+  serialProtocol: boolean;
+  result: StoredResult;
+  acceptedTerminal?: {
+    runId: string;
+    terminal: "DELIVERED" | "NEEDS_INPUT" | "EXECUTION_ERROR";
+    acceptedAt: number;
+    outcome: "accepted";
+  } | null;
+  lastUnconfirmedTerminal?: {
+    runId: string;
+    terminal: "DELIVERED" | "NEEDS_INPUT" | "EXECUTION_ERROR";
+    reason: string;
+    summary?: string;
+    unmetObligations?: string[];
+  } | null;
+  summaryCap?: number;
+}): {
+  latestAcceptedWorkerOutput: ManagerResultPackage["latestAcceptedWorkerOutput"];
+  latestWorkerDiagnostic: WorkerDiagnostic | null;
+} {
+  const cap = input.summaryCap ?? 1500;
+  const result = input.result;
+  const hasResult = Boolean(result && typeof result.summary === "string");
+  const packageOf = (
+    terminal: "DELIVERED" | "NEEDS_INPUT",
+    acceptedAt: number,
+  ) => ({
+    runId: String(result?.runId ?? ""),
+    terminal,
+    acceptedAt,
+    summary: String(result?.summary ?? "").slice(0, cap),
+    fit: String(result?.fit ?? "").slice(0, 800),
+    recommendedNextAction: String(result?.recommendedNextAction ?? "").slice(0, 500),
+  });
+
+  if (!input.serialProtocol) {
+    return {
+      latestAcceptedWorkerOutput: hasResult ? packageOf("DELIVERED", 0) : null,
+      latestWorkerDiagnostic: null,
+    };
+  }
+
+  const accepted = input.acceptedTerminal;
+  const matches =
+    hasResult &&
+    accepted?.outcome === "accepted" &&
+    accepted.runId === result!.runId;
+  if (matches && accepted!.terminal !== "EXECUTION_ERROR") {
+    return {
+      latestAcceptedWorkerOutput: packageOf(accepted!.terminal, accepted!.acceptedAt),
+      latestWorkerDiagnostic: null,
+    };
+  }
+  if (matches) {
+    return {
+      latestAcceptedWorkerOutput: null,
+      latestWorkerDiagnostic: {
+        authoritative: false,
+        kind: "failed_action",
+        runId: String(result!.runId),
+        terminal: "EXECUTION_ERROR",
+        reason: "worker reported EXECUTION_ERROR; not delivered output",
+        summary: String(result!.summary).slice(0, 800),
+        unmetObligations: [],
+      },
+    };
+  }
+  const unconfirmed = input.lastUnconfirmedTerminal;
+  if (unconfirmed) {
+    return {
+      latestAcceptedWorkerOutput: null,
+      latestWorkerDiagnostic: {
+        authoritative: false,
+        kind: "refused_terminal",
+        runId: unconfirmed.runId,
+        terminal: unconfirmed.terminal,
+        reason: unconfirmed.reason.slice(0, 300),
+        summary: String(unconfirmed.summary ?? "").slice(0, 800),
+        unmetObligations: (unconfirmed.unmetObligations ?? []).slice(0, 8),
+      },
+    };
+  }
+  if (hasResult) {
+    return {
+      latestAcceptedWorkerOutput: null,
+      latestWorkerDiagnostic: {
+        authoritative: false,
+        kind: "unaccepted_result",
+        runId: String(result!.runId ?? ""),
+        terminal: null,
+        reason: "stored worker result has no matching application-accepted terminal",
+        summary: String(result!.summary).slice(0, 800),
+        unmetObligations: [],
+      },
+    };
+  }
+  return { latestAcceptedWorkerOutput: null, latestWorkerDiagnostic: null };
+}
 
 export type OpenResourceNeedFact = {
   needId: string;

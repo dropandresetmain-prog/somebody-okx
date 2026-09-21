@@ -759,6 +759,67 @@ export const recordFinding = internalMutation({
   },
 });
 
+const MAX_OBLIGATIONS = 8;
+function boundObligations(unmet: string[]): string[] {
+  return unmet.slice(0, MAX_OBLIGATIONS).map((item) => item.slice(0, 300));
+}
+
+// The deterministic action-level obligations still unmet for THIS run. One
+// kernel for the worker observation (what the model sees) and the pre-terminal
+// DELIVERED gate in submitResult; finishRun re-runs the same checks as the
+// final backstop. Never Objective completion.
+async function computeActionObligations(input: {
+  db: QueryCtx["db"];
+  objectiveKey: string;
+  record: ObjectiveRecord;
+  runId: string;
+  evidence: EvidenceRecord[];
+  result: ActivityResult | null;
+}): Promise<string[]> {
+  const { record } = input;
+  const workItem = record.workItems[0];
+  const contract = workItem.contract;
+  const unmet = [
+    ...evaluateCompletion({
+      contract,
+      evidence: input.evidence,
+      result: input.result,
+      currentRunId: input.runId,
+    }).unmet,
+  ];
+  const management = (
+    record as unknown as {
+      management?: { executionProtocol?: string | null; contractId?: string | null };
+    }
+  ).management;
+  const requiresArtifactMutation = assignmentRequiresArtifactMutation({
+    allowedToolPermissions: contract.allowedToolPermissions,
+    proofKinds: await requirementProofKinds(input.db, input.objectiveKey, workItem),
+    serialProtocol: isSerialManagerProtocol(management),
+  });
+  if (requiresArtifactMutation) {
+    const targetKey = contract.targetArtifactKey ?? null;
+    const artifactChanged = (record.companyArtifacts ?? []).some(
+      (a) =>
+        a.provenanceRunId === input.runId &&
+        a.version > 1 &&
+        (targetKey == null || a.key === targetKey),
+    );
+    if (!artifactChanged) {
+      unmet.push("company_artifact: no version change by this run");
+    }
+    if (management?.contractId == null) {
+      const hasNeed = (record.resourceNeeds ?? []).some(
+        (n) => n.proposedByRunId === input.runId,
+      );
+      if (!hasNeed) {
+        unmet.push("resource_need: growth run must propose a resource need");
+      }
+    }
+  }
+  return unmet;
+}
+
 // Store the structured result. Submitting it is NOT Objective completion.
 // Serial path: application owns terminal acceptance, idempotency, and fencing.
 // Optional missingInputs are validated by reportMissingInput (same authority path
@@ -780,20 +841,21 @@ export const submitResult = internalMutation({
           v.literal("EXECUTION_ERROR"),
         ),
       ),
+      // Canonical serial gap (resourceClass, unansweredQuestion, observedEvidenceIds,
+      // whyInsufficient, howAdditionalWouldChange) plus optional legacy aliases the
+      // application maps internally (normalizeGapSubmission). Not authority.
       missingInputs: v.optional(
         v.array(
           v.object({
-            inputCheckId: v.string(),
             resourceClass: v.string(),
-            purpose: v.string(),
-            reasonOwnedInsufficient: v.string(),
-            supportingEvidenceIds: v.array(v.string()),
-            // Serial semantic evidence-gap fields (optional; literal scarcity
-            // may omit these and use availability checks instead).
             unansweredQuestion: v.optional(v.string()),
             observedEvidenceIds: v.optional(v.array(v.string())),
             whyInsufficient: v.optional(v.string()),
             howAdditionalWouldChange: v.optional(v.string()),
+            inputCheckId: v.optional(v.string()),
+            purpose: v.optional(v.string()),
+            reasonOwnedInsufficient: v.optional(v.string()),
+            supportingEvidenceIds: v.optional(v.array(v.string())),
             semanticGap: v.optional(v.boolean()),
           }),
         ),
@@ -812,6 +874,8 @@ export const submitResult = internalMutation({
     ),
     detail: v.string(),
     terminalAccepted: v.boolean(),
+    // Exact deterministic obligations still unmet when a DELIVERED is refused.
+    unmetObligations: v.optional(v.array(v.string())),
   }),
   handler: async (ctx, args) => {
     const now = Date.now();
@@ -890,13 +954,66 @@ export const submitResult = internalMutation({
       };
     }
 
+    // Pre-terminal deterministic validation (F3): a DELIVERED that leaves known
+    // action obligations unmet is REFUSED before the terminal slot is sealed.
+    // The same run may perform the missing legal action and resubmit. This
+    // reuses the worker-observation obligation kernel; it is not a second
+    // completion authority (Objective completion stays with the management gate).
+    if (serial && terminal === "DELIVERED") {
+      const unmet = await computeActionObligations({
+        db: ctx.db,
+        objectiveKey: args.objectiveKey,
+        record,
+        runId: args.runId,
+        evidence: evidenceForRun(
+          await listEvidence(ctx.db, args.objectiveKey),
+          args.runId,
+        ),
+        result,
+      });
+      if (unmet.length > 0) {
+        const bounded = boundObligations(unmet);
+        await ctx.db.patch(row._id, {
+          data: {
+            ...record,
+            // Refused output never becomes the objective's stored result.
+            lastUnconfirmedTerminal: {
+              runId: args.runId,
+              terminal,
+              fingerprint,
+              at: now,
+              reason: "DELIVERED refused: deterministic action obligations unmet",
+              summary: resultFields.summary.slice(0, 800),
+              recommendedNextAction: resultFields.recommendedNextAction.slice(0, 500),
+              unmetObligations: bounded,
+            },
+            updatedAt: now,
+          },
+        });
+        await appendEvent(
+          ctx.db,
+          args.objectiveKey,
+          "result",
+          `DELIVERED refused for run ${args.runId}: ${bounded.join("; ")}`.slice(0, 500),
+          now,
+        );
+        return {
+          status: "refused" as const,
+          detail:
+            "DELIVERED refused: unmet action obligations; terminal slot remains open — satisfy them with a legal action, then resubmit",
+          terminalAccepted: false,
+          unmetObligations: bounded,
+        };
+      }
+    }
+
     // NEEDS_INPUT: INPUT_BLOCKED is authoritative only after a validated gap.
-    // Persist a diagnostic event only — do NOT write acceptedTerminal.
+    // Persist a diagnostic only — do NOT write acceptedTerminal or the
+    // objective's stored result (F2: refused output is non-authoritative).
     if (serial && terminal === "NEEDS_INPUT" && validatedGapAccepted !== true) {
       await ctx.db.patch(row._id, {
         data: {
           ...record,
-          result,
           // Keep any prior refused diagnostic off the accepted-terminal slot.
           acceptedTerminal:
             prior?.outcome === "accepted" ? prior : null,
@@ -906,6 +1023,8 @@ export const submitResult = internalMutation({
             fingerprint,
             at: now,
             reason: "NEEDS_INPUT without accepted evidence-gap proposal",
+            summary: resultFields.summary.slice(0, 800),
+            recommendedNextAction: resultFields.recommendedNextAction.slice(0, 500),
           },
           updatedAt: now,
         },
@@ -1091,50 +1210,18 @@ export const readWorkerObservation = internalQuery({
       await listEvidence(ctx.db, args.objectiveKey),
       args.runId,
     );
-    const check = evaluateCompletion({
-      contract,
-      evidence,
-      result: record.result,
-      currentRunId: args.runId,
-    });
-    const unmet = [...check.unmet];
-    // Serial protocol: artifact mutation only when proofs demand it. Legacy:
-    // permission grant still implies mutation obligation.
     const management = (
       record as unknown as { management?: { executionProtocol?: string | null; contractId?: string | null } }
     ).management;
     const serial = isSerialManagerProtocol(management);
-    const proofKinds = await requirementProofKinds(
-      ctx.db,
-      args.objectiveKey,
-      workItem,
-    );
-    const requiresArtifactMutation = assignmentRequiresArtifactMutation({
-      allowedToolPermissions: contract.allowedToolPermissions,
-      proofKinds,
-      serialProtocol: serial,
+    const unmet = await computeActionObligations({
+      db: ctx.db,
+      objectiveKey: args.objectiveKey,
+      record,
+      runId: args.runId,
+      evidence,
+      result: record.result ?? null,
     });
-    if (requiresArtifactMutation) {
-      const targetKey = contract.targetArtifactKey ?? null;
-      const artifactChanged = (record.companyArtifacts ?? []).some(
-        (a) =>
-          a.provenanceRunId === args.runId &&
-          a.version > 1 &&
-          (targetKey == null || a.key === targetKey),
-      );
-      if (!artifactChanged) {
-        unmet.push("company_artifact: no version change by this run");
-      }
-      const isM4Managed = management?.contractId != null;
-      if (!isM4Managed) {
-        const hasNeed = (record.resourceNeeds ?? []).some(
-          (n) => n.proposedByRunId === args.runId,
-        );
-        if (!hasNeed) {
-          unmet.push("resource_need: growth run must propose a resource need");
-        }
-      }
-    }
 
     const validatedGap = currentUnresolvedValidatedGap(
       (record.resourceNeeds ?? []) as ResourceNeed[],
@@ -1604,12 +1691,16 @@ export const reportMissingInput = internalMutation({
     requirementKey: v.string(),
     workItemId: v.union(v.string(), v.null()),
     proposal: v.object({
-      inputCheckId: v.string(),
+      // Optional: the application derives the accepted obligation when omitted.
+      inputCheckId: v.optional(v.string()),
       resourceClass: v.string(),
       purpose: v.string(),
       reasonOwnedInsufficient: v.string(),
       supportingEvidenceIds: v.array(v.string()),
-      semanticAdequacyGap: v.optional(v.boolean()),
+      // true/false: legacy explicit; "derive": canonical serial submission.
+      semanticAdequacyGap: v.optional(
+        v.union(v.boolean(), v.literal("derive")),
+      ),
     }),
   },
   returns: v.object({
@@ -1696,13 +1787,16 @@ export const reportMissingInput = internalMutation({
     const evidence = await listEvidence(ctx.db, args.objectiveKey);
     const needId = `need_${now}_${Math.random().toString(36).slice(2, 8)}`;
     const proposal: MissingInputProposal = {
-      inputCheckId: args.proposal.inputCheckId,
+      ...(args.proposal.inputCheckId
+        ? { inputCheckId: args.proposal.inputCheckId }
+        : {}),
       resourceClass: args.proposal.resourceClass,
       purpose: args.proposal.purpose,
       reasonOwnedInsufficient: args.proposal.reasonOwnedInsufficient,
       supportingEvidenceIds: args.proposal.supportingEvidenceIds,
-      ...(args.proposal.semanticAdequacyGap === true
-        ? { semanticAdequacyGap: true }
+      ...(args.proposal.semanticAdequacyGap === true ||
+      args.proposal.semanticAdequacyGap === "derive"
+        ? { semanticAdequacyGap: args.proposal.semanticAdequacyGap }
         : {}),
     };
 

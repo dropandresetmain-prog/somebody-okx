@@ -287,3 +287,70 @@ test("INPUT_BLOCKED yield path is not classified as zero-progress", async () => 
   assert.equal(telemetry.zeroProgressReason, null);
   assert.ok(telemetry.toolCallCount >= 1);
 });
+
+// ── Milestone 1 / F3: refused DELIVERED leaves the same run free to correct ─────
+test("serial: refused DELIVERED does not end the run; control envelope carries unmet obligations and turn budget", async () => {
+  const serialContract = contract();
+  let submits = 0;
+  const commands: string[] = [];
+  const port: WorkerPort = {
+    async read() {
+      return baselineObs({
+        unmetCompletionRequirements:
+          submits < 2 ? ["company_artifact: no version change by this run"] : [],
+      });
+    },
+    async act(command: WorkerCommand) {
+      commands.push(command.type);
+      if (command.type === "submit_result") {
+        submits += 1;
+        return submits === 1
+          ? JSON.stringify({
+              status: "refused",
+              terminalAccepted: false,
+              unmetObligations: ["company_artifact: no version change by this run"],
+            })
+          : JSON.stringify({ status: "accepted", terminalAccepted: true });
+      }
+      return JSON.stringify({ status: "accepted", result: "ok" });
+    },
+  };
+  const deliver = {
+    summary: "s",
+    fit: "f",
+    risks: [],
+    unknowns: [],
+    recommendedNextAction: "n",
+    terminal: "DELIVERED",
+  };
+  const steps = [
+    toolCall("submit_result", deliver, "c1"),
+    toolCall("update_company_artifact", { content: "v2", changeNote: "n" }, "c2"),
+    toolCall("submit_result", deliver, "c3"),
+  ];
+  let step = 0;
+  const seenInputs: string[] = [];
+  const model: Model = {
+    async getResponse(request) {
+      seenInputs.push(JSON.stringify(request.input));
+      return { usage: new Usage(), output: [steps[step++]] };
+    },
+    async *getStreamedResponse() {
+      throw new Error("unused");
+    },
+  };
+  const telemetry = emptyWorkerTelemetry();
+  await runWorker(port, serialContract, {
+    model,
+    telemetry,
+    serialManagerProtocol: true,
+  });
+  assert.deepEqual(commands, ["submit_result", "update_company_artifact", "submit_result"]);
+  assert.equal(telemetry.failedActions, 1, "refused DELIVERED counts as a typed failed action");
+  assert.equal(telemetry.zeroProgressReason, null);
+  // The model observes deterministic guidance, not prose to interpret.
+  const afterRefusal = seenInputs[1];
+  assert.match(afterRefusal, /turnsRemaining/);
+  assert.match(afterRefusal, /company_artifact: no version change by this run/);
+  assert.match(afterRefusal, /maxTurns/);
+});

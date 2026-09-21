@@ -202,6 +202,10 @@ export type ObjectiveRecord = {
     fingerprint: string;
     at: number;
     reason: string;
+    /** Non-authoritative diagnostic payload for manager inspection. */
+    summary?: string;
+    recommendedNextAction?: string;
+    unmetObligations?: string[];
   } | null;
   /**
    * M6.1 serial: bounded final semantic assessment against the locked outcome.

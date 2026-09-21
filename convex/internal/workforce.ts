@@ -31,6 +31,7 @@ import {
   recordProgress,
 } from "../../lib/management/budget";
 import type { WorkerRecord, ObjectiveBudget, WakeEvent } from "../../lib/management/types";
+import { projectWorkerOutput } from "../../lib/management/decisionPass";
 import { verifiedAcquisitionCoversNeed } from "../../lib/objective/inputDiagnosis";
 import { scopedCoveredResourceClasses } from "../../lib/objective/inputAvailability";
 import type { ResourceNeed } from "../../lib/objective/resourceNeed";
@@ -765,6 +766,8 @@ export const readDecisionContext = internalQuery({
             rationale?: string;
             meetsMinimumBar?: boolean;
           } | null;
+          acceptedTerminal?: import("../../lib/objective/types").ObjectiveRecord["acceptedTerminal"];
+          lastUnconfirmedTerminal?: import("../../lib/objective/types").ObjectiveRecord["lastUnconfirmedTerminal"];
         }
       | undefined;
 
@@ -937,19 +940,18 @@ export const readDecisionContext = internalQuery({
         ? { text: s, truncated: false as const }
         : { text: s.slice(0, TEXT_CAP), truncated: true as const };
 
-    const latestResult = objectiveData?.result ?? null;
-    const latestAcceptedWorkerOutput =
-      latestResult && typeof latestResult.summary === "string"
-        ? {
-            runId: String(latestResult.runId ?? ""),
-            summary: truncate(String(latestResult.summary)).text,
-            fit: String((latestResult as { fit?: string }).fit ?? "").slice(0, 800),
-            recommendedNextAction: String(
-              (latestResult as { recommendedNextAction?: string }).recommendedNextAction ??
-                "",
-            ).slice(0, 500),
-          }
-        : null;
+    // Acceptance comes from the application's durable terminal record, not from
+    // the presence (or prose) of a stored result. Refused/failed output stays
+    // visible only as an explicit non-authoritative diagnostic.
+    const { latestAcceptedWorkerOutput, latestWorkerDiagnostic } =
+      projectWorkerOutput({
+        serialProtocol:
+          objectiveData?.management?.executionProtocol === "m61_serial_v1",
+        result: (objectiveData?.result ?? null) as never,
+        acceptedTerminal: objectiveData?.acceptedTerminal ?? null,
+        lastUnconfirmedTerminal: objectiveData?.lastUnconfirmedTerminal ?? null,
+        summaryCap: TEXT_CAP,
+      });
 
     const scopedVerifiedAcquisitions = acquisitions
       .filter(
@@ -991,6 +993,7 @@ export const readDecisionContext = internalQuery({
 
     const managerResultPackage = {
       latestAcceptedWorkerOutput,
+      latestWorkerDiagnostic,
       scopedVerifiedAcquisitions,
       currentControlledArtifact: controlledArt
         ? {
