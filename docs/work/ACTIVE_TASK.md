@@ -1,7 +1,7 @@
 # ACTIVE TASK — M6.1 manager–execution mini-refactor
 
 Updated: 21 September 2026 (Singapore)
-Status: **OWNER-REVIEW BLOCKERS IN PROGRESS / NOT GATE 1 PASS**
+Status: **OWNER-REVIEW CLOSURE CANDIDATE / NOT GATE 1 PASS**
 
 ## Goal
 
@@ -17,25 +17,30 @@ relaunch recommendation.
 
 ## Checkpoint
 
-- Pushed SHA: _(pending this commit)_
-- Next: finish genuine production-chain harness + assessment routing tests;
-  then OWNER REVIEW.
+- Pushed SHAs this closure:
+  - `b19269b` — terminal/purpose/assessment wiring
+  - `4db0393` — assessment routing validators + durable completed after gate
+  - _(next)_ production whole-chain F/G harness
+- Owner-review start: `8c1f5d3`
+- Status: owner-review blockers closed in code; awaiting OWNER REVIEW
 
-## Done this round
+## Done this round (owner-review blockers)
 
+- [x] Final semantic assessment begin→model→apply wired into serial proposeCompletion
+- [x] Production final-assessment routing regression (`m61FinalAssessmentRouting`)
+- [x] Genuine unbroken production whole-chain harness F (`m61ProductionWholeChain`)
+- [x] Supplied-evidence no-BUY variant G
+- [x] Semantic-gap fields on live worker Zod schema + regression
 - [x] Refused NEEDS_INPUT does not close terminal slot (corrected submit ok)
 - [x] Purpose-scoped acquisition via `needDedupeKey`
 - [x] Stale-revision BUY release guard
 - [x] Serial tool status via `ToolStatusError` / explicit status envelopes
-- [x] Worker Zod schema exposes semantic-gap fields
-- [x] Final assessment begin/apply wired into proposeCompletion (serial)
+- [x] `writeObjectiveState` + settle persist durable `completed` after gate accept
 
 ## Remaining
 
-- [ ] Production final-assessment routing regression
-- [ ] Genuine unbroken manager/execution chain harness (not stitch)
-- [ ] Semantic-gap through live worker tool schema regression
-- [ ] Stale-revision release regression (explicit)
+- [ ] OWNER REVIEW of this closure candidate
+- [ ] Physical Gate 1 (only after owner accepts) — NOT declared PASS
 
 ## Do not
 
