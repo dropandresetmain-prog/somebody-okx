@@ -901,7 +901,7 @@ test("N9 decision ceiling: decisionRefusalAttempts at ceiling prevents new reser
   assert.equal(refusals[reqKey], BEGIN_DECISION_CEILING, "decisionRefusalAttempts unchanged");
 });
 
-test("N10 decision retry after refusal: after BUY refusal with eligible options, reducer routes to decide_requirement and allows retry", async () => {
+test("N10 decision retry after refusal: after MAKE refusal with eligible options still present, reducer routes to decide_requirement and allows retry", async () => {
   const t = convexTest(schema, modules);
   const key = "obj_n10_retry";
   const reqKey = "req_n10";
@@ -914,9 +914,9 @@ test("N10 decision retry after refusal: after BUY refusal with eligible options,
     proposed: cp2ParsedRequirement({
       requirementKey: reqKey,
       priority: "required",
-      title: "Research X narrative trends",
-      mustBeTrue: "twitter data supports the claim",
-      scope: "external data",
+      title: "A governed observation is recorded",
+      mustBeTrue: "an application observation supports the statement",
+      scope: "company artifact + observation",
     }),
     at: now,
   });
@@ -925,7 +925,9 @@ test("N10 decision retry after refusal: after BUY refusal with eligible options,
   await seedObjective(t, key);
   await seedContractRequirementBudget(t, key, semanticReq.requirement);
 
-  // BEGIN + APPLY with BUY strategy, select non-existent option → refusal
+  // BEGIN + APPLY with MAKE strategy, select non-existent option → refusal
+  // while eligible grounded candidates remain on the decision row (Case A:
+  // recommendation unusable, not genuine no-eligible-path).
   await beginDecision(t, key, reqKey);
   const obj1 = await readObjective(t, key);
   const pending1 = obj1.management.pendingDecision as { requestId: string };
@@ -934,16 +936,16 @@ test("N10 decision retry after refusal: after BUY refusal with eligible options,
     objectiveKey: key,
     requestId: pending1.requestId,
     rawStrategyProposal: {
-      strategy: "BUY",
-      desiredCapabilities: [],
-      needsExternalResourceClass: "proprietary_data",
+      strategy: "MAKE",
+      desiredCapabilities: ["public_information_research"],
+      needsExternalResourceClass: null,
       notes: null,
     },
     rawRecommendation: {
       requirementKey: reqKey,
       contractRevision: 1,
       selectedOptionId: "opt_fake",
-      rationale: "test BUY with wrong option",
+      rationale: "test MAKE with wrong option",
       materialAssumptions: [],
       changeMyMindEvidence: [],
     },
@@ -974,21 +976,24 @@ test("N10 decision retry after refusal: after BUY refusal with eligible options,
   const decisions = await readDecisions(t, key);
   const decision = decisions[0] as any;
   const parsed = JSON.parse(decision.coarsePlanSummary);
-  const eligibleOptionId = parsed.extra.options[0].optionId;
+  const eligibleOption = (parsed.extra.options as Array<{ optionId: string; eligibility: { eligible: boolean } }>).find(
+    (option) => option.eligibility.eligible,
+  );
+  assert.ok(eligibleOption, "persisted decision must retain an eligible grounded option");
 
   const applyResult2 = await invokeApplyDecision(t, {
     objectiveKey: key,
     requestId: pending2.requestId,
     rawStrategyProposal: {
-      strategy: "BUY",
-      desiredCapabilities: [],
-      needsExternalResourceClass: "proprietary_data",
+      strategy: "MAKE",
+      desiredCapabilities: ["public_information_research"],
+      needsExternalResourceClass: null,
       notes: null,
     },
     rawRecommendation: {
       requirementKey: reqKey,
       contractRevision: 1,
-      selectedOptionId: eligibleOptionId,
+      selectedOptionId: eligibleOption.optionId,
       rationale: "retry with correct option",
       materialAssumptions: [],
       changeMyMindEvidence: [],
@@ -996,8 +1001,6 @@ test("N10 decision retry after refusal: after BUY refusal with eligible options,
     at: now,
   }) as { ok: boolean; authorized?: boolean };
 
-  // Note: This will still fail authorization because BUY requires a founder grant,
-  // but the point is that the retry mechanism works
   assert.equal(applyResult2.ok, true, "retry applyDecision succeeded");
-  assert.equal(applyResult2.authorized, false, "still not authorized (no grant)");
+  assert.equal(applyResult2.authorized, true, "retry with eligible option authorizes MAKE");
 });

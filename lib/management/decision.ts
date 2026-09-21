@@ -52,6 +52,12 @@ import type {
 import type { EligibilityFacts } from "./options";
 import type { ExternalAuthorityMode, RecheckContext } from "./authorization";
 
+// Per-requirement ceiling on REFUSED decision attempts. A proposal that yields
+// zero grounded candidates (model/proposal failure) must be retriable until
+// this bound; the begin step and the control reducer share this constant so a
+// refuse/re-ask storm cannot outlive it.
+export const BEGIN_DECISION_CEILING = 3;
+
 // ── Inputs ───────────────────────────────────────────────────────────────────
 
 export type RegistryOffering = {

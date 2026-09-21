@@ -178,6 +178,54 @@ test("persistDecision writes decision + options, and loadGrounded reconstructs t
   assert.equal(loadedOptions[0].optionId, options[0].optionId);
 });
 
+test("loadGrounded omits empty options[] so a refused empty proposal is not stable grounding", async () => {
+  const t = convexTest(schema, modules);
+
+  const decision: ManagerialDecision = {
+    decisionId: "dec_empty_opts",
+    objectiveKey: "obj_empty_opts",
+    contractRevision: 1,
+    requirementKey: "req_empty",
+    kind: "satisfaction_strategy",
+    strategy: null,
+    optionId: null,
+    recommendation: null,
+    authorization: {
+      kind: "refused",
+      requirementKey: "req_empty",
+      contractRevision: 1,
+      reasons: ["unknown"],
+      detail: "no grounded option is currently eligible",
+    },
+    coarsePlanSummary: "empty proposal",
+    consideredOptionIds: [],
+    at: now,
+  };
+
+  const result: DecisionPassResult = {
+    decision,
+    boundRequirement: null,
+    options: [],
+    recommendation: null,
+    authorization: decision.authorization,
+  };
+
+  await t.mutation(async (ctx) => {
+    const ports = buildConvexManagementPorts(ctx as any);
+    await ports.persistDecision(result, now);
+  });
+
+  const groundedResult = await t.mutation(async (ctx) => {
+    const ports = buildConvexManagementPorts(ctx as any);
+    const grounded = await ports.loadGrounded("obj_empty_opts", 1);
+    const obj: Record<string, number> = {};
+    for (const [key, value] of grounded.entries()) obj[key] = value.length;
+    return obj;
+  });
+
+  assert.deepEqual(groundedResult, {}, "empty options must not appear in grounded map");
+});
+
 // ── Test 3: spendDecisionCall increments budget ─────────────────────────────
 
 test("spendDecisionCall increments used.managementDecisions through the shipped budget kernel; a second init does not reset it", async () => {

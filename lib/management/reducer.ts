@@ -19,6 +19,7 @@
 //  10. waiting on schedule/external facts only → waiting
 //  11. open requirements with executable paths → executing (decide next pass)
 
+import { BEGIN_DECISION_CEILING } from "./decision";
 import { openRequired } from "./requirements";
 import { strategyDelivery } from "./dispatch";
 import type {
@@ -38,13 +39,18 @@ export type ReducerFacts = {
   currentContractRevision: number;
   requirements: readonly Requirement[];
   // Eligibility verdicts from the LAST grounding pass (fresh Convex reload,
-  // keyed by requirement). Absent = never grounded this revision.
+  // keyed by requirement). Absent OR empty = no candidate set was computed
+  // this revision (retryable proposal failure), not a genuine no-eligible path.
   groundedByRequirement: ReadonlyMap<string, readonly GroundedOption[]>;
   assignments: readonly Assignment[];
   intents: readonly ExecutionIntent[];
   budgetVerdict: BudgetVerdict;
   pendingApproval: { question: string } | null;
   completionProposal: CompletionVerdict | null; // latest gate verdict, if proposed
+  // Refused decision attempts per requirement — bounds retry of empty/unusable
+  // proposals. Omitted in pure unit fixtures defaults to no exhaustion.
+  decisionRefusalAttempts?: Readonly<Record<string, number>>;
+  beginDecisionCeiling?: number;
   at: number;
 };
 
@@ -87,6 +93,8 @@ export function reduceManagementState(facts: ReducerFacts): ReducedState {
     budgetVerdict,
     pendingApproval,
     completionProposal,
+    decisionRefusalAttempts = {},
+    beginDecisionCeiling = BEGIN_DECISION_CEILING,
   } = facts;
 
   // 1. Budget ceilings are the outermost guard: nothing proceeds past them.
@@ -190,10 +198,13 @@ export function reduceManagementState(facts: ReducerFacts): ReducedState {
       detail: "all required requirements resolved; completion must pass the independent gate",
     };
 
-  // 8. No executable path anywhere. IMPORTANT distinction: a requirement with
-  //    NO grounding entry has simply never been decided for this revision —
-  //    that is decision work, not a dead end. Only requirements that HAVE been
-  //    grounded and produced no eligible option count toward "no path".
+  // 8. No executable path anywhere. Typed distinction (not prose):
+  //    A. No candidate options computed (absent OR empty options[]) — model /
+  //       proposal failure before a usable grounded set. That is decision work
+  //       while refusal attempts remain below the shared begin ceiling.
+  //    B. Candidates were computed (options.length > 0) but none are eligible —
+  //       genuine application-grounded no-eligible path. Waiting/escalation is
+  //       correct; re-asking the model cannot flip hard eligibility facts.
   //    Explicit dependsOn edges block decide/dispatch until those keys resolve
   //    (satisfied/waived) — lexical req_01 ordering is not enough alone.
   const byKey = new Map(current.map((requirement) => [requirement.requirementKey, requirement]));
@@ -205,13 +216,21 @@ export function reduceManagementState(facts: ReducerFacts): ReducedState {
       return !!row && (row.state === "satisfied" || row.state === "waived");
     });
   };
-  const groundedKnown = (requirement: Requirement) =>
-    groundedByRequirement.has(requirement.requirementKey);
+  const groundedCandidates = (requirement: Requirement): readonly GroundedOption[] | null => {
+    const grounded = groundedByRequirement.get(requirement.requirementKey);
+    if (grounded === undefined || grounded.length === 0) return null;
+    return grounded;
+  };
+  const refusalAttemptsFor = (requirement: Requirement): number =>
+    decisionRefusalAttempts[requirement.requirementKey] ?? 0;
   const solvable = open.filter((requirement) => {
     if (!prerequisitesMet(requirement)) return false;
-    if (!groundedKnown(requirement)) return true; // undecided ⇒ work to do
-    const grounded = groundedByRequirement.get(requirement.requirementKey) ?? [];
-    return grounded.some((option) => option.eligibility.eligible);
+    const candidates = groundedCandidates(requirement);
+    if (candidates === null) {
+      // Case A: still decision work until the refusal ceiling is exhausted.
+      return refusalAttemptsFor(requirement) < beginDecisionCeiling;
+    }
+    return candidates.some((option) => option.eligibility.eligible);
   });
   const waitingOnDeps = open.filter((requirement) => !prerequisitesMet(requirement));
   const stuck = open.filter((requirement) => requirement.state === "blocked");
@@ -221,6 +240,34 @@ export function reduceManagementState(facts: ReducerFacts): ReducedState {
         state: "waiting",
         action: { kind: "await_wake", reason: "timeout" },
         detail: `open requirements wait on unresolved prerequisites: ${waitingOnDeps
+          .map((r) => r.requirementKey)
+          .join(", ")}`,
+      };
+    }
+    // Case A exhausted: unusable proposals burned the refusal ceiling with no
+    // candidate set ever computed. Park in recovery_required (same family as
+    // budget ceilings) — do not pretend the world has a grounded no-path.
+    const exhaustedProposalFailures = open.filter(
+      (requirement) =>
+        prerequisitesMet(requirement) &&
+        groundedCandidates(requirement) === null &&
+        refusalAttemptsFor(requirement) >= beginDecisionCeiling,
+    );
+    const genuineNoEligible = open.some(
+      (requirement) =>
+        prerequisitesMet(requirement) &&
+        groundedCandidates(requirement) !== null &&
+        !(groundedCandidates(requirement) ?? []).some((option) => option.eligibility.eligible),
+    );
+    if (exhaustedProposalFailures.length > 0 && !genuineNoEligible) {
+      return {
+        state: "recovery_required",
+        action: {
+          kind: "hold",
+          state: "recovery_required",
+          reason: "decision refusal ceiling exhausted",
+        },
+        detail: `decision refusal ceiling exhausted (${beginDecisionCeiling}) for ${exhaustedProposalFailures
           .map((r) => r.requirementKey)
           .join(", ")}`,
       };

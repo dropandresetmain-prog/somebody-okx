@@ -40,6 +40,8 @@ export type ManagementPorts = {
   loadContract(objectiveKey: string): Promise<{ contract: OutcomeContract | null; currentContractRevision: number }>;
   loadRequirements(objectiveKey: string, revision: number): Promise<Requirement[]>;
   loadGrounded(objectiveKey: string, revision: number): Promise<Map<string, import("./types").GroundedOption[]>>;
+  /** Per-requirement refused decision attempt counts (storm ceiling input). */
+  loadDecisionRefusalAttempts(objectiveKey: string): Promise<Record<string, number>>;
   loadAssignments(objectiveKey: string): Promise<import("./types").Assignment[]>;
   loadIntents(objectiveKey: string): Promise<import("./types").ExecutionIntent[]>;
   loadBudgetVerdict(objectiveKey: string, at: number): Promise<import("./types").BudgetVerdict>;
@@ -156,6 +158,9 @@ async function reduceNode(state: Ann, deps: GraphDeps): Promise<NodeResult> {
   const grounded = contract
     ? await ports.loadGrounded(state.objectiveKey, currentContractRevision)
     : new Map();
+  const decisionRefusalAttempts = contract
+    ? await ports.loadDecisionRefusalAttempts(state.objectiveKey)
+    : {};
   const [assignments, intents, budgetVerdict, pendingApproval, completionVerdict] = await Promise.all([
     ports.loadAssignments(state.objectiveKey),
     ports.loadIntents(state.objectiveKey),
@@ -173,6 +178,7 @@ async function reduceNode(state: Ann, deps: GraphDeps): Promise<NodeResult> {
     budgetVerdict,
     pendingApproval,
     completionProposal: completionVerdict,
+    decisionRefusalAttempts,
     at,
   });
   if (!isCoherentHold(reduced))
@@ -310,6 +316,9 @@ async function settleNode(state: Ann, deps: GraphDeps): Promise<NodeResult> {
   const { contract, currentContractRevision } = await deps.ports.loadContract(state.objectiveKey);
   const requirements = contract ? await deps.ports.loadRequirements(state.objectiveKey, currentContractRevision) : [];
   const grounded = contract ? await deps.ports.loadGrounded(state.objectiveKey, currentContractRevision) : new Map();
+  const decisionRefusalAttempts = contract
+    ? await deps.ports.loadDecisionRefusalAttempts(state.objectiveKey)
+    : {};
   const [assignments, intents, budgetVerdict, pendingApproval, completionVerdict] = await Promise.all([
     deps.ports.loadAssignments(state.objectiveKey),
     deps.ports.loadIntents(state.objectiveKey),
@@ -320,7 +329,7 @@ async function settleNode(state: Ann, deps: GraphDeps): Promise<NodeResult> {
   const reduced = reduceManagementState({
     contract, currentContractRevision, requirements,
     groundedByRequirement: grounded, assignments, intents, budgetVerdict,
-    pendingApproval, completionProposal: completionVerdict, at,
+    pendingApproval, completionProposal: completionVerdict, decisionRefusalAttempts, at,
   });
   // Persist the post-action control state (including gate-accepted `completed`).
   // reduceNode writes the pre-action state; settle owns the final pass verdict.

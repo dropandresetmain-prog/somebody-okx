@@ -27,7 +27,7 @@ import type { Id } from "./_generated/dataModel";
 
 import { buildManagementGraph } from "../lib/management/graph";
 import type { ManagementPorts } from "../lib/management/graph";
-import { runManagerialDecisionPass } from "../lib/management/decision";
+import { runManagerialDecisionPass, BEGIN_DECISION_CEILING } from "../lib/management/decision";
 import {
   isSerialInputRequirement,
   isSerialManagerProtocol,
@@ -122,7 +122,7 @@ const EXTERNAL_AUTHORITY_MODE: ExternalAuthorityMode = "m3_available_bounded";
 // BEGIN_INTERPRETATION_CEILING. Counts are retained after authorization so a
 // failed delivery can re-decide under a NEW decision identity (`â€¦_aN+1`); the
 // ceiling is what stops a refuse/re-ask storm.
-export const BEGIN_DECISION_CEILING = 3;
+export { BEGIN_DECISION_CEILING } from "../lib/management/decision";
 
 /** Parse `â€¦_aN` from a deterministic decision id; null if the suffix is absent. */
 export function attemptFromDecisionId(decisionId: string): number | null {
@@ -252,6 +252,12 @@ export function buildConvexManagementPorts(ctx: MutationCtx): ManagementPorts {
         }
 
         if (!options) continue;
+        // Empty options[] is NOT application grounding — it means the proposal
+        // produced no candidates (Case A: retryable model/proposal failure).
+        // Omitting the key lets the reducer schedule another decide attempt
+        // while BEGIN_DECISION_CEILING remains. Genuine no-eligible paths
+        // persist at least one ineligible candidate option.
+        if (options.length === 0) continue;
         const at = data.at as number;
         const existing = byKey.get(key);
         if (!existing || at > existing.at) {
@@ -261,6 +267,18 @@ export function buildConvexManagementPorts(ctx: MutationCtx): ManagementPorts {
       const result = new Map<string, GroundedOption[]>();
       for (const [key, value] of byKey) result.set(key, value.options);
       return result;
+    },
+
+    async loadDecisionRefusalAttempts(objectiveKey: string): Promise<Record<string, number>> {
+      const row = await ctx.db
+        .query("objectives")
+        .withIndex("by_key", (q) => q.eq("key", objectiveKey))
+        .unique();
+      if (!row) return {};
+      const data = (row as AnyRow).data as Record<string, unknown>;
+      const mgmt = (data.management ?? {}) as Record<string, unknown>;
+      const map = (mgmt.decisionRefusalAttempts ?? {}) as Record<string, number>;
+      return { ...map };
     },
 
     async loadAssignments(objectiveKey: string): Promise<Assignment[]> {

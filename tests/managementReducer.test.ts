@@ -219,6 +219,26 @@ test("a never-grounded requirement is DECISION WORK, not a dead end", () => {
   assert.deepEqual(r.action, { kind: "decide_requirement", requirementKey: "page_live" });
 });
 
+test("empty options[] is NOT grounded — still decision work (retryable proposal failure)", () => {
+  const r = reduceManagementState(
+    base({ groundedByRequirement: new Map([["page_live", []]]) }),
+  );
+  assert.equal(r.state, "executing");
+  assert.deepEqual(r.action, { kind: "decide_requirement", requirementKey: "page_live" });
+});
+
+test("empty options[] at refusal ceiling → recovery_required (not waiting forever)", () => {
+  const r = reduceManagementState(
+    base({
+      groundedByRequirement: new Map([["page_live", []]]),
+      decisionRefusalAttempts: { page_live: 3 },
+      beginDecisionCeiling: 3,
+    }),
+  );
+  assert.equal(r.state, "recovery_required");
+  assert.equal(r.action.kind, "hold");
+});
+
 test("one blocked requirement never stops a solvable sibling", () => {
   const r = reduceManagementState(
     base({
@@ -227,7 +247,7 @@ test("one blocked requirement never stops a solvable sibling", () => {
         requirement({ requirementKey: "solvable_one" }),
       ],
       groundedByRequirement: new Map([
-        ["blocked_one", []],
+        ["blocked_one", [ineligibleOption("blocked_one")]],
         ["solvable_one", [eligibleOption("solvable_one")]],
       ]),
     }),
