@@ -1,22 +1,29 @@
 # Somebody × OKX — Frontend Contracts
 
-Status: **FRONTEND / BACKEND RECONCILIATION DRAFT — REQUIRED BEFORE V6 PRODUCTION WIRING**  
-Updated: **22 September 2026**  
-Visual source of truth: `DESIGN.md` / approved V6 direction  
-Scope: product-facing read and command contracts between the M6.1 engine and the founder UI
+Status: **ACCEPTED V1 PRODUCT CONTRACT — IMPLEMENTATION NOT YET WIRED**  
+Reconciled: **22 September 2026**  
+Frontend proposal reviewed: `docs/frontend-contracts-v1@324f09ec275573bb9a807a12310a22c12ebb60e2`  
+Backend truth reviewed: `build/model-portability-milestone-2@a8090f8`  
+Visual source of truth: `DESIGN.md` / approved V6 direction
+
+This document is the single product-facing contract SSOT between the current M6.1 engine and the V6 founder UI.
+
+It defines **projection semantics**, not new engine authority.
+
+No production wiring is implemented by this document.
 
 ---
 
-## 1. Purpose
+# 1. Boundary
 
-The frontend must consume a stable product-facing projection, not raw engine state.
-
-The contract boundary is:
+The accepted direction is:
 
 ```text
-ENGINE / CONVEX / EXTERNAL TRUTH
+ENGINE / CONVEX / M3 / EXTERNAL TRUTH
         ↓
-PRODUCT PROJECTION / FRONTEND CONTRACT
+PRODUCT PROJECTION
+        ↓
+FRONTEND CONTRACT
         ↓
 V6 UI
 ```
@@ -26,135 +33,84 @@ Not:
 ```text
 ENGINE TABLES
         ↓
-INDIVIDUAL REACT COMPONENTS INTERPRET BACKEND STATE
+REACT COMPONENTS INTERPRET LIFECYCLE
 ```
-
-The projection layer exists so the UI remains understandable and stable even if M6.1 internals continue changing.
 
 Backend remains authoritative for:
 
-- factual state;
-- lifecycle;
-- authority;
-- spend;
-- external effects;
+- Objective lifecycle;
+- Outcome Contract and Requirements;
+- Worker/assignment/run truth;
+- managerial decisions;
+- authority and approvals;
+- ResourceNeeds;
+- ExecutionIntents;
+- transaction facts;
+- acquisition receipts;
 - evidence;
-- completion;
+- artifact versions;
+- semantic assessment;
+- deterministic completion;
 - reconciliation.
 
 Frontend remains authoritative for:
 
 - layout;
 - visual hierarchy;
+- typography;
 - labels;
-- mascot/pose selection;
+- mascot pose/image selection;
 - animation;
 - progressive disclosure;
-- component rendering.
+- presentation-only grouping.
 
-The frontend must never manufacture business truth from visual state.
+React must never manufacture business truth from visual state.
 
 ---
 
-## 2. Product language boundary
+# 2. Product language
 
-Founder-facing language:
+Founder-facing V6 language:
 
 - **Somebody** — accountable manager.
-- **Intern** — bounded internal worker.
-- **External provider/resource** — external capability; "Somebody Else" may be used selectively in copy.
-- **Objective** — what the founder asked Somebody to accomplish.
-- **Activity** — meaningful business events over time.
-- **Deliverable** — founder-facing output.
-- **Checkpoint** — founder-facing condition/progress marker.
-- **Needs you** — Somebody requires founder authority or judgment.
+- **Intern** — presentation label for a bounded internal Worker.
+- **External provider/resource** — governed capability outside the company.
+- **Objective** — founder-requested outcome.
+- **Activity** — meaningful business events.
+- **Deliverable** — founder-facing governed artifact/output.
+- **Checkpoint** — derived progress marker over current required work.
+- **Needs you** — a legal founder action or judgment is currently required.
 
-Backend may continue using implementation terms such as:
+Backend terminology such as Requirement, Assignment, WorkContract, Worker, ResourceNeed, ExecutionIntent and completion gate remains internal.
 
-- Worker;
-- Requirement;
-- Assignment;
-- WorkContract;
-- ManagerialDecision;
-- ExecutionIntent;
-- ResourceNeed;
-- completion gate.
-
-Those terms do not automatically belong in the product contract.
-
-**Executive decision:** founder-facing UI uses **Intern**, not **That Guy**.
+**Presentation decision:** V6 may say **Intern**. Backend code continues to use Worker/internal-worker terminology.
 
 ---
 
-## 3. Contract principles
+# 3. Core invariants
 
-### 3.1 Backend projection owns interpretation
+The projection layer, not React, owns these distinctions:
 
-React must not infer:
+- run stopped ≠ assignment complete;
+- assignment complete ≠ Requirement satisfied;
+- Requirement satisfied ≠ Objective complete;
+- transaction submitted ≠ transaction confirmed;
+- transaction confirmed ≠ provider result received;
+- provider result received ≠ acquisition receipt verified;
+- acquisition receipt verified ≠ Requirement satisfied;
+- artifact version changed ≠ Deliverable verified;
+- positive semantic assessment ≠ Objective completed;
+- adjacent timestamps ≠ causality.
 
-- Objective completion from worker/run state;
-- requirement satisfaction from assignment completion;
-- acquisition success from transaction submission;
-- external usefulness from result arrival;
-- verification from artifact existence;
-- retry legality from an error message;
-- causal relationships from timestamps.
+No hidden chain-of-thought, raw prompt transcript, graph trace or scratchpad belongs in the product contract.
 
-The projection layer resolves those distinctions before data reaches V6.
-
-### 3.2 State simplification is expected
-
-Multiple engine states may collapse into one product-facing state.
-
-For example:
-
-```text
-several planning / dispatch / running states
-→ working
-```
-
-The frontend should not know why an engine state maps to `working`; it should only receive the truthful product state.
-
-### 3.3 No hidden chain-of-thought
-
-Activity, rationale and Somebody updates contain concise product summaries and evidence references only.
-
-Never expose:
-
-- hidden reasoning;
-- raw model scratchpads;
-- LangGraph node traces;
-- internal prompt transcripts;
-- raw terminal bookkeeping.
-
-### 3.4 Reads and commands are separate
-
-Read contracts describe what the founder may see.
-
-Command contracts describe what the founder may ask the product to do.
-
-No component directly mutates engine rows.
-
-### 3.5 Missing truth stays missing
-
-If the projection cannot truthfully provide a field, return null/absence or a safe product state.
-
-Do not fabricate a placeholder business fact merely to complete the V6 layout.
+Missing truth remains missing. Null/absence is preferable to invented theatre.
 
 ---
 
-# PART I — PRODUCT READ CONTRACT
+# PART I — TRANSPORT
 
-## 4. Read surfaces
-
-The frontend requires two primary read shapes:
-
-1. **ObjectiveListView** — lightweight sidebar navigation.
-2. **ObjectiveWorkspaceView** — one selected Objective.
-
-A separate **StartCapabilitiesView** may be required for `/start` if advanced Objective options are not universally supported.
-
-Suggested transport envelope:
+## 4. Read envelope
 
 ```ts
 type ProductReadEnvelope<T> =
@@ -172,13 +128,21 @@ type ProductReadEnvelope<T> =
     };
 ```
 
-`viewRevision` is a product-projection revision/token suitable for stale-command protection. It is not a Convex table revision exposed to the UI.
+### `viewRevision`
+
+`viewRevision` is an opaque backend-generated projection token.
+
+It may be derived from authoritative source revisions/timestamps used to compose the view, but its internal format is not part of the frontend contract.
+
+It is useful for stale-view protection on commands that explicitly accept it.
+
+Source-specific commands such as attention actions use their own stronger source revision as well.
 
 ---
 
-## 5. Objective list / sidebar
+# PART II — OBJECTIVE LIST
 
-V6 needs a lightweight list contract rather than full Objective workspaces for every sidebar row.
+## 5. Objective product status
 
 ```ts
 type ObjectiveProductStatus =
@@ -189,17 +153,50 @@ type ObjectiveProductStatus =
   | "verifying"
   | "completed"
   | "blocked";
+```
 
+This is NOT the raw Objective engine enum.
+
+## 6. Status precedence
+
+The backend projection resolves conflicts using this precedence:
+
+1. **completed**  
+   Objective row is completed AND the current deterministic completion verdict is accepted.
+
+2. **needs_you**  
+   A current legal founder attention/action exists: e.g. approval, clarification/choice, or supervised reconciliation. Merely being blocked does not create `needs_you`.
+
+3. **blocked**  
+   Current Objective is failed / blocked / recovery-required, or a current required Requirement is blocked, AND no legal founder action currently resolves the condition.
+
+4. **waiting**  
+   The system is quiescent on a real external/time/resource condition, including an authorized external action waiting on the external boundary, with no founder action required.
+
+5. **verifying**  
+   Current work/result has been delivered and the system is performing current Requirement/final semantic/completion verification, with no higher-precedence attention/block/wait state.
+
+6. **starting**  
+   Objective exists but the current locked Outcome Contract/interpretation is not yet established.
+
+7. **working**  
+   Default active management/execution state.
+
+Network/query failures are infrastructure UI state, never `blocked`.
+
+A reconciliation-required external intent maps to:
+- `needs_you` only when the product contract exposes a legal supervised reconciliation action;
+- otherwise `blocked`.
+
+## 7. Sidebar contract
+
+```ts
 type ObjectiveSummaryView = {
   id: string;
   title: string;
   status: ObjectiveProductStatus;
   updatedAt: number;
-
-  // Optional concise context for the sidebar only.
   statusLabel?: string;
-
-  // Product truth supplied by the projection.
   hasAttention: boolean;
 };
 
@@ -210,16 +207,21 @@ type ObjectiveListView = {
 };
 ```
 
-### Rules
+Grouping is backend-owned:
 
-- Sidebar grouping is projection truth, not client-side inspection of engine states.
-- `blocked` may remain in `inProgress` with blocked treatment unless product design later adds a separate group.
-- No raw Requirement/Assignment counts in the sidebar.
-- No fake completion percentages.
+- `needs_you` → `needsYou`
+- `completed` → `done`
+- all other product states, including blocked/waiting → `inProgress`
+
+Recommended stable sort: `updatedAt DESC`, then `id`.
+
+The list endpoint must be lightweight; React must not fetch every full workspace merely to categorize Objectives.
 
 ---
 
-## 6. Objective workspace
+# PART III — OBJECTIVE WORKSPACE
+
+## 8. Workspace
 
 ```ts
 type ObjectiveWorkspaceView = {
@@ -239,54 +241,38 @@ type ObjectiveWorkspaceView = {
 };
 ```
 
-This is the default V6 product read contract.
+No primary V6 component requires direct raw Requirement, Assignment, Worker, Decision or ExecutionIntent arrays.
 
-The UI should not require direct access to raw Requirements, Workers, Assignments, Decisions, ExecutionIntents or completion-gate rows.
+They may remain available in debug/X-ray tooling.
 
----
-
-## 7. ObjectiveView
+## 9. Objective
 
 ```ts
 type ObjectiveView = {
   id: string;
-
   title: string;
   request: string;
   summary?: string;
-
   status: ObjectiveProductStatus;
-
   createdAt: number;
   updatedAt: number;
 };
 ```
 
-### Required meaning
+### Projection
 
-`status` is the founder-facing Objective truth.
-
-It is **not** a pass-through of the engine's Objective enum.
-
-### Product state intent
-
-| Product state | Founder meaning |
-| --- | --- |
-| `starting` | Objective accepted; Somebody is interpreting/setting up the work. |
-| `working` | Somebody is actively managing or executing the Objective. |
-| `waiting` | Progress is legitimately waiting on an external/resource/time condition; founder action is not currently required. |
-| `needs_you` | Founder authority, judgment or input is required. |
-| `verifying` | Work may be delivered, but Somebody is still checking the required outcome. |
-| `completed` | Required outcome has been truthfully accepted/verified. |
-| `blocked` | Objective cannot currently progress without a material change; reason must be available in product state/activity. |
-
-A worker finishing must never cause `completed` by itself.
+- `id` ← Objective key.
+- `request` ← persisted founder request.
+- `title` ← deterministic concise title derived from request unless a durable product title exists.
+- `summary` ← accepted Objective result summary when one exists; otherwise absent or a bounded current product summary.
+- `status` ← Section 6.
+- timestamps ← Objective durable timestamps.
 
 ---
 
-## 8. SomebodyNowView
+# PART IV — SOMEBODY NOW
 
-This drives the high-emphasis Somebody card at the top of V6.
+## 10. Somebody Now contract
 
 ```ts
 type SomebodyNowState =
@@ -300,33 +286,44 @@ type SomebodyNowState =
 
 type SomebodyNowView = {
   state: SomebodyNowState;
-
   headline: string;
   detail: string;
-
   updatedAt: number;
 };
 ```
 
-### Rules
+## 11. Semantics
 
-- This must be projection-owned copy/state.
-- The frontend must not build this headline by inspecting worker/intent rows.
-- Keep it concise enough for the V6 Somebody card.
-- Internal engine IDs do not belong here.
+`SomebodyNowView` is backend-projected from the same authoritative facts that produce Objective product status.
 
-Examples:
+Suggested state mapping:
 
-- "Somebody is checking why the launch message is not landing."
-- "Somebody is comparing internal research with an external data source."
-- "Somebody needs your approval before spending $18."
-- "Somebody is verifying the final relaunch recommendation."
+- Objective `starting` → `interpreting`
+- `working` → `working`
+- `waiting` → `waiting`
+- `needs_you` → `needs_you`
+- `verifying` → `verifying`
+- `completed` → `completed`
+- `blocked` → `blocked`
+
+Headline/detail use deterministic product templates plus bounded persisted facts such as:
+
+- current Requirement title;
+- current assignment title;
+- external provider/resource label;
+- legal approval question;
+- blocker summary;
+- completion summary.
+
+Accepted model-generated rationales may be displayed as secondary content when clearly labelled as a persisted recommendation; they are not used as lifecycle authority.
+
+React does not compose Somebody Now from engine rows.
 
 ---
 
-## 9. ProgressView / Checkpoints
+# PART V — PROGRESS / CHECKPOINTS
 
-V6 intentionally uses **Checkpoints**, not fake percentage completion.
+## 12. Checkpoint types
 
 ```ts
 type CheckpointState =
@@ -344,37 +341,99 @@ type CheckpointView = {
 
 type ProgressView = {
   checkpoints: CheckpointView[];
-
-  // Optional founder-facing phase label.
   currentPhase?: string;
 };
 ```
 
-### Rules
+No numeric percentage exists in V1.
 
-- Target 2–5 checkpoints.
-- Checkpoints are product projections, not raw Requirement rows.
-- The backend/projection layer determines how current outcome/requirements map into checkpoints.
-- A checkpoint checkmark must be backed by authoritative truth.
-- No percentage should be synthesized from checkpoint count.
+## 13. V1 checkpoint derivation
 
-### Current gap
+Checkpoints are a **read projection over current required Requirements**.
 
-V6 currently demonstrates checkpoints such as:
+They are not a new persisted progress system.
 
-- Diagnose what isn't working.
-- Ground the direction in evidence.
-- Produce and verify the recommendation.
+### Source set
 
-The backend projection rule for deriving stable founder-facing checkpoints from the current Outcome Contract / Requirements is **not yet formally agreed**.
+Use Requirements that:
 
-**Do not hard-code the canonical demo checkpoint labels into reusable production components.**
+- belong to the current Outcome Contract revision;
+- are `priority = required`;
+- are not superseded.
+
+Supporting Requirements are omitted from the primary Checkpoint rail. They may appear in Activity or completion disclosure.
+
+### Order
+
+Order current required Requirements deterministically:
+
+1. dependency/topological order using `dependsOnRequirementKeys`;
+2. requirement key as stable tie-breaker.
+
+### IDs
+
+For an individual Requirement:
+
+```text
+checkpoint:req:<contractRevision>:<requirementKey>
+```
+
+A contract revision intentionally creates a new current checkpoint set. Historical Activity remains historical.
+
+### State mapping
+
+- current Requirement state `satisfied` or application-authorized `waived` → `complete`
+- current Requirement state `blocked` → `blocked`
+- Requirement currently owned by the active decision/assignment/intent, or the first unresolved executable required Requirement in serial management → `active`
+- otherwise → `pending`
+
+A stale resolution from an older contract revision never yields `complete`.
+
+### 2–5 visual target
+
+The product must not invent extra checkpoints merely to reach two.
+
+If current required work has 1–5 Requirements, project them directly.
+
+If there are more than 5, project:
+
+- the first 4 deterministic checkpoints;
+- one deterministic aggregate checkpoint for the remainder.
+
+Aggregate ID:
+
+```text
+checkpoint:remaining:<contractRevision>:<stable-hash-of-remainder-keys>
+```
+
+Aggregate label:
+
+```text
+Complete remaining required work
+```
+
+Aggregate state:
+
+- `blocked` if any member is blocked;
+- `active` if any member is active;
+- `complete` if every member is complete;
+- otherwise `pending`.
+
+`detail` may truthfully state the remaining count and bounded titles.
+
+This compression changes presentation only; it never changes Requirement truth or the completion gate.
+
+### Current phase
+
+`currentPhase` may be the active checkpoint label or a deterministic product label such as `Verifying the required outcome`.
+
+Do not ask an LLM to invent percentage/progress state.
 
 ---
 
-## 10. CurrentWorkView
+# PART VI — CURRENT WORK / INTERN
 
-The UI may show one current bounded piece of work where useful, but it should receive a product abstraction.
+## 14. Current work
 
 ```ts
 type ProductApproach =
@@ -392,31 +451,37 @@ type CurrentWorkStatus =
 
 type CurrentWorkView = {
   id: string;
-
   title: string;
   summary?: string;
-
   status: CurrentWorkStatus;
-
-  // Present only when this distinction helps the founder.
   approach?: ProductApproach;
-
   intern?: InternView;
-
   startedAt?: number;
   updatedAt: number;
 };
 ```
 
-### Rules
+## 15. Current work selection
 
-- `HYBRID` is not required in the founder-facing contract for the current V6 path; a hybrid managerial plan may appear as separate bounded actions after reassessment.
-- The frontend must not infer `done` from a run stopping.
-- The frontend chooses the Intern mascot pose from `InternView.state`.
+Prefer the single current serial action for the current contract revision:
+
+1. current live internal assignment/run;
+2. current authorized external acquisition/effect;
+3. current legitimate wait/ask action;
+4. most recent just-verified bounded action when useful for transition rendering.
+
+`id` is source identity:
+- assignment ID for MAKE;
+- execution intent ID for BUY;
+- decision/attention identity for WAIT/ASK.
+
+`approach` comes from the authorized current decision, not from React inference.
+
+`HYBRID` remains internal; current serial M6.1 exposes bounded actions separately after reassessment.
 
 ---
 
-## 11. InternView
+## 16. Intern contract
 
 ```ts
 type InternState =
@@ -434,49 +499,47 @@ type InternView = {
 };
 ```
 
-### Presentation mapping
+## 17. Intern state semantics
 
-Frontend-only:
+`Intern` is a presentation projection over Worker + current Assignment/Run.
 
-| Intern state | V6 visual |
-| --- | --- |
-| `idle` | eager neutral |
-| `assigned` | receiving assignment |
-| `working` | laptop / active work |
-| `waiting` | needs-input pose |
-| `done` | proud/done pose |
+- **idle** — reusable Worker exists with no current live Assignment for this Objective.
+- **assigned** — current Assignment is authorized/dispatched but no active running lease yet.
+- **working** — current Assignment has an active, non-stale running run.
+- **waiting** — the current bounded Assignment is paused on an application-validated input/resource condition.
+- **done** — the current Assignment itself is application-verified/accepted for the current contract revision.
 
-Backend does not need to know image filenames or animation details.
+Critical invariant:
 
----
+```text
+Intern done
+≠ Requirement satisfied
+≠ Objective completed
+```
 
-# PART II — ACTIVITY CONTRACT
+A `result_submitted`, stopped run, refused terminal, expired run, failed Assignment or superseded Assignment is NOT `done`.
 
-## 12. Activity principles
+Failed/superseded historical work belongs in Activity. The current-work card may omit the Intern after that action is no longer current.
 
-Activity is the key V6 differentiator.
-
-It must show **meaningful moves, not machine noise**.
-
-Do not generate Activity by passing through arbitrary persisted rows.
-
-Activity items are authored/projected product events.
-
-### Activity must be able to answer
-
-- What meaningful thing happened?
-- Who did it?
-- Why does it matter?
-- What changed?
-- What caused a later change, where causality is actually known?
-- Does the founder need to act?
-- Is an external result only received, or actually verified?
+Frontend selects pose/animation from this state only.
 
 ---
 
-## 13. Activity vocabulary
+# PART VII — ACTIVITY
 
-Initial V1 vocabulary:
+## 18. Activity principle
+
+V6 Activity is a deterministic product projection over durable authoritative records.
+
+V1 does **not** create a second independent Activity truth state machine.
+
+Existing persisted domain rows and immutable histories are primary sources.
+
+The current `objectiveEvents` log may support product copy/debugging, but V1 must not parse free-form event text to grant lifecycle semantics.
+
+Where current durable state does not preserve enough history to truthfully reconstruct an event, that event is omitted rather than invented.
+
+## 19. Activity types
 
 ```ts
 type ActivityType =
@@ -501,32 +564,16 @@ type ActivityType =
   | "objective_blocked";
 ```
 
-This vocabulary is product-facing and may be refined during backend reconciliation, but raw graph-wake / terminal-bookkeeping event types must not leak into it.
+The vocabulary is accepted, but individual events are emitted only where authoritative source facts exist.
 
----
-
-## 14. ActivityItem
+## 20. Activity shape
 
 ```ts
 type ActivityActor =
-  | {
-      kind: "somebody";
-      label: "Somebody";
-    }
-  | {
-      kind: "intern";
-      id: string;
-      label: string;
-    }
-  | {
-      kind: "founder";
-      label: string;
-    }
-  | {
-      kind: "external";
-      id?: string;
-      label: string;
-    };
+  | { kind: "somebody"; label: "Somebody" }
+  | { kind: "intern"; id: string; label: string }
+  | { kind: "founder"; label: string }
+  | { kind: "external"; id?: string; label: string };
 
 type ActivityImportance =
   | "major"
@@ -542,12 +589,9 @@ type ActivityItem = {
   id: string;
   type: ActivityType;
   occurredAt: number;
-
   actor: ActivityActor;
-
   title: string;
   detail?: string;
-
   importance: ActivityImportance;
 
   related?: {
@@ -557,28 +601,68 @@ type ActivityItem = {
     evidenceIds?: string[];
   };
 
-  // Explicit supplied product causality only.
-  // Never infer from timestamps.
   causedByActivityId?: string;
-
-  // Relevant only to simulated/replayed/live external-boundary events.
   provenance?: ExternalProvenance;
-
   payload?: ActivityPayload;
 };
 ```
 
-### Important rule
+If `causedByActivityId` is absent, the UI must not draw a causal connector.
 
-If `causedByActivityId` is absent, the renderer must not invent a causal connector merely because events are adjacent.
+## 21. Authoritative Activity mapping
+
+| Activity type | Authoritative V1 source | Stable event identity |
+| --- | --- | --- |
+| `objective_interpreted` | current contract + durable interpretation/control record | contract ID + revision |
+| `intern_assigned` | Assignment creation + Worker | assignment ID |
+| `work_started` | persisted WorkerRun `startedAt` + Assignment | run ID |
+| `work_summary` | accepted bounded worker output / verified assignment summary | assignment ID + accepted result/run identity |
+| `work_completed` | Assignment verified/accepted for current revision | assignment ID + verified state |
+| `finding_added` | product-safe Evidence record | evidence ID |
+| `evidence_gap_identified` | application-validated ResourceNeed | ResourceNeed ID/dedupe key |
+| `manager_decision` | persisted ManagerialDecision, excluding completion-proposal rows | decision ID |
+| `founder_action_required` | selected Attention source | attention ID + revision |
+| `acquisition_started` | authorized external ExecutionIntent creation | intent ID |
+| `acquisition_submitted` | durable M3 transaction submission fact | transaction/payment identity |
+| `external_result_received` | durable external result/driver receipt fact | intent/result identity |
+| `external_result_verified` | verified intent + matching AcquisitionResult/resultEvidenceId | resultEvidenceId |
+| `work_resumed` | new run whose WorkContract explicitly links prior acquisition evidence | run ID |
+| `artifact_changed` | immutable CompanyArtifact history version | artifact key + version |
+| `verification_started` | durable pending final-assessment reservation if currently/historically supportable | assessment reservation identity |
+| `verification_completed` | persisted final semantic assessment bound to exact artifact/revision | contract revision + assessed artifact version + assessedAt |
+| `objective_completed` | accepted deterministic completion + Objective completion timestamp | Objective key + accepted completion revision |
+| `objective_blocked` | durable control-state/block/recovery/failed fact | source state identity + timestamp |
+
+### Current limitations
+
+- Do NOT infer `acquisition_submitted` merely from M4 intent `handed_off`. M3 owns transaction submission.
+- If the current read seam cannot access the M3 submission record, omit that event until the product projection reads it.
+- Earlier overwritten semantic-assessment history cannot be recreated. V1 may show the current/latest durable assessment only.
+- `verification_started` is emitted only when its pending assessment reservation is durably available. Otherwise omit it.
+- `work_summary.actionCount` and `durationMs` are optional and require authoritative counters/timestamps.
+
+## 22. Causality
+
+Causality is supplied only from persisted relationships.
+
+Examples:
+
+- acquisition evidence → resumed work, only when WorkContract `inputEvidenceIds` explicitly links that evidence;
+- acquisition evidence → artifact version, only when artifact history `usedAcquisitionEvidenceIds` cites it.
+
+For `artifact_changed`:
+- if exactly one product Activity item is the explicit causal source, populate `causedByActivityId`;
+- with multiple independent evidence causes, omit the single causal line and use `related.evidenceIds`.
+
+Never infer from temporal adjacency.
 
 ---
 
-## 15. Activity payloads
+# PART VIII — ACTIVITY PAYLOADS
 
-Payloads should be bounded and semantic.
+## 23. Payloads
 
-### Intern assignment
+The frontend proposal payloads are accepted:
 
 ```ts
 type InternAssignedPayload = {
@@ -587,103 +671,54 @@ type InternAssignedPayload = {
   scope?: string;
   authorityNote?: string;
 };
-```
 
-Supports the V6 visual:
-
-```text
-Somebody → Intern → bounded assignment
-```
-
-### Finding
-
-```ts
 type FindingPayload = {
   finding: string;
-
-  evidenceRefs?: {
-    id: string;
-    label: string;
-  }[];
+  evidenceRefs?: { id: string; label: string }[];
 };
-```
 
-### Managerial decision
-
-```ts
 type ManagerDecisionPayload = {
   selected: {
     approach: ProductApproach;
     label: string;
   };
-
   alternative?: {
     approach: ProductApproach;
     label: string;
   };
-
   reason?: string;
 };
-```
 
-This powers the compact MAKE vs BUY fork.
-
-The frontend does not re-score or re-decide options.
-
-### Work summary
-
-```ts
 type WorkSummaryPayload = {
   summary: string;
-
-  // Include only when backed by actual data.
   actionCount?: number;
   durationMs?: number;
 };
-```
 
-V6 may compress low-level work into one product event.
-
-If action count or duration is not authoritative, omit it. Do not invent "12 actions" or "8 minutes" for theatre.
-
-### Artifact change
-
-```ts
 type ArtifactChangedPayload = {
   deliverableId: string;
-
   before?: string;
   after?: string;
-
   changeSummary: string;
-
-  evidenceRefs?: {
-    id: string;
-    label: string;
-  }[];
+  evidenceRefs?: { id: string; label: string }[];
 };
-```
 
-The projection should provide the exact before/after content when the product can truthfully show it.
-
-### Verification
-
-```ts
 type VerificationPayload = {
   checks: {
     label: string;
     status: "passed" | "pending" | "failed";
   }[];
-
   remainingUnknowns?: string[];
 };
 ```
 
+`before`/ `after` content must come from real artifact versions. If prior full content is not durably retained, omit `before` rather than synthesize it.
+
 ---
 
-# PART III — DELIVERABLE CONTRACT
+# PART IX — DELIVERABLES
 
-## 16. DeliverableView
+## 24. Contract
 
 ```ts
 type DeliverableStatus =
@@ -694,48 +729,94 @@ type DeliverableStatus =
 
 type DeliverableView = {
   id: string;
-
   title: string;
   type: string;
-
   version: number | string;
   status: DeliverableStatus;
-
   summary?: string;
   content?: string;
-
   assumptions?: string[];
   unknowns?: string[];
   recommendedNextMove?: string;
-
-  evidenceRefs?: {
-    id: string;
-    label: string;
-  }[];
-
+  evidenceRefs?: { id: string; label: string }[];
   updatedAt: number;
 };
 ```
 
-### Rules
+## 25. Deliverable identity
 
-- Projection identifies which deliverable/version is current.
-- The frontend must not select "latest" by sorting arbitrary artifact rows.
-- `verified` comes from authoritative product truth.
-- A version bump alone does not imply material completion.
-- Supporting incomplete work/unknowns must remain visible where product truth requires disclosure.
+A CompanyArtifact becomes a founder-facing Deliverable when it is governed as an output, specifically when its artifact key is:
 
-### Current gap
+- the `targetArtifactKey` of a current-revision bounded WorkContract for deliverable work; or
+- the artifact key bound by the current final semantic assessment.
 
-The current M5 `ArtifactView` exposes version summaries but not a stable founder-facing deliverable with current content/status.
+Arbitrary internal CompanyArtifacts do not automatically enter the Deliverables rail.
 
-The V6 Deliverables rail therefore requires a stronger projection.
+ID:
+
+```text
+deliverable:<objectiveKey>:<artifactKey>
+```
+
+## 26. Current selection
+
+The backend projection, not React, determines current Deliverables.
+
+For each governed artifact:
+
+- exact current artifact version comes from CompanyArtifact `version`;
+- primary current artifact is the exact key/version bound by a current final assessment when present;
+- otherwise current target keys from current-revision WorkContracts are current.
+
+If multiple current governed artifacts legitimately exist, return multiple Deliverables in deterministic order. React must not invent "latest wins".
+
+## 27. Status semantics
+
+### draft
+
+Governed artifact exists but is not the current active target and is not verified/superseded.
+
+### current
+
+Artifact is a current governed target/output but has not met the strong `verified` definition below.
+
+### verified
+
+Use this deliberately strong meaning:
+
+> The exact current artifact key/version received a positive final semantic assessment for the current contract revision AND the deterministic Objective completion gate accepted the current minimum bar.
+
+Therefore:
+
+- artifact mutation alone is not verified;
+- worker delivery alone is not verified;
+- Assignment verification alone is not verified;
+- positive final semantic assessment alone is not verified.
+
+This keeps founder-facing `verified` aligned with the product's "done means proved" promise.
+
+### superseded
+
+Artifact was a governed deliverable target for an older/superseded contract/output path and is no longer a current governed target.
+
+## 28. Deliverable metadata
+
+For an assessment bound to the exact current artifact version:
+
+- `assumptions` / `unknowns` ← persisted final assessment assumptions/unknowns;
+- `recommendedNextMove` ← persisted final assessment recommended next action;
+- `evidenceRefs` ← validated final-assessment evidence refs plus explicit artifact revision evidence provenance where appropriate.
+
+If the assessment is stale relative to current artifact version or contract revision, do not project its metadata as current.
+
+`summary` may use latest artifact change note.
+`content` is the actual current persisted artifact content, bounded only for transport/display with explicit truncation if required.
 
 ---
 
-# PART IV — ATTENTION / FOUNDER ACTION
+# PART X — ATTENTION / NEEDS YOU
 
-## 17. AttentionState
+## 29. Attention contract
 
 ```ts
 type AttentionType =
@@ -747,28 +828,16 @@ type AttentionType =
 type AttentionState = {
   id: string;
   revision: string;
-
   type: AttentionType;
-
   title: string;
   detail: string;
-
   context?: {
     reason?: string;
     amount?: MoneyView;
   };
-
   actions: AttentionActionView[];
 };
-```
 
-Only one dominant founder-attention interrupt is required by the current V6 experience. If multiple internal attention items exist, the projection must decide how to present/prioritize them rather than forcing React to resolve conflicts.
-
----
-
-## 18. AttentionActionView
-
-```ts
 type AttentionActionType =
   | "approve"
   | "decline"
@@ -778,34 +847,58 @@ type AttentionActionType =
 
 type AttentionActionView = {
   id: string;
-
   type: AttentionActionType;
   label: string;
-
   requiresText?: boolean;
   destructive?: boolean;
-
-  // Optional confirmation copy for higher-risk actions.
   confirmText?: string;
 };
 ```
 
-### Critical rule
+## 30. Dominant attention priority
 
-V6 renders **only actions returned by the contract**.
+V1 returns at most one dominant AttentionState.
 
-The UI must not decide:
+Priority:
 
-- retry is allowed;
-- approval can be raised;
-- an effect can be resumed;
-- reconciliation can be bypassed.
+1. financial/external `reconciliation_required`;
+2. explicit pending approval tied to a current decision/authority request;
+3. explicit ASK_FOUNDER / escalation clarification or choice;
+4. other recovery/block condition only when a legal founder command exists.
+
+A blocker with no founder-remediable command is `Objective.status = blocked`, not fake attention.
+
+## 31. Identity and revision
+
+Attention IDs come from source identity, never text:
+
+- reconciliation → intent/driver identity;
+- approval → decision/approval identity;
+- clarification/choice → persisted request/decision identity.
+
+`revision` is an opaque source revision token tied to the exact authority request.
+
+Commands revalidate that source identity/revision at execution time.
+
+## 32. Legal actions only
+
+V6 renders only actions returned by the backend projection.
+
+If no safe product command adapter exists yet:
+
+```ts
+actions: []
+```
+
+is correct.
+
+The UI must never invent Retry / Approve / Reconcile from labels or error text.
 
 ---
 
-# PART V — ACQUISITION / SPEND CONTRACT
+# PART XI — ACQUISITIONS / TRANSACTIONS
 
-## 19. MoneyView
+## 33. Money
 
 ```ts
 type MoneyView = {
@@ -814,13 +907,11 @@ type MoneyView = {
 };
 ```
 
-Use display-safe decimal strings rather than asking the UI to perform financial arithmetic.
+Backend supplies display-safe decimals.
 
----
+Frontend does not perform financial arithmetic or authority checks.
 
-## 20. AcquisitionView
-
-The UI should understand user-relevant acquisition truth without understanding the M3/M4 transaction machinery.
+## 34. Acquisition
 
 ```ts
 type AcquisitionProductStatus =
@@ -839,51 +930,71 @@ type TransactionFactView = {
     | "confirmed"
     | "failed"
     | "reconciliation_required";
-
   label: string;
-
   txHash?: string;
   explorerUrl?: string;
 };
 
 type AcquisitionView = {
   id: string;
-
   resourceLabel: string;
   providerLabel?: string;
-
   amount?: MoneyView;
-
   status: AcquisitionProductStatus;
-
   transaction?: TransactionFactView;
-
   resultSummary?: string;
-
   provenance: ExternalProvenance;
-
   updatedAt: number;
 };
 ```
 
-### Truthfulness rules
+## 35. Acquisition status mapping
 
-- `submitted` must never render as confirmed.
-- payment confirmation must never imply provider result received.
-- result received must never imply semantic usefulness.
-- `verified` requires whatever authoritative acceptance the backend contract defines.
-- `simulation` and `recorded_replay` must remain explicit.
-- UI must not label a replay/simulation as a new live payment.
+- **proposed** — authorized/selected BUY proposal exists but no external intent has yet become the active acquisition.
+- **needs_approval** — current acquisition authority explicitly requires founder approval and it has not been granted.
+- **in_progress** — external acquisition intent is authorized/at boundary/submitted and no provider result has yet been accepted as received.
+- **result_received** — durable provider/driver result exists but the acquisition result has not yet passed application verification.
+- **verified** — ExecutionIntent is `verified` AND a matching AcquisitionResult with the same `resultEvidenceId` is persisted/verified.
+- **failed** — governing acquisition/effect failed.
+- **reconciliation_required** — external/financial state is ambiguous and must be reconciled.
 
-The contract may omit transaction detail entirely when it is not relevant to the founder-facing event.
+### Meaning of `verified`
+
+`Acquisition.status = verified` means:
+
+> the external acquisition result/receipt is verified as the authoritative result of that governed acquisition and may be used as acquired input subject to scope.
+
+It does NOT mean:
+
+- the evidence is semantically sufficient;
+- the Requirement is satisfied;
+- the artifact is verified;
+- the Objective is complete.
+
+## 36. Transaction truth
+
+TransactionFactView must come from the authoritative M3/payment ledger or equivalent durable financial record.
+
+Do NOT infer:
+
+- `submitted` merely from M4 `handed_off`;
+- `confirmed` from provider result;
+- `confirmed` from ExecutionIntent verification.
+
+If the V6 read projection cannot currently read the authoritative M3 transaction fact, omit `transaction`.
+
+For `simulation`:
+- no live transaction fact is shown.
+
+For `recorded_replay`:
+- do not represent the replay run as a new transaction;
+- any historical original transaction receipt must be clearly identified as historical/original if surfaced later.
 
 ---
 
-# PART VI — AVAILABLE PRODUCT ACTIONS
+# PART XII — AVAILABLE ACTIONS
 
-## 21. ObjectiveActionView
-
-For non-attention commands such as a genuinely supported resume/retry action:
+## 37. Objective actions
 
 ```ts
 type ObjectiveActionType =
@@ -894,32 +1005,29 @@ type ObjectiveActionView = {
   id: string;
   type: ObjectiveActionType;
   label: string;
-
   confirmText?: string;
 };
 ```
 
-### Rule
+Current V1 rule:
 
-If the backend does not return an action, the frontend does not invent one.
+> If there is no explicitly implemented and backend-validated product command for a case, do not return an action.
+
+The current M6.1 runtime does not expose a generic founder "retry engine" primitive.
+
+Therefore `availableActions` may legitimately be empty for all current Objectives until a specific safe product adapter is implemented.
 
 ---
 
-# PART VII — START / CREATE OBJECTIVE
+# PART XIII — START / CREATE OBJECTIVE
 
-## 22. StartCapabilitiesView
-
-V6 visually demonstrates optional advanced Objective inputs, but the frontend must not promise unsupported behavior.
-
-Suggested read capability:
+## 38. Capabilities
 
 ```ts
 type StartCapabilitiesView = {
   canCreateObjective: boolean;
-
   supportsContextRefs: boolean;
   supportsAttachments: boolean;
-
   advanced: {
     spendLimit: boolean;
     deadline: boolean;
@@ -928,45 +1036,33 @@ type StartCapabilitiesView = {
 };
 ```
 
-The `/start` renderer hides unsupported controls.
+## 39. Current backend capability
 
-### Current gap
+At backend checkpoint `a8090f8`, the known M6.1 founder-start seam is the controlled canonical setup path:
 
-Current backend support for all V6 illustrative advanced controls has not been reconciled.
+- founder request: supported;
+- bounded demo spend limit: supported;
+- context refs: not supported by this product seam;
+- attachments: not supported;
+- deadline: not supported;
+- external-effect policy input: not supported.
 
-Until then:
-- `request` is the only unquestionably required create field;
-- unsupported advanced controls must not be wired as fake persistence.
+The existing setup route is operator-protected/demo-bounded and is not itself the final generic V6 Product Command API.
 
----
+The product projection must advertise only the capability of the actual command adapter that V6 wires.
 
-# PART VIII — PRODUCT COMMAND CONTRACT
-
-## 23. General command principles
-
-Commands express founder intent.
-
-They do not expose internal state mutation primitives.
-
-Every state-changing command:
-- is backend-validated;
-- is authorization-aware;
-- is idempotent where appropriate;
-- fails safely on stale attention/revision;
-- returns a product-level result/error;
-- does not ask React to repair engine state.
+No fake persistence.
 
 ---
 
-## 24. Create Objective
+# PART XIV — COMMAND CONTRACT
+
+## 40. Create Objective
 
 ```ts
 type CreateObjectiveCommand = {
   request: string;
-
   contextRefs?: string[];
-
-  // Only include when advertised by StartCapabilitiesView.
   advanced?: {
     spendLimit?: MoneyView;
     deadline?: string;
@@ -975,55 +1071,55 @@ type CreateObjectiveCommand = {
 };
 ```
 
-Backend returns the created Objective identifier / accepted product response.
+Current support:
 
-Frontend does not choose Workers, Requirements, MAKE/BUY strategy, provider or workflow.
+| Field | Current V1 backend truth |
+| --- | --- |
+| `request` | supported by controlled M6.1 setup path |
+| `contextRefs` | unsupported by current product start seam |
+| `advanced.spendLimit` | supported only by bounded controlled setup adapter |
+| `advanced.deadline` | unsupported |
+| `advanced.externalEffectPolicy` | unsupported |
 
----
+V6 wiring should create one narrow Product Command adapter rather than call internal mutations directly.
 
-## 25. Submit attention action
+## 41. Attention action
 
 ```ts
 type SubmitAttentionActionCommand = {
   objectiveId: string;
-
   attentionId: string;
   attentionRevision: string;
-
   actionId: string;
-
   text?: string;
 };
 ```
 
-This is the primary command behind V6 **Needs you**.
+Contract accepted.
 
-The backend rechecks legality/authority at execution time.
+Implementation status: **product adapter not yet unified**.
 
----
+Specific internal approval/reconciliation mechanics must not be exposed directly to React.
 
-## 26. Add founder input
+Until an adapter maps a specific AttentionAction to existing backend authority safely, that attention item returns no clickable action.
 
-Free text may be permitted without turning the whole application into chat.
+## 42. Founder input
 
 ```ts
 type AddFounderInputCommand = {
   objectiveId: string;
   text: string;
-
   contextRefs?: string[];
 };
 ```
 
-The backend decides how/if this input affects the current Objective.
+Contract shape is reserved, but generic free-form founder input is **not currently supported** by the accepted M6.1 product command seam.
 
-Frontend does not directly patch the plan or Requirements.
+V1 projection must not advertise it as a capability.
 
----
+Park implementation until a governed ingestion rule is explicitly approved.
 
-## 27. Invoke available Objective action
-
-Only for actions explicitly returned by `availableActions`.
+## 43. Objective action
 
 ```ts
 type InvokeObjectiveActionCommand = {
@@ -1033,13 +1129,13 @@ type InvokeObjectiveActionCommand = {
 };
 ```
 
-Use for supported `resume` / `retry` semantics only after backend reconciliation.
+Contract accepted for future legal actions.
 
-No generic "retry engine" button.
+Current V1 backend exposes no generic resume/retry product action.
 
----
+Return `availableActions=[]` unless a later implementation adds an explicit safe case.
 
-## 28. Command result envelope
+## 44. Result envelope
 
 ```ts
 type ProductCommandResult =
@@ -1061,401 +1157,249 @@ type ProductCommandError = {
     | "conflict"
     | "temporarily_unavailable"
     | "reconciliation_required";
-
   message: string;
 };
 ```
 
-No raw exception text should be required for normal founder UX.
+Accepted.
+
+Normal product flows must not require raw exception text.
 
 ---
 
-# PART IX — UI STATE MATRIX
+# PART XV — UI / INFRASTRUCTURE STATES
 
-## 29. Product lifecycle states
+## 45. Lifecycle matrix
 
-| State | Somebody card | Activity | Right rail | Founder input |
+| Product state | Somebody card | Activity | Right rail | Founder action |
 | --- | --- | --- | --- | --- |
-| `/start` | start hero/composer | tasteful empty | tasteful empty | composer |
-| `starting` | interpreting | may be empty / first event | checkpoints pending | none unless requested |
-| `working` | current managerial update | active | deliverable/checkpoints | optional founder input |
-| `waiting` | calm waiting state | last meaningful event retained | checkpoints current | no forced action |
-| `needs_you` | Somebody needs your say | founder-action event | dominant attention card | legal actions only |
-| `verifying` | verification update | verification event | deliverable visible | normally none |
-| `completed` | done / verified | completion history | verified deliverable/checkpoints | optional follow-up later |
-| `blocked` | clear blocked reason | blocker event | affected checkpoint | only returned legal action(s) |
+| start | composer | tasteful empty | capability-gated | create only |
+| starting | interpreting | interpretation when durable | checkpoints pending | none |
+| working | current management/work | active events | current deliverable/checkpoints | only advertised input/action |
+| waiting | calm wait | last meaningful event retained | current truth | none unless Attention exists |
+| needs_you | explicit ask | attention event | dominant Attention | returned actions only |
+| verifying | verification | assessment/verification event | current deliverable | normally none |
+| completed | done/proved | completion event | verified deliverable/checkpoints | none by default |
+| blocked | blocker | blocker event | affected checkpoint | only returned legal action |
 
----
+## 46. Infrastructure states
 
-## 30. Infrastructure UI states
+Separate from Objective lifecycle:
 
-These are separate from Objective lifecycle:
-
-- initial query loading;
-- reconnecting / stale projection;
+- query loading;
+- stale/reconnecting;
 - Objective not found;
 - product projection unavailable;
 - command submitting;
 - command rejected;
-- transient network error.
+- transient network failure.
 
-Do not translate a network error into `ObjectiveStatus = "blocked"`.
-
-### Loading
-
-Preserve stable shell where possible:
-- sidebar skeleton;
-- Objective header skeleton;
-- Activity skeleton.
-
-Do not show fake business state while loading.
-
-### Stale/reconnecting
-
-Retain the last accepted projection with a small stale/reconnecting indication.
-
-Do not let stale attention actions silently submit; command revision checks must fail closed.
-
-### Projection unavailable
-
-Show product-level technical failure state and retry the read as appropriate.
-
-Do not dump Convex/model stack traces into founder UI.
+Stale projection may remain visually rendered, but stale attention actions fail closed.
 
 ---
 
-# PART X — FIELD-BY-SURFACE REQUIREMENTS
+# PART XVI — SOURCE-OF-TRUTH MATRIX
 
-## 31. V6 surface matrix
+## 47. Mapping
 
-| V6 surface | Required contract data |
+| Product field | Authoritative backend source | Projection rule | Nullable? | Stability |
+| --- | --- | --- | --- | --- |
+| Objective status | Objective row + latest durable management/control state + completion verdict + current Attention/external state | Section 6 precedence | no | recomputed from current truth |
+| Objective title/request | Objective request | deterministic bounded title + exact request | no | stable request |
+| Somebody Now | same current facts driving status/current work/attention | deterministic templates | no | changes only when driving fact changes |
+| Checkpoints | current-revision required Requirements + dependency graph + resolutions | Section 13 | array may be empty while starting | stable within contract revision |
+| Current Work | current decision/assignment/run/intent | Section 15 | yes | source identity |
+| Intern | Worker + current Assignment + current Run | Section 17 | yes | source identity |
+| Activity | durable domain rows/histories; typed financial result sources | Section 21 | may omit unsupported event types | deterministic IDs |
+| Deliverables | governed CompanyArtifacts + WorkContract target + final assessment + completion verdict | Sections 25–28 | array may be empty | artifact key/version |
+| Attention | approval/ASK/reconciliation source facts | Sections 29–32 | yes | source ID + revision |
+| Acquisition | ManagerialDecision + ExecutionIntent + AcquisitionResult + M3 transaction fact | Sections 34–36 | array may be empty | intent/result identity |
+| availableActions | explicit implemented Product Command capabilities | no inference | may be empty | action source revision |
+| StartCapabilities | actual wired Product Command adapter | advertise only real fields | no | deployment capability |
+
+---
+
+# PART XVII — FRONTEND SURFACE MATRIX
+
+## 48. V6 needs
+
+| V6 surface | Contract |
 | --- | --- |
 | Objective rail | `ObjectiveListView` |
-| Objective header | `ObjectiveView.title/request/status` |
+| Objective header | `ObjectiveView` |
 | Somebody update card | `SomebodyNowView` |
+| Checkpoints | `ProgressView` |
+| Current bounded work | `CurrentWorkView` |
+| Intern visual | `InternView` |
 | Activity | `ActivityItem[]` |
-| Delegation event | `intern_assigned` payload |
-| Finding card | `finding_added` payload |
+| Delegation | `intern_assigned` payload |
+| Finding | `finding_added` payload |
 | MAKE/BUY fork | `manager_decision` payload |
-| Acquisition receipt | `AcquisitionView` and/or acquisition Activity payload |
-| Evidence → artifact causal line | explicit `causedByActivityId` |
-| Before/after diff | `artifact_changed` payload |
+| Acquisition receipt | `AcquisitionView` + Activity |
+| causal line | explicit `causedByActivityId` only |
+| artifact change | `artifact_changed` |
 | Deliverables rail | `DeliverableView[]` |
-| Checkpoints rail | `ProgressView.checkpoints` |
-| Needs You card | `AttentionState` |
-| /start advanced controls | `StartCapabilitiesView` |
-| Completed verification card | `verification_completed` payload + completed Objective truth |
+| Needs You | `AttentionState` |
+| start controls | `StartCapabilitiesView` |
+| completed verification | accepted completion + verified Deliverable |
 
 ---
 
-# PART XI — CURRENT M5/M6.1 MAPPING AUDIT
+# PART XVIII — RECONCILIATION DECISIONS
 
-## 32. Existing useful seams
+## 49. Five previously open semantic decisions
 
-Current repo already has important precursor work:
+### Checkpoints — ACCEPT WITH BACKEND-DEFINED SEMANTICS
 
-### `lib/m5/workspaceModel.ts`
+Resolved by Section 13.
 
-Good principles already present:
-- backend-composed normalized read model;
-- React is not intended to be the join layer;
-- missing facts degrade to truthful empty states;
-- worker result ≠ assignment verified ≠ Requirement satisfied ≠ Objective completed;
-- payment submission/result/verification are not collapsed;
-- persisted relationships are preferred over timestamp inference.
+They are current required Requirement projections, compressed to at most five without changing authoritative Requirement truth.
 
-These principles should remain.
+### Activity — ACCEPT WITH BACKEND-DEFINED SEMANTICS
 
-### Existing `SomebodyNow`
+Resolved by Sections 18–22.
 
-The current M5 view already normalizes a current Somebody state.
+V1 is deterministic projection over durable records, not a second event-sourced business state machine. Unsupported historical transitions are omitted.
 
-This is a useful precursor to `SomebodyNowView`, but V6 does not require:
-- `ball`;
-- raw `currentRequirementKey`.
+### Intern done — ACCEPT WITH BACKEND-DEFINED SEMANTICS
 
-Those may remain in a deeper/debug view if useful.
+Resolved by Section 17.
 
-### Existing `MissionStoryEvent`
+`done` means the bounded Assignment itself is application-verified for the current revision. Nothing stronger.
 
-Current M5 already has:
-- stable id;
-- timestamp;
-- title/detail;
-- coarse product kind;
-- explicit `relatedIds`.
+### Deliverable verified — MODIFY / STRONG DEFINITION
 
-This is a strong starting point.
+Resolved by Section 27.
 
-V6 requires a more explicit Activity vocabulary and typed payloads for:
-- delegation;
-- decisions;
-- acquisition;
-- before/after artifact changes;
-- verification;
-- founder attention.
+`verified` requires exact-version positive semantic assessment plus accepted deterministic Objective completion gate.
 
-### Existing `AttentionItem`
+### Acquisition verified — ACCEPT WITH BACKEND-DEFINED SEMANTICS
 
-Useful precursor, but insufficient for production V6.
+Resolved by Section 35.
 
-Missing product command semantics:
-- stable attention revision;
-- explicit allowed action IDs;
-- action types;
-- text requirements;
-- confirmation semantics.
-
-### Existing artifact projection
-
-Artifact version history exists.
-
-V6 still needs:
-- current founder-facing deliverable identity;
-- current content/result;
-- draft/current/verified/superseded status;
-- evidence/unknowns/next-move projection.
-
-### Existing external/payment projection
-
-Current M5 correctly attempts to preserve:
-- submitted ≠ settled/result/verified;
-- reconciliation state;
-- simulation/live/replay provenance in acquisition results.
-
-V6 should receive a smaller `AcquisitionView`; React should not understand M3/M4 machinery.
+It means the acquisition result/receipt itself is verified, not Requirement satisfaction.
 
 ---
 
-## 33. Engine-shaped fields V6 should stop depending on directly
+# PART XIX — GAP TRIAGE
 
-Current `ObjectiveWorkspaceView` exposes arrays such as:
+## 50. Current gaps
 
-- requirements;
-- workers;
-- assignments;
-- decisions;
-- external;
-- evidence;
-- outcome levels.
+| Finding | Classification | Why / evidence | Smallest action | Blocks initial V6 read wiring? |
+| --- | --- | --- | --- | --- |
+| V6 product projection query does not yet exist | **Act Now** | M5 composer is precursor but exposes raw arrays and older shapes | implement one V6 projection/read adapter against this contract | yes |
+| Objective lightweight list query does not yet exist | **Act Now** | current M5 seam is one full workspace | add lightweight backend list projection | yes for sidebar |
+| Full current artifact content/current deliverable projection absent from M5 | **Act Now** | M5 ArtifactView exposes version summaries only | project governed current artifact content/status | yes for Deliverables |
+| M3 transaction truth is not currently joined into M5 workspace | **Act Now** only if V6 displays transaction status | M5 explicitly says payment view is derived from M4 and M3 is separate authority | join authoritative M3 read fact or omit transaction | only for transaction UI |
+| Typed V6 Activity payload projection does not yet exist | **Act Now** | MissionStory is useful precursor but coarser | implement deterministic V6 mapper | yes for Activity |
+| Generic Attention command adapter absent | **Investigate Now** | internal authority paths exist but not one product command | implement only required demo-safe actions; otherwise actions=[] | no for read-only card |
+| Generic create-objective product adapter absent | **Act Now** for interactive /start | controlled setup exists, not final product API | thin validated adapter over supported fields | yes for /start |
+| Generic founder free-text input absent | **Park for Later** | no accepted ingestion semantics | do not advertise | no |
+| Generic resume/retry action absent | **Park for Later** | no safe generic product primitive | availableActions=[] | no |
+| Historical multiple final-assessment events are not durably reconstructable | **Ignore / Accept Risk for V1** | current record retains current/latest assessment, not full history | show current/latest truth; persist history later only if product needs it | no |
+| More than five required Requirements need visual compression | **Ignore / Accept Risk** | V1 deterministic aggregate preserves truth without exposing every Requirement | use Section 13 aggregate | no |
+| Before-content for old artifact versions may be unavailable | **Ignore / Accept Risk** | current artifact history stores notes/provenance, not necessarily full previous content | omit `before` when unavailable | no |
 
-These may continue to exist for:
-- internal adapters;
-- tests;
-- developer/debug/X-ray views.
-
-The approved V6 primary UI should not require them directly.
-
-The new product projection should derive:
-- Checkpoints;
-- Intern state;
-- Activity;
-- Deliverables;
-- Attention;
-- Acquisition status;
-- Objective status.
+No backend architecture redesign is required.
 
 ---
 
-# PART XII — OPEN GAPS REQUIRING BACKEND RECONCILIATION
+# PART XX — PROHIBITED BEHAVIOR
 
-## 34. Gap: Checkpoint derivation
+## 51. Do not
 
-**Need:** 2–5 stable founder-facing checkpoints.
-
-**Known truth:** Outcome Contract + Requirements + completion gate exist.
-
-**Gap:** deterministic/product rule translating those internals into V6 checkpoint labels/states is not yet agreed.
-
-**Frontend action:** do not hard-code demo checkpoints into reusable production logic.
-
----
-
-## 35. Gap: Somebody Now projection
-
-**Need:** reliable product summary of what Somebody is currently doing.
-
-**Known truth:** current M5 `SomebodyNow` is a precursor.
-
-**Gap:** M6.1 current-action/verification/attention semantics need reconciliation with the final V6 states.
-
-**Frontend action:** no component-specific reconstruction.
-
----
-
-## 36. Gap: Activity event production
-
-**Need:** typed, meaningful Activity events.
-
-**Known truth:** MissionStory events and persisted rows already exist.
-
-**Gap:** exact backend projection rules for the V1 Activity vocabulary.
-
-**Frontend action:** do not stream raw durable rows as Activity.
-
----
-
-## 37. Gap: Causal links
-
-**Need:** V6 may draw:
-- evidence arrived → artifact changed.
-
-**Known truth:** some persisted relationships/evidence references exist.
-
-**Gap:** one normalized product causality field is not final.
-
-**Frontend action:** only draw causal connectors when the projection explicitly supplies causality.
-
----
-
-## 38. Gap: Compressed Intern work
-
-**Need:** one product event for low-level internal activity.
-
-**Known truth:** runs/tool calls may exist.
-
-**Gap:** authoritative duration/action count may not always exist or be meaningful.
-
-**Frontend action:** `actionCount` / `durationMs` are optional. Never invent them.
-
----
-
-## 39. Gap: Deliverable identity/content
-
-**Need:** one current founder-facing deliverable.
-
-**Known truth:** artifacts/version history exist.
-
-**Gap:** projection rule for:
-- current deliverable;
-- full founder-facing content;
-- verification status;
-- assumptions/unknowns;
-- recommended next move.
-
-**Frontend action:** no "latest version wins" heuristic.
-
----
-
-## 40. Gap: /start advanced controls
-
-V6 illustrates:
-- spend authority;
-- deadline;
-- external-effect policy;
-- context/files.
-
-Backend support is not yet confirmed for every field.
-
-**Frontend action:** use `StartCapabilitiesView`; hide unsupported options.
-
----
-
-## 41. Gap: Multiple Objective summaries
-
-V6 sidebar needs lightweight categorized Objectives.
-
-**Gap:** a formal product-level summary/list contract is not currently documented.
-
-**Frontend action:** do not load every full workspace and categorize locally.
-
----
-
-## 42. Gap: legal resume/retry actions
-
-The product may eventually expose resume/retry.
-
-**Gap:** exact founder-permitted cases are not final.
-
-**Frontend action:** render only `availableActions` supplied by the backend projection. No generic Retry button.
-
----
-
-# PART XIII — PROHIBITED FRONTEND BEHAVIOUR
-
-## 43. Do not
-
-- wire V6 components directly to raw Convex table shapes;
-- expose raw Objective engine enums as the product lifecycle;
-- expose Requirement state as Checkpoint state without projection;
-- call a Worker/Intern done and therefore mark Objective done;
-- infer acquisition success from payment submission;
-- infer verification from provider result arrival;
+- wire primary V6 components to raw Convex tables;
+- expose raw Objective engine states as product status;
+- equate Requirement state with Checkpoint without the projection rules above;
+- infer Objective completion from Worker/Assignment state;
+- call an Intern done because a run stopped or submitted a result;
+- infer transaction submission from M4 handoff;
+- infer transaction confirmation from result arrival;
+- infer acquisition usefulness from acquisition verification;
+- infer Deliverable verification from an artifact version bump;
 - infer causality from timestamps;
-- build Activity from arbitrary backend logs;
-- let separate components duplicate state-machine interpretation;
-- expose raw model/provider errors to founders by default;
-- create Retry/Resume/Approve buttons not returned by the command contract;
-- claim replay/simulation is a live transaction;
-- fabricate Activity counts/durations for demo theatre;
-- make the frontend responsible for financial arithmetic/authorization;
-- expose chain-of-thought;
-- use this contract as an excuse to redesign backend architecture.
+- parse arbitrary event prose into authority;
+- invent Retry/Resume/Approve/Reconcile buttons;
+- portray simulation/replay as a new live payment;
+- synthesize Activity counts/durations;
+- expose hidden chain-of-thought;
+- make React responsible for financial arithmetic;
+- use this contract to change M6.1 lifecycle semantics.
 
 ---
 
-# PART XIV — INTEGRATION ORDER
+# PART XXI — IMPLEMENTATION ORDER
 
-## 44. Production wiring order after contract reconciliation
+## 52. Recommended wiring sequence
 
-Once this file is reconciled and accepted by both lanes:
+1. create V6 product contract TypeScript types;
+2. implement pure backend projection helpers with focused truth-table tests;
+3. implement lightweight Objective list query;
+4. implement Objective + Somebody Now + Checkpoints projection;
+5. implement Current Work / Intern;
+6. implement typed Activity projection;
+7. implement Deliverables;
+8. implement Acquisition projection, joining M3 facts only if V6 needs transaction display;
+9. implement Attention read projection;
+10. implement narrow /start Product Command adapter;
+11. implement only the founder actions genuinely required by the accepted demo;
+12. wire React exclusively to these contracts;
+13. keep X-ray/debug surfaces separate.
 
-1. Objective list / sidebar;
-2. Objective + Somebody Now;
-3. Activity projection;
-4. Deliverables;
-5. Checkpoints;
-6. Attention commands;
-7. Acquisition/spend product projection;
-8. /start create Objective;
-9. completed/verification state;
-10. assets/motion;
-11. optional debug/X-ray separately.
-
-Do not implement V6 by first reproducing current raw M5 arrays inside new React components.
-
----
-
-# PART XV — ACCEPTANCE BAR
-
-## 45. Frontend Contract acceptance
-
-Before V6 production wiring begins, backend + frontend should agree that:
-
-- [ ] one Objective product status is authoritative;
-- [ ] Somebody Now is projection-owned;
-- [ ] sidebar summaries are projection-owned;
-- [ ] checkpoints are projection-owned;
-- [ ] Activity vocabulary is explicit;
-- [ ] Activity causality is explicit or absent;
-- [ ] deliverable current/verified truth is projection-owned;
-- [ ] attention exposes allowed actions;
-- [ ] attention commands protect against stale state;
-- [ ] acquisition/payment/result/verification truth remains distinct;
-- [ ] simulation/replay/live provenance is preserved;
-- [ ] /start supported fields are advertised rather than assumed;
-- [ ] React does not inspect engine rows to decide completion;
-- [ ] no primary V6 component requires raw Requirement/Assignment/Intent rows.
-
-Once those are true, the contract can move from **reconciliation draft** to **accepted integration contract**.
+Do not begin by copying M5 raw arrays into V6 React components.
 
 ---
 
-## 46. Relationship to other docs
+# PART XXII — ACCEPTANCE BAR FOR PRODUCTION WIRING
+
+## 53. Contract acceptance
+
+Backend/frontend reconciliation is complete for V1.
+
+The following are now settled:
+
+- [x] one Objective product status and precedence;
+- [x] Somebody Now is projection-owned;
+- [x] sidebar summaries are projection-owned;
+- [x] Checkpoints are projection-owned and not a second progress authority;
+- [x] Activity vocabulary is explicit and source-mapped;
+- [x] Activity causality is explicit or absent;
+- [x] Intern state does not leak Worker lifecycle semantics into React;
+- [x] current Deliverable selection is backend-owned;
+- [x] Deliverable `verified` has a strong exact definition;
+- [x] Attention exposes only backend-advertised actions;
+- [x] stale attention commands use source revision;
+- [x] acquisition/payment/result/verification remain distinct;
+- [x] simulation/replay/live provenance remains explicit;
+- [x] /start fields are capability-gated;
+- [x] React does not inspect engine rows to decide completion;
+- [x] no primary V6 component requires raw Requirement/Assignment/Intent rows.
+
+**V6 production read-model wiring may begin against this contract.**
+
+Command wiring remains capability-gated exactly as documented; unsupported commands must remain absent rather than mocked.
+
+---
+
+# 54. Relationship to existing code/docs
 
 Visual/product presentation:
-- `DESIGN.md`
 
-Current approved visual checkpoint:
+- `DESIGN.md`
 - `docs/design/prototypes/SOMEBODY_OKX_V6_APPROVED.md`
 
-Existing M5 normalization seam:
+Existing precursor normalization seam:
+
 - `lib/m5/workspaceModel.ts`
 - `convex/m5Workspace.ts`
 - `app/m5/workspace.ts`
 
-Engine truth:
-- `ARCHITECTURE.md`
-- M6.1 implementation/current work docs
+Current backend truth used for reconciliation:
 
-This document defines the deliberate seam between those two worlds.
+- `build/model-portability-milestone-2@a8090f8`
+- `ARCHITECTURE.md`
+- `PRODUCT_SPEC.md`
+- `DECISIONS_LOG.md`
+- M6.1 Objective/management/workforce/transaction implementation
+
+The M5 composer remains useful precedent, but this document is the accepted V6 product-contract SSOT.
