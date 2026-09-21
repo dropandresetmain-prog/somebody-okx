@@ -17,12 +17,13 @@ relaunch recommendation.
 
 ## Checkpoint
 
-- Pushed SHAs this closure:
+- Final pushed SHA: `c730eec`
+- Checkpoint SHAs this closure:
   - `b19269b` — terminal/purpose/assessment wiring
   - `4db0393` — assessment routing validators + durable completed after gate
-  - _(next)_ production whole-chain F/G harness
+  - `c730eec` — genuine production whole-chain F/G harness
 - Owner-review start: `8c1f5d3`
-- Status: owner-review blockers closed in code; awaiting OWNER REVIEW
+- Status: **OWNER-REVIEW CLOSURE CANDIDATE** (not Gate 1 PASS)
 
 ## Done this round (owner-review blockers)
 
