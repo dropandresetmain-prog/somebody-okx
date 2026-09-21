@@ -48,7 +48,11 @@ export type InterpretationInput = {
   // When a founder spend grant is already bound, meta-questions about the grant
   // itself (amount / whether further approval is needed within the grant) are
   // not material — they are ordinary working assumptions Somebody may own.
+  // Serial path: prefer factual spendLimitUsd disclosure instead of keyword
+  // demotion (legacy demotion retained when serialManagerProtocol is false).
   spendGrantPresent?: boolean;
+  spendLimitUsd?: number | null;
+  serialManagerProtocol?: boolean;
 };
 
 /**
@@ -115,30 +119,38 @@ export function interpretObjective(input: InterpretationInput): InterpretationRe
   let contract = contractResult.contract;
 
   if (input.spendGrantPresent) {
-    let demoted = 0;
-    const ambiguities = contract.ambiguities.map((ambiguity) => {
-      if (
-        ambiguity.materiality === "material" &&
-        ambiguity.requiresFounderApproval &&
-        isSpendGrantMetaAmbiguity(ambiguity.question)
-      ) {
-        demoted += 1;
-        return {
-          ...ambiguity,
-          materiality: "ordinary" as const,
-          requiresFounderApproval: false,
-          resolvedBy: "somebody" as const,
-          resolution:
-            ambiguity.resolution?.trim() ||
-            "A bounded founder spend grant is already bound; spend within that grant needs no further founder question.",
-        };
+    // Serial: spend bound is disclosed as factual context upstream; do not
+    // keyword-demote material ambiguities here. Legacy keeps demotion.
+    if (input.serialManagerProtocol !== true) {
+      let demoted = 0;
+      const ambiguities = contract.ambiguities.map((ambiguity) => {
+        if (
+          ambiguity.materiality === "material" &&
+          ambiguity.requiresFounderApproval &&
+          isSpendGrantMetaAmbiguity(ambiguity.question)
+        ) {
+          demoted += 1;
+          return {
+            ...ambiguity,
+            materiality: "ordinary" as const,
+            requiresFounderApproval: false,
+            resolvedBy: "somebody" as const,
+            resolution:
+              ambiguity.resolution?.trim() ||
+              "A bounded founder spend grant is already bound; spend within that grant needs no further founder question.",
+          };
+        }
+        return ambiguity;
+      });
+      if (demoted > 0) {
+        contract = { ...contract, ambiguities };
+        notes.push(
+          `demoted ${demoted} spend-grant meta ambiguity/ambiguities to ordinary (grant already bound)`,
+        );
       }
-      return ambiguity;
-    });
-    if (demoted > 0) {
-      contract = { ...contract, ambiguities };
+    } else if (typeof input.spendLimitUsd === "number") {
       notes.push(
-        `demoted ${demoted} spend-grant meta ambiguity/ambiguities to ordinary (grant already bound)`,
+        `serial spend bound disclosed as factual context: USD ${input.spendLimitUsd}`,
       );
     }
   }

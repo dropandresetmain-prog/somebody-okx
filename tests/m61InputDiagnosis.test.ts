@@ -448,3 +448,93 @@ test("F3: unknown required class fails closed (capability_not_governed)", () => 
     assert.ok(grounded.eligibility.reasons.includes("capability_not_governed"));
   }
 });
+
+test("serial semantic adequacy gap does not require NOT_AVAILABLE token", () => {
+  const result = validateMissingInputProposal(
+    {
+      inputCheckId: "evidence_sufficiency",
+      resourceClass: "proprietary_data",
+      purpose: "licensed audience language for relaunch wording",
+      reasonOwnedInsufficient:
+        "owned company_record and public_web were inspected but do not answer the audience-language question",
+      supportingEvidenceIds: ["ev_inspected_rec", "ev_inspected_web"],
+      semanticAdequacyGap: true,
+    },
+    baseCtx({
+      requiredResourceClasses: ["proprietary_data"],
+      evidence: [
+        {
+          id: "ev_inspected_rec",
+          sourceClass: "company_record" as const,
+          label: "company/profile",
+          text: "owned launch context without audience language",
+          origin: "application_observation" as const,
+          sourceId: "record:company/profile",
+          recordRef: "company/profile",
+          observedAt: at,
+          recordedBy: "app",
+          runId: "run_1",
+        },
+        {
+          id: "ev_inspected_web",
+          sourceClass: "public_web" as const,
+          label: "public page",
+          text: "public page without proprietary audience language",
+          origin: "application_observation" as const,
+          sourceId: "url:https://example.com/x",
+          url: "https://example.com/x",
+          observedAt: at,
+          recordedBy: "app",
+          runId: "run_1",
+        },
+      ],
+    }),
+  );
+  assert.equal(result.ok, true, result.ok ? "" : result.detail);
+  if (!result.ok) return;
+  assert.ok(isValidatedInputGap(result.need));
+  assert.equal(result.need.resourceClass, "proprietary_data");
+});
+
+test("literal scarcity without NOT_AVAILABLE still refuses when not semantic gap", () => {
+  const result = validateMissingInputProposal(
+    {
+      inputCheckId: "evidence_sufficiency",
+      resourceClass: "proprietary_data",
+      purpose: "licensed audience language",
+      reasonOwnedInsufficient: "insufficient without availability token",
+      supportingEvidenceIds: ["ev_inspected_rec", "ev_inspected_web"],
+    },
+    baseCtx({
+      evidence: [
+        {
+          id: "ev_inspected_rec",
+          sourceClass: "company_record" as const,
+          label: "company/profile",
+          text: "owned launch context",
+          origin: "application_observation" as const,
+          sourceId: "record:company/profile",
+          recordRef: "company/profile",
+          observedAt: at,
+          recordedBy: "app",
+          runId: "run_1",
+        },
+        {
+          id: "ev_inspected_web",
+          sourceClass: "public_web" as const,
+          label: "public page",
+          text: "public page",
+          origin: "application_observation" as const,
+          sourceId: "url:https://example.com/x",
+          url: "https://example.com/x",
+          observedAt: at,
+          recordedBy: "app",
+          runId: "run_1",
+        },
+      ],
+    }),
+  );
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+  assert.equal(result.refusalCode, "missing_not_available_evidence");
+});

@@ -1430,6 +1430,8 @@ export const applyInterpretation = internalMutation({
       founderResolvedQuestions: args.founderResolvedQuestions,
       at: args.at,
       spendGrantPresent: grant != null,
+      spendLimitUsd: grant?.limitUsd ?? null,
+      serialManagerProtocol: true,
     });
     if (!interpreted.ok) {
       // Typed refusal, persisted as a cursor so the loop cannot retry-storm a

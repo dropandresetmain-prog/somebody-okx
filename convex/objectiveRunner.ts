@@ -217,7 +217,11 @@ function makeConvexPort(ctx: ActionCtx, objectiveKey: string, runId: string) {
                 internal.objectives.recordFinding,
                 { objectiveKey, runId, finding },
               );
-              return `INVALID_REQUEST (evidence ${evidenceId}): ${looked.detail}`;
+              return JSON.stringify({
+                status: "INVALID_REQUEST",
+                evidenceId,
+                detail: looked.detail,
+              });
             }
             text = looked.record.text;
             label = looked.record.label;
@@ -310,19 +314,20 @@ function makeConvexPort(ctx: ActionCtx, objectiveKey: string, runId: string) {
               purpose: string;
               reasonOwnedInsufficient: string;
               supportingEvidenceIds: string[];
+              unansweredQuestion?: string;
+              observedEvidenceIds?: string[];
+              whyInsufficient?: string;
+              howAdditionalWouldChange?: string;
+              semanticGap?: boolean;
             }>;
           };
-          await ctx.runMutation(internal.objectives.submitResult, {
-            objectiveKey,
-            runId,
-            result: resultInput,
-          });
-          // Process bounded missing-input proposals through the SAME validation
-          // path as request_resource. Application owns scarcity truth.
+          // Process bounded missing-input / semantic-gap proposals BEFORE
+          // accepting a NEEDS_INPUT terminal. Application owns scarcity truth.
           const missing = Array.isArray(resultInput.missingInputs)
             ? resultInput.missingInputs.slice(0, 4)
             : [];
           const reports: string[] = [];
+          let validatedGapAccepted = false;
           if (missing.length > 0 || resultInput.terminal === "NEEDS_INPUT") {
             const scoped = await resolveRequirementKeyForRun(
               ctx,
@@ -346,19 +351,34 @@ function makeConvexPort(ctx: ActionCtx, objectiveKey: string, runId: string) {
                     proposal: {
                       inputCheckId: String(proposal.inputCheckId ?? "evidence_sufficiency"),
                       resourceClass: String(proposal.resourceClass ?? ""),
-                      purpose: String(proposal.purpose ?? ""),
+                      purpose: String(
+                        proposal.unansweredQuestion ?? proposal.purpose ?? "",
+                      ),
                       reasonOwnedInsufficient: String(
-                        proposal.reasonOwnedInsufficient ?? "",
+                        proposal.whyInsufficient ??
+                          proposal.reasonOwnedInsufficient ??
+                          "",
                       ),
                       supportingEvidenceIds: Array.isArray(
-                        proposal.supportingEvidenceIds,
+                        proposal.observedEvidenceIds ??
+                          proposal.supportingEvidenceIds,
                       )
-                        ? proposal.supportingEvidenceIds.map(String).slice(0, 16)
+                        ? (
+                            proposal.observedEvidenceIds ??
+                            proposal.supportingEvidenceIds ??
+                            []
+                          )
+                            .map(String)
+                            .slice(0, 16)
                         : [],
+                      ...(proposal.semanticGap === true
+                        ? { semanticAdequacyGap: true }
+                        : {}),
                     },
                   },
                 );
                 if (report.validated) {
+                  validatedGapAccepted = true;
                   reports.push(
                     `validated need ${report.needId} (${report.needStatus}); yield recommended`,
                   );
@@ -379,22 +399,41 @@ function makeConvexPort(ctx: ActionCtx, objectiveKey: string, runId: string) {
               }
             }
           }
+
+          const submitOutcome = (await ctx.runMutation(
+            internal.objectives.submitResult,
+            {
+              objectiveKey,
+              runId,
+              result: {
+                ...resultInput,
+                ...(resultInput.terminal === "NEEDS_INPUT"
+                  ? { validatedGapAccepted }
+                  : {}),
+              },
+            },
+          )) as {
+            status: string;
+            detail: string;
+            terminalAccepted: boolean;
+          };
+
+          const typed = JSON.stringify({
+            status: submitOutcome.status,
+            detail: submitOutcome.detail,
+            terminalAccepted: submitOutcome.terminalAccepted,
+            reports,
+          });
           if (resultInput.terminal === "DELIVERED") {
-            return reports.length
-              ? `DELIVERED result stored. Missing-input reports: ${reports.join("; ")}.`
-              : "DELIVERED result stored; action finishes when application proof accepts.";
+            return typed;
           }
           if (resultInput.terminal === "NEEDS_INPUT") {
-            return reports.length
-              ? `NEEDS_INPUT recorded. Reports: ${reports.join("; ")}.`
-              : "NEEDS_INPUT recorded; include missingInputs with supportingEvidenceIds.";
+            return typed;
           }
           if (resultInput.terminal === "EXECUTION_ERROR") {
-            return "EXECUTION_ERROR recorded; application will classify failure/retryability.";
+            return typed;
           }
-          return reports.length
-            ? `Structured result stored. Missing-input reports: ${reports.join("; ")}. Completion still requires application proof.`
-            : "Structured result stored; completion still requires application proof";
+          return typed;
         }
         case "request_completion": {
           const observation = await ctx.runQuery(
@@ -1065,6 +1104,7 @@ export const proposeInterpretation = internalAction({
     const companyContext = buildInterpretationCompanyContext({
       companyArtifacts: objectiveRow?.data.companyArtifacts,
       spendGrantPresent: grant != null,
+      spendLimitUsd: grant?.limitUsd ?? null,
     });
     const contextBlock = formatInterpretationContextBlock(companyContext);
 

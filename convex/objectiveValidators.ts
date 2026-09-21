@@ -183,6 +183,42 @@ export const objectiveRecord = v.object({
       v.null(),
     ),
   ),
+  // M6.1 serial: durable terminal handoff record for the run.
+  acceptedTerminal: v.optional(
+    v.union(
+      v.object({
+        runId: v.string(),
+        terminal: v.union(
+          v.literal("DELIVERED"),
+          v.literal("NEEDS_INPUT"),
+          v.literal("EXECUTION_ERROR"),
+        ),
+        fingerprint: v.string(),
+        acceptedAt: v.number(),
+        outcome: v.union(
+          v.literal("accepted"),
+          v.literal("refused_unconfirmed"),
+        ),
+      }),
+      v.null(),
+    ),
+  ),
+  finalSemanticAssessment: v.optional(
+    v.union(
+      v.object({
+        meetsMinimumBar: v.boolean(),
+        rationale: v.string(),
+        artifactKey: v.union(v.string(), v.null()),
+        artifactVersion: v.union(v.number(), v.null()),
+        evidenceRefs: v.array(v.string()),
+        assumptionsUnknowns: v.array(v.string()),
+        recommendedNextAction: v.string(),
+        assessedAt: v.number(),
+        contractRevision: v.number(),
+      }),
+      v.null(),
+    ),
+  ),
   // M4 management engine fields — optional so M2 rows keep loading.
   // Storage only; business rules live in lib/management/*.
   management: v.optional(

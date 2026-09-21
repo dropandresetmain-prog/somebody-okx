@@ -1,7 +1,7 @@
 # ACTIVE TASK — M6.1 manager–execution mini-refactor
 
 Updated: 21 September 2026 (Singapore)
-Status: **ACT-NOW FIXES IN PROGRESS / NOT READY FOR LIVE GATE 1**
+Status: **ACT-NOW CANDIDATE READY FOR OWNER REVIEW / NOT GATE 1 PASS**
 
 ## Goal
 
@@ -18,24 +18,20 @@ relaunch recommendation.
 
 ## Checkpoint
 
-- Pushed SHA: _(pending this commit)_
-- Next: terminal lifecycle + typed tool status; then semantic gap/spend;
-  final assessment + whole-chain harness
+- Pushed SHA: _(set after this push)_
+- Next: **OWNER REVIEW** of act-now candidate. Do not deploy / physical Gate 1.
 
-## Done
+## Done (act-now)
 
 - [x] `requirementKind` + BUY does not satisfy deliverable (prod seam)
 - [x] Worker `loadedInputPackage` (company records, artifact, prior, linked)
 - [x] Action-scoped `inputEvidenceIds` + `targetArtifactKey` on WorkContract
 - [x] `update_company_artifact` mutates bound key; cites only linked IDs
-
-## Remaining act-now
-
-- [ ] Terminal idempotency / NEEDS_INPUT ≠ auto INPUT_BLOCKED / post-terminal refuse
-- [ ] Typed tool status (no string-based failure class on serial)
-- [ ] Semantic evidence-gap (no NOT_AVAILABLE required)
-- [ ] Serial spend bound as factual context (no keyword demotion)
-- [ ] Final semantic assessment + unbroken chain harness
+- [x] Terminal idempotency / NEEDS_INPUT ≠ auto INPUT_BLOCKED / post-terminal refuse
+- [x] Typed tool status on serial (no prose failure class)
+- [x] Semantic evidence-gap (no NOT_AVAILABLE required)
+- [x] Serial spend bound as factual context (no keyword demotion)
+- [x] Final semantic assessment + unbroken chain harness + concurrent-wake fence
 
 ## Do not
 

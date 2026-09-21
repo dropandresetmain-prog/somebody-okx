@@ -268,6 +268,70 @@ test("E: interpretObjective demotes grant-meta only when spendGrantPresent", () 
   );
 });
 
+test("E: serial path discloses spend bound; does not keyword-demote ambiguities", () => {
+  const rawContract = {
+    intent: "Diagnose launch messaging and produce a relaunch-ready message set.",
+    levels: [
+      {
+        levelKey: "relaunch_ready",
+        order: 1,
+        label: "Relaunch ready",
+        statement: "Relaunch messaging is ready.",
+      },
+    ],
+    minimumCompletionBar: "relaunch_ready",
+    ambiguities: [
+      {
+        question: "What is the approved spend limit amount?",
+        materiality: "material",
+        requiresFounderApproval: true,
+        resolvedBy: "founder",
+        resolution: "Founder must state the spend limit.",
+      },
+      {
+        question: "Which channel is the primary relaunch surface?",
+        materiality: "material",
+        requiresFounderApproval: true,
+        resolvedBy: "founder",
+        resolution: "Founder must name the primary channel.",
+      },
+    ],
+  };
+  const result = interpretObjective({
+    objectiveKey: "obj_serial_spend",
+    requestId: "req_serial_spend",
+    rawContract,
+    rawRequirements: [
+      {
+        requirementKey: "req_01",
+        title: "Baseline",
+        mustBeTrue: "Baseline documented",
+        priority: "required",
+        scope: "baseline",
+        dependsOnRequirementKeys: [],
+        requiredResourceClasses: [],
+        expectedOutput: "baseline",
+      },
+    ],
+    founderResolvedQuestions: [],
+    at,
+    spendGrantPresent: true,
+    spendLimitUsd: 25,
+    serialManagerProtocol: true,
+  });
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  const unresolved = result.contract.ambiguities.filter(
+    (a) => a.materiality === "material" && a.requiresFounderApproval,
+  );
+  assert.equal(unresolved.length, 2, "serial must not demote spend-meta by keyword");
+  assert.ok(
+    result.notes.some((n) => /serial spend bound disclosed.*USD 25/i.test(n)),
+    result.notes.join("; "),
+  );
+  assert.ok(!result.notes.some((n) => /demoted/i.test(n)));
+});
+
 test("E: levelKey lowercase normalization keeps malformed keys invalid", () => {
   const ok = parseOutcomeContractProposal({
     intent: "Ship a relaunch-ready message.",

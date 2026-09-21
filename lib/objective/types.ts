@@ -167,6 +167,36 @@ export type ObjectiveRecord = {
   unconfirmedInputFindings?: import("./inputDiagnosis").UnconfirmedInputFinding[];
   /** Last typed delivery outcome for management redecision. */
   lastDeliveryFailureClass?: "INPUT_BLOCKED" | "EXECUTION_FAILED" | null;
+  /**
+   * M6.1 serial: durable accepted (or refused-unconfirmed) terminal outcome
+   * for a run. First accepted terminal wins; conflicts refuse.
+   */
+  acceptedTerminal?: {
+    runId: string;
+    terminal: "DELIVERED" | "NEEDS_INPUT" | "EXECUTION_ERROR";
+    fingerprint: string;
+    acceptedAt: number;
+    /**
+     * `accepted` — application accepted the terminal handoff.
+     * `refused_unconfirmed` — NEEDS_INPUT without a valid evidence-gap proposal.
+     */
+    outcome: "accepted" | "refused_unconfirmed";
+  } | null;
+  /**
+   * M6.1 serial: bounded final semantic assessment against the locked outcome.
+   * Model proposes; application completion gate still decides Objective complete.
+   */
+  finalSemanticAssessment?: {
+    meetsMinimumBar: boolean;
+    rationale: string;
+    artifactKey: string | null;
+    artifactVersion: number | null;
+    evidenceRefs: string[];
+    assumptionsUnknowns: string[];
+    recommendedNextAction: string;
+    assessedAt: number;
+    contractRevision: number;
+  } | null;
 };
 
 // ── Evidence ─────────────────────────────────────────────────────────────────

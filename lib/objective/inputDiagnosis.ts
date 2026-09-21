@@ -42,6 +42,12 @@ export type MissingInputProposal = {
   purpose: string;
   reasonOwnedInsufficient: string;
   supportingEvidenceIds: readonly string[];
+  /**
+   * Serial semantic adequacy gap: owned sources were inspected but are
+   * insufficient for the business question. Does NOT require a NOT_AVAILABLE
+   * token. Literal missing access continues to use availability checks.
+   */
+  semanticAdequacyGap?: boolean;
 };
 
 export type InputObligationKind =
@@ -338,19 +344,23 @@ export function validateMissingInputProposal(
       );
   }
 
-  // Authoritative gaps require at least one application NOT_AVAILABLE check.
+  // Authoritative literal scarcity requires at least one NOT_AVAILABLE check.
+  // Serial semantic adequacy gaps may cite inspected application observations
+  // without manufacturing a NOT_AVAILABLE token.
+  const semanticGap = proposal.semanticAdequacyGap === true;
   const notAvailableSupport = supportingIds.filter((id) => {
     const item = evidenceById.get(id);
     return item ? isNotAvailableObservation(item) : false;
   });
-  if (notAvailableSupport.length === 0)
+  if (!semanticGap && notAvailableSupport.length === 0)
     return refuse(
       "missing_not_available_evidence",
       "validated gaps require supportingEvidenceIds from a governed NOT_AVAILABLE input check",
     );
 
-  // Live coverage must still be NOT_AVAILABLE. AVAILABLE / UNREAD / other
-  // statuses never authorize an acquisition-worthy gap.
+  // Live coverage must still be NOT_AVAILABLE for literal scarcity.
+  // Semantic adequacy may proceed when sources were inspected (AVAILABLE/UNREAD
+  // handled below) but are argued insufficient for the question.
   const liveObligations = listInputObligations({
     requiredResourceClasses: ctx.requiredResourceClasses,
     sourceProofs: ctx.sourceProofs,
@@ -368,21 +378,31 @@ export function validateMissingInputProposal(
     contractRevision: ctx.contractRevision,
     acquisitions: ctx.acquisitions ?? [],
   });
-  if (live.status === "AVAILABLE")
-    return refuse(
-      "owned_evidence_sufficient",
-      "owned/accepted evidence already covers the work-contract proofs",
-    );
-  if (live.status === "UNREAD")
-    return refuse(
-      "owned_inputs_unread",
-      "owned catalog inputs exist but have not been inspected yet; unread is not scarcity",
-    );
-  if (live.status !== "NOT_AVAILABLE")
-    return refuse(
-      "coverage_not_scarce",
-      `live coverage status ${live.status} does not authorize a missing-input gap`,
-    );
+  if (!semanticGap) {
+    if (live.status === "AVAILABLE")
+      return refuse(
+        "owned_evidence_sufficient",
+        "owned/accepted evidence already covers the work-contract proofs",
+      );
+    if (live.status === "UNREAD")
+      return refuse(
+        "owned_inputs_unread",
+        "owned catalog inputs exist but have not been inspected yet; unread is not scarcity",
+      );
+    if (live.status !== "NOT_AVAILABLE")
+      return refuse(
+        "coverage_not_scarce",
+        `live coverage status ${live.status} does not authorize a missing-input gap`,
+      );
+  } else {
+    // Semantic gap: refuse if literally unread (must inspect first) or if
+    // verified coverage already exists for this scoped class.
+    if (live.status === "UNREAD")
+      return refuse(
+        "owned_inputs_unread",
+        "owned catalog inputs exist but have not been inspected yet; unread cannot ground a semantic gap",
+      );
+  }
 
   const proposed = createResourceNeed({
     id: ctx.needId,

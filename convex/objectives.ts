@@ -207,6 +207,36 @@ async function requirementProofKinds(
 function assertActiveRun(record: ObjectiveRecord, runId: string, now: number) {
   const fence = fenceRunWrite({ run: record.run, runId, now });
   if (!fence.ok) throw new Error(fence.reason);
+  // Serial: after an accepted terminal for this run, refuse further material
+  // worker writes (durable fence — not only in-memory runtime state).
+  const accepted = record.acceptedTerminal;
+  if (
+    accepted &&
+    accepted.runId === runId &&
+    accepted.outcome === "accepted"
+  ) {
+    throw new Error(
+      `TERMINAL_CLOSED: run ${runId} already accepted terminal ${accepted.terminal}; further material actions refused`,
+    );
+  }
+}
+
+function terminalFingerprint(input: {
+  terminal: string;
+  summary: string;
+  fit: string;
+  risks: string[];
+  unknowns: string[];
+  recommendedNextAction: string;
+}): string {
+  return [
+    input.terminal,
+    input.summary.trim(),
+    input.fit.trim(),
+    input.risks.join("|"),
+    input.unknowns.join("|"),
+    input.recommendedNextAction.trim(),
+  ].join("::");
 }
 
 // Deterministic planning validation, authoritative because it runs inside the
@@ -723,7 +753,8 @@ export const recordFinding = internalMutation({
   },
 });
 
-// Store the structured result. Submitting it is NOT acceptance.
+// Store the structured result. Submitting it is NOT Objective completion.
+// Serial path: application owns terminal acceptance, idempotency, and fencing.
 // Optional missingInputs are validated by reportMissingInput (same authority path
 // as request_resource) — never trusted as scarcity facts on their own.
 export const submitResult = internalMutation({
@@ -751,48 +782,178 @@ export const submitResult = internalMutation({
             purpose: v.string(),
             reasonOwnedInsufficient: v.string(),
             supportingEvidenceIds: v.array(v.string()),
+            // Serial semantic evidence-gap fields (optional; literal scarcity
+            // may omit these and use availability checks instead).
+            unansweredQuestion: v.optional(v.string()),
+            observedEvidenceIds: v.optional(v.array(v.string())),
+            whyInsufficient: v.optional(v.string()),
+            howAdditionalWouldChange: v.optional(v.string()),
+            semanticGap: v.optional(v.boolean()),
           }),
         ),
       ),
+      // When set by the runner after validating missingInputs for NEEDS_INPUT.
+      validatedGapAccepted: v.optional(v.boolean()),
     }),
   },
-  returns: v.null(),
+  returns: v.object({
+    status: v.union(
+      v.literal("accepted"),
+      v.literal("refused"),
+      v.literal("idempotent_replay"),
+      v.literal("stale"),
+      v.literal("unavailable"),
+    ),
+    detail: v.string(),
+    terminalAccepted: v.boolean(),
+  }),
   handler: async (ctx, args) => {
     const now = Date.now();
     const row = await loadObjective(ctx.db, args.objectiveKey);
-    assertActiveRun(row.data, args.runId, now);
-    const { missingInputs: _ignored, terminal, ...resultFields } = args.result;
+    const record = row.data;
+    const fence = fenceRunWrite({ run: record.run, runId: args.runId, now });
+    if (!fence.ok) {
+      return {
+        status: "stale" as const,
+        detail: fence.reason,
+        terminalAccepted: false,
+      };
+    }
+
+    const {
+      missingInputs: _ignored,
+      terminal,
+      validatedGapAccepted,
+      ...resultFields
+    } = args.result;
+    const management = (
+      record as unknown as { management?: { executionProtocol?: string | null } }
+    ).management;
+    const serial = isSerialManagerProtocol(management);
+
     const result: ActivityResult = {
       ...resultFields,
       completedAt: now,
       runId: args.runId,
     };
-    // EXECUTION_ERROR is application-classified failure; persist diagnostic class.
+
+    // No terminal tag: legacy structured-result store (not a serial handoff).
+    if (!terminal) {
+      await ctx.db.patch(row._id, {
+        data: { ...record, result, updatedAt: now },
+      });
+      await appendEvent(
+        ctx.db,
+        args.objectiveKey,
+        "result",
+        "Structured result submitted (awaiting application proof check).",
+        now,
+      );
+      return {
+        status: "accepted" as const,
+        detail: "structured result stored",
+        terminalAccepted: false,
+      };
+    }
+
+    const fingerprint = terminalFingerprint({
+      terminal,
+      summary: resultFields.summary,
+      fit: resultFields.fit,
+      risks: resultFields.risks,
+      unknowns: resultFields.unknowns,
+      recommendedNextAction: resultFields.recommendedNextAction,
+    });
+
+    const prior = record.acceptedTerminal;
+    if (prior && prior.runId === args.runId) {
+      if (prior.fingerprint === fingerprint && prior.terminal === terminal) {
+        return {
+          status: "idempotent_replay" as const,
+          detail: `exact terminal replay for ${terminal}`,
+          terminalAccepted: prior.outcome === "accepted",
+        };
+      }
+      return {
+        status: "refused" as const,
+        detail: `conflicting terminal submission refused (prior ${prior.terminal} vs ${terminal})`,
+        terminalAccepted: false,
+      };
+    }
+    if (prior && prior.runId !== args.runId && prior.outcome === "accepted") {
+      // Different run after a prior accepted terminal on the Objective is fine
+      // for a later assignment; only same-run conflicts matter here.
+    }
+
+    // NEEDS_INPUT: INPUT_BLOCKED is authoritative only after a validated gap.
+    if (serial && terminal === "NEEDS_INPUT" && validatedGapAccepted !== true) {
+      const refusedTerminal = {
+        runId: args.runId,
+        terminal,
+        fingerprint,
+        acceptedAt: now,
+        outcome: "refused_unconfirmed" as const,
+      };
+      await ctx.db.patch(row._id, {
+        data: {
+          ...record,
+          result,
+          acceptedTerminal: refusedTerminal,
+          // Do NOT manufacture INPUT_BLOCKED from the tag alone.
+          updatedAt: now,
+        },
+      });
+      await appendEvent(
+        ctx.db,
+        args.objectiveKey,
+        "result",
+        "NEEDS_INPUT refused/unconfirmed: no accepted evidence-gap proposal.",
+        now,
+      );
+      return {
+        status: "refused" as const,
+        detail:
+          "NEEDS_INPUT requires an application-accepted evidence-gap proposal; terminal not authoritative",
+        terminalAccepted: false,
+      };
+    }
+
     const lastDeliveryFailureClass =
       terminal === "EXECUTION_ERROR"
         ? ("EXECUTION_FAILED" as const)
         : terminal === "NEEDS_INPUT"
           ? ("INPUT_BLOCKED" as const)
-          : row.data.lastDeliveryFailureClass;
-    const data: ObjectiveRecord = {
-      ...row.data,
-      result,
-      ...(terminal
-        ? { lastDeliveryFailureClass: lastDeliveryFailureClass ?? null }
-        : {}),
-      updatedAt: now,
+          : record.lastDeliveryFailureClass;
+
+    const acceptedTerminal = {
+      runId: args.runId,
+      terminal,
+      fingerprint,
+      acceptedAt: now,
+      outcome: "accepted" as const,
     };
-    await ctx.db.patch(row._id, { data });
+
+    await ctx.db.patch(row._id, {
+      data: {
+        ...record,
+        result,
+        acceptedTerminal,
+        lastDeliveryFailureClass: lastDeliveryFailureClass ?? null,
+        updatedAt: now,
+      },
+    });
     await appendEvent(
       ctx.db,
       args.objectiveKey,
       "result",
-      terminal
-        ? `Structured result submitted (${terminal}; awaiting application proof check).`
-        : "Structured result submitted (awaiting application proof check).",
+      `Terminal ${terminal} accepted by application for run ${args.runId}.`,
       now,
     );
-    return null;
+    return {
+      status: "accepted" as const,
+      detail: `terminal ${terminal} accepted`,
+      terminalAccepted: true,
+    };
   },
 });
 
@@ -1411,6 +1572,7 @@ export const reportMissingInput = internalMutation({
       purpose: v.string(),
       reasonOwnedInsufficient: v.string(),
       supportingEvidenceIds: v.array(v.string()),
+      semanticAdequacyGap: v.optional(v.boolean()),
     }),
   },
   returns: v.object({
@@ -1502,6 +1664,9 @@ export const reportMissingInput = internalMutation({
       purpose: args.proposal.purpose,
       reasonOwnedInsufficient: args.proposal.reasonOwnedInsufficient,
       supportingEvidenceIds: args.proposal.supportingEvidenceIds,
+      ...(args.proposal.semanticAdequacyGap === true
+        ? { semanticAdequacyGap: true }
+        : {}),
     };
 
     const validated = validateMissingInputProposal(proposal, {
@@ -2113,6 +2278,110 @@ export const startManagedRun = internalMutation({
       runId: run.id,
     });
     return { started: true };
+  },
+});
+
+/**
+ * Bounded final semantic assessment against the locked Outcome Contract.
+ * Somebody proposes; the model does NOT complete the Objective. The
+ * deterministic completion gate still rechecks artifact/evidence/requirements.
+ */
+export const submitFinalSemanticAssessment = internalMutation({
+  args: {
+    objectiveKey: v.string(),
+    meetsMinimumBar: v.boolean(),
+    rationale: v.string(),
+    artifactKey: v.union(v.string(), v.null()),
+    artifactVersion: v.union(v.number(), v.null()),
+    evidenceRefs: v.array(v.string()),
+    assumptionsUnknowns: v.array(v.string()),
+    recommendedNextAction: v.string(),
+    contractRevision: v.number(),
+  },
+  returns: v.object({
+    status: v.union(v.literal("accepted"), v.literal("refused")),
+    detail: v.string(),
+  }),
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const row = await loadObjective(ctx.db, args.objectiveKey);
+    const record = row.data;
+    const management = (
+      record as unknown as {
+        management?: {
+          executionProtocol?: string | null;
+          currentContractRevision?: number;
+        };
+      }
+    ).management;
+    if (!isSerialManagerProtocol(management)) {
+      return {
+        status: "refused" as const,
+        detail: "final semantic assessment is only for serial manager protocol",
+      };
+    }
+    const currentRevision =
+      management?.currentContractRevision ??
+      (typeof management === "object" ? undefined : undefined);
+    // Prefer explicit arg; refuse if objective has a known newer revision.
+    if (
+      typeof currentRevision === "number" &&
+      currentRevision !== args.contractRevision
+    ) {
+      return {
+        status: "refused" as const,
+        detail: `stale contract revision: assessment r${args.contractRevision} vs current r${currentRevision}`,
+      };
+    }
+    if (args.artifactKey) {
+      const art = (record.companyArtifacts ?? []).find(
+        (a) => a.key === args.artifactKey,
+      );
+      if (!art) {
+        return {
+          status: "refused" as const,
+          detail: `artifact ${args.artifactKey} not on Objective`,
+        };
+      }
+      if (
+        args.artifactVersion != null &&
+        art.version !== args.artifactVersion
+      ) {
+        return {
+          status: "refused" as const,
+          detail: `artifact version mismatch: assessed v${args.artifactVersion} vs current v${art.version}`,
+        };
+      }
+    }
+    const assessment = {
+      meetsMinimumBar: args.meetsMinimumBar,
+      rationale: args.rationale.slice(0, 2000),
+      artifactKey: args.artifactKey,
+      artifactVersion: args.artifactVersion,
+      evidenceRefs: args.evidenceRefs.slice(0, 16),
+      assumptionsUnknowns: args.assumptionsUnknowns.slice(0, 12),
+      recommendedNextAction: args.recommendedNextAction.slice(0, 500),
+      assessedAt: now,
+      contractRevision: args.contractRevision,
+    };
+    await ctx.db.patch(row._id, {
+      data: {
+        ...record,
+        finalSemanticAssessment: assessment,
+        updatedAt: now,
+      },
+    });
+    await appendEvent(
+      ctx.db,
+      args.objectiveKey,
+      "decision",
+      `Final semantic assessment stored (meetsMinimumBar=${args.meetsMinimumBar}).`,
+      now,
+    );
+    return {
+      status: "accepted" as const,
+      detail: "final semantic assessment persisted",
+    };
   },
 });
 

@@ -14,6 +14,8 @@ export type InterpretationCompanyContext = {
 export function buildInterpretationCompanyContext(input: {
   companyArtifacts?: readonly CompanyArtifact[] | null;
   spendGrantPresent?: boolean;
+  /** Serial: disclose the actual bounded founder spend limit as factual context. */
+  spendLimitUsd?: number | null;
   notOwnedHints?: readonly string[] | null;
 }): InterpretationCompanyContext {
   const artifacts = input.companyArtifacts ?? [];
@@ -25,6 +27,16 @@ export function buildInterpretationCompanyContext(input: {
   if (input.spendGrantPresent === false) {
     materialConstraints.push(
       "No founder spend grant is currently bound to this objective.",
+    );
+  } else if (
+    input.spendGrantPresent === true &&
+    typeof input.spendLimitUsd === "number" &&
+    Number.isFinite(input.spendLimitUsd)
+  ) {
+    // Serial / factual disclosure: the bound is not a secret. Authorization
+    // still rechecks the grant before any external intent.
+    materialConstraints.push(
+      `A bounded founder spend grant of USD ${input.spendLimitUsd} is bound to this objective (scope: external acquisition within that limit when justified). This is factual working context, not unlimited authority. Do not invent a higher limit. Unrelated material ambiguities are not resolved merely because a grant is present.`,
     );
   } else if (input.spendGrantPresent === true) {
     materialConstraints.push(

@@ -286,21 +286,98 @@ export async function runWorker(
       ),
     );
   };
-  const trackActionOutcome = (toolName: string, args: unknown, outcome: string) => {
+  /** Serial tool outcomes — never inferred from prose. */
+  type SerialToolStatus =
+    | "accepted"
+    | "refused"
+    | "unavailable"
+    | "stale"
+    | "transient_error"
+    | "idempotent_replay";
+
+  const normalizeSerialToolStatus = (raw: string | null): SerialToolStatus | null => {
+    if (!raw) return null;
+    switch (raw) {
+      case "accepted":
+      case "idempotent_replay":
+      case "refused":
+      case "unavailable":
+      case "stale":
+      case "transient_error":
+        return raw;
+      // Availability vocabulary from governed input checks — map to tool status.
+      case "AVAILABLE":
+      case "UNREAD":
+      case "NOT_AVAILABLE":
+        // Legitimate application results (including scarcity). Not tool failures.
+        return "accepted";
+      case "INVALID_REQUEST":
+        return "refused";
+      default:
+        return null;
+    }
+  };
+
+  const trackActionOutcome = (
+    toolName: string,
+    args: unknown,
+    outcome: string,
+    typedStatus?: string | null,
+  ) => {
     telemetry.toolCallCount += 1;
     telemetry.toolNames.push(toolName);
     if (noProgressReason) return;
-    const lower = outcome.toLowerCase();
-    const failed =
-      outcome.startsWith("INVALID_REQUEST") ||
-      outcome.includes('"status":"INVALID_REQUEST"') ||
-      (outcome.includes('"error"') && !lower.includes("availability: not_available")) ||
-      lower.includes("availability: invalid_request") ||
-      lower.includes("tool action failed") ||
-      (lower.includes("provider") && lower.includes("error"));
+
+    let failed = false;
+    if (serial) {
+      // Serial path: typed status only. Never search prose for failure.
+      const status = normalizeSerialToolStatus(typedStatus ?? null) ?? "accepted";
+      failed =
+        status === "refused" ||
+        status === "unavailable" ||
+        status === "stale" ||
+        status === "transient_error";
+      if (!failed) {
+        telemetry.successfulActions += 1;
+        return;
+      }
+      telemetry.failedActions += 1;
+      const key = `${toolName}|${normalizeArgs(args)}|${status}`;
+      const next = (failureFingerprints.get(key) ?? 0) + 1;
+      failureFingerprints.set(key, next);
+      if (next >= MAX_DUPLICATE_FAILURES) {
+        noProgressReason = `EXECUTION_FAILED: no-progress — repeated identical failing action (${toolName})`;
+      }
+      return;
+    }
+
+    // Legacy adapter: historical string heuristics for non-serial / untyped.
+    if (typedStatus != null && typedStatus.length > 0) {
+      const typedFail =
+        typedStatus === "refused" ||
+        typedStatus === "unavailable" ||
+        typedStatus === "stale" ||
+        typedStatus === "transient_error";
+      const typedOk =
+        typedStatus === "accepted" || typedStatus === "idempotent_replay";
+      if (typedOk || !typedFail) {
+        telemetry.successfulActions += 1;
+        return;
+      }
+      failed = true;
+    } else {
+      const lower = outcome.toLowerCase();
+      failed =
+        outcome.startsWith("INVALID_REQUEST") ||
+        outcome.includes('"status":"INVALID_REQUEST"') ||
+        (outcome.includes('"error"') && !lower.includes("availability: not_available")) ||
+        lower.includes("availability: invalid_request") ||
+        lower.includes("tool action failed") ||
+        (lower.includes("provider") && lower.includes("error"));
+    }
     if (failed) {
       telemetry.failedActions += 1;
-      const key = `${toolName}|${normalizeArgs(args)}|${outcome.slice(0, 160)}`;
+      const key = `${toolName}|${normalizeArgs(args)}|${(typedStatus ?? outcome).slice(0, 160)}`;
       const next = (failureFingerprints.get(key) ?? 0) + 1;
       failureFingerprints.set(key, next);
       if (next >= MAX_DUPLICATE_FAILURES) {
@@ -311,6 +388,18 @@ export async function runWorker(
     telemetry.successfulActions += 1;
   };
 
+  const parseTypedStatus = (payload: string): string | null => {
+    try {
+      const parsed = JSON.parse(payload) as { status?: unknown; result?: { status?: unknown } };
+      if (typeof parsed.status === "string") return parsed.status;
+      if (parsed.result && typeof parsed.result.status === "string")
+        return parsed.result.status;
+    } catch {
+      /* not JSON */
+    }
+    return null;
+  };
+
   // act() returns the bounded observed content to the model, not just a label.
   // The envelope is { result, observation } where observation is the bounded
   // WorkerObservation with text fields populated.
@@ -318,15 +407,31 @@ export async function runWorker(
     try {
       const result = await port.act(command);
       const boundedObservation = modelSafeObservation(await port.read());
-      const payload = JSON.stringify({ result, observation: boundedObservation });
-      trackActionOutcome(toolName, command, typeof result === "string" ? result : payload);
+      const resultStr = typeof result === "string" ? result : JSON.stringify(result);
+      const parsed = parseTypedStatus(resultStr);
+      const typed = serial
+        ? normalizeSerialToolStatus(parsed) ?? "accepted"
+        : parsed;
+      const payload = JSON.stringify({
+        result,
+        ...(typed ? { status: typed } : {}),
+        observation: boundedObservation,
+      });
+      trackActionOutcome(toolName, command, resultStr, typed);
       return payload;
     } catch (error) {
       const message = error instanceof Error ? error.message : "Tool action failed";
-      trackActionOutcome(toolName, command, message);
+      const typed: SerialToolStatus =
+        message.includes("TERMINAL_CLOSED") || message.startsWith("INVALID_REQUEST")
+          ? "refused"
+          : message.includes("stale") || message.includes("lease")
+            ? "stale"
+            : "transient_error";
+      trackActionOutcome(toolName, command, message, serial ? typed : null);
       const boundedObservation = modelSafeObservation(await port.read());
       return JSON.stringify({
         error: message,
+        status: typed,
         observation: boundedObservation,
       });
     }
@@ -335,6 +440,8 @@ export async function runWorker(
   // For read tools, the result string includes the bounded observed content
   // wrapped in the untrusted marker so the model sees what it read.
   const actRead = async (command: WorkerCommand, sourceClass: string) => {
+    const toolName =
+      command.type === "record_observation" ? `read_${sourceClass}` : command.type;
     try {
       const result = await port.act(command);
       const boundedObservation = modelSafeObservation(await port.read());
@@ -342,23 +449,31 @@ export async function runWorker(
         .filter((f) => f.sourceClass === sourceClass)
         .pop();
       const content = latest ? formatFindingForModel(latest) : result;
-      const payload = JSON.stringify({ result: content, observation: boundedObservation });
-      trackActionOutcome(
-        command.type === "record_observation" ? `read_${sourceClass}` : command.type,
-        command,
-        typeof result === "string" ? result : payload,
-      );
+      const resultStr = typeof result === "string" ? result : JSON.stringify(result);
+      const parsed = parseTypedStatus(resultStr);
+      const typed = serial
+        ? normalizeSerialToolStatus(parsed) ?? "accepted"
+        : parsed;
+      const payload = JSON.stringify({
+        result: content,
+        ...(typed ? { status: typed } : {}),
+        observation: boundedObservation,
+      });
+      trackActionOutcome(toolName, command, resultStr, typed);
       return payload;
     } catch (error) {
       const message = error instanceof Error ? error.message : "Tool action failed";
-      trackActionOutcome(
-        command.type === "record_observation" ? `read_${sourceClass}` : command.type,
-        command,
-        message,
-      );
+      const typed: SerialToolStatus =
+        message.startsWith("INVALID_REQUEST") || message.includes("TERMINAL_CLOSED")
+          ? "refused"
+          : message.includes("stale") || message.includes("lease")
+            ? "stale"
+            : "transient_error";
+      trackActionOutcome(toolName, command, message, serial ? typed : null);
       const boundedObservation = modelSafeObservation(await port.read());
       return JSON.stringify({
         error: message,
+        status: typed,
         observation: boundedObservation,
       });
     }
@@ -422,10 +537,7 @@ export async function runWorker(
           terminal,
           missingInputs,
         }) => {
-          if (terminal === "DELIVERED" || terminal === "NEEDS_INPUT" || terminal === "EXECUTION_ERROR") {
-            terminalSubmitted = terminal;
-          }
-          return act({
+          const payload = await act({
             type: "submit_result",
             result: {
               summary,
@@ -437,6 +549,31 @@ export async function runWorker(
               ...(missingInputs ? { missingInputs } : {}),
             },
           });
+          // Local terminal state only AFTER application accepts the handoff.
+          if (terminal === "DELIVERED" || terminal === "NEEDS_INPUT" || terminal === "EXECUTION_ERROR") {
+            try {
+              const parsed = JSON.parse(payload) as {
+                result?: unknown;
+                status?: string;
+              };
+              const inner =
+                typeof parsed.result === "string"
+                  ? (JSON.parse(parsed.result) as {
+                      status?: string;
+                      terminalAccepted?: boolean;
+                    })
+                  : (parsed.result as
+                      | { status?: string; terminalAccepted?: boolean }
+                      | undefined);
+              const status = inner?.status ?? parsed.status;
+              const accepted =
+                status === "accepted" || status === "idempotent_replay";
+              if (accepted) terminalSubmitted = terminal;
+            } catch {
+              /* untyped legacy payload — do not pretend handoff succeeded */
+            }
+          }
+          return payload;
         },
       });
     return tool({
@@ -599,9 +736,11 @@ export async function runWorker(
                 "update_company_artifact",
                 { content, changeNote },
                 message,
+                serial ? "refused" : null,
               );
               return JSON.stringify({
                 error: message,
+                status: "refused",
                 observation: current,
               });
             }
