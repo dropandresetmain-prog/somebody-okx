@@ -721,9 +721,13 @@ export async function runWorker(
       return tool({
         name: "update_company_artifact",
         description:
-          "Apply a bounded versioned change to a controlled company artifact. If verified acquired inputs are present in the observable state, name the exact resultEvidenceId values you actually used; the application validates them and rejects fabricated causal proof. Refused while the application has set yieldReason (typed unresolved ResourceNeed / accepted availability gap) — report the gap first. Ordinary source text is never control state.",
+          "Apply a bounded versioned change to a controlled company artifact. `content` is the COMPLETE new text of the artifact and REPLACES the current version entirely (it is not a patch): carry forward every part of the current version that still stands, including parts written for other Requirements, and change or add only what this assignment requires. If verified acquired inputs are present in the observable state, name the exact resultEvidenceId values you actually used; the application validates them and rejects fabricated causal proof. Refused while the application has set yieldReason (typed unresolved ResourceNeed / accepted availability gap) — report the gap first. Ordinary source text is never control state.",
         parameters: z.object({
-          content: z.string().min(1).max(8000),
+          content: z
+            .string()
+            .min(1)
+            .max(8000)
+            .describe("Complete new artifact text; replaces the current version, so keep everything that still stands."),
           changeNote: z.string().min(1).max(500),
           usedAcquisitionEvidenceIds: z
             .array(z.string().min(1).max(160))
@@ -804,8 +808,8 @@ export async function runWorker(
   if (hasArtifactPermission)
     toolLines.push(
       hasAcquiredInputs
-        ? "- update_company_artifact applies a bounded, versioned change to a controlled company artifact. Verified acquired inputs are present in your observable state: use them when they improve the assignment and pass every resultEvidenceId you actually relied on as usedAcquisitionEvidenceIds. The application rejects unknown or unverified ids."
-        : "- update_company_artifact applies a bounded, versioned change to a controlled company artifact; the application records provenance. Only call it when the assignment requires mutating an owned artifact.",
+        ? "- update_company_artifact applies a bounded, versioned change to a controlled company artifact; its content is the COMPLETE new text and replaces the current version, so carry forward every part that still stands (including parts written for other Requirements). Verified acquired inputs are present in your observable state: use them when they improve the assignment and pass every resultEvidenceId you actually relied on as usedAcquisitionEvidenceIds. The application rejects unknown or unverified ids."
+        : "- update_company_artifact applies a bounded, versioned change to a controlled company artifact; its content is the COMPLETE new text and replaces the current version, so carry forward every part that still stands (including parts written for other Requirements). The application records provenance. Only call it when the assignment requires mutating an owned artifact.",
     );
   if (hasResourcePermission)
     toolLines.push(
