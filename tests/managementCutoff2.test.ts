@@ -428,6 +428,7 @@ function graphWorld(options: { requirement?: Requirement; budgetExhausted?: bool
     async loadContract() { return { contract, currentContractRevision: 1 }; },
     async loadRequirements() { return [structuredClone(world.requirement)]; },
     async loadGrounded() { return new Map(); },
+    async loadDecisionRefusalAttempts() { return {}; },
     async loadAssignments() { return []; },
     async loadIntents() { return []; },
     async loadBudgetVerdict() {
@@ -475,7 +476,11 @@ test("a nonsense wake on an over-budget objective terminates recovery_required: 
   const { outcome } = await graph.invoke(nonsenseState());
   assert.equal(outcome.objectiveState, "recovery_required");
   assert.equal(wake.consumedAt, at0, "the wake was consumed exactly once");
-  assert.deepEqual(world.states, ["recovery_required"], "reduce wrote the control state once; the garbage summary changed nothing");
+  assert.deepEqual(
+    world.states,
+    ["recovery_required", "recovery_required"],
+    "reduce then settle each persist the same recovery_required control state",
+  );
   assert.equal(world.decisionCalls, 0, "budget-exhausted engine never consults the model");
 });
 

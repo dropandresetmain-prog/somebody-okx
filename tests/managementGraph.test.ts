@@ -132,6 +132,9 @@ function makePorts(world: World): ManagementPorts {
     async loadGrounded() {
       return world.groundedByReq;
     },
+    async loadDecisionRefusalAttempts() {
+      return {};
+    },
     async loadAssignments() {
       return world.assignments.map((assignment) => structuredClone(assignment));
     },
