@@ -678,7 +678,7 @@ export async function runWorker(
       return tool({
         name: "request_resource",
         description:
-          "Propose a missing input the application should validate. Pass supportingEvidenceIds from application observations in this run. resourceClass MUST be a governed external class such as proprietary_data, privileged_access, specialist_compute, human_voice_contact, physical_presence, or attestation — never a free-form phrase and never an already-owned class (company_records, public_web, llm_reasoning, company_tools, ordinary_compute). The application decides whether the gap is authoritative; you cannot mark a resource fulfilled, choose a provider, or force BUY.",
+          "Propose a missing input the application should validate. Pass supportingEvidenceIds from same-run application observations and/or linked verified acquisition resultEvidenceIds already on this action. resourceClass MUST be a governed external class such as proprietary_data, privileged_access, specialist_compute, human_voice_contact, physical_presence, or attestation — never a free-form phrase and never an already-owned class (company_records, public_web, llm_reasoning, company_tools, ordinary_compute). Citing a linked acquisition explains what it does or does not establish; it does not satisfy the Requirement by itself. The application decides whether the gap is authoritative; you cannot mark a resource fulfilled, choose a provider, or force BUY.",
         parameters: z.object({
           resourceClass: z.string().min(1).max(120),
           purpose: z.string().min(1).max(500),
