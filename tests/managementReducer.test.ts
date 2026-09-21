@@ -239,6 +239,33 @@ test("empty options[] at refusal ceiling → recovery_required (not waiting fore
   assert.equal(r.action.kind, "hold");
 });
 
+test("eligible candidate persisted by a REFUSED decision at the refusal ceiling → recovery_required (never wedged executing)", () => {
+  // Portability gate regression: the begin step declines at the ceiling, so the
+  // reducer must not keep scheduling decide_requirement for it.
+  const r = reduceManagementState(
+    base({
+      groundedByRequirement: new Map([["page_live", [eligibleOption("page_live")]]]),
+      decisionRefusalAttempts: { page_live: 3 },
+      beginDecisionCeiling: 3,
+    }),
+  );
+  assert.equal(r.state, "recovery_required");
+  assert.equal(r.action.kind, "hold");
+  assert.ok(isCoherentHold(r));
+});
+
+test("eligible candidate below the refusal ceiling is still decision work", () => {
+  const r = reduceManagementState(
+    base({
+      groundedByRequirement: new Map([["page_live", [eligibleOption("page_live")]]]),
+      decisionRefusalAttempts: { page_live: 2 },
+      beginDecisionCeiling: 3,
+    }),
+  );
+  assert.equal(r.state, "executing");
+  assert.deepEqual(r.action, { kind: "decide_requirement", requirementKey: "page_live" });
+});
+
 test("one blocked requirement never stops a solvable sibling", () => {
   const r = reduceManagementState(
     base({

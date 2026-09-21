@@ -225,10 +225,15 @@ export function reduceManagementState(facts: ReducerFacts): ReducedState {
     decisionRefusalAttempts[requirement.requirementKey] ?? 0;
   const solvable = open.filter((requirement) => {
     if (!prerequisitesMet(requirement)) return false;
+    // Decision work is only schedulable while the refusal ceiling has room: the
+    // begin step declines at the ceiling, so a requirement at the ceiling with an
+    // eligible candidate persisted by a REFUSED decision must not read as solvable
+    // (it would wedge in `executing` forever, deciding nothing).
+    if (refusalAttemptsFor(requirement) >= beginDecisionCeiling) return false;
     const candidates = groundedCandidates(requirement);
     if (candidates === null) {
       // Case A: still decision work until the refusal ceiling is exhausted.
-      return refusalAttemptsFor(requirement) < beginDecisionCeiling;
+      return true;
     }
     return candidates.some((option) => option.eligibility.eligible);
   });
@@ -250,8 +255,11 @@ export function reduceManagementState(facts: ReducerFacts): ReducedState {
     const exhaustedProposalFailures = open.filter(
       (requirement) =>
         prerequisitesMet(requirement) &&
-        groundedCandidates(requirement) === null &&
-        refusalAttemptsFor(requirement) >= beginDecisionCeiling,
+        refusalAttemptsFor(requirement) >= beginDecisionCeiling &&
+        // Ceiling reached with no candidate set, OR with eligible candidates that a
+        // refused decision persisted but can no longer be decided on. Ineligible-only
+        // candidates remain a genuine no-path (below).
+        (groundedCandidates(requirement)?.some((option) => option.eligibility.eligible) ?? true),
     );
     const genuineNoEligible = open.some(
       (requirement) =>
