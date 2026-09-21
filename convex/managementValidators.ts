@@ -522,6 +522,7 @@ export const vExecutionIntent = v.object({
   updatedAt: v.number(),
   needDedupeKey: v.optional(nullableString),
   resourceNeedId: v.optional(nullableString),
+  purpose: v.optional(nullableString),
 });
 
 // ── Wake events ──────────────────────────────────────────────────────────────

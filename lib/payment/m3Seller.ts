@@ -1,4 +1,4 @@
-import express, { type Express } from "express";
+import express, { type Express, type Request } from "express";
 import type { Server } from "node:http";
 import {
   OKXFacilitatorClient,
@@ -16,8 +16,15 @@ import {
   type RouteConfig,
   type RoutesConfig,
 } from "@okxweb3/x402-core/server";
+import {
+  evaluateM3ProductFulfillment,
+  readM3MerchantProductRequest,
+  verifyM3ProtectedResult,
+  type M3ProtectedSuccessResult,
+} from "./m3FounderNarrativeProduct";
 
 export const M3_SELLER_NETWORK = "eip155:1952" as const;
+/** Payment resource path kept stable so existing TESTNET challenge binding stays intact. */
 export const M3_SELLER_PATH = "/m3/paid-ping" as const;
 export const M3_SELLER_PORT = 4021 as const;
 export const M3_SELLER_DEFAULT_HOST = "127.0.0.1" as const;
@@ -28,19 +35,17 @@ export const M3_SELLER_ASSET_VERSION = "1" as const;
 export const M3_SELLER_AMOUNT = "10000" as const;
 export const M3_SELLER_TIMEOUT_SECONDS = 60 as const;
 
-/** Exact protected result contract returned after the controlled M3 payment. */
-export type M3ProtectedResult = {
-  ok: true;
-  message: "Somebody M3 payment verified";
-  resource: "m3-paid-ping";
-};
+/** Successful paid product payload (re-exported for callers/tests). */
+export type M3ProtectedResult = M3ProtectedSuccessResult;
 
-export function verifyM3ProtectedResult(value: unknown): value is M3ProtectedResult {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
-  const result = value as Record<string, unknown>;
-  return result.ok === true
-    && result.message === "Somebody M3 payment verified"
-    && result.resource === "m3-paid-ping";
+export { verifyM3ProtectedResult };
+
+function queryRecord(req: Request): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(req.query ?? {})) {
+    out[key] = Array.isArray(value) ? value[0] : value;
+  }
+  return out;
 }
 
 const ADDRESS_PATTERN = /^0x[a-fA-F0-9]{40}$/;
@@ -150,7 +155,8 @@ export function createM3SellerRoutes(receiver: string): RoutesConfig {
       maxTimeoutSeconds: M3_SELLER_TIMEOUT_SECONDS,
     },
     resource: M3_SELLER_PATH,
-    description: "Somebody M3 controlled Testnet payment",
+    description:
+      "Somebody M3 controlled Testnet product founder_narrative_pulse (proprietary_data synthetic research)",
     mimeType: "application/json",
     unpaidResponseBody: () => ({
       contentType: "application/json",
@@ -205,12 +211,29 @@ export function createM3SellerApp(options: {
     next();
   });
   app.use(paymentMiddlewareFromHTTPServer(httpResourceServer, undefined, undefined, false));
-  app.get(M3_SELLER_PATH, (_req, res) => {
-    res.json({
-      ok: true,
-      message: "Somebody M3 payment verified",
-      resource: "m3-paid-ping",
+  // Payment middleware has already verified the x402 TESTNET payment when this
+  // handler runs. Product scope is evaluated only after that condition.
+  app.get(M3_SELLER_PATH, (req, res) => {
+    const productRequest = readM3MerchantProductRequest({
+      headers: {
+        get(name: string) {
+          const key = name.toLowerCase();
+          const raw = req.headers[key];
+          if (Array.isArray(raw)) return raw[0] ?? null;
+          return typeof raw === "string" ? raw : null;
+        },
+      },
+      query: queryRecord(req),
     });
+    const result = evaluateM3ProductFulfillment(productRequest);
+    if (!result.ok) {
+      // Payment verified, but product scope refused. Return a typed provider
+      // error body (not the qualitative fixture). HTTP 200 keeps settlement
+      // distinct from fulfillment; verifyM3ProtectedResult rejects ok:false.
+      res.status(200).json(result);
+      return;
+    }
+    res.json(result);
   });
 
   return {

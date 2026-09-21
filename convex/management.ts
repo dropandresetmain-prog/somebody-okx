@@ -2736,6 +2736,7 @@ async function dispatchExternal(
         ...created.intent,
         needDedupeKey: matchingNeed.dedupeKey,
         resourceNeedId: matchingNeed.id,
+        purpose: matchingNeed.purpose.slice(0, 500),
       }
     : created.intent;
 

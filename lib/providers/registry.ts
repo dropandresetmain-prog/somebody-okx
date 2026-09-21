@@ -8,10 +8,13 @@
 import type { ExternalResourceResult, ProviderAdapter } from "./types";
 import { newsliquidAdapter } from "./newsliquid";
 import { xbirdAdapter } from "./xbird";
+import { controlledTestMerchantAdapter } from "./controlledTestMerchant";
+import { M3_PRODUCT_PROVIDER_ID } from "../payment/m3FounderNarrativeProduct";
 
 const ADAPTERS: Record<string, ProviderAdapter> = {
   newsliquid: newsliquidAdapter,
   xbird: xbirdAdapter,
+  [M3_PRODUCT_PROVIDER_ID]: controlledTestMerchantAdapter,
 };
 
 /**

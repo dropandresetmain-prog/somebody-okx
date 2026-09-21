@@ -4,6 +4,8 @@ import path from "node:path";
 import {
   buildQuoteFromChallenge,
   OfficialSignOnlyReplayExecutor,
+  MERCHANT_REPLAY_TIMEOUT_MS,
+  createLocalOnchainosPaymentRunner,
   paymentTermsEqual,
   type FounderPaymentConfirmation,
   type PreviewQuote,
@@ -13,6 +15,13 @@ import type { PaymentExecutionAuthority } from "./executionAuthority";
 import type { PaymentExecutor, PaymentSubmissionResult, PurchaseRecord, RailConfig } from "./types";
 import { handoffApprovedPurchaseToM3, type M3BuyerRailDeps, type SeamResult } from "../management/m3BuyerRail";
 import type { ExecutionIntent } from "../management/types";
+import {
+  buildM3MerchantRequestHeaders,
+  M3_PRODUCT_ID,
+  M3_PRODUCT_OFFERING_ID,
+  M3_PRODUCT_SERVICE_ID,
+  M3_SUPPORTED_PURPOSE_KIND,
+} from "./m3FounderNarrativeProduct";
 
 export type ConfirmationLedger = {
   get(purchaseId: string): FounderPaymentConfirmation | null;
@@ -73,15 +82,47 @@ export function persistFounderConfirmation(input: {
   return input.confirmations.put(confirmApprovedPurchaseTerms({ purchase: input.purchase, preview, confirmationId: input.confirmationId, merchantEndpoint: input.merchantEndpoint, confirmedAt: input.confirmedAt }));
 }
 
+function merchantHeadersForIntent(intent: ExecutionIntent): Record<string, string> {
+  // The loopback TESTNET merchant sells only founder_narrative_pulse. Purpose and
+  // resource class still come from the authorized intent so out-of-scope BUYs fail closed.
+  return buildM3MerchantRequestHeaders({
+    resourceClass: intent.target.resourceClass,
+    productId: M3_PRODUCT_ID,
+    serviceId: M3_PRODUCT_SERVICE_ID,
+    offeringId: intent.target.offeringId ?? M3_PRODUCT_OFFERING_ID,
+    purpose: intent.purpose,
+    purposeKind: intent.purpose ? M3_SUPPORTED_PURPOSE_KIND : null,
+    requestId: intent.intentId,
+  });
+}
+
 class FreshQuoteExecutor implements PaymentExecutor {
   readonly kind = "official_onchainos" as const;
-  constructor(private readonly purchase: PurchaseRecord, private readonly confirmation: FounderPaymentConfirmation, private readonly merchantEndpoint: string, private readonly fetchChallenge: () => Promise<unknown>, private readonly authority: PaymentExecutionAuthority, private readonly now: () => number) {}
+  constructor(
+    private readonly purchase: PurchaseRecord,
+    private readonly confirmation: FounderPaymentConfirmation,
+    private readonly merchantEndpoint: string,
+    private readonly fetchChallenge: () => Promise<unknown>,
+    private readonly authority: PaymentExecutionAuthority,
+    private readonly now: () => number,
+    private readonly merchantRequestHeaders: Record<string, string>,
+  ) {}
   async executeApprovedPayment(input: Parameters<PaymentExecutor["executeApprovedPayment"]>[0]): Promise<PaymentSubmissionResult> {
     if (!this.purchase.approval || input.purchaseId !== this.purchase.id || input.idempotencyKey !== this.purchase.idempotencyKey || input.approvalId !== this.purchase.approval.approvalId) throw new Error("execution input is not the confirmed durable M3 purchase");
     const body = await this.fetchChallenge();
     const execution = buildQuoteFromChallenge(body, `execution_${input.purchaseId}_${this.now()}`, this.now());
     authorizeFreshExecutionQuote({ purchase: this.purchase, confirmation: this.confirmation, execution, now: this.now() });
-    return new OfficialSignOnlyReplayExecutor(execution, this.confirmation, this.merchantEndpoint, this.authority, undefined, this.now).executeApprovedPayment(input);
+    return new OfficialSignOnlyReplayExecutor(
+      execution,
+      this.confirmation,
+      this.merchantEndpoint,
+      this.authority,
+      createLocalOnchainosPaymentRunner(),
+      this.now,
+      (url, init) => fetch(url, init),
+      MERCHANT_REPLAY_TIMEOUT_MS,
+      this.merchantRequestHeaders,
+    ).executeApprovedPayment(input);
   }
 }
 
@@ -102,7 +143,15 @@ export function createSupervisedSubmit(config: {
         const candidate = { ...input.purchase.boundTerms, ...liveTerms };
         return paymentTermsEqual(candidate, input.purchase.boundTerms) ? input.purchase.approval : null;
       },
-      executor: new FreshQuoteExecutor(input.purchase, confirmation, config.merchantEndpoint, config.fetchChallenge, config.executionAuthority, now),
+      executor: new FreshQuoteExecutor(
+        input.purchase,
+        confirmation,
+        config.merchantEndpoint,
+        config.fetchChallenge,
+        config.executionAuthority,
+        now,
+        merchantHeadersForIntent(input.intent),
+      ),
       settlementReader: config.settlementReaderForPurchase(input.purchase), paidRequestSender: config.paidRequestSender, verifyResult: config.verifyResult,
     };
     return handoffApprovedPurchaseToM3({ ...input, deps: rail });

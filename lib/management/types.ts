@@ -572,7 +572,13 @@ export type ExecutionIntent = {
    * (purpose-scoped). Same resource class alone must not cross-cover.
    */
   needDedupeKey?: string | null;
+  /** Optional ResourceNeed id when known at authorization time. */
   resourceNeedId?: string | null;
+  /**
+   * Bounded ResourceNeed purpose when known at authorization. Forwarded to the
+   * controlled merchant product request; never secrets or full Objective state.
+   */
+  purpose?: string | null;
 };
 
 // ── Wake events (Convex-owned, idempotent) ───────────────────────────────────
