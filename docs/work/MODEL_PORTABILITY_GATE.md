@@ -49,9 +49,10 @@ Model `openai/gpt-5.6-luna`, canonical objective, simulated acquisition edge (`s
 | luna-1 | obj_1790032703969_bk8nlz | completed | 103s | none (MAKE-only, legitimate) | v4 | no refusals |
 | luna-2 | obj_1790032807032_l56gm9 | completed | 129s | BUY→verified→MAKE | v3 | acquisition→resume path exercised |
 | luna-3 | obj_1790032936535_cclda2 | recovery_required | 390s | BUY late (req_03) | v6 | `engine_failure`: 3 empty-capability strategy refusals exhausted the ceiling |
-| luna-4/5 | (in flight when this was written) | | | | | |
+| luna-4 | obj_1790033327090_dbnd78 | blocked | 456s | none | v9 | final assessment 2/2 negative ("explicitly a draft for review", numeric baseline absent) — attribution `undetermined` (worker role says leave for review; assessor penalizes draft) |
+| luna-5 | obj_1790033783009_37yv2h | recovery_required | 41s | none | v1 | `engine_failure`: 3 consecutive empty-capability strategy refusals on req_01 |
 
-Evidence: `docs/work/gate-evidence/run-luna-*.json` (raw record + workspace view + timeline). Earlier voided/superseded runs (before each fix, contaminated by my own mid-run interruptions, or driver-killed while quiescent) are under `docs/work/gate-evidence/superseded/`.
+Evidence: `docs/work/gate-evidence/superseded/f7ead5e/run-luna-*.json` (raw record + workspace view + timeline). Earlier voided/superseded runs (before each fix, contaminated by my own mid-run interruptions, or driver-killed while quiescent) are under `docs/work/gate-evidence/superseded/`.
 
 ## Observations (not fixed, recorded)
 

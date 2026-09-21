@@ -453,6 +453,18 @@ export function validateStrategyStructure(
         reason: `unknown capability key(s): ${unknown.join(", ")}`,
         legalValues: legal.capabilityCatalog,
       });
+    } else if (
+      (strategy === "MAKE" || strategy === "HYBRID") &&
+      stringList(candidate.desiredCapabilities, LIMITS.list, LIMITS.key).length === 0 &&
+      legal.capabilityCatalog.length > 0
+    ) {
+      // An internal path with no capability can never be authorized; catch it here so the
+      // one bounded repair names the legal keys instead of burning a refusal attempt.
+      issues.push({
+        field: "desiredCapabilities",
+        reason: `${strategy} requires at least one capability key`,
+        legalValues: legal.capabilityCatalog,
+      });
     }
   }
   return issues.length ? { ok: false, issues } : { ok: true, value: raw };
