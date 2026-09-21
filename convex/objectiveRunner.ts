@@ -1313,10 +1313,28 @@ export const proposeDecision = internalAction({
     // needed; it may NOT name prices, providers, permissions or authority. The
     // raw proposal is returned as-is: parseStrategyProposal + validateCapabilityKeys
     // (inside buildDecisionPassInput) govern it downstream, fail-closed.
+    // Test doubles may stand in for live config; never invent a strategy on throw.
+    let decisionConfiguration: PlanningConfiguration | null = null;
+    if (!structuredChatDoubleInstalled()) {
+      try {
+        decisionConfiguration = providerConfiguration(process.env);
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "model config failed";
+        const refused = await apply(null, null);
+        return {
+          ok: refused.ok,
+          detail: refused.ok
+            ? "unexpected: refusal path accepted"
+            : `model unavailable at proposal: ${message.slice(0, 300)}`,
+        };
+      }
+    }
+
     let rawStrategyProposal: unknown;
     try {
       rawStrategyProposal = await proposeStrategyWithModel({
-        configuration: providerConfiguration(process.env),
+        configuration: decisionConfiguration,
         requirementTitle: reads.requirement.title,
         mustBeTrue: reads.requirement.mustBeTrue,
         contractIntent: reads.contract.intent,
@@ -1369,7 +1387,7 @@ export const proposeDecision = internalAction({
             (value) => !controlled.includes(value as ResourceClass),
           );
           raw = await recommendWithModel({
-            configuration: providerConfiguration(process.env),
+            configuration: decisionConfiguration,
             requirementKey: args.requirementKey,
             contractRevision: args.contractRevision,
             requirementContext: {
@@ -2030,23 +2048,81 @@ export const proposeFinalSemanticAssessment = internalAction({
       }
     }
 
+    // Action-linked verified acquisitions only — not every Objective-wide receipt.
+    const assignmentRows = (await ctx.runQuery(
+      internal.internal.workforce.listAssignmentsForObjective,
+      { objectiveKey: args.objectiveKey },
+    )) as Array<{
+      requirementKey?: string;
+      state?: string;
+      workContract?: { inputEvidenceIds?: string[] };
+      contractRevision?: number;
+    }>;
+    const linkedEvidenceIds = new Set<string>();
+    for (const a of assignmentRows ?? []) {
+      if (a.contractRevision !== args.contractRevision) continue;
+      if (a.state === "superseded" || a.state === "failed") continue;
+      if (
+        deliverableReqKey &&
+        a.requirementKey &&
+        a.requirementKey !== deliverableReqKey
+      ) {
+        continue;
+      }
+      for (const id of a.workContract?.inputEvidenceIds ?? []) {
+        if (typeof id === "string" && id.length > 0) linkedEvidenceIds.add(id);
+      }
+    }
     const acquisitions = (record.acquisitionResults ?? [])
       .filter((a) => a.verifiedAt != null)
+      .filter((a) => {
+        if (linkedEvidenceIds.size > 0) {
+          return linkedEvidenceIds.has(a.resultEvidenceId);
+        }
+        return (
+          deliverableReqKey != null && a.requirementKey === deliverableReqKey
+        );
+      })
       .slice(0, 6)
       .map((a) => ({
         resultEvidenceId: a.resultEvidenceId,
         resourceClass: a.resourceClass,
         content: String(a.content ?? "").slice(0, 1200),
         needDedupeKey: a.needDedupeKey ?? null,
+        requirementKey: a.requirementKey,
+        provenance: "verified_acquisition" as const,
         untrusted: true as const,
       }));
-    const evidenceIds = acquisitions.map((a) => a.resultEvidenceId);
+
+    const ownedObservations = (
+      (await ctx.runQuery(
+        internal.objectives.listOwnedObservationsForAssessment,
+        { objectiveKey: args.objectiveKey, limit: 6 },
+      )) as Array<{
+        evidenceId: string;
+        sourceClass: string;
+        label: string;
+        text: string;
+      }>
+    ).map((o) => ({
+      evidenceId: o.evidenceId,
+      sourceClass: o.sourceClass,
+      label: o.label,
+      text: String(o.text ?? "").slice(0, 800),
+      provenance: "application_observation" as const,
+      untrusted: false as const,
+    }));
+
+    const evidenceIds = [
+      ...acquisitions.map((a) => a.resultEvidenceId),
+      ...ownedObservations.map((o) => o.evidenceId),
+    ];
     const critique =
       typeof mgmt.lastFinalAssessmentCritique === "string"
         ? mgmt.lastFinalAssessmentCritique.slice(0, 800)
         : null;
 
-    let configuration: ReturnType<typeof providerConfiguration> = null;
+    let configuration: PlanningConfiguration | null = null;
     if (!structuredChatDoubleInstalled()) {
       try {
         configuration = providerConfiguration(process.env);
@@ -2055,12 +2131,6 @@ export const proposeFinalSemanticAssessment = internalAction({
           error instanceof Error ? error.message : "model config failed";
         await clearPendingAndWake(
           `final assessment: configuration failure; pending cleared: ${message.slice(0, 300)}`,
-        );
-        return null;
-      }
-      if (!configuration) {
-        await clearPendingAndWake(
-          "final assessment: no live model configured; pending cleared for retry",
         );
         return null;
       }
@@ -2084,6 +2154,7 @@ export const proposeFinalSemanticAssessment = internalAction({
         content: String(artifact.content ?? "").slice(0, 2000),
         minVersionRequired: pending.minVersionRequired ?? null,
       },
+      ownedObservations,
       verifiedAcquisitions: acquisitions,
       evidenceIds,
       priorCritique: critique,

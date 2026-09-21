@@ -1,7 +1,7 @@
 # ACTIVE TASK — M6.1 manager–execution mini-refactor
 
 Updated: 21 September 2026 (Singapore)
-Status: **FIXER CLOSURE PASS 2 COMPLETE / NOT GATE 1 PASS**
+Status: **FIXER CLOSURE PASS 3 COMPLETE / NOT GATE 1 PASS**
 
 ## Goal
 
@@ -13,21 +13,40 @@ relaunch recommendation.
 
 - Branch: `refactor/m6-1-manager-execution-loop`
 - Pass-2 start SHA: `1793684`
+- Pass-2 final: `4d9b516` (ledger) / `79a670e` (code)
 - Preserved: `stash@{0}`; untracked `scripts/_tmp-*`
 
 ## Checkpoint
 
-- Starting SHA: `1793684`
-- Final pushed SHA: `79a670e562b9529cf05ace5960041913a54c6f01`
+- Starting SHA: `4d9b516`
+- Final pushed SHA: *(filled after push)*
 
-## This pass (architecture-reviewer required closures)
+## This pass (remaining production paths)
 
-- [x] Final assessment loads locked contract/target; no regex/first-artifact fallback
-- [x] Correction path within BEGIN_DECISION_CEILING=3 (refusal-storm accounting)
-- [x] obligationAlreadyCovered is purpose/need-identity scoped
-- [x] Serial BUY refuses unbound/stale need at dispatch
-- [x] Terminal replay/conflict typed envelopes via production port
-- [x] Production harness at real model boundary (not applyDecision bypass)
+### Completed implementation
+
+- [x] Corrective execution scoped to current authorized action (satisfaction +
+      reopen supersede + reducer ignores superseded/failed delivery)
+- [x] Manager-initiated serial BUY allowed when no open validated ResourceNeed;
+      stale bound need still refused
+- [x] Assessment grounding: action-linked acquisitions + owned observations;
+      `PlanningConfiguration | null` for provider config
+- [x] `proposeDecision` uses structured-chat doubles without LIVE_AI
+
+### Tested seams (behavioral regressions; not physical Gate 1)
+
+- [x] MAKE→BUY→MAKE→negative→corrective new run/artifact→assessment #2→complete
+- [x] Second negative → explicit `blocked` stop (not a fourth pending alone)
+- [x] Manager BUY without worker ResourceNeed; stale bound refused
+- [x] `proposeDecision` doubles assert result-package/critique content
+- [x] `executeWorker` production seam with worker model double
+- [x] Assessment excludes unrelated Objective-wide acquisitions
+- [x] F causality: missing observed acquisition content fails (no sim fallback)
+
+### Remaining physical acceptance (do not run in this pass)
+
+- [ ] Physical Gate 1 (live models / deploy / real payments)
+- [ ] Gate 2
 
 ## Do not
 

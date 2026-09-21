@@ -965,6 +965,35 @@ export const submitResult = internalMutation({
   },
 });
 
+// Owned application observations for final assessment grounding (not provider text).
+export const listOwnedObservationsForAssessment = internalQuery({
+  args: {
+    objectiveKey: v.string(),
+    limit: v.optional(v.number()),
+  },
+  returns: v.array(
+    v.object({
+      evidenceId: v.string(),
+      sourceClass: v.string(),
+      label: v.string(),
+      text: v.string(),
+    }),
+  ),
+  handler: async (ctx, args) => {
+    const cap = Math.min(Math.max(args.limit ?? 6, 1), 12);
+    const evidence = await listEvidence(ctx.db, args.objectiveKey);
+    return evidence
+      .filter((item) => item.origin === "application_observation")
+      .slice(-cap)
+      .map((item) => ({
+        evidenceId: item.id,
+        sourceClass: String(item.sourceClass ?? ""),
+        label: String(item.label ?? "").slice(0, 200),
+        text: String(item.text ?? "").slice(0, 800),
+      }));
+  },
+});
+
 // Internal read port for the worker: observable state plus the durable observed
 // text, so the worker's result can be based on what it actually read. Bounding
 // for the model's context window happens in the runtime, not here.

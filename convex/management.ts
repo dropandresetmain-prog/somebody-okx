@@ -502,6 +502,22 @@ export function buildConvexManagementPorts(ctx: MutationCtx): ManagementPorts {
       // own re-derived facts decide whether it passes. A submitted row whose
       // proofs recompute gets advanced to `verified` HERE, in the same
       // transaction that records the resolution; nothing else may.
+      // Scope delivery to the CURRENT authorized action. Historical verified
+      // assignments for this requirement (e.g. a pre-critique MAKE) must not
+      // re-satisfy or suppress a corrective run.
+      const currentDecision = (await ctx.runQuery(
+        internal.internal.workforce.latestAuthorizedDecision,
+        {
+          objectiveKey: state.objectiveKey,
+          requirementKey,
+          contractRevision: currentContractRevision,
+        },
+      )) as { decisionId?: string } | null;
+      const currentDecisionId =
+        typeof currentDecision?.decisionId === "string"
+          ? currentDecision.decisionId
+          : null;
+
       const assignmentRows = await ctx.db
         .query("assignments")
         .withIndex("by_objective", (q) => q.eq("objectiveKey", state.objectiveKey))
@@ -511,15 +527,20 @@ export function buildConvexManagementPorts(ctx: MutationCtx): ManagementPorts {
         .filter(
           (a) =>
             a.requirementKey === requirementKey &&
-            a.contractRevision === currentContractRevision,
+            a.contractRevision === currentContractRevision &&
+            a.state !== "superseded" &&
+            a.state !== "failed" &&
+            (currentDecisionId == null || a.decisionId === currentDecisionId),
         );
-      const verifiedAssignment = scoped.find((a) => a.state === "verified") ?? null;
-      const submittedAssignment = verifiedAssignment
+      // Prefer an in-flight submitted result over a prior verified row.
+      const submittedAssignment =
+        scoped
+          .filter((a) => a.state === "result_submitted")
+          .sort((a, b) => a.assignmentId.localeCompare(b.assignmentId))[0] ?? null;
+      const verifiedAssignment = submittedAssignment
         ? null
-        : (scoped
-            .filter((a) => a.state === "result_submitted")
-            .sort((a, b) => a.assignmentId.localeCompare(b.assignmentId))[0] ?? null);
-      const acceptedAssignment = verifiedAssignment ?? submittedAssignment;
+        : (scoped.find((a) => a.state === "verified") ?? null);
+      const acceptedAssignment = submittedAssignment ?? verifiedAssignment;
       // `verifiedIntentIds` in scoped facts is ALREADY requirement- and
       // revision-filtered (see readScopedProofFacts) â€” the sorted first id is
       // a deterministic pick, never "whatever row came back first".
@@ -723,6 +744,47 @@ export function buildConvexManagementPorts(ctx: MutationCtx): ManagementPorts {
           };
         }
         if (assessment.meetsMinimumBar !== true) {
+          const assessmentAttempts =
+            (omgmt.finalAssessmentAttempts as number | undefined) ?? 0;
+          if (assessmentAttempts >= BEGIN_FINAL_ASSESSMENT_CEILING) {
+            const verdict = {
+              accepted: false as const,
+              objectiveState: "blocked" as const,
+              unmet: [
+                `serial final-assessment recovery budget exhausted (${assessmentAttempts}/${BEGIN_FINAL_ASSESSMENT_CEILING}): ${assessment.rationale.slice(0, 240)}`,
+              ],
+            };
+            // Persist so settle/reducer honor blocked (not a silent executing loop).
+            const decisionId = `gate_${proposal.objectiveKey}_r${currentContractRevision}`;
+            await ctx.runMutation(internal.internal.workforce.putDecision, {
+              objectiveKey: proposal.objectiveKey,
+              decisionId,
+              data: {
+                decisionId,
+                objectiveKey: proposal.objectiveKey,
+                contractRevision: currentContractRevision,
+                requirementKey: "",
+                kind: "completion_proposal" as const,
+                strategy: null,
+                optionId: null,
+                recommendation: null,
+                authorization: {
+                  kind: "refused" as const,
+                  requirementKey: "",
+                  contractRevision: currentContractRevision,
+                  reasons: ["unknown" as const],
+                  detail: "final assessment recovery budget exhausted",
+                },
+                coarsePlanSummary: JSON.stringify({
+                  gateVerdict: verdict,
+                  gateProposal: proposal,
+                }),
+                consideredOptionIds: [],
+                at,
+              },
+            });
+            return verdict;
+          }
           await reopenSerialDeliverableAfterNegativeAssessment(
             ctx,
             proposal.objectiveKey,
@@ -734,7 +796,7 @@ export function buildConvexManagementPorts(ctx: MutationCtx): ManagementPorts {
             accepted: false,
             objectiveState: "executing",
             unmet: [
-              `final semantic assessment: not ready â€” ${assessment.rationale.slice(0, 240)}`,
+              `final semantic assessment: not ready — ${assessment.rationale.slice(0, 240)}`,
             ],
           };
         }
@@ -2637,7 +2699,9 @@ async function dispatchExternal(
         ? candidateNeeds[0]!
         : null;
   // Serial BUY: refuse stale/missing bound need and refuse accidentally unbound
-  // intents. Ambiguous multi-need without binding was already deferred above.
+  // intents when open validated needs exist. Manager-initiated BUY (no open
+  // validated ResourceNeed) may proceed from the authorized decision alone —
+  // spend/auth still come from authorization; scarcity is not fabricated here.
   if (boundNeedDedupeKey || boundResourceNeedId) {
     if (!matchingNeed) {
       return await noteDispatchDeferred(
@@ -2656,15 +2720,17 @@ async function dispatchExternal(
       at,
       "ambiguous validated ResourceNeed for this BUY; decision must bind need identity before dispatch",
     );
-  } else if (serialBuy && !matchingNeed) {
+  } else if (serialBuy && candidateNeeds.length > 0 && !matchingNeed) {
     return await noteDispatchDeferred(
       ctx,
       objectiveKey,
       persisted.requirementKey,
       at,
-      "serial BUY requires a bound validated ResourceNeed; refusing unbound intent",
+      "serial BUY with open validated ResourceNeed(s) must bind need identity before dispatch",
     );
   }
+  // Manager-initiated: candidateNeeds.length === 0 and no bound need — intent
+  // is created from the authorized option without fabricating a ResourceNeed.
   const intentWithNeed: ExecutionIntent = matchingNeed
     ? {
         ...created.intent,
@@ -2842,6 +2908,31 @@ async function reopenSerialDeliverableAfterNegativeAssessment(
       currentContractRevision: contractRevision,
     });
   }
+
+  // Preserve historical verified MAKE rows as history, not as the current
+  // delivery. Without this, strategyDelivery treats the prior verified
+  // assignment as "already delivered" and blocks corrective dispatch.
+  const assignmentRows = await ctx.db
+    .query("assignments")
+    .withIndex("by_objective", (q) => q.eq("objectiveKey", objectiveKey))
+    .collect();
+  for (const row of assignmentRows) {
+    const assignment = (row as AnyRow).data as Assignment;
+    if (assignment.contractRevision !== contractRevision) continue;
+    if (assignment.state !== "verified" && assignment.state !== "result_submitted")
+      continue;
+    const moved = advanceAssignment(assignment, "superseded", at, {
+      resultSummary: `superseded after negative final assessment: ${rationale.slice(0, 200)}`,
+    });
+    if (moved.ok) {
+      await ctx.runMutation(internal.internal.workforce.putAssignment, {
+        assignmentId: assignment.assignmentId,
+        objectiveKey,
+        data: moved.assignment,
+      });
+    }
+  }
+
   await ctx.db.patch(row._id, {
     data: {
       ...data,

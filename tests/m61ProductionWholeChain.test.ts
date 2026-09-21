@@ -738,14 +738,20 @@ test("F production whole-chain: founder → MAKE → gap → BUY sim → MAKE ar
             loadedInputPackage?: { inputEvidenceIds?: string[] };
           };
           const acquired = obs.acquiredInputs?.[0];
-          const evidenceId =
-            acquired?.resultEvidenceId ??
-            obs.loadedInputPackage?.inputEvidenceIds?.[0] ??
-            sim.resultEvidenceId;
-          const finding = String(acquired?.text ?? "").slice(0, 400);
+          const evidenceId = acquired?.resultEvidenceId;
+          const finding = String(acquired?.text ?? "").trim();
           assert.ok(
             evidenceId,
-            "second MAKE worker must see action-scoped acquisition in observation",
+            "second MAKE worker must see action-scoped acquisition evidence id in observation (no sim fallback)",
+          );
+          assert.equal(
+            evidenceId,
+            sim.resultEvidenceId,
+            "observed acquisition must be the authorized simulated receipt",
+          );
+          assert.ok(
+            finding.length > 0,
+            "observed acquisition content must be present; missing content fails causality",
           );
           return {
             usage: new Usage(),
@@ -753,7 +759,7 @@ test("F production whole-chain: founder → MAKE → gap → BUY sim → MAKE ar
               toolCall(
                 "update_company_artifact",
                 {
-                  content: `Relaunch recommendation grounded in acquired evidence.\n${finding || "acquired audience language"}`,
+                  content: `Relaunch recommendation grounded in acquired evidence.\n${finding.slice(0, 400)}`,
                   changeNote: "Apply observed acquisition to relaunch copy",
                   usedAcquisitionEvidenceIds: [evidenceId],
                 },
@@ -827,9 +833,18 @@ test("F production whole-chain: founder → MAKE → gap → BUY sim → MAKE ar
           lockedContract?: { minimumCompletionBar?: string };
           deliverableCriteria?: { mustBeTrue?: string };
           evidenceIds?: string[];
+          ownedObservations?: unknown[];
+          verifiedAcquisitions?: Array<{ resultEvidenceId?: string }>;
         };
         assert.equal(parsed.artifact?.key, ARTIFACT);
         assert.equal(parsed.artifact?.version, art!.version);
+        assert.ok(Array.isArray(parsed.ownedObservations));
+        assert.ok(
+          (parsed.verifiedAcquisitions ?? []).every(
+            (a) => a.resultEvidenceId === sim.resultEvidenceId,
+          ),
+          "assessment must not include unrelated Objective-wide acquisitions",
+        );
         assert.ok(
           parsed.lockedContract?.minimumCompletionBar === "relaunch" ||
             String(req.user).includes("relaunch"),

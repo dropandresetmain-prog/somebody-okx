@@ -158,6 +158,12 @@ export const objectiveRecord = v.object({
     v.literal("waiting_for_resource"),
     v.literal("completed"),
     v.literal("failed"),
+    // Management quiescent / control states written by writeObjectiveState.
+    v.literal("waiting"),
+    v.literal("approval_required"),
+    v.literal("blocked"),
+    v.literal("escalated"),
+    v.literal("recovery_required"),
   ),
   activity: v.string(),
   plan: v.union(capabilityPlan, v.null()),

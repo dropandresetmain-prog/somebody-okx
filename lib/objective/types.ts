@@ -82,7 +82,13 @@ export type ObjectiveState =
   // external acquisition, NOT failed. BUY is not failure (§8).
   | "waiting_for_resource"
   | "completed"
-  | "failed";
+  | "failed"
+  // Management control states (writeObjectiveState / serial recovery stop).
+  | "waiting"
+  | "approval_required"
+  | "blocked"
+  | "escalated"
+  | "recovery_required";
 
 export type WorkItemState =
   | "defined"

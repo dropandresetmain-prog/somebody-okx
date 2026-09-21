@@ -150,6 +150,16 @@ export function reduceManagementState(facts: ReducerFacts): ReducedState {
         action: { kind: "hold", state: "recovery_required", reason: "gate demanded recovery" },
         detail: completionProposal.unmet.join("; "),
       };
+    if (completionProposal.objectiveState === "blocked")
+      return {
+        state: "blocked",
+        action: {
+          kind: "hold",
+          state: "blocked",
+          reason: "final assessment recovery budget exhausted",
+        },
+        detail: completionProposal.unmet.join("; "),
+      };
     // fall through with the gate's rejection informing the state below
   }
 
@@ -236,8 +246,12 @@ export function reduceManagementState(facts: ReducerFacts): ReducedState {
   // state — which is exactly what the graph's dead `verify` node needed.
   const needsVerification = current.find((requirement) => {
     if (requirement.state === "satisfied" || requirement.state === "superseded") return false;
+    // Historical superseded/failed rows are evidence, not current delivery.
     const assignmentIn = assignments.filter(
-      (assignment) => assignment.requirementKey === requirement.requirementKey,
+      (assignment) =>
+        assignment.requirementKey === requirement.requirementKey &&
+        assignment.state !== "superseded" &&
+        assignment.state !== "failed",
     );
     if (assignmentIn.some((assignment) => assignment.state === "result_submitted")) return true;
     const intentsIn = intents.filter((intent) => intent.requirementKey === requirement.requirementKey);
@@ -290,7 +304,12 @@ export function reduceManagementState(facts: ReducerFacts): ReducedState {
         DISPATCHABLE_STRATEGIES.has(requirement.strategy ?? "") &&
         !strategyDelivery(requirement.strategy, {
           assignmentStates: assignments
-            .filter((assignment) => assignment.requirementKey === requirement.requirementKey)
+            .filter(
+              (assignment) =>
+                assignment.requirementKey === requirement.requirementKey &&
+                assignment.state !== "superseded" &&
+                assignment.state !== "failed",
+            )
             .map((assignment) => assignment.state),
           intentStates: intents
             .filter((intent) => intent.requirementKey === requirement.requirementKey)

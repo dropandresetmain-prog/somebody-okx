@@ -627,6 +627,19 @@ export const findAssignment = internalQuery({
   },
 });
 
+/** Thin list of assignment payloads for assessment grounding / action scope. */
+export const listAssignmentsForObjective = internalQuery({
+  args: { objectiveKey: v.string() },
+  returns: v.array(v.any()),
+  handler: async (ctx, args): Promise<unknown[]> => {
+    const rows = await ctx.db
+      .query("assignments")
+      .withIndex("by_objective", (q) => q.eq("objectiveKey", args.objectiveKey))
+      .collect();
+    return rows.map((row) => (row as AssignmentRow).data);
+  },
+});
+
 export const findIntent = internalQuery({
   args: { objectiveKey: v.string(), intentId: v.string() },
   returns: v.any(),
