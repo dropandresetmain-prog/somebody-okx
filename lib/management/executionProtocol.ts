@@ -44,3 +44,19 @@ export function isInputOnlyRequirement(proofKinds: readonly string[]): boolean {
       kind === "verified_external_result" || kind === "verified_external_effect",
   );
 }
+
+/**
+ * Serial protocol: whether a verified BUY may satisfy this Requirement.
+ *
+ * Uses explicit `requirementKind` when present. Legacy rows (kind omitted)
+ * fall back to proof-derived `isInputOnlyRequirement` so historical behavior
+ * is preserved. Never infer from strategy, capability, or keywords alone.
+ */
+export function isSerialInputRequirement(requirement: {
+  requirementKind?: "deliverable" | "input" | null;
+  proofs: readonly { proofKind: string }[];
+}): boolean {
+  if (requirement.requirementKind === "input") return true;
+  if (requirement.requirementKind === "deliverable") return false;
+  return isInputOnlyRequirement(requirement.proofs.map((p) => p.proofKind));
+}

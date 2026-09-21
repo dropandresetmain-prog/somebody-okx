@@ -17,9 +17,9 @@ import {
   applyDecision,
   runManagementPass,
 } from "../convex/management";
-import { initBudget, putContract } from "../convex/internal/workforce";
+import { initBudget, putContract, putIntent, putRequirement } from "../convex/internal/workforce";
 import { readWorkerObservation } from "../convex/objectives";
-import { buildOutcomeContract } from "../lib/management/contract";
+import { buildOutcomeContract, buildRequirement } from "../lib/management/contract";
 import { runManagerialDecisionPass } from "../lib/management/decision";
 import type { GroundingContext, RegistryOffering } from "../lib/management/decision";
 import { evaluateCompletionGate } from "../lib/management/completion";
@@ -30,6 +30,7 @@ import {
 } from "../lib/management/reducer";
 import {
   assignmentRequiresArtifactMutation,
+  isSerialInputRequirement,
   M61_SERIAL_V1,
 } from "../lib/management/executionProtocol";
 import { optionIdFor, factValue } from "../lib/management/options";
@@ -426,6 +427,291 @@ test("serial post-acq: cleared strategy + verified BUY + non-input-only → deci
     (r.action as { requirementKey: string }).requirementKey,
     REQ,
   );
+});
+
+test("isSerialInputRequirement: explicit kind beats proof shape", () => {
+  assert.equal(
+    isSerialInputRequirement({
+      requirementKind: "deliverable",
+      proofs: [{ proofKind: "verified_external_result" }],
+    }),
+    false,
+    "deliverable with only external-result proofs is NOT input",
+  );
+  assert.equal(
+    isSerialInputRequirement({
+      requirementKind: "input",
+      proofs: [{ proofKind: "application_observation" }],
+    }),
+    true,
+  );
+  // Legacy omit → proof-derived
+  assert.equal(
+    isSerialInputRequirement({
+      proofs: [{ proofKind: "verified_external_result" }],
+    }),
+    true,
+  );
+  assert.equal(
+    isSerialInputRequirement({
+      proofs: [
+        { proofKind: "verified_external_result" },
+        { proofKind: "application_observation" },
+      ],
+    }),
+    false,
+  );
+});
+
+/**
+ * Production seam: real serial DELIVERABLE requirement → authorize BUY →
+ * verified acquisition → runManagementPass. Strategy must clear for
+ * reassessment; Requirement must NOT become satisfied. Does not pre-clear
+ * strategy (the circular isInputOnlyRequirement bug).
+ */
+test("production seam: serial DELIVERABLE + verified BUY → release for redecide, not satisfied", async () => {
+  const t = convexTest(schema, modules);
+  const key = "obj_serial_buy_deliverable";
+  const reqKey = "req_relaunch";
+  const artifactKey = "launch/page-message";
+
+  await t.mutation(async (ctx) => {
+    await ctx.db.insert("objectives", {
+      key,
+      data: {
+        key,
+        request: "Diagnose weak launch messaging and prepare a better relaunch",
+        createdAt: now,
+        updatedAt: now,
+        state: "executing",
+        activity: "BUY authorized for deliverable",
+        plan: null,
+        workItems: [],
+        run: null,
+        result: null,
+        companyArtifacts: [
+          {
+            key: artifactKey,
+            version: 1,
+            content: "seed headline",
+            history: [],
+          },
+        ],
+        acquisitionResults: [
+          {
+            intentId: `int_${key}`,
+            requirementKey: reqKey,
+            contractRevision: 1,
+            resultEvidenceId: `sim_result_${key}`,
+            provenance: "simulation",
+            providerId: "2135",
+            serviceId: "newsliquid_twitter_search",
+            offeringId: "2135:newsliquid_twitter_search",
+            resourceClass: "proprietary_data",
+            content: "SIMULATED audience messaging evidence",
+            responseHash: "hash_deliverable",
+            recordedAt: now,
+            verifiedAt: now,
+          },
+        ],
+        management: {
+          contractId: null,
+          controlNotes: [],
+          executionProtocol: M61_SERIAL_V1,
+        },
+      } as never,
+    });
+  });
+  await t.mutation(async (ctx) =>
+    (initBudget as unknown as Handler)._handler(ctx, { objectiveKey: key, at: now }),
+  );
+
+  // Interpret with explicit deliverable kind (production parse path).
+  const interpreted = (await t.mutation(async (ctx) =>
+    (applyInterpretation as unknown as Handler)._handler(ctx, {
+      objectiveKey: key,
+      requestId: `interpret_${key}`,
+      rawContract: {
+        intent: "deliver a relaunch recommendation",
+        levels: [
+          {
+            levelKey: "relaunch",
+            order: 1,
+            statement: "a saved relaunch recommendation is on record",
+            label: "Relaunch",
+          },
+        ],
+        minimumCompletionBar: "relaunch",
+        ambiguities: [],
+      },
+      rawRequirements: [
+        {
+          requirementKey: reqKey,
+          priority: "required",
+          title: "Relaunch recommendation delivered",
+          mustBeTrue: "a versioned relaunch recommendation artifact is saved",
+          scope: "founder-facing deliverable",
+          expectedOutput: "saved relaunch recommendation",
+          requirementKind: "deliverable",
+          requiredResourceClasses: ["proprietary_data"],
+        },
+      ],
+      founderResolvedQuestions: [],
+      at: now,
+    }),
+  )) as { ok: boolean; errors?: string[] };
+  assert.equal(interpreted.ok, true, interpreted.errors?.join("; "));
+
+  const afterInterpret = await t.query(async (ctx) => {
+    const rows = await ctx.db
+      .query("requirements")
+      .withIndex("by_objectiveKey", (q) => q.eq("objectiveKey", key))
+      .collect();
+    return rows.map((r) => (r as { data: Requirement }).data);
+  });
+  assert.equal(afterInterpret[0]!.requirementKind, "deliverable");
+  assert.equal(afterInterpret[0]!.strategy, null);
+  assert.deepEqual(afterInterpret[0]!.proofs, []);
+
+  // Authorize BUY via production buildRequirement (strategy bound, proofs from kind).
+  const contractRow = await t.query(async (ctx) => {
+    const rows = await ctx.db
+      .query("outcomeContracts")
+      .withIndex("by_objective", (q) => q.eq("objectiveKey", key))
+      .collect();
+    return (rows[0] as { data: OutcomeContract }).data;
+  });
+  const bound = buildRequirement(
+    {
+      objectiveKey: key,
+      contract: contractRow,
+      proposed: {
+        requirementKey: reqKey,
+        priority: "required",
+        title: "Relaunch recommendation delivered",
+        mustBeTrue: "a versioned relaunch recommendation artifact is saved",
+        scope: "founder-facing deliverable",
+        dependsOnRequirementKeys: [],
+        requiredResourceClasses: ["proprietary_data"],
+        expectedOutput: "saved relaunch recommendation",
+        requirementKind: "deliverable",
+      },
+      artifactKeyForInternalProof: artifactKey,
+      at: now,
+    },
+    "BUY",
+  );
+  assert.ok("requirement" in bound);
+  if (!("requirement" in bound)) return;
+  // Critical: BUY on deliverable must NOT collapse to input-only proofs.
+  assert.equal(isSerialInputRequirement(bound.requirement), false);
+  assert.ok(
+    bound.requirement.proofs.some((p) => p.proofKind === "company_artifact_version"),
+  );
+  assert.ok(
+    !bound.requirement.proofs.every(
+      (p) =>
+        p.proofKind === "verified_external_result" ||
+        p.proofKind === "verified_external_effect",
+    ),
+  );
+
+  // Persist BUY-bound requirement WITHOUT clearing strategy (production state
+  // right after authorize, before releaseSerialAcquisitionForReassessment).
+  await t.mutation(async (ctx) =>
+    (putRequirement as unknown as Handler)._handler(ctx, {
+      objectiveKey: key,
+      requirementKey: reqKey,
+      data: { ...bound.requirement, strategy: "BUY" },
+      currentContractRevision: 1,
+    }),
+  );
+
+  await t.mutation(async (ctx) =>
+    (putIntent as unknown as Handler)._handler(ctx, {
+      intentId: `int_${key}`,
+      objectiveKey: key,
+      idempotencyKey: `idem_${key}`,
+      data: {
+        intentId: `int_${key}`,
+        idempotencyKey: `idem_${key}`,
+        objectiveKey: key,
+        requirementKey: reqKey,
+        contractRevision: 1,
+        decisionId: `dec_${key}`,
+        kind: "external_acquisition",
+        strategy: "BUY",
+        target: {
+          offeringId: "2135:newsliquid_twitter_search",
+          providerId: "2135",
+          serviceId: "newsliquid_twitter_search",
+          resourceClass: "proprietary_data",
+          endpointRef: null,
+        },
+        terms: {
+          priceUsd: 2,
+          priceProvenance: "provider_quote",
+          requiresApproval: true,
+          approvalId: `grant_${key}`,
+        },
+        state: "verified",
+        attempts: 1,
+        lastEventId: "evt_v",
+        resultEvidenceId: `sim_result_${key}`,
+        verificationEvidenceId: `sim_verification_${key}`,
+        boundaryNote: "verified simulation",
+        createdAt: now - 5_000,
+        updatedAt: now,
+      },
+    }),
+  );
+
+  // Confirm strategy still BUY before the production pass (not pre-cleared).
+  const beforePass = await t.query(async (ctx) => {
+    const row = await ctx.db
+      .query("requirements")
+      .withIndex("by_objectiveRequirement", (q) =>
+        q.eq("objectiveKey", key).eq("requirementKey", reqKey),
+      )
+      .unique();
+    return (row as { data: Requirement }).data;
+  });
+  assert.equal(beforePass.strategy, "BUY");
+  assert.equal(beforePass.state, "active");
+  assert.equal(beforePass.requirementKind, "deliverable");
+
+  const outcome = (await t.mutation(async (ctx) =>
+    (runManagementPass as unknown as Handler)._handler(ctx, {
+      objectiveKey: key,
+      reason: "verification_result",
+    }),
+  )) as { objectiveState: string; summary: string };
+
+  const afterPass = await t.query(async (ctx) => {
+    const row = await ctx.db
+      .query("requirements")
+      .withIndex("by_objectiveRequirement", (q) =>
+        q.eq("objectiveKey", key).eq("requirementKey", reqKey),
+      )
+      .unique();
+    return (row as { data: Requirement }).data;
+  });
+
+  assert.equal(afterPass.state, "active", "deliverable must stay open");
+  assert.equal(afterPass.resolution, null, "BUY receipt must not satisfy");
+  assert.equal(
+    afterPass.strategy,
+    null,
+    "serial deliverable must clear BUY for reassessment",
+  );
+  assert.ok(
+    afterPass.proofs.some((p) => p.proofKind === "company_artifact_version"),
+    "deliverable proofs must remain",
+  );
+  // Pass should route toward decide (or settle with decide pending) — not
+  // treat the requirement as done.
+  assert.notEqual(afterPass.state, "satisfied");
+  void outcome;
 });
 
 // ── 4. assignmentRequiresArtifactMutation ────────────────────────────────────

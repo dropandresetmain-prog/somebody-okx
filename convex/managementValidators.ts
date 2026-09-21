@@ -130,6 +130,10 @@ export const vRequirement = v.object({
   dependsOnRequirementKeys: v.optional(v.array(v.string())),
   requiredResourceClasses: v.optional(v.array(v.string())),
   expectedOutput: v.optional(v.union(v.string(), v.null())),
+  // M6.1 serial: explicit semantic discriminator. Absent on legacy rows.
+  requirementKind: v.optional(
+    v.union(v.literal("deliverable"), v.literal("input")),
+  ),
   proofs: v.array(vProofSpec),
   state: vRequirementState,
   strategy: v.union(vSatisfactionStrategy, v.null()),

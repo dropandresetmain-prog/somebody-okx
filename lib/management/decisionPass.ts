@@ -249,6 +249,9 @@ export async function buildDecisionPassInput(
       dependsOnRequirementKeys: [...(requirement.dependsOnRequirementKeys ?? [])],
       requiredResourceClasses: [...(requirement.requiredResourceClasses ?? [])],
       expectedOutput: requirement.expectedOutput ?? null,
+      ...(requirement.requirementKind
+        ? { requirementKind: requirement.requirementKind }
+        : {}),
       artifactKeyForInternalProof,
       staffing: {
         objectiveKey: contract.objectiveKey,

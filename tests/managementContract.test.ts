@@ -193,8 +193,14 @@ function contract1() {
 
 test("MAKE requirement gets artifact + observation proofs; BUY gets verified external result only", () => {
   const contract = contract1();
+  // Legacy proposal (no requirementKind): strategy-derived proofs.
+  const makeProposed = {
+    ...baseProposed,
+    expectedOutput: "page is live",
+  };
+  delete (makeProposed as { requirementKind?: string }).requirementKind;
   const make = buildRequirement(
-    { objectiveKey: "obj_launch", contract, proposed: baseProposed, artifactKeyForInternalProof: "launch_page", at },
+    { objectiveKey: "obj_launch", contract, proposed: makeProposed, artifactKeyForInternalProof: "launch_page", at },
     "MAKE",
   );
   assert.ok("requirement" in make);
@@ -202,8 +208,10 @@ test("MAKE requirement gets artifact + observation proofs; BUY gets verified ext
   const makeKinds = make.requirement.proofs.map((p) => p.proofKind);
   assert.deepEqual(makeKinds.sort(), ["application_observation", "company_artifact_version"]);
 
+  const buyProposed = { ...baseProposed };
+  delete (buyProposed as { requirementKind?: string }).requirementKind;
   const buy = buildRequirement(
-    { objectiveKey: "obj_launch", contract, proposed: baseProposed, artifactKeyForInternalProof: null, at },
+    { objectiveKey: "obj_launch", contract, proposed: buyProposed, artifactKeyForInternalProof: null, at },
     "BUY",
   );
   assert.ok("requirement" in buy);
@@ -211,6 +219,57 @@ test("MAKE requirement gets artifact + observation proofs; BUY gets verified ext
   assert.deepEqual(buy.requirement.proofs.map((p) => p.proofKind), ["verified_external_result"]);
   // A BUY may not sneak an artifact proof in — nothing internal mutates.
   assert.ok(!buy.requirement.proofs.some((p) => p.proofKind === "company_artifact_version"));
+});
+
+test("serial deliverable + BUY keeps deliverable proofs (receipt ≠ output)", () => {
+  const contract = contract1();
+  const deliverable = {
+    ...baseProposed,
+    requirementKind: "deliverable" as const,
+    expectedOutput: "relaunch recommendation saved",
+  };
+  const buy = buildRequirement(
+    {
+      objectiveKey: "obj_launch",
+      contract,
+      proposed: deliverable,
+      artifactKeyForInternalProof: "launch_page",
+      at,
+    },
+    "BUY",
+  );
+  assert.ok("requirement" in buy);
+  if (!("requirement" in buy)) return;
+  const kinds = buy.requirement.proofs.map((p) => p.proofKind).sort();
+  assert.deepEqual(kinds, ["application_observation", "company_artifact_version"]);
+  assert.ok(!kinds.includes("verified_external_result"));
+  assert.equal(buy.requirement.requirementKind, "deliverable");
+  assert.equal(buy.requirement.strategy, "BUY");
+});
+
+test("serial input + BUY may attach verified_external_result", () => {
+  const contract = contract1();
+  const inputReq = {
+    ...baseProposed,
+    requirementKind: "input" as const,
+    expectedOutput: null,
+  };
+  const buy = buildRequirement(
+    {
+      objectiveKey: "obj_launch",
+      contract,
+      proposed: inputReq,
+      artifactKeyForInternalProof: null,
+      at,
+    },
+    "BUY",
+  );
+  assert.ok("requirement" in buy);
+  if (!("requirement" in buy)) return;
+  assert.deepEqual(buy.requirement.proofs.map((p) => p.proofKind), [
+    "verified_external_result",
+  ]);
+  assert.equal(buy.requirement.requirementKind, "input");
 });
 
 test("WAIT/BLOCK attach no proof, so a requirement stuck on them cannot be 'satisfied' by work", () => {

@@ -95,6 +95,19 @@ export type OutcomeContract = {
 
 export type RequirementPriority = "required" | "supporting";
 
+/**
+ * Semantic requirement discriminator (M6.1 serial protocol).
+ *
+ * - `deliverable` — founder-facing output stays open until the actual
+ *   deliverable exists. A verified BUY is an action receipt only.
+ * - `input` — the Requirement itself is that an accepted input/evidence
+ *   must become available; a scoped verified external result may satisfy it.
+ *
+ * Legacy rows omit this field; readers preserve historical proof-derived
+ * behavior when absent. Never infer from strategy, proofs, or keywords.
+ */
+export type RequirementKind = "deliverable" | "input";
+
 // CRITICAL: provider-candidate rejection ≠ satisfaction; MAKE decision ≠
 // satisfaction; worker-run completion ≠ satisfaction. Only an accepted
 // resolution with current proof moves state to "satisfied".
@@ -179,6 +192,11 @@ export type Requirement = {
   requiredResourceClasses: string[];
   /** Short statement of the expected output/state change, when known. */
   expectedOutput: string | null;
+  /**
+   * Explicit semantic kind. Absent on legacy rows.
+   * Serial path: do not infer from strategy or attached proofs.
+   */
+  requirementKind?: RequirementKind;
   proofs: ProofSpec[];
   state: RequirementState;
   strategy: SatisfactionStrategy | null; // last authorized strategy

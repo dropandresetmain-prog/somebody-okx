@@ -29,7 +29,7 @@ import { buildManagementGraph } from "../lib/management/graph";
 import type { ManagementPorts } from "../lib/management/graph";
 import { runManagerialDecisionPass } from "../lib/management/decision";
 import {
-  isInputOnlyRequirement,
+  isSerialInputRequirement,
   isSerialManagerProtocol,
 } from "../lib/management/executionProtocol";
 import { buildDecisionPassInput } from "../lib/management/decisionPass";
@@ -1285,7 +1285,10 @@ async function releaseSerialAcquisitionForReassessment(
     if (req.strategy !== "BUY" && req.strategy !== "HYBRID") continue;
     if (!verifiedByReq.has(req.requirementKey)) continue;
     if (activeAssignmentReqs.has(req.requirementKey)) continue;
-    if (isInputOnlyRequirement(req.proofs.map((p) => p.proofKind))) continue;
+    // Explicit requirementKind (or legacy proof-derived input-only) keeps
+    // strategy so verify may accept a scoped external result. Deliverable
+    // requirements clear so Somebody reassesses — BUY receipt ≠ output proof.
+    if (isSerialInputRequirement(req)) continue;
     // Clear without inventing a failed attempt pin — acquisition succeeded.
     const cleared: Requirement = {
       ...req,

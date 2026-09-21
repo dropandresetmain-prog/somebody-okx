@@ -154,6 +154,9 @@ export function buildSemanticRequirement(input: {
       dependsOnRequirementKeys: [...(proposed.dependsOnRequirementKeys ?? [])],
       requiredResourceClasses: [...(proposed.requiredResourceClasses ?? [])],
       expectedOutput: proposed.expectedOutput ?? null,
+      ...(proposed.requirementKind
+        ? { requirementKind: proposed.requirementKind }
+        : {}),
       proofs: [],
       state: "active",
       strategy: null,
@@ -195,6 +198,9 @@ export function buildRequirement(
       dependsOnRequirementKeys: [...(proposed.dependsOnRequirementKeys ?? [])],
       requiredResourceClasses: [...(proposed.requiredResourceClasses ?? [])],
       expectedOutput: proposed.expectedOutput ?? null,
+      ...(proposed.requirementKind
+        ? { requirementKind: proposed.requirementKind }
+        : {}),
       proofs,
       state: "active",
       strategy,
@@ -214,8 +220,16 @@ function attachGovernedProofs(
   strategy: SatisfactionStrategy | null,
   artifactKey: string | null,
 ): ProofSpec[] {
-  // Strategy-derived proof, application-owned. The bar level is always
-  // reflected in a real proof method, never in the model's prose.
+  // Explicit semantic kind owns proof attachment for serial rows.
+  // Strategy must not redefine what the founder asked to receive.
+  if (proposed.requirementKind === "deliverable") {
+    return attachDeliverableProofs(proposed, artifactKey);
+  }
+  if (proposed.requirementKind === "input") {
+    return attachInputProofs(proposed, strategy);
+  }
+
+  // Legacy (kind omitted from older callers): strategy-derived proofs.
   const proofs: ProofSpec[] = [];
   if (strategy === "BUY" || strategy === "HYBRID") {
     proofs.push({
@@ -226,9 +240,6 @@ function attachGovernedProofs(
     });
   }
   if (strategy === "MAKE" || strategy === "HYBRID") {
-    // Drafting proof only when the requirement names a controlled output to
-    // save. Analysis/diagnosis MUST NOT inherit an artifact obligation merely
-    // because the capability envelope could mutate one.
     if (artifactKey && proposed.expectedOutput) {
       proofs.push({
         proofKey: "artifact_change",
@@ -252,9 +263,63 @@ function attachGovernedProofs(
       params: {},
     });
   }
-  // WAIT / BLOCK attach no proof: they cannot be satisfied by work, only by a
-  // later strategy decision or an authorized waiver.
   void contract;
+  return proofs;
+}
+
+/** Founder-facing deliverable proofs — independent of MAKE vs BUY selection. */
+function attachDeliverableProofs(
+  proposed: ParsedRequirementProposal,
+  artifactKey: string | null,
+): ProofSpec[] {
+  const proofs: ProofSpec[] = [];
+  if (artifactKey && proposed.expectedOutput) {
+    proofs.push({
+      proofKey: "artifact_change",
+      description: `controlled company artifact ${artifactKey} advanced by an accepted run`,
+      proofKind: "company_artifact_version",
+      params: { artifactKey, minVersion: 2 },
+    });
+  }
+  proofs.push({
+    proofKey: "observation",
+    description: "at least one application-recorded observation supports the requirement",
+    proofKind: "application_observation",
+    params: {},
+  });
+  return proofs;
+}
+
+/** Explicit input requirements may be satisfied by a scoped verified acquisition. */
+function attachInputProofs(
+  proposed: ParsedRequirementProposal,
+  strategy: SatisfactionStrategy | null,
+): ProofSpec[] {
+  const proofs: ProofSpec[] = [];
+  if (strategy === "BUY" || strategy === "HYBRID" || strategy === null) {
+    proofs.push({
+      proofKey: "external_result",
+      description: `acquired external result for ${proposed.title} persisted and verified`,
+      proofKind: "verified_external_result",
+      params: {},
+    });
+  }
+  if (strategy === "MAKE") {
+    proofs.push({
+      proofKey: "observation",
+      description: "at least one application-recorded observation supports the requirement",
+      proofKind: "application_observation",
+      params: {},
+    });
+  }
+  if (strategy === "ASK_FOUNDER") {
+    proofs.push({
+      proofKey: "founder_answer",
+      description: "founder answer recorded against this requirement",
+      proofKind: "founder_confirmation",
+      params: {},
+    });
+  }
   return proofs;
 }
 

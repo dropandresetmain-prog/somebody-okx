@@ -1,7 +1,7 @@
 # ACTIVE TASK — M6.1 manager–execution mini-refactor
 
 Updated: 21 September 2026 (Singapore)
-Status: **BLOCKS 1–2 CANDIDATE READY FOR OWNER REVIEW / M6.1 NOT ACCEPTED / GATE 1 NOT RUN**
+Status: **ACT-NOW FIXES IN PROGRESS / NOT READY FOR LIVE GATE 1**
 
 ## Goal
 
@@ -12,48 +12,36 @@ relaunch recommendation.
 ## Branch / base
 
 - Branch: `refactor/m6-1-manager-execution-loop`
-- Started from: `e8de0849e66f15ec8288de669c1dc5ab8187993c`
+- Recovery: `recovery/m61-b5e6d52-pre-actnow` @ `b5e6d52`
+- Started act-now from: `b5e6d52c2a21aeadb35062de978a37be6b0be0d0`
 - Preserved: `stash@{0}` free-model experiments; untracked `scripts/_tmp-*`
 - Worktrees left alone
 
-## Shared contracts implemented
+## Checkpoint
 
-- `management.executionProtocol: "m61_serial_v1"` set at `applyInterpretation`
-- Absent/legacy keeps HYBRID + old ceremonies readable
-- `WorkerResultInput.terminal`: `DELIVERED` | `NEEDS_INPUT` | `EXECUTION_ERROR`
-- Serial: no compound HYBRID ground/offer/dispatch; ≤1 current action
-- Verified BUY (non input-only) → clear strategy → management redecide
-- Artifact mutation required only when proofs demand `company_artifact_version`
-  (and `expectedOutput` present when attaching that proof)
-- Historical `lastDeliveryFailureClass` / INPUT_BLOCKED = diagnostic only
+- Pushed SHA: _(pending this commit)_
+- Next: worker input package + action-scoped acquisition + artifact target
 
-## Execution checklist
+## Shared contracts (act-now progress)
 
-- [x] Verify base/local state and trace the production loop
-- [x] Record contract choices; implement shared seams
-- [x] Focused production-seam tests green (see below)
-- [ ] Owner review of changed authority/completion/concurrency
-- [ ] Gate 1 live-model (owner) — NOT run
-- [ ] Reconcile ARCHITECTURE/MASTER_PLAN at verified milestone
+- [x] `requirementKind: "deliverable" | "input"` — explicit semantic discriminator
+- [x] Serial deliverable + BUY keeps deliverable proofs (receipt ≠ output)
+- [x] `isSerialInputRequirement` replaces proof-derived input-only on serial path
+- [x] Production seam: DELIVERABLE + verified BUY → clear strategy, stay active
+- [ ] Worker input package (application-loaded)
+- [ ] Action-scoped `inputEvidenceIds` + `targetArtifactKey`
+- [ ] Terminal lifecycle / typed tool status
+- [ ] Semantic evidence-gap (no NOT_AVAILABLE required)
+- [ ] Serial spend bound as factual context (no keyword demotion)
+- [ ] Final semantic assessment + whole-chain harness
 
-## Focused checks (this candidate)
+## Do not
 
-- `tests/m61SerialManagerLoop.test.ts` — **12/12 pass**
-- `tests/m61DiagnosisToExternalIntent.test.ts` — **4/4 pass**
-- `tests/m61PostAcquisitionResume.test.ts` — **7/7 pass**
-- `tests/m61ConsistencyRepair.test.ts` — **9/9 pass**
-- `tests/m61InputDiagnosis.test.ts` + `m61ZeroProgress` — **26/26 pass**
+- Deploy or run physical Gate 1
+- Live model / live M3 / Gate 2
+- Pop `stash@{0}` or touch unrelated untracked files
 
-## Known gaps (do not claim Gate 1)
+## Next (implementer)
 
-- Full unseeded interpret→…→BUY→sim→MAKE→artifact→completion is
-  **composed from seam tests + thin interpret→MAKE→dispatch**; not yet one
-  single unbroken harness matching every Gate 1 sentence.
-- Live-model Gate 1 not run. No deployment asserted for this candidate.
-- Pre-existing: `managementDecisionPass` I3 provenance expectation mismatch
-  (`provider_quote` vs `registry_data`) — Park for Later.
-
-## Next (owner)
-
-Review this candidate; decide whether to proceed to focused review and
-physical Gate 1. Implementer must not declare M6.1/Gate 1 PASS.
+Continue same branch/chat: worker package + acquisition scope + artifact target,
+then terminal hardening, semantic gap/spend, final assessment + chain harness.

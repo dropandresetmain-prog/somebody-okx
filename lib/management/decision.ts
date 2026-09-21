@@ -88,6 +88,8 @@ export type DecisionPassInput = {
   dependsOnRequirementKeys: string[];
   requiredResourceClasses: string[];
   expectedOutput: string | null;
+  /** Persisted semantic kind; omitted on legacy rows. */
+  requirementKind?: "deliverable" | "input";
   artifactKeyForInternalProof: string | null;
   staffing: StaffingRequest & { inventory: readonly WorkerRecord[]; creationAllowed: boolean };
   grounding: GroundingContext;
@@ -336,6 +338,9 @@ export async function runManagerialDecisionPass(
           dependsOnRequirementKeys: [...input.dependsOnRequirementKeys],
           requiredResourceClasses: [...input.requiredResourceClasses],
           expectedOutput: input.expectedOutput,
+          ...(input.requirementKind
+            ? { requirementKind: input.requirementKind }
+            : {}),
         },
         artifactKeyForInternalProof: input.artifactKeyForInternalProof,
         at: input.at,

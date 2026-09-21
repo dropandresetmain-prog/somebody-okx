@@ -180,6 +180,12 @@ export type ParsedRequirementProposal = {
   dependsOnRequirementKeys: string[];
   requiredResourceClasses: string[];
   expectedOutput: string | null;
+  /**
+   * Interpretation-proposed semantic kind. Application validates the enum.
+   * Parse fail-safes unknown/absent to `deliverable`. Legacy decision rebinds
+   * may omit when the persisted row has no kind (historical proof behavior).
+   */
+  requirementKind?: "deliverable" | "input";
 };
 
 // Semantic requirement proposals. Proof specs are NOT model-authored: the
@@ -225,6 +231,14 @@ export function parseRequirementProposals(raw: unknown): ProposalParseResult<Par
       ...new Set(stringList(item.requiredResourceClasses, 8, LIMITS.key)),
     ];
     const expectedOutput = text(item.expectedOutput, LIMITS.statement);
+    // Bounded enum only. Unknown/absent fails safe to deliverable so a BUY
+    // receipt cannot satisfy an output requirement by accident.
+    const rawKind =
+      typeof item.requirementKind === "string"
+        ? item.requirementKind.trim().toLowerCase()
+        : "";
+    const requirementKind: "deliverable" | "input" =
+      rawKind === "input" ? "input" : "deliverable";
     out.push({
       requirementKey: key,
       priority,
@@ -234,6 +248,7 @@ export function parseRequirementProposals(raw: unknown): ProposalParseResult<Par
       dependsOnRequirementKeys,
       requiredResourceClasses,
       expectedOutput,
+      requirementKind,
     });
   });
   if (errors.length) return { ok: false, errors };
