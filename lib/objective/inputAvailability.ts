@@ -91,6 +91,15 @@ export function lookupCompanyRecord(
   return { status: "AVAILABLE", record };
 }
 
+/**
+ * STRUCTURAL identification of a NOT_AVAILABLE availability check: the
+ * application writes `recordRef = input_check/<id>/NOT_AVAILABLE` when it records
+ * the check. Control decisions use this typed ref, never a search of label/text prose.
+ */
+export function isNotAvailableCheckRecordRef(recordRef: string | undefined): boolean {
+  return /^input_check\/[^/]+\/NOT_AVAILABLE$/.test(String(recordRef ?? ""));
+}
+
 function isInputCheckRef(recordRef: string | undefined): boolean {
   return String(recordRef ?? "").startsWith("input_check/");
 }

@@ -322,7 +322,10 @@ test("unit: already-covered obligation refuses reacquisition", () => {
     {
       inputCheckId: "req_class:proprietary_data",
       resourceClass: "proprietary_data",
-      purpose: "different wording same obligation",
+      // Coverage is QUESTION-scoped (purpose/dedupe identity), not class-scoped:
+      // the SAME question re-asked stays refused; a genuinely different question
+      // on the same resource class is NOT suppressed (see the twin test below).
+      purpose: "Obtain current-launch evidence",
       reasonOwnedInsufficient: "staffing changed",
       supportingEvidenceIds: ["ev_na"],
     },

@@ -736,14 +736,75 @@ export function buildConvexManagementPorts(ctx: MutationCtx): ManagementPorts {
           | { requestId: string; contractRevision: number }
           | null
           | undefined;
+        // Persist an explicit BLOCKED gate verdict so settle/reducer honor it
+        // (never a silent executing loop when the assessment cannot be obtained).
+        const persistBlockedGate = async (
+          unmetReason: string,
+          detail: string,
+        ) => {
+          const verdict = {
+            accepted: false as const,
+            objectiveState: "blocked" as const,
+            unmet: [unmetReason],
+          };
+          const decisionId = `gate_${proposal.objectiveKey}_r${currentContractRevision}`;
+          await ctx.runMutation(internal.internal.workforce.putDecision, {
+            objectiveKey: proposal.objectiveKey,
+            decisionId,
+            data: {
+              decisionId,
+              objectiveKey: proposal.objectiveKey,
+              contractRevision: currentContractRevision,
+              requirementKey: "",
+              kind: "completion_proposal" as const,
+              strategy: null,
+              optionId: null,
+              recommendation: null,
+              authorization: {
+                kind: "refused" as const,
+                requirementKey: "",
+                contractRevision: currentContractRevision,
+                reasons: ["unknown" as const],
+                detail,
+              },
+              coarsePlanSummary: JSON.stringify({
+                gateVerdict: verdict,
+                gateProposal: proposal,
+              }),
+              consideredOptionIds: [],
+              at,
+            },
+          });
+          return verdict;
+        };
+        const substantiveAttempts =
+          (omgmt.finalAssessmentAttempts as number | undefined) ?? 0;
+        const nonSubstantiveFailures =
+          ((omgmt.finalAssessmentProviderFailures as number | undefined) ?? 0) +
+          ((omgmt.finalAssessmentStructuralFailures as number | undefined) ?? 0);
         if (
           !assessment ||
           assessment.contractRevision !== currentContractRevision
         ) {
+          const pendingNow =
+            pendingAssessment &&
+            pendingAssessment.contractRevision === currentContractRevision;
+          // No current assessment and none can be obtained: stop EXPLICITLY.
           if (
-            !pendingAssessment ||
-            pendingAssessment.contractRevision !== currentContractRevision
+            !pendingNow &&
+            (substantiveAttempts >= BEGIN_FINAL_ASSESSMENT_CEILING ||
+              nonSubstantiveFailures >= BEGIN_FINAL_ASSESSMENT_NONSUBSTANTIVE_CEILING)
           ) {
+            const why =
+              nonSubstantiveFailures >= BEGIN_FINAL_ASSESSMENT_NONSUBSTANTIVE_CEILING
+                ? `provider/structural failures (${omgmt.finalAssessmentProviderFailures ?? 0} provider, ${omgmt.finalAssessmentStructuralFailures ?? 0} structural) reached ${BEGIN_FINAL_ASSESSMENT_NONSUBSTANTIVE_CEILING}`
+                : `assessment attempts reached ${BEGIN_FINAL_ASSESSMENT_CEILING}`;
+            return await persistBlockedGate(
+              `serial final assessment could not be obtained: ${why}`,
+              "final assessment unobtainable within bounded recovery",
+            );
+          }
+          if (!pendingNow) {
             await ctx.scheduler.runAfter(
               0,
               internal.management.beginFinalSemanticAssessment,
@@ -762,46 +823,12 @@ export function buildConvexManagementPorts(ctx: MutationCtx): ManagementPorts {
           };
         }
         if (assessment.meetsMinimumBar !== true) {
-          const assessmentAttempts =
-            (omgmt.finalAssessmentAttempts as number | undefined) ?? 0;
+          const assessmentAttempts = substantiveAttempts;
           if (assessmentAttempts >= BEGIN_FINAL_ASSESSMENT_CEILING) {
-            const verdict = {
-              accepted: false as const,
-              objectiveState: "blocked" as const,
-              unmet: [
-                `serial final-assessment recovery budget exhausted (${assessmentAttempts}/${BEGIN_FINAL_ASSESSMENT_CEILING}): ${assessment.rationale.slice(0, 240)}`,
-              ],
-            };
-            // Persist so settle/reducer honor blocked (not a silent executing loop).
-            const decisionId = `gate_${proposal.objectiveKey}_r${currentContractRevision}`;
-            await ctx.runMutation(internal.internal.workforce.putDecision, {
-              objectiveKey: proposal.objectiveKey,
-              decisionId,
-              data: {
-                decisionId,
-                objectiveKey: proposal.objectiveKey,
-                contractRevision: currentContractRevision,
-                requirementKey: "",
-                kind: "completion_proposal" as const,
-                strategy: null,
-                optionId: null,
-                recommendation: null,
-                authorization: {
-                  kind: "refused" as const,
-                  requirementKey: "",
-                  contractRevision: currentContractRevision,
-                  reasons: ["unknown" as const],
-                  detail: "final assessment recovery budget exhausted",
-                },
-                coarsePlanSummary: JSON.stringify({
-                  gateVerdict: verdict,
-                  gateProposal: proposal,
-                }),
-                consideredOptionIds: [],
-                at,
-              },
-            });
-            return verdict;
+            return await persistBlockedGate(
+              `serial final-assessment recovery budget exhausted (${assessmentAttempts}/${BEGIN_FINAL_ASSESSMENT_CEILING}): ${assessment.rationale.slice(0, 240)}`,
+              "final assessment recovery budget exhausted",
+            );
           }
           await reopenSerialDeliverableAfterNegativeAssessment(
             ctx,
@@ -2295,7 +2322,7 @@ async function noteDispatchDeferred(
  * evidence IDs that belong to this requirement (or an explicit dependsOn
  * prerequisite). Broad resource-class equality alone is never enough.
  */
-async function resolveSerialMakeActionScope(
+export async function resolveSerialMakeActionScope(
   ctx: MutationCtx,
   input: {
     objectiveKey: string;
@@ -2782,7 +2809,13 @@ async function dispatchExternal(
   return intentWithNeed.intentId;
 }
 
+// SUBSTANTIVE assessments only: one negative assessment reopens the deliverable
+// for one bounded correction, then a second assessment may accept or stop.
 export const BEGIN_FINAL_ASSESSMENT_CEILING = 2;
+// NON-substantive failures (provider outage / structurally invalid answer after
+// its one repair). Bounded separately so instability can neither burn the
+// semantic-negative allowance nor loop forever.
+export const BEGIN_FINAL_ASSESSMENT_NONSUBSTANTIVE_CEILING = 4;
 
 /**
  * Resolve the exact governed artifact for final assessment.
@@ -3014,6 +3047,14 @@ export const beginFinalSemanticAssessment = internalMutation({
         proceed: false as const,
         reason: `final assessment ceiling reached (${attempts}/${BEGIN_FINAL_ASSESSMENT_CEILING})`,
       };
+    const nonSubstantive =
+      ((mgmt.finalAssessmentProviderFailures as number | undefined) ?? 0) +
+      ((mgmt.finalAssessmentStructuralFailures as number | undefined) ?? 0);
+    if (nonSubstantive >= BEGIN_FINAL_ASSESSMENT_NONSUBSTANTIVE_CEILING)
+      return {
+        proceed: false as const,
+        reason: `final assessment provider/structural failure ceiling reached (${nonSubstantive}/${BEGIN_FINAL_ASSESSMENT_NONSUBSTANTIVE_CEILING})`,
+      };
     const existing = (
       data as { finalSemanticAssessment?: { contractRevision?: number } | null }
     ).finalSemanticAssessment;
@@ -3039,7 +3080,11 @@ export const beginFinalSemanticAssessment = internalMutation({
       return { proceed: false as const, reason: target.reason };
     }
 
-    const requestId = `assess_${args.objectiveKey}_r${revision}_a${attempts + 1}`;
+    // Identity stays unique across REFUNDED non-substantive failures: the attempt
+    // number alone would repeat after a refund, so the failure count is part of it.
+    const requestId = `assess_${args.objectiveKey}_r${revision}_a${attempts + 1}${
+      nonSubstantive > 0 ? `_f${nonSubstantive}` : ""
+    }`;
     await ctx.db.patch(row._id, {
       data: {
         ...data,
@@ -3167,6 +3212,9 @@ export const applyFinalSemanticAssessment = internalMutation({
           ...freshMgmt,
           contractId: (freshMgmt.contractId as string | null) ?? null,
           pendingFinalAssessment: null,
+          // A real assessment landed: transient-failure counts are CONSECUTIVE.
+          finalAssessmentProviderFailures: 0,
+          finalAssessmentStructuralFailures: 0,
         },
       },
     } as never);
@@ -3188,6 +3236,17 @@ export const clearPendingFinalAssessment = internalMutation({
     objectiveKey: v.string(),
     requestId: v.string(),
     detail: v.string(),
+    // Which recovery budget this failure may touch. Omitted = legacy
+    // "apply_refused" behavior (the begin-time attempt stays consumed).
+    failureKind: v.optional(
+      v.union(
+        v.literal("provider_failure"),
+        v.literal("structural_rejection"),
+        v.literal("configuration"),
+        v.literal("apply_refused"),
+        v.literal("unassessable"),
+      ),
+    ),
     at: v.number(),
   },
   returns: v.null(),
@@ -3204,6 +3263,20 @@ export const clearPendingFinalAssessment = internalMutation({
       | null
       | undefined;
     if (!pending || pending.requestId !== args.requestId) return null;
+    // A provider failure or a structurally invalid answer is NOT a substantive
+    // assessment: refund the begin-time attempt and count it against its own
+    // bounded budget instead, so it cannot consume the one-negative-assessment +
+    // one-correction allowance.
+    const kind = args.failureKind ?? "apply_refused";
+    const refund =
+      kind === "provider_failure" ||
+      kind === "structural_rejection" ||
+      kind === "configuration";
+    const attemptsNow = (mgmt.finalAssessmentAttempts as number | undefined) ?? 0;
+    const providerFailures =
+      (mgmt.finalAssessmentProviderFailures as number | undefined) ?? 0;
+    const structuralFailures =
+      (mgmt.finalAssessmentStructuralFailures as number | undefined) ?? 0;
     await ctx.db.patch(row._id, {
       data: {
         ...data,
@@ -3211,7 +3284,16 @@ export const clearPendingFinalAssessment = internalMutation({
           ...mgmt,
           contractId: (mgmt.contractId as string | null) ?? null,
           pendingFinalAssessment: null,
-          lastFinalAssessmentFailure: args.detail.slice(0, 800),
+          lastFinalAssessmentFailure: `[${kind}] ${args.detail}`.slice(0, 800),
+          ...(refund
+            ? {
+                finalAssessmentAttempts: Math.max(0, attemptsNow - 1),
+                finalAssessmentProviderFailures:
+                  kind === "structural_rejection" ? providerFailures : providerFailures + 1,
+                finalAssessmentStructuralFailures:
+                  kind === "structural_rejection" ? structuralFailures + 1 : structuralFailures,
+              }
+            : {}),
         },
         updatedAt: args.at,
       },

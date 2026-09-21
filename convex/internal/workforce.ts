@@ -28,6 +28,7 @@ import {
   tryIntentRetry,
   tryCommitSpend,
   trySpendModelCall,
+  recordModelCalls,
   recordProgress,
 } from "../../lib/management/budget";
 import type { WorkerRecord, ObjectiveBudget, WakeEvent } from "../../lib/management/types";
@@ -452,6 +453,37 @@ export const initBudget = internalMutation({
     });
 
     return budget;
+  },
+});
+
+// M2 / F10 — record model invocations our application boundary ACTUALLY made
+// (strategy, recommendation, interpretation, final assessment, structural repair).
+// Usage is a fact: recorded even past the ceiling; the ceiling gates new work.
+// Creates the budget row if the call happened before management initialized it.
+export const recordManagementModelCalls = internalMutation({
+  args: {
+    objectiveKey: v.string(),
+    count: v.number(),
+    at: v.number(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    if (!Number.isFinite(args.count) || args.count <= 0) return null;
+    const row = await ctx.db
+      .query("objectiveBudgets")
+      .withIndex("by_objectiveKey", (q) => q.eq("objectiveKey", args.objectiveKey))
+      .unique();
+    if (!row) {
+      await ctx.db.insert("objectiveBudgets", {
+        objectiveKey: args.objectiveKey,
+        data: recordModelCalls(createBudget(args.objectiveKey, args.at), args.count),
+      });
+      return null;
+    }
+    await ctx.db.patch(row._id, {
+      data: recordModelCalls((row as BudgetRow).data, args.count),
+    });
+    return null;
   },
 });
 
@@ -953,18 +985,30 @@ export const readDecisionContext = internalQuery({
         summaryCap: TEXT_CAP,
       });
 
+    // M2/F9: the manager must see the same verified acquisitions a MAKE worker
+    // will be linked to — this requirement's own AND its declared prerequisites'
+    // (resolveSerialMakeActionScope uses the same dependency set). Own first; each
+    // row carries its origin requirementKey so scope stays explicit. Nothing
+    // outside that dependency set is ever surfaced.
+    const acquisitionScopeKeys = new Set<string>([args.requirementKey, ...dependsOn]);
     const scopedVerifiedAcquisitions = acquisitions
       .filter(
         (a) =>
           a.verifiedAt != null &&
-          a.requirementKey === args.requirementKey &&
+          acquisitionScopeKeys.has(a.requirementKey) &&
           a.contractRevision === currentContractRevision,
+      )
+      .sort(
+        (a, b) =>
+          Number(b.requirementKey === args.requirementKey) -
+          Number(a.requirementKey === args.requirementKey),
       )
       .slice(0, 4)
       .map((a) => {
         const body = truncate(String(a.content ?? ""));
         return {
           resultEvidenceId: a.resultEvidenceId,
+          requirementKey: a.requirementKey,
           resourceClass: a.resourceClass ?? "unknown",
           content: body.text,
           needDedupeKey: a.needDedupeKey ?? null,

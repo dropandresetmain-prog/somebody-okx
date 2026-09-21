@@ -126,10 +126,14 @@ export function trySpendDecision(budget: ObjectiveBudget): SpendResult {
     used: {
       ...budget.used,
       managementDecisions: budget.used.managementDecisions + 1,
-      modelCalls: budget.used.modelCalls + 1,
     },
   });
 }
+
+// M2 / F10 — `managementDecisions` counts management decisions ONLY. A decision
+// is 1..n model invocations (strategy, recommendation, structural repairs), so the
+// actions that actually make those calls report them via `recordModelCalls`.
+// Coarse "one decision = one call" accounting hid ~half of production calls.
 
 // A model call that is NOT a managerial decision (e.g. a worker continuation
 // turn) spends the model-call ceiling only. Keeping this separate preserves
@@ -145,6 +149,24 @@ export function trySpendModelCall(budget: ObjectiveBudget): SpendResult {
     ...budget,
     used: { ...budget.used, modelCalls: budget.used.modelCalls + 1 },
   });
+}
+
+// Usage is a FACT, not a request: calls already made are always recorded, even
+// past the ceiling. The ceiling is enforced BEFORE new work (checkBudget) and
+// before a structural repair re-ask, never by discarding a call that happened.
+export function recordModelCalls(
+  budget: ObjectiveBudget,
+  count: number,
+): ObjectiveBudget {
+  if (!Number.isFinite(count) || count <= 0) return budget;
+  return {
+    ...budget,
+    used: { ...budget.used, modelCalls: budget.used.modelCalls + Math.floor(count) },
+  };
+}
+
+export function modelCallHeadroom(budget: ObjectiveBudget): number {
+  return Math.max(0, budget.limits.maxModelCalls - budget.used.modelCalls);
 }
 
 export function tryStartAssignment(budget: ObjectiveBudget): SpendResult {

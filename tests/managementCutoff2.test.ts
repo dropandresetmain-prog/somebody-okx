@@ -310,9 +310,9 @@ test("every budget limit is finite; each exhaustion is a typed verdict, never an
   assert.equal(trySpendModelCall(m).ok, false);
   assert.equal(m.used.managementDecisions, 0, "model calls are not decisions — independent ceilings");
 
-  // …and decisions spend exactly one model call each (40 of 60), leaving
-  // non-decision turns their own remaining budget
-  assert.equal(b.used.modelCalls, b.limits.maxManagementDecisions);
+  // …and decisions no longer spend a model call by themselves (M2 / F10): the
+  // actions report actual logical calls via recordModelCalls.
+  assert.equal(b.used.modelCalls, 0);
   const extra = trySpendModelCall(b);
   assert.equal(extra.ok, true, "the decision ceiling exhausted ≠ the model-call ceiling exhausted");
 

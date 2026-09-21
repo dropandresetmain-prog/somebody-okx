@@ -21,7 +21,7 @@ import type {
   WorkerObservation,
   WorkerObservationFinding,
 } from "./port";
-import { isToolStatusError, type SerialToolStatus } from "./toolStatus";
+import { toolStatusOf, type SerialToolStatus } from "./toolStatus";
 import { providerConfiguration } from "./modelSelection";
 
 export const MAX_TURNS = 8;
@@ -456,10 +456,7 @@ export async function runWorker(
         ...controlFor(boundedObservation),
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Tool action failed";
-      const typed: SerialToolStatus = isToolStatusError(error)
-        ? error.toolStatus
-        : "transient_error";
+      const { status: typed, message } = toolStatusOf(error);
       trackActionOutcome(toolName, command, message, serial ? typed : null);
       const boundedObservation = modelSafeObservation(await port.read());
       return JSON.stringify({
@@ -496,10 +493,7 @@ export async function runWorker(
         ...controlFor(boundedObservation),
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Tool action failed";
-      const typed: SerialToolStatus = isToolStatusError(error)
-        ? error.toolStatus
-        : "transient_error";
+      const { status: typed, message } = toolStatusOf(error);
       trackActionOutcome(toolName, command, message, serial ? typed : null);
       const boundedObservation = modelSafeObservation(await port.read());
       return JSON.stringify({

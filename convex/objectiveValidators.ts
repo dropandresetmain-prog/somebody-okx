@@ -323,6 +323,9 @@ export const objectiveRecord = v.object({
         ),
       ),
       finalAssessmentAttempts: v.optional(v.number()),
+      // Non-substantive final-assessment failures, budgeted apart from attempts.
+      finalAssessmentProviderFailures: v.optional(v.number()),
+      finalAssessmentStructuralFailures: v.optional(v.number()),
       // Intent identities already released for serial reassessment — historical
       // verified BUY receipts must not clear a newly authorized distinct action.
       releasedAcquisitionIntentIds: v.optional(v.array(v.string())),

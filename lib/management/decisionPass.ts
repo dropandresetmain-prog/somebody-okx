@@ -115,6 +115,8 @@ export type ManagerResultPackage = {
   latestWorkerDiagnostic?: WorkerDiagnostic | null;
   scopedVerifiedAcquisitions: Array<{
     resultEvidenceId: string;
+    /** Requirement that acquired it: this one or a declared prerequisite. */
+    requirementKey?: string;
     resourceClass: string;
     content: string;
     needDedupeKey: string | null;

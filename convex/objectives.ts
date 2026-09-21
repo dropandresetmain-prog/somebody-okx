@@ -706,18 +706,18 @@ export const recordFinding = internalMutation({
     );
     if (args.finding.origin === "application_observation") {
       if (!derived)
-        throw new Error(
+        throw new ToolStatusError("refused", 
           "An application observation must carry a resolvable source identity (recordRef or url)",
         );
       if (derived !== args.finding.sourceId)
-        throw new Error(
+        throw new ToolStatusError("refused", 
           `Source identity mismatch: asserted ${args.finding.sourceId}, derived ${derived}`,
         );
     } else {
       if (!args.finding.sourceId.startsWith("note:"))
         // A note may carry any label, but its identity must stay in the note
         // namespace so it can never collide with a real source identity.
-        throw new Error(
+        throw new ToolStatusError("refused", 
           "A model note must use a note-namespaced source identity",
         );
       // A note may annotate a real observation, but only one this run actually
@@ -729,7 +729,7 @@ export const recordFinding = internalMutation({
             item.origin === "application_observation",
         );
         if (!cited)
-          throw new Error(
+          throw new ToolStatusError("refused", 
             `record_finding: ${args.basedOnEvidenceId} is not an application observation in this run`,
           );
       }
@@ -1084,7 +1084,8 @@ export const submitResult = internalMutation({
   },
 });
 
-// Owned application observations for final assessment grounding (not provider text).
+// Application-PERSISTED observations for final assessment grounding. Persisted by the
+// application does NOT make the content trusted: web/provider text stays untrusted DATA.
 export const listOwnedObservationsForAssessment = internalQuery({
   args: {
     objectiveKey: v.string(),
@@ -1096,6 +1097,8 @@ export const listOwnedObservationsForAssessment = internalQuery({
       sourceClass: v.string(),
       label: v.string(),
       text: v.string(),
+      url: v.optional(v.string()),
+      recordRef: v.optional(v.string()),
     }),
   ),
   handler: async (ctx, args) => {
@@ -1109,6 +1112,10 @@ export const listOwnedObservationsForAssessment = internalQuery({
         sourceClass: String(item.sourceClass ?? ""),
         label: String(item.label ?? "").slice(0, 200),
         text: String(item.text ?? "").slice(0, 800),
+        // Content provenance stays visible: where the CONTENT came from is not
+        // the same fact as "the application persisted this record".
+        ...(item.url ? { url: String(item.url).slice(0, 500) } : {}),
+        ...(item.recordRef ? { recordRef: String(item.recordRef).slice(0, 200) } : {}),
       }));
   },
 });
@@ -1442,7 +1449,7 @@ export const updateCompanyArtifact = internalMutation({
     assertActiveRun(record, args.runId, now);
     const artifacts = [...(record.companyArtifacts ?? [])];
     if (artifacts.length === 0) {
-      throw new Error("No company artifact seeded for this objective");
+      throw new ToolStatusError("refused", "No company artifact seeded for this objective");
     }
     const workItem = record.workItems[0];
     const contract = workItem?.contract;
@@ -1456,7 +1463,7 @@ export const updateCompanyArtifact = internalMutation({
     if (serial && contract?.targetArtifactKey != null) {
       const idx = artifacts.findIndex((a) => a.key === contract.targetArtifactKey);
       if (idx < 0) {
-        throw new Error(
+        throw new ToolStatusError("refused", 
           `targetArtifactKey ${contract.targetArtifactKey} is absent or unauthorized on this Objective`,
         );
       }
@@ -1464,7 +1471,7 @@ export const updateCompanyArtifact = internalMutation({
     } else if (serial && contract && "targetArtifactKey" in contract) {
       // Explicit null target on serial = analysis-only; refuse mutation.
       if (contract.targetArtifactKey === null) {
-        throw new Error(
+        throw new ToolStatusError("refused", 
           "This assignment has no targetArtifactKey; artifact mutation is not authorized",
         );
       }
@@ -1496,7 +1503,7 @@ export const updateCompanyArtifact = internalMutation({
       const linkedSet = new Set(linkedIds);
       for (const id of claimedIds) {
         if (!linkedSet.has(id)) {
-          throw new Error(
+          throw new ToolStatusError("refused", 
             `usedAcquisitionEvidenceIds: ${id} is not linked to this action (inputEvidenceIds)`,
           );
         }
@@ -1504,7 +1511,7 @@ export const updateCompanyArtifact = internalMutation({
           (candidate) => candidate.resultEvidenceId === id,
         );
         if (!result) {
-          throw new Error(
+          throw new ToolStatusError("refused", 
             `usedAcquisitionEvidenceIds: ${id} is not a verified acquisition result for this objective`,
           );
         }
@@ -1520,7 +1527,7 @@ export const updateCompanyArtifact = internalMutation({
       // Legacy: if any verified acquisitions exist on the Objective and the
       // revision cites none, refuse silent provenance discard.
       if (verifiedAcquisitions.length > 0 && claimedIds.length === 0) {
-        throw new Error(
+        throw new ToolStatusError("refused", 
           "Artifact revision must cite the verified acquisition evidence it used (usedAcquisitionEvidenceIds)",
         );
       }
@@ -1529,7 +1536,7 @@ export const updateCompanyArtifact = internalMutation({
           (candidate) => candidate.resultEvidenceId === id,
         );
         if (!result) {
-          throw new Error(
+          throw new ToolStatusError("refused", 
             `usedAcquisitionEvidenceIds: ${id} is not a verified acquisition result for this objective`,
           );
         }

@@ -25,7 +25,7 @@ export type CompanyArtifact = {
   history: CompanyArtifactVersion[]; // append-only, newest last
 };
 
-const MAX_CONTENT_CHARS = 8000;
+export const MAX_CONTENT_CHARS = 8000;
 const MAX_CHANGE_NOTE_CHARS = 500;
 const MAX_LABEL_CHARS = 120;
 
