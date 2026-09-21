@@ -64,6 +64,10 @@ export type RegistryOffering = {
   priceProvenance: FactProvenance;
   registryVerified: boolean;
   compatibleResourceClass: boolean;
+  /** Adapter + composed physical boundary exist for this offering right now. */
+  executionPathConfigured: boolean;
+  /** Product purpose scope accepts the current need (or no product gate). */
+  purposeScopeCompatible: boolean;
 };
 
 export type GroundingContext = {
@@ -181,6 +185,8 @@ export async function runManagerialDecisionPass(
         priceProvenance: offering.priceProvenance,
         registryVerified: offering.registryVerified,
         compatibleResourceClass: offering.compatibleResourceClass,
+        executionPathConfigured: offering.executionPathConfigured,
+        purposeScopeCompatible: offering.purposeScopeCompatible,
         facts: grounding.factsForOffering(offering),
       },
       "BUY",
@@ -473,6 +479,8 @@ function proofIsAvailable(option: GroundedOption): boolean {
   return (
     option.external !== null &&
     option.external.registryVerified &&
+    option.external.executionPathConfigured &&
+    option.external.purposeScopeCompatible &&
     option.external.priceUsd !== null
   );
 }

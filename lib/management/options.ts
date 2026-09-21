@@ -83,6 +83,8 @@ export type ExternalOptionSeed = {
   priceProvenance: FactProvenance;
   registryVerified: boolean;
   compatibleResourceClass: boolean;
+  executionPathConfigured: boolean;
+  purposeScopeCompatible: boolean;
   facts: EconomicFacts;
 };
 
@@ -163,6 +165,8 @@ export function buildExternalOption(
       priceSource: seed.priceProvenance,
       registryVerified: seed.registryVerified,
       compatibleResourceClass: seed.compatibleResourceClass,
+      executionPathConfigured: seed.executionPathConfigured,
+      purposeScopeCompatible: seed.purposeScopeCompatible,
     },
     facts: seed.facts,
     eligibility: { eligible: false, reasons: ["unknown"], detail: "not yet evaluated" },
@@ -223,6 +227,8 @@ export function eligibilityInputFor(
           resourceClass: option.external.resourceClass,
           registryVerified: option.external.registryVerified,
           compatibleResourceClass: option.external.compatibleResourceClass,
+          executionPathConfigured: option.external.executionPathConfigured,
+          purposeScopeCompatible: option.external.purposeScopeCompatible,
           priceUsd: option.external.priceUsd,
         }
       : null,

@@ -8,6 +8,11 @@ export type M3DriverFact = {
   evidenceId: string | null;
   note: string;
   at: number;
+  /**
+   * SHA-256 of acquisition content when this fact carries verified live content
+   * writeback. Bound into the attestation so content cannot be swapped after signing.
+   */
+  acquisitionContentHash: string | null;
 };
 
 /** Stable JSON avoids a caller choosing an equivalent-but-differently-encoded fact. */
@@ -15,5 +20,6 @@ export function canonicalM3DriverFact(fact: M3DriverFact): string {
   return JSON.stringify([
     fact.intentId, fact.expectedUpdatedAt, fact.eventKind, fact.eventId,
     fact.dedupeKey, fact.evidenceId, fact.note, fact.at,
+    fact.acquisitionContentHash,
   ]);
 }

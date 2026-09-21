@@ -120,6 +120,8 @@ function offering(priceUsd: number | null): RegistryOffering {
     priceProvenance: "provider_quote",
     registryVerified: true,
     compatibleResourceClass: true,
+    executionPathConfigured: true,
+    purposeScopeCompatible: true,
   };
 }
 

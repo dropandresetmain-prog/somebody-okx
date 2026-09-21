@@ -132,6 +132,8 @@ function eligibleBuyOption(priceUsd = 4): GroundedOption {
     priceProvenance: "provider_quote",
     registryVerified: true,
     compatibleResourceClass: true,
+    executionPathConfigured: true,
+    purposeScopeCompatible: true,
     facts: {
       ...EMPTY_FACTS,
       externalPriceUsd: {

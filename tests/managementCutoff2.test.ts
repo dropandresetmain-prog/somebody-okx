@@ -207,6 +207,8 @@ function externalOption(offeringId: string, opts: { registryVerified: boolean; p
     priceProvenance: "provider_quote",
     registryVerified: opts.registryVerified,
     compatibleResourceClass: true,
+    executionPathConfigured: true,
+    purposeScopeCompatible: true,
     facts: emptyFacts(),
   });
 }
@@ -253,6 +255,8 @@ test("provider text demanding spend/authority is grounded verbatim as data and d
     priceProvenance: "llm_estimate",
     registryVerified: false,
     compatibleResourceClass: true,
+    executionPathConfigured: true,
+    purposeScopeCompatible: true,
     facts: emptyFacts(),
   });
   // smuggle the hostile prose into the display fields (adapter-faithful shape)

@@ -244,6 +244,8 @@ export const vGroundedOption = v.object({
       priceSource: vFactProvenance,
       registryVerified: v.boolean(),
       compatibleResourceClass: v.boolean(),
+      executionPathConfigured: v.boolean(),
+      purposeScopeCompatible: v.boolean(),
     }),
     v.null(),
   ),

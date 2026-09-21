@@ -10,6 +10,7 @@ import {
   CANONICAL_SIMULATED_SOCIAL_RESULT,
 } from "../lib/objective/seedData";
 import type { ExternalAcquisitionResult } from "../lib/objective/types";
+import { assertAttestedLiveAcquisitionContent } from "../lib/payment/liveAcquisitionContent";
 import { vExecutionIntent } from "./managementValidators";
 import type { ExecutionIntent, WakeEvent, WakeReason } from "../lib/management/types";
 import type { FounderSpendGrant } from "./internal/workforce";
@@ -134,22 +135,36 @@ export const apply = mutation({
     evidenceId: v.optional(v.string()),
     note: v.string(),
     at: v.number(),
+    /**
+     * SHA-256 of normalized acquisition content. Bound into the attestation.
+     * Required (non-null) only when verification_passed carries live writeback.
+     */
+    acquisitionContentHash: v.optional(v.union(v.string(), v.null())),
+    /** Normalized human-usable content; must hash to acquisitionContentHash. */
+    acquisitionContent: v.optional(v.string()),
     attestation: v.string(),
     driverToken: v.string(),
   },
   returns: v.object({ changed: v.boolean(), duplicate: v.boolean(), state: v.string(), stale: v.boolean() }),
   handler: async (ctx, args) => {
     authorize(args.driverToken);
+    const acquisitionContentHash = args.acquisitionContentHash ?? null;
     await assertFactAttestation({
       intentId: args.intentId, expectedUpdatedAt: args.expectedUpdatedAt,
       eventKind: args.eventKind, eventId: args.eventId, dedupeKey: args.dedupeKey,
       evidenceId: args.evidenceId ?? null, note: args.note, at: args.at,
+      acquisitionContentHash,
     }, args.attestation);
+    if (args.eventKind !== "verification_passed" && acquisitionContentHash !== null) {
+      throw new Error("acquisition content hash is only valid on verification_passed");
+    }
+    if (args.eventKind !== "verification_passed" && args.acquisitionContent) {
+      throw new Error("acquisition content is only valid on verification_passed");
+    }
     const row = await ctx.db.query("executionIntents")
       .withIndex("by_intentId", (q) => q.eq("intentId", args.intentId)).unique();
     if (!row) throw new Error(`execution intent not found: ${args.intentId}`);
     const intent = row.data as ExecutionIntent;
-    if (intent.updatedAt !== args.expectedUpdatedAt) throw new Error("stale driver write refused; reload the intent");
     if (!args.dedupeKey.startsWith(`intent:${intent.intentId}:`)) throw new Error("invalid M4 wake dedupe key");
 
     const contract = await ctx.db.query("outcomeContracts")
@@ -160,6 +175,13 @@ export const apply = mutation({
       .unique();
     const stale = contract?.revision !== intent.contractRevision
       || (requirement?.data as { contractRevision?: number } | undefined)?.contractRevision !== intent.contractRevision;
+
+    // Exact event re-delivery is an idempotent no-op even when the caller still
+    // holds a pre-transition expectedUpdatedAt (lost-ack / outbox replay).
+    if (intent.lastEventId === args.eventId) {
+      return { changed: false, duplicate: true, state: intent.state, stale };
+    }
+    if (intent.updatedAt !== args.expectedUpdatedAt) throw new Error("stale driver write refused; reload the intent");
     // The executor was gated against a current revision before it became
     // reachable. A later revision may not erase a submitted financial fact;
     // it remains reconcilable, while the existing proof kernels keep it from
@@ -201,6 +223,86 @@ export const apply = mutation({
       throw new Error(moved.reason);
     }
     await ctx.db.patch(row._id, { data: moved.intent });
+
+    // Live acquisition writeback: only after independent verification_passed,
+    // with attested content hash. Submission / provider_result alone never
+    // create verified worker-consumable acquisition truth.
+    if (
+      args.eventKind === "verification_passed" &&
+      acquisitionContentHash !== null &&
+      moved.intent.state === "verified"
+    ) {
+      const content = args.acquisitionContent;
+      if (typeof content !== "string") {
+        throw new Error("verification_passed with content hash requires acquisitionContent");
+      }
+      assertAttestedLiveAcquisitionContent(content, acquisitionContentHash);
+      const resultEvidenceId = moved.intent.resultEvidenceId;
+      if (!resultEvidenceId) {
+        throw new Error("verified intent missing resultEvidenceId for acquisition writeback");
+      }
+      const objectiveRows = await ctx.db.query("objectives")
+        .withIndex("by_key", (q) => q.eq("key", intent.objectiveKey)).collect();
+      const objectiveRow = objectiveRows[0];
+      if (!objectiveRow) throw new Error(`objective not found: ${intent.objectiveKey}`);
+      const record = objectiveRow.data as {
+        key: string;
+        acquisitionResults?: ExternalAcquisitionResult[];
+        updatedAt: number;
+        [key: string]: unknown;
+      };
+      const existingForIntent = (record.acquisitionResults ?? []).find(
+        (existing) => existing.intentId === intent.intentId,
+      );
+      if (
+        existingForIntent &&
+        existingForIntent.resultEvidenceId !== resultEvidenceId
+      ) {
+        throw new Error(
+          "conflicting live acquisition result for an already-recorded intent",
+        );
+      }
+      if (
+        !existingForIntent ||
+        existingForIntent.resultEvidenceId !== resultEvidenceId ||
+        existingForIntent.responseHash !== acquisitionContentHash
+      ) {
+        const result: ExternalAcquisitionResult = {
+          intentId: intent.intentId,
+          requirementKey: intent.requirementKey,
+          contractRevision: intent.contractRevision,
+          resultEvidenceId,
+          // Transport: live M3 TESTNET path. Content text still labels
+          // synthetic_test_provider (asserted above).
+          provenance: "live",
+          providerId: intent.target.providerId ?? "unknown",
+          serviceId: intent.target.serviceId ?? "unknown",
+          offeringId: intent.target.offeringId ?? "unknown",
+          resourceClass: intent.target.resourceClass ?? "unknown",
+          content,
+          responseHash: acquisitionContentHash,
+          recordedAt: args.at,
+          verifiedAt: args.at,
+          ...(intent.needDedupeKey
+            ? { needDedupeKey: intent.needDedupeKey }
+            : {}),
+          ...(intent.resourceNeedId
+            ? { resourceNeedId: intent.resourceNeedId }
+            : {}),
+        };
+        const acquisitions = (record.acquisitionResults ?? []).filter(
+          (existing) => existing.intentId !== intent.intentId,
+        );
+        await ctx.db.patch(objectiveRow._id, {
+          data: {
+            ...record,
+            acquisitionResults: [...acquisitions, result],
+            updatedAt: args.at,
+          },
+        } as never);
+      }
+    }
+
     if (reason) {
       const existingWake = await ctx.db.query("wakeEvents")
         .withIndex("by_dedupe", (q) => q.eq("dedupeKey", args.dedupeKey)).unique();

@@ -145,6 +145,8 @@ function offering(overrides: Partial<RegistryOffering> = {}): RegistryOffering {
     priceProvenance: "provider_quote",
     registryVerified: true,
     compatibleResourceClass: true,
+    executionPathConfigured: true,
+    purposeScopeCompatible: true,
     ...overrides,
   };
 }

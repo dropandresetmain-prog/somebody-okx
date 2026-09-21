@@ -1054,6 +1054,8 @@ test("pass3: serial BUY with stale bound ResourceNeed is refused", async () => {
         priceProvenance: "provider_quote",
         registryVerified: true,
         compatibleResourceClass: true,
+    executionPathConfigured: true,
+    purposeScopeCompatible: true,
         facts: EMPTY_FACTS,
       }),
     ],

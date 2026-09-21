@@ -16,6 +16,10 @@
 import { resolveCompatibleClasses } from "../market/registry";
 import type { RegistryEntry } from "../market/registryData";
 import type { MarketOffering } from "../market/discovery";
+import {
+  externalOfferingAcceptsPurpose,
+  hasConfiguredExternalExecutionPath,
+} from "../providers/executionCapability";
 import { requireCapability, isControlledCapabilityKey } from "../workforce/catalog";
 import type { ResourceClass } from "../workforce/types";
 import {
@@ -37,6 +41,12 @@ export type GroundRegistryOfferingsInput = {
   requiredResourceClass: ResourceClass;
   // Observation timestamp passed in (no Date.now() reads).
   at: number;
+  /**
+   * Bounded ResourceNeed purpose for product-scope gates. When omitted,
+   * offerings without a product gate remain compatible; gated products stay
+   * open only when their contract accepts an empty purpose.
+   */
+  purpose?: string | null;
 };
 
 export type GroundRegistryOfferingsResult = {
@@ -49,7 +59,7 @@ export type GroundRegistryOfferingsResult = {
 export function groundRegistryOfferings(
   input: GroundRegistryOfferingsInput,
 ): GroundRegistryOfferingsResult {
-  const { registry, discovered, requiredResourceClass, at } = input;
+  const { registry, discovered, requiredResourceClass, at, purpose } = input;
 
   const offerings: RegistryOffering[] = [];
   // Pre-compute facts keyed by offeringId so factsForOffering is O(1).
@@ -65,6 +75,17 @@ export function groundRegistryOfferings(
       ? resolveCompatibleClasses(offering, registry)
       : [];
     const compatibleResourceClass = compatibleClasses.includes(requiredResourceClass);
+
+    // Runtime executability is independent of registry membership: a verified
+    // registry row is not automatically an executable BUY path.
+    const executionPathConfigured = hasConfiguredExternalExecutionPath({
+      providerId: offering.providerId,
+      serviceId: offering.serviceId,
+    });
+    const purposeScopeCompatible = externalOfferingAcceptsPurpose({
+      serviceId: offering.serviceId,
+      purpose,
+    });
 
     // The single resource class this offering supplies for the need. When the
     // registry declares multiple classes we pick the one matching the need;
@@ -98,6 +119,8 @@ export function groundRegistryOfferings(
       priceProvenance,
       registryVerified,
       compatibleResourceClass,
+      executionPathConfigured,
+      purposeScopeCompatible,
     };
     offerings.push(registryOffering);
 

@@ -283,6 +283,10 @@ export type GroundedOption = {
     // (a model cannot flip these; they come from the registry lookup).
     registryVerified: boolean;
     compatibleResourceClass: boolean;
+    /** Adapter + composed physical boundary exist for this offering. */
+    executionPathConfigured: boolean;
+    /** Product purpose scope accepts the current need (or no product gate). */
+    purposeScopeCompatible: boolean;
   } | null;
   facts: EconomicFacts;
   // Stage 1 result, computed by application code, never by the model.
@@ -329,6 +333,10 @@ export type EligibilityInput = {
     resourceClass: string | null;
     registryVerified: boolean;
     compatibleResourceClass: boolean;
+    /** Adapter + composed boundary exist for this offering right now. */
+    executionPathConfigured: boolean;
+    /** Product-scope purpose gate; true when no gate or purpose accepted. */
+    purposeScopeCompatible: boolean;
     priceUsd: number | null;
   } | null;
   // Worker options only: availability after reservation filtering.

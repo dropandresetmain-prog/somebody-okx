@@ -331,21 +331,32 @@ test("real VERIFIED_SERVICE_REGISTRY + SNAPSHOT_OFFERINGS grounding", () => {
     at: 1726617600000,
   });
 
-  // All four snapshot offerings should be grounded
-  assert.equal(result.offerings.length, 4);
+  // All five snapshot offerings should be grounded
+  assert.equal(result.offerings.length, 5);
 
-  // newsliquid_twitter_search: verified, proprietary_data → compatible
+  // newsliquid_twitter_search: verified, proprietary_data → class-compatible,
+  // but no composed execution path in the current TESTNET composition.
   const newsliquid = result.offerings.find((o) => o.serviceId === "newsliquid_twitter_search");
   assert.ok(newsliquid);
   assert.equal(newsliquid.registryVerified, true);
   assert.equal(newsliquid.compatibleResourceClass, true);
+  assert.equal(newsliquid.executionPathConfigured, false);
   assert.equal(newsliquid.priceUsd, 0.002);
+
+  // Controlled TESTNET merchant: class-compatible AND currently executable.
+  const controlled = result.offerings.find((o) => o.serviceId === "founder_narrative_pulse");
+  assert.ok(controlled);
+  assert.equal(controlled.registryVerified, true);
+  assert.equal(controlled.compatibleResourceClass, true);
+  assert.equal(controlled.executionPathConfigured, true);
+  assert.equal(controlled.purposeScopeCompatible, true);
 
   // flybeacon_project_growth_analysis: verified, but [llm_reasoning, public_web, company_records] → NOT compatible with proprietary_data
   const flybeaconAnalysis = result.offerings.find((o) => o.serviceId === "flybeacon_project_growth_analysis");
   assert.ok(flybeaconAnalysis);
   assert.equal(flybeaconAnalysis.registryVerified, true);
   assert.equal(flybeaconAnalysis.compatibleResourceClass, false);
+  assert.equal(flybeaconAnalysis.executionPathConfigured, false);
 
   // Facts for newsliquid: snapshot price is registry_data
   assert.equal(newsliquid.priceProvenance, "registry_data");

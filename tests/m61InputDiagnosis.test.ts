@@ -380,6 +380,8 @@ test("F3: compatible external offering covering validated gap is BUY-eligible", 
     priceProvenance: "registry_data",
     registryVerified: true,
     compatibleResourceClass: true,
+    executionPathConfigured: true,
+    purposeScopeCompatible: true,
     facts: EMPTY_FACTS,
   });
   const result = evaluateOptionEligibility(
@@ -406,6 +408,8 @@ test("F3: same-class incompatible-scope offering is not eligible", () => {
     priceProvenance: "registry_data",
     registryVerified: true,
     compatibleResourceClass: false,
+    executionPathConfigured: true,
+    purposeScopeCompatible: true,
     facts: EMPTY_FACTS,
   });
   const result = evaluateOptionEligibility(

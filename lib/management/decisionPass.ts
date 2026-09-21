@@ -257,6 +257,7 @@ export async function buildDecisionPassInput(
         }),
         requiredResourceClass: externalClass,
         at: reads.at,
+        purpose: discoveryPurpose,
         // No live internal-cost measurement exists; UNKNOWN facts are honest and
         // the kernel/eligibility treat null as unknown, never as zero.
         internalFacts: EMPTY_FACTS as EconomicFacts,

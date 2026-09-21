@@ -178,6 +178,8 @@ function buyOption(): GroundedOption {
     priceProvenance: "provider_quote",
     registryVerified: true,
     compatibleResourceClass: true,
+    executionPathConfigured: true,
+    purposeScopeCompatible: true,
     facts: EMPTY_FACTS,
   });
   // A monetary BUY is only eligible-shaped once a founder grant exists; the

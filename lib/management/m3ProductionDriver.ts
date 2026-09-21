@@ -10,6 +10,7 @@ import {
 import type { ExecutionIntent } from "./types";
 import type { PurchaseRecord } from "../payment/types";
 import type { PurchaseLedger } from "../payment/purchaseLedger";
+import { extractLiveAcquisitionContent } from "../payment/liveAcquisitionContent";
 
 export type DriverMode = "inspect" | "prepare" | "execute" | "observe" | "reconcile";
 
@@ -27,6 +28,12 @@ export type M3DriverWrite = {
   nextIntent: ExecutionIntent;
   events: HandoffEvent[];
   at: number;
+  /**
+   * Normalized live acquisition content for verification_passed writeback.
+   * Extracted from the merchant protected result via the registered adapter.
+   */
+  acquisitionContent?: string | null;
+  acquisitionContentHash?: string | null;
 };
 
 export type M3DriverStore = {
@@ -136,7 +143,25 @@ async function persist(
   // The M4 kernel, not the caller's pre-observation clock, owns the transition
   // timestamp. Reusing it makes a post-commit/lost-ack restart recognize the
   // exact write that Convex already accepted.
-  const pending = needsM4Write ? { expectedIntent, nextIntent: result.intent, events: result.events, at: result.intent.updatedAt } : null;
+  const writeback =
+    result.m3State === "verified" &&
+    result.purchase?.verified === true &&
+    result.intent.state === "verified"
+      ? extractLiveAcquisitionContent(result.purchase.result, {
+          offeringId: result.intent.target.offeringId,
+          serviceId: result.intent.target.serviceId,
+        })
+      : null;
+  const pending = needsM4Write
+    ? {
+        expectedIntent,
+        nextIntent: result.intent,
+        events: result.events,
+        at: result.intent.updatedAt,
+        acquisitionContent: writeback?.content ?? null,
+        acquisitionContentHash: writeback?.contentHash ?? null,
+      }
+    : null;
   if (result.purchase) {
     deps.purchases.put((pending ? { ...result.purchase, pendingM4Sync: pending } : result.purchase) as PurchaseRecord);
   }

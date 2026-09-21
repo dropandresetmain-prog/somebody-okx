@@ -100,6 +100,8 @@ test("CP3: compatible verified external offering with price may be BUY-eligible"
     priceProvenance: "registry_data",
     registryVerified: true,
     compatibleResourceClass: true,
+    executionPathConfigured: true,
+    purposeScopeCompatible: true,
     facts: EMPTY_FACTS,
   });
   const facts = baseEligibilityFacts({
@@ -126,6 +128,8 @@ test("CP3: incompatible resource class makes BUY ineligible", () => {
     priceProvenance: "provider_quote",
     registryVerified: true,
     compatibleResourceClass: false,
+    executionPathConfigured: true,
+    purposeScopeCompatible: true,
     facts: EMPTY_FACTS,
   });
   const result = evaluateOptionEligibility(
@@ -157,6 +161,8 @@ test("CP3: missing spend authority routes BUY to approval_required at authorizat
         priceProvenance: "registry_data",
         registryVerified: true,
         compatibleResourceClass: true,
+    executionPathConfigured: true,
+    purposeScopeCompatible: true,
         facts: EMPTY_FACTS,
       }),
     ],
@@ -257,6 +263,8 @@ test("CP3: HYBRID excludes external resourceClass from ownership check", () => {
     priceProvenance: "registry_data",
     registryVerified: true,
     compatibleResourceClass: true,
+    executionPathConfigured: true,
+    purposeScopeCompatible: true,
     facts: EMPTY_FACTS,
   });
   const hybrid = buildHybridOption({

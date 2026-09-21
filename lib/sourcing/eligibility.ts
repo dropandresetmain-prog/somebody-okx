@@ -142,9 +142,23 @@ export function evaluateOptionEligibility(
           `offering ${external.offeringId} does not supply the exact required resource class`,
         );
       }
+      if (!external.executionPathConfigured) {
+        reasons.add("provider_incompatible");
+        detail.push(
+          `offering ${external.offeringId} has no configured execution path in the current runtime composition`,
+        );
+      }
+      if (!external.purposeScopeCompatible) {
+        reasons.add("provider_incompatible");
+        detail.push(
+          `offering ${external.offeringId} product scope cannot fulfill the current purpose`,
+        );
+      }
       if (
         external.registryVerified &&
-        external.compatibleResourceClass
+        external.compatibleResourceClass &&
+        external.executionPathConfigured &&
+        external.purposeScopeCompatible
       )
         passed.push("provider_identity_compatible");
     }
