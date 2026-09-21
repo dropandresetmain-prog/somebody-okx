@@ -1,7 +1,7 @@
 # ACTIVE TASK — M6.1 manager–execution mini-refactor
 
 Updated: 21 September 2026 (Singapore)
-Status: **FIXER CLOSURE PASS — CHECKPOINT 1 PUSHED / NOT GATE 1 PASS**
+Status: **FIXER CLOSURE CANDIDATE RETURNED FOR OWNER REVIEW / NOT GATE 1 PASS**
 
 ## Goal
 
