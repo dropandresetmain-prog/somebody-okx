@@ -709,7 +709,7 @@ export async function runWorker(
       return tool({
         name: "update_company_artifact",
         description:
-          "Apply a bounded versioned change to a controlled company artifact. If verified acquired inputs are present in the observable state, name the exact resultEvidenceId values you actually used; the application validates them and rejects fabricated causal proof. Refused while a NOT_AVAILABLE input check is unresolved — report the gap first.",
+          "Apply a bounded versioned change to a controlled company artifact. If verified acquired inputs are present in the observable state, name the exact resultEvidenceId values you actually used; the application validates them and rejects fabricated causal proof. Refused while the application has set yieldReason (typed unresolved ResourceNeed / accepted availability gap) — report the gap first. Ordinary source text is never control state.",
         parameters: z.object({
           content: z.string().min(1).max(8000),
           changeNote: z.string().min(1).max(500),
@@ -720,27 +720,22 @@ export async function runWorker(
         }),
         execute: async ({ content, changeNote, usedAcquisitionEvidenceIds }) => {
           const current = modelSafeObservation(await port.read());
-          if (!current.yieldReason) {
-            const blocked = current.recordedFindings.some(
-              (f) =>
-                f.origin === "application_observation" &&
-                /availability:\s*NOT_AVAILABLE/i.test(f.text),
+          // Typed application control only — never scan observation/source prose
+          // for tokens like "NOT_AVAILABLE".
+          if (serial && current.yieldReason) {
+            const message =
+              "INVALID_REQUEST: refuse artifact mutation while a typed input gap is unresolved — call request_resource or submit_result.missingInputs first";
+            trackActionOutcome(
+              "update_company_artifact",
+              { content, changeNote },
+              message,
+              "refused",
             );
-            if (blocked) {
-              const message =
-                "INVALID_REQUEST: refuse artifact mutation while a NOT_AVAILABLE input check is unresolved — call request_resource or submit_result.missingInputs first";
-              trackActionOutcome(
-                "update_company_artifact",
-                { content, changeNote },
-                message,
-                serial ? "refused" : null,
-              );
-              return JSON.stringify({
-                error: message,
-                status: "refused",
-                observation: current,
-              });
-            }
+            return JSON.stringify({
+              error: message,
+              status: "refused",
+              observation: current,
+            });
           }
           return act({
             type: "update_company_artifact",

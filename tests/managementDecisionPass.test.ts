@@ -274,12 +274,17 @@ test("I3: BUY with known resource class 'public_web' → discovery returns offer
     assert.equal(offering.registryVerified, true, `${offering.offeringId} must be registry-verified`);
   }
 
-  // factsForOffering: externalPriceUsd has provenance "provider_quote" when price exists
+  // factsForOffering: priced offerings carry a real provenance (snapshot registry
+  // may surface registry_data; live quotes use provider_quote). Never invent price.
   for (const offering of result.input.grounding.discovered) {
     const facts = result.input.grounding.factsForOffering(offering);
     if (offering.priceUsd !== null) {
       assert.ok(facts.externalPriceUsd !== null, `${offering.offeringId} has a price → externalPriceUsd must be set`);
-      assert.equal(facts.externalPriceUsd!.provenance, "provider_quote");
+      assert.ok(
+        facts.externalPriceUsd!.provenance === "provider_quote" ||
+          facts.externalPriceUsd!.provenance === "registry_data",
+        `${offering.offeringId} price provenance must be known, got ${facts.externalPriceUsd!.provenance}`,
+      );
       assert.equal(typeof facts.externalPriceUsd!.value, "number");
     }
     // An offering with null price yields externalPriceUsd null (no invented price)

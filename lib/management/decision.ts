@@ -114,6 +114,9 @@ export type DecisionPassInput = {
    * reverse) with reassessment between. Historical HYBRID rows remain readable.
    */
   serialManagerProtocol?: boolean;
+  /** Validated ResourceNeed this BUY answers, when discovery was gap-driven. */
+  boundNeedDedupeKey?: string | null;
+  boundResourceNeedId?: string | null;
 };
 
 export type DecisionPassResult = {
@@ -125,6 +128,9 @@ export type DecisionPassResult = {
   options: GroundedOption[]; // all grounded options incl. ineligible, with typed verdicts
   recommendation: ManagerialRecommendation | null;
   authorization: AuthorizationResult;
+  /** Purpose identity bound before dispatch when a validated need drove BUY. */
+  boundNeedDedupeKey?: string | null;
+  boundResourceNeedId?: string | null;
 };
 
 // ── The pass ─────────────────────────────────────────────────────────────────
@@ -424,7 +430,7 @@ function finish(
     consideredOptionIds: options.map((option) => option.optionId),
     at: input.at,
   };
-  return { decision, boundRequirement: requirement, options, recommendation, authorization };
+  return { decision, boundRequirement: requirement, options, recommendation, authorization, boundNeedDedupeKey: input.boundNeedDedupeKey ?? null, boundResourceNeedId: input.boundResourceNeedId ?? null };
 }
 
 // The recommendation callback may reject (model outage). An outage is a typed

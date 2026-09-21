@@ -85,6 +85,47 @@ export type DecisionPassReads = {
    * `management.executionProtocol === "m61_serial_v1"`.
    */
   serialManagerProtocol?: boolean;
+  /**
+   * Bounded manager-facing result package for reassessment. Untrusted DATA only;
+   * never grants permissions or spend authority. No chain-of-thought.
+   */
+  managerResultPackage?: ManagerResultPackage | null;
+};
+
+/** Bounded facts Somebody needs after an action to reassess — not authority. */
+export type ManagerResultPackage = {
+  latestAcceptedWorkerOutput: {
+    runId: string;
+    summary: string;
+    fit: string;
+    recommendedNextAction: string;
+  } | null;
+  scopedVerifiedAcquisitions: Array<{
+    resultEvidenceId: string;
+    resourceClass: string;
+    content: string;
+    needDedupeKey: string | null;
+    truncated: boolean;
+  }>;
+  currentControlledArtifact: {
+    key: string;
+    version: number;
+    content: string;
+    truncated: boolean;
+  } | null;
+  priorActionResult: {
+    runId: string;
+    summary: string;
+  } | null;
+  semanticEvidenceGap: {
+    needId: string;
+    dedupeKey: string | null;
+    purpose: string;
+    resourceClass: string;
+    status: string;
+  } | null;
+  finalReviewCritique: string | null;
+  provenanceEvidenceIds: string[];
 };
 
 export type OpenResourceNeedFact = {
@@ -97,6 +138,8 @@ export type OpenResourceNeedFact = {
   validated?: boolean;
   inputCheckId?: string | null;
   contractRevision?: number | null;
+  /** Purpose-scoped ResourceNeed identity when present. */
+  dedupeKey?: string | null;
 };
 
 export type PrerequisiteResultFact = {
@@ -193,9 +236,13 @@ export async function buildDecisionPassInput(
         : null;
 
   // Discovery task text prefers the validated gap's bounded purpose/scope.
+  const drivingNeed =
+    validatedNeeds.find((need) => need.resourceClass === externalClass) ?? null;
   const discoveryPurpose =
-    validatedNeeds.find((need) => need.resourceClass === externalClass)?.purpose ??
+    drivingNeed?.purpose ??
     `${requirement.title} ${requirement.mustBeTrue}`;
+  const boundNeedDedupeKey = drivingNeed?.dedupeKey ?? null;
+  const boundResourceNeedId = drivingNeed?.needId ?? null;
 
   // ── I3: grounding from the static snapshot registry — zero network ──────────
   // createSnapshotDiscovery() reads SNAPSHOT_OFFERINGS + VERIFIED_SERVICE_REGISTRY
@@ -220,18 +267,20 @@ export async function buildDecisionPassInput(
         factsForOffering: () => EMPTY_FACTS as EconomicFacts,
       };
 
-  // artifactKeyForInternalProof: the governed internal proof this requirement
-  // binds, derived from what the AUTHORIZED ENVELOPE can actually do. A semantic
-  // requirement starts proof-free (R3 A1); when the model proposes a capability
-  // whose envelope may mutate company state, proof binds to the objective's real
-  // controlled artifact (read fresh by the caller) so artifact-producing work can
-  // never be satisfied by advice alone. Everything else stays proof-free here;
-  // strategy-derived proofs attach at authorization (decision.ts).
-  const artifactKeyForInternalProof = requiredPermissions.includes(
-    "update_company_artifact",
-  )
+  // Founder-facing deliverable proof targets are stable. Capability choice may
+  // refuse an inexecutable MAKE (assessInternalContractExecutability) but must
+  // not erase the governed artifact key from a deliverable requirement.
+  // Action-specific (input) rows still bind artifact proof only when the
+  // proposed envelope can mutate company state.
+  const isDeliverable =
+    requirement.requirementKind === "deliverable" ||
+    (requirement.requirementKind == null &&
+      Boolean(requirement.expectedOutput));
+  const artifactKeyForInternalProof = isDeliverable
     ? (reads.artifactKeyForInternalProof ?? null)
-    : null;
+    : requiredPermissions.includes("update_company_artifact")
+      ? (reads.artifactKeyForInternalProof ?? null)
+      : null;
 
   const grant = reads.grant;
   const budget = reads.budget;
@@ -303,6 +352,8 @@ export async function buildDecisionPassInput(
       externalAuthority: "m3_available_bounded",
       waiverRequested: false,
       serialManagerProtocol: reads.serialManagerProtocol === true,
+      boundNeedDedupeKey,
+      boundResourceNeedId,
     },
   };
 }

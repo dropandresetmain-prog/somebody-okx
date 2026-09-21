@@ -1,7 +1,7 @@
 # ACTIVE TASK — M6.1 manager–execution mini-refactor
 
 Updated: 21 September 2026 (Singapore)
-Status: **OWNER-REVIEW CLOSURE CANDIDATE / NOT GATE 1 PASS**
+Status: **FIXER CLOSURE PASS — CHECKPOINT 1 PUSHED / NOT GATE 1 PASS**
 
 ## Goal
 
@@ -12,37 +12,38 @@ relaunch recommendation.
 ## Branch / base
 
 - Branch: `refactor/m6-1-manager-execution-loop`
-- Owner-review start: `8c1f5d3`
+- Fixer start SHA: `8a9d671`
 - Preserved: `stash@{0}`; untracked `scripts/_tmp-*`
 
 ## Checkpoint
 
-- Final pushed SHA: `c730eec`
-- Checkpoint SHAs this closure:
-  - `b19269b` — terminal/purpose/assessment wiring
-  - `4db0393` — assessment routing validators + durable completed after gate
-  - `c730eec` — genuine production whole-chain F/G harness
-- Owner-review start: `8c1f5d3`
-- Status: **OWNER-REVIEW CLOSURE CANDIDATE** (not Gate 1 PASS)
+- Starting SHA: `8a9d671`
+- Checkpoint SHAs this fixer pass:
+  - _(pending push)_ — deliverable independence, manager context, need identity,
+    current-action release, final assessment, correction accounting, typed
+    mutation control, terminal replay early-check, snapshot discovery rank,
+    validators, focused regressions
+- Prior owner-review history: `b19269b` → `4db0393` → `c730eec` → `8a9d671`
 
-## Done this round (owner-review blockers)
+## This fixer pass
 
-- [x] Final semantic assessment begin→model→apply wired into serial proposeCompletion
-- [x] Production final-assessment routing regression (`m61FinalAssessmentRouting`)
-- [x] Genuine unbroken production whole-chain harness F (`m61ProductionWholeChain`)
-- [x] Supplied-evidence no-BUY variant G
-- [x] Semantic-gap fields on live worker Zod schema + regression
-- [x] Refused NEEDS_INPUT does not close terminal slot (corrected submit ok)
-- [x] Purpose-scoped acquisition via `needDedupeKey`
-- [x] Stale-revision BUY release guard
-- [x] Serial tool status via `ToolStatusError` / explicit status envelopes
-- [x] `writeObjectiveState` + settle persist durable `completed` after gate accept
+- [x] 1. Deliverable acceptance independent of capability choice + interpretation schema
+- [x] 2. Manager reassessment result/context package
+- [x] 3. Need/question identity through BUY (bound before dispatch)
+- [x] 4. Current-action identity scoping (releasedAcquisitionIntentIds)
+- [x] 5. Production final semantic assessment (configured model + schema + cleanup)
+- [x] 6. Negative-assessment correction lifecycle (no double-count on reopen)
+- [x] 7. Typed artifact-mutation control (no prose NOT_AVAILABLE)
+- [x] 8. Production terminal replay before gap side effects
+- [x] 9. Snapshot discovery: class hard filter, keyword rank only
+- [x] 10–12. Production-chain F/G harness retained + focused A/B/E/F/H/I
 
-## Remaining
+## Next action
 
-- [ ] OWNER REVIEW of this closure candidate
-- [ ] Physical Gate 1 (only after owner accepts) — NOT declared PASS
+Return candidate to architecture reviewer. Do NOT declare Gate 1 PASS.
+Do NOT deploy / physical Gate 1 / live payment.
 
 ## Do not
 
 Deploy / physical Gate 1 / live model Gate 1 / live M3 / Gate 2 / touch stash@{0}
+ / redesign engine / reopen M3 payment / compound HYBRID / raise worker turn limits

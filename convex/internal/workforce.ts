@@ -734,28 +734,55 @@ export const readDecisionContext = internalQuery({
       .unique();
     const objectiveData = objectiveRow?.data as
       | {
-          companyArtifacts?: Array<{ key?: string }>;
+          companyArtifacts?: Array<{ key?: string; version?: number; content?: string }>;
           resourceNeeds?: ResourceNeed[];
           acquisitionResults?: ExternalAcquisitionResult[];
-          management?: { executionProtocol?: string | null };
+          management?: {
+            executionProtocol?: string | null;
+            lastFinalAssessmentCritique?: string;
+          };
           result?: {
             summary?: string;
+            fit?: string;
+            recommendedNextAction?: string;
             unknowns?: string[];
             runId?: string;
           } | null;
+          finalSemanticAssessment?: {
+            rationale?: string;
+            meetsMinimumBar?: boolean;
+          } | null;
         }
       | undefined;
-    const artifactKeyForInternalProof =
-      objectiveData?.companyArtifacts?.find(
-        (artifact) => typeof artifact.key === "string" && artifact.key.length > 0,
-      )?.key ?? null;
 
     const requirementData = requirement as unknown as {
       dependsOnRequirementKeys?: string[];
       requiredResourceClasses?: string[];
       expectedOutput?: string | null;
       requirementKey: string;
+      requirementKind?: "deliverable" | "input" | null;
+      proofs?: Array<{ proofKind?: string; params?: { artifactKey?: string } }>;
     };
+    // Exact governed artifact from the semantic deliverable proof — never
+    // silently the first companyArtifacts entry when a different target is named.
+    const proofArtifactKey =
+      (requirementData.proofs ?? [])
+        .map((p) =>
+          p.proofKind === "company_artifact_version"
+            ? String(p.params?.artifactKey ?? "").trim()
+            : "",
+        )
+        .find((k) => k.length > 0) ?? null;
+    const artifacts = objectiveData?.companyArtifacts ?? [];
+    const artifactKeyForInternalProof =
+      (proofArtifactKey &&
+      artifacts.some((a) => a.key === proofArtifactKey)
+        ? proofArtifactKey
+        : null) ??
+      artifacts.find(
+        (artifact) => typeof artifact.key === "string" && artifact.key.length > 0,
+      )?.key ??
+      null;
     const dependsOn = Array.isArray(requirementData.dependsOnRequirementKeys)
       ? requirementData.dependsOnRequirementKeys
       : [];
@@ -812,19 +839,42 @@ export const readDecisionContext = internalQuery({
             typeof raw.inputCheckId === "string" ? raw.inputCheckId : null,
           contractRevision:
             typeof raw.contractRevision === "number" ? raw.contractRevision : null,
+          dedupeKey:
+            typeof need.dedupeKey === "string" ? need.dedupeKey : null,
         };
       })
       .filter((need) => need.needId && need.resourceClass);
 
-    const scopedCovered = scopedCoveredResourceClasses({
+    // Class-level coverage only when every open need of that class is
+    // purpose-covered (needDedupeKey). Same class ≠ same answered question.
+    const openNeedsForReq = (objectiveData?.resourceNeeds ?? []).filter(
+      (need) =>
+        need &&
+        need.requirementKey === args.requirementKey &&
+        openStatuses.has(String(need.status ?? "")),
+    );
+    const acquisitionsWithNeed = acquisitions.map((a) => ({
+      requirementKey: a.requirementKey,
+      contractRevision: a.contractRevision,
+      resourceClass: a.resourceClass ?? "unknown",
+      verifiedAt: a.verifiedAt,
+      needDedupeKey: a.needDedupeKey ?? null,
+    }));
+    const classCoveredRaw = scopedCoveredResourceClasses({
       requirementKey: args.requirementKey,
       contractRevision: currentContractRevision,
-      acquisitions: acquisitions.map((a) => ({
-        requirementKey: a.requirementKey,
-        contractRevision: a.contractRevision,
-        resourceClass: a.resourceClass ?? "unknown",
-        verifiedAt: a.verifiedAt,
-      })),
+      acquisitions: acquisitionsWithNeed,
+    });
+    const scopedCovered = classCoveredRaw.filter((resourceClass) => {
+      const openSameClass = openNeedsForReq.filter(
+        (need) => need.resourceClass === resourceClass,
+      );
+      if (openSameClass.length === 0) return true;
+      return openSameClass.every((need) =>
+        acquisitionsWithNeed.some((acquisition) =>
+          verifiedAcquisitionCoversNeed(need, acquisition),
+        ),
+      );
     });
 
     // Accepted prerequisite results: satisfied/waived dependsOn keys with
@@ -868,6 +918,96 @@ export const readDecisionContext = internalQuery({
       }
     }
 
+    const TEXT_CAP = 1500;
+    const truncate = (s: string) =>
+      s.length <= TEXT_CAP
+        ? { text: s, truncated: false as const }
+        : { text: s.slice(0, TEXT_CAP), truncated: true as const };
+
+    const latestResult = objectiveData?.result ?? null;
+    const latestAcceptedWorkerOutput =
+      latestResult && typeof latestResult.summary === "string"
+        ? {
+            runId: String(latestResult.runId ?? ""),
+            summary: truncate(String(latestResult.summary)).text,
+            fit: String((latestResult as { fit?: string }).fit ?? "").slice(0, 800),
+            recommendedNextAction: String(
+              (latestResult as { recommendedNextAction?: string }).recommendedNextAction ??
+                "",
+            ).slice(0, 500),
+          }
+        : null;
+
+    const scopedVerifiedAcquisitions = acquisitions
+      .filter(
+        (a) =>
+          a.verifiedAt != null &&
+          a.requirementKey === args.requirementKey &&
+          a.contractRevision === currentContractRevision,
+      )
+      .slice(0, 4)
+      .map((a) => {
+        const body = truncate(String(a.content ?? ""));
+        return {
+          resultEvidenceId: a.resultEvidenceId,
+          resourceClass: a.resourceClass ?? "unknown",
+          content: body.text,
+          needDedupeKey: a.needDedupeKey ?? null,
+          truncated: body.truncated,
+        };
+      });
+
+    const controlledArt = artifactKeyForInternalProof
+      ? (objectiveData?.companyArtifacts ?? []).find(
+          (a) => a.key === artifactKeyForInternalProof,
+        )
+      : null;
+    const artBody = controlledArt
+      ? truncate(String((controlledArt as { content?: string }).content ?? ""))
+      : null;
+
+    const openGap = openResourceNeeds.find((n) => n.validated === true) ?? null;
+    const critique =
+      typeof (objectiveData as { management?: { lastFinalAssessmentCritique?: string } })
+        ?.management?.lastFinalAssessmentCritique === "string"
+        ? String(
+            (objectiveData as { management: { lastFinalAssessmentCritique: string } })
+              .management.lastFinalAssessmentCritique,
+          ).slice(0, 800)
+        : null;
+
+    const managerResultPackage = {
+      latestAcceptedWorkerOutput,
+      scopedVerifiedAcquisitions,
+      currentControlledArtifact: controlledArt
+        ? {
+            key: String(controlledArt.key),
+            version: Number((controlledArt as { version?: number }).version ?? 0),
+            content: artBody!.text,
+            truncated: artBody!.truncated,
+          }
+        : null,
+      priorActionResult: latestAcceptedWorkerOutput
+        ? {
+            runId: latestAcceptedWorkerOutput.runId,
+            summary: latestAcceptedWorkerOutput.summary,
+          }
+        : null,
+      semanticEvidenceGap: openGap
+        ? {
+            needId: openGap.needId,
+            dedupeKey: openGap.dedupeKey ?? null,
+            purpose: openGap.purpose,
+            resourceClass: openGap.resourceClass,
+            status: openGap.status,
+          }
+        : null,
+      finalReviewCritique: critique,
+      provenanceEvidenceIds: [
+        ...scopedVerifiedAcquisitions.map((a) => a.resultEvidenceId),
+      ].slice(0, 12),
+    };
+
     return {
       contract,
       currentContractRevision,
@@ -881,6 +1021,9 @@ export const readDecisionContext = internalQuery({
           typeof requirementData.expectedOutput === "string"
             ? requirementData.expectedOutput
             : null,
+        ...(requirementData.requirementKind
+          ? { requirementKind: requirementData.requirementKind }
+          : {}),
       },
       inventory,
       creationAllowed,
@@ -892,6 +1035,7 @@ export const readDecisionContext = internalQuery({
       scopedCoveredResourceClasses: scopedCovered,
       serialManagerProtocol:
         objectiveData?.management?.executionProtocol === "m61_serial_v1",
+      managerResultPackage,
     };
   },
 });

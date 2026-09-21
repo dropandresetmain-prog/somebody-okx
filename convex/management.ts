@@ -1038,7 +1038,13 @@ async function persistDecisionRow(
 
   // Encode extra data into coarsePlanSummary as JSON since the schema validator
   // doesn't allow extra fields in the data column.
-  const extraData = { options, boundRequirement, recommendation };
+  const extraData = {
+    options,
+    boundRequirement,
+    recommendation,
+    boundNeedDedupeKey: result.boundNeedDedupeKey ?? null,
+    boundResourceNeedId: result.boundResourceNeedId ?? null,
+  };
   const decisionData = {
     ...decision,
     coarsePlanSummary: JSON.stringify({
@@ -1313,6 +1319,7 @@ async function releaseSerialAcquisitionForReassessment(
   const omgmt = (odata.management ?? {}) as {
     executionProtocol?: string | null;
     contractId?: string | null;
+    releasedAcquisitionIntentIds?: string[];
   };
   if (!isSerialManagerProtocol(omgmt)) return;
 
@@ -1320,21 +1327,27 @@ async function releaseSerialAcquisitionForReassessment(
     .query("executionIntents")
     .withIndex("by_objective", (q) => q.eq("objectiveKey", objectiveKey))
     .collect();
-  const verifiedByReq = new Map<string, { intentId: string; contractRevision: number }>();
+  const verifiedByReq = new Map<
+    string,
+    { intentId: string; contractRevision: number; decisionId: string }
+  >();
   for (const row of intentRows) {
     const intent = (row as AnyRow).data as ExecutionIntent;
     if (intent.state !== "verified") continue;
     if (intent.strategy !== "BUY" && intent.strategy !== "HYBRID") continue;
-    // Keep the latest verified intent per requirement; revision checked below.
     const prev = verifiedByReq.get(intent.requirementKey);
     if (!prev || intent.contractRevision >= prev.contractRevision) {
       verifiedByReq.set(intent.requirementKey, {
         intentId: intent.intentId,
         contractRevision: intent.contractRevision,
+        decisionId: intent.decisionId,
       });
     }
   }
   if (verifiedByReq.size === 0) return;
+
+  const alreadyReleased = new Set(omgmt.releasedAcquisitionIntentIds ?? []);
+  const newlyReleased: string[] = [];
 
   const assignmentRows = await ctx.db
     .query("assignments")
@@ -1371,8 +1384,23 @@ async function releaseSerialAcquisitionForReassessment(
     if (req.strategy !== "BUY" && req.strategy !== "HYBRID") continue;
     const verified = verifiedByReq.get(req.requirementKey);
     if (!verified) continue;
-    // Stale verified BUY from an older revision must not clear current strategy.
+    // Historical receipt already released — must not clear a newly authorized BUY.
+    if (alreadyReleased.has(verified.intentId)) continue;
     if (verified.contractRevision !== req.contractRevision) continue;
+    const newerInFlight = intentRows.some((intentRow) => {
+      const intent = (intentRow as AnyRow).data as ExecutionIntent;
+      if (intent.requirementKey !== req.requirementKey) return false;
+      if (intent.contractRevision !== req.contractRevision) return false;
+      if (intent.intentId === verified.intentId) return false;
+      if (intent.strategy !== "BUY" && intent.strategy !== "HYBRID") return false;
+      return (
+        intent.state === "authorized" ||
+        intent.state === "handed_off" ||
+        intent.state === "awaiting_m3" ||
+        intent.state === "result_recorded"
+      );
+    });
+    if (newerInFlight) continue;
     const matchingResult = acquisitions.find(
       (a) =>
         a.intentId === verified.intentId &&
@@ -1381,11 +1409,7 @@ async function releaseSerialAcquisitionForReassessment(
     );
     if (!matchingResult) continue;
     if (activeAssignmentReqs.has(req.requirementKey)) continue;
-    // Explicit requirementKind (or legacy proof-derived input-only) keeps
-    // strategy so verify may accept a scoped external result. Deliverable
-    // requirements clear so Somebody reassesses â€” BUY receipt â‰  output proof.
     if (isSerialInputRequirement(req)) continue;
-    // Clear without inventing a failed attempt pin â€” acquisition succeeded.
     const cleared: Requirement = {
       ...req,
       strategy: null,
@@ -1397,6 +1421,31 @@ async function releaseSerialAcquisitionForReassessment(
       data: cleared,
       currentContractRevision: cleared.contractRevision,
     });
+    newlyReleased.push(verified.intentId);
+  }
+
+  if (newlyReleased.length > 0) {
+    const fresh = await ctx.db.get(objectiveRow._id);
+    if (fresh) {
+      const freshData = (fresh as AnyRow).data as Record<string, unknown>;
+      const freshMgmt = (freshData.management ?? {}) as Record<string, unknown>;
+      const priorReleased = Array.isArray(freshMgmt.releasedAcquisitionIntentIds)
+        ? (freshMgmt.releasedAcquisitionIntentIds as string[])
+        : [];
+      await ctx.db.patch(objectiveRow._id, {
+        data: {
+          ...freshData,
+          management: {
+            ...freshMgmt,
+            contractId: (freshMgmt.contractId as string | null) ?? null,
+            releasedAcquisitionIntentIds: [
+              ...new Set([...priorReleased, ...newlyReleased]),
+            ].slice(-32),
+          },
+          updatedAt: at,
+        },
+      } as never);
+    }
   }
 }
 
@@ -2507,7 +2556,8 @@ async function dispatchExternal(
   if (!created.ok)
     return await noteDispatchDeferred(ctx, objectiveKey, persisted.requirementKey, at, created.reason);
 
-  // Bind purpose identity from the current validated ResourceNeed this BUY answers.
+  // Bind purpose identity from the decision's pre-bound validated ResourceNeed.
+  // Never pick "the first matching need" when multiple same-class questions exist.
   const objectiveRow = await ctx.db
     .query("objectives")
     .withIndex("by_key", (q) => q.eq("key", objectiveKey))
@@ -2518,7 +2568,27 @@ async function dispatchExternal(
       })
     : null;
   const needs = objectiveData?.resourceNeeds ?? [];
-  const matchingNeed = needs.find(
+  let boundNeedDedupeKey: string | null = null;
+  let boundResourceNeedId: string | null = null;
+  try {
+    const parsed = JSON.parse(persisted.coarsePlanSummary) as {
+      extra?: {
+        boundNeedDedupeKey?: string | null;
+        boundResourceNeedId?: string | null;
+      };
+    };
+    boundNeedDedupeKey =
+      typeof parsed.extra?.boundNeedDedupeKey === "string"
+        ? parsed.extra.boundNeedDedupeKey
+        : null;
+    boundResourceNeedId =
+      typeof parsed.extra?.boundResourceNeedId === "string"
+        ? parsed.extra.boundResourceNeedId
+        : null;
+  } catch {
+    // Legacy decisions without bound need identity.
+  }
+  const candidateNeeds = needs.filter(
     (need) =>
       need.requirementKey === persisted.requirementKey &&
       isValidatedInputGap(need) &&
@@ -2528,6 +2598,25 @@ async function dispatchExternal(
       (need.contractRevision == null ||
         need.contractRevision === persisted.authorization.contractRevision),
   );
+  const matchingNeed =
+    boundNeedDedupeKey || boundResourceNeedId
+      ? candidateNeeds.find(
+          (need) =>
+            (boundNeedDedupeKey != null && need.dedupeKey === boundNeedDedupeKey) ||
+            (boundResourceNeedId != null && need.id === boundResourceNeedId),
+        ) ?? null
+      : candidateNeeds.length === 1
+        ? candidateNeeds[0]!
+        : null;
+  if (candidateNeeds.length > 1 && !matchingNeed) {
+    return await noteDispatchDeferred(
+      ctx,
+      objectiveKey,
+      persisted.requirementKey,
+      at,
+      "ambiguous validated ResourceNeed for this BUY; decision must bind need identity before dispatch",
+    );
+  }
   const intentWithNeed: ExecutionIntent = matchingNeed
     ? {
         ...created.intent,
@@ -2581,6 +2670,7 @@ async function reopenSerialDeliverableAfterNegativeAssessment(
   const data = (row as AnyRow).data as Record<string, unknown>;
   const mgmt = (data.management ?? {}) as Record<string, unknown>;
   const attempts = (mgmt.finalAssessmentAttempts as number | undefined) ?? 0;
+  // begin counts each assessment. Once at ceiling, no further correction reopen.
   if (attempts >= BEGIN_FINAL_ASSESSMENT_CEILING) return;
 
   const reqRows = await ctx.db
@@ -2614,8 +2704,14 @@ async function reopenSerialDeliverableAfterNegativeAssessment(
       management: {
         ...mgmt,
         contractId: (mgmt.contractId as string | null) ?? null,
-        finalAssessmentAttempts: attempts + 1,
+        // Do NOT increment finalAssessmentAttempts here — begin already counted
+        // the assessment that produced this critique. Reopen must leave room for
+        // one corrective action + assessment #2 within the existing ceiling.
         pendingFinalAssessment: null,
+        lastFinalAssessmentCritique: rationale.slice(0, 800),
+        // Clear decision fingerprints for reopened deliverables so correction
+        // is not suppressed as an unchanged duplicate decision.
+        decisionInputFingerprints: {},
       },
       updatedAt: at,
     },
@@ -2773,6 +2869,59 @@ export const applyFinalSemanticAssessment = internalMutation({
       reason: "final_semantic_assessment",
     });
     return { ok: true as const };
+  },
+});
+
+/**
+ * Clear a stranded pending final-assessment reservation after provider/schema
+ * failure so the Objective is never left reserved with no continuation.
+ */
+export const clearPendingFinalAssessment = internalMutation({
+  args: {
+    objectiveKey: v.string(),
+    requestId: v.string(),
+    detail: v.string(),
+    at: v.number(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const row = await ctx.db
+      .query("objectives")
+      .withIndex("by_key", (q) => q.eq("key", args.objectiveKey))
+      .unique();
+    if (!row) return null;
+    const data = (row as AnyRow).data as Record<string, unknown>;
+    const mgmt = (data.management ?? {}) as Record<string, unknown>;
+    const pending = mgmt.pendingFinalAssessment as
+      | { requestId: string }
+      | null
+      | undefined;
+    if (!pending || pending.requestId !== args.requestId) return null;
+    await ctx.db.patch(row._id, {
+      data: {
+        ...data,
+        management: {
+          ...mgmt,
+          contractId: (mgmt.contractId as string | null) ?? null,
+          pendingFinalAssessment: null,
+          lastFinalAssessmentFailure: args.detail.slice(0, 800),
+        },
+        updatedAt: args.at,
+      },
+    } as never);
+    await ctx.db.insert("objectiveEvents", {
+      objectiveKey: args.objectiveKey,
+      data: {
+        at: args.at,
+        kind: "decision",
+        text: `Final semantic assessment cleared: ${args.detail.slice(0, 500)}`,
+      },
+    });
+    await ctx.scheduler.runAfter(0, internal.management.runManagementPass, {
+      objectiveKey: args.objectiveKey,
+      reason: "final_assessment_failed",
+    });
+    return null;
   },
 });
 
