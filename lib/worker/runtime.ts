@@ -816,7 +816,7 @@ export async function runWorker(
     );
     if (hasResourcePermission) {
       orderSteps.push(
-        `If owned sources are AVAILABLE but still inadequate for the business question, submit_result with terminal=NEEDS_INPUT and missingInputs using semanticGap=true, unansweredQuestion, observedEvidenceIds, whyInsufficient, howAdditionalWouldChange, and a governed resourceClass — NOT_AVAILABLE is not required. Use check_input_availability only for literal access gaps. Stop when yieldReason is set.`,
+        `If owned sources are AVAILABLE but still inadequate for the Requirement's accepted obligation, submit_result with terminal=NEEDS_INPUT and missingInputs using semanticGap=true, unansweredQuestion, observedEvidenceIds (same-run application observations and/or linked verified acquisition resultEvidenceIds), whyInsufficient, howAdditionalWouldChange, and a governed resourceClass — NOT_AVAILABLE is not required. A linked acquisition does not automatically satisfy the Requirement; cite it when explaining what it does or does not establish. After a linked verified acquisition of the proposed class is already on this action, disclose residual uncertainty as unknowns — do not invent a stronger mandatory success condition. Use check_input_availability only for literal access gaps. Stop when yieldReason is set.`,
       );
     }
     if (hasArtifactPermission) {

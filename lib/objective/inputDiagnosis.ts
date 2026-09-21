@@ -73,6 +73,22 @@ export type UnconfirmedInputFinding = {
   createdAt: number;
 };
 
+/**
+ * Verified acquisition identity that a worker may cite when explaining what
+ * acquired evidence does or does not establish. Distinct from:
+ * - permitted worker input (loaded package / inputEvidenceIds);
+ * - proof that satisfies a Requirement (completion gate).
+ * Citation never implies requirement satisfaction.
+ */
+export type CiteableAcquisition = {
+  resultEvidenceId: string;
+  requirementKey: string;
+  contractRevision: number;
+  resourceClass: string;
+  verifiedAt?: number | null;
+  needDedupeKey?: string | null;
+};
+
 export type ValidateMissingInputContext = {
   objectiveKey: string;
   requirementKey: string;
@@ -93,6 +109,17 @@ export type ValidateMissingInputContext = {
   existingNeeds: readonly ResourceNeed[];
   /** Verified acquisitions that may already cover this obligation. */
   acquisitions?: readonly ScopedAcquisitionCoverage[];
+  /**
+   * Same-Objective acquisitions that may be cited by resultEvidenceId.
+   * Caller must only include rows belonging to this Objective.
+   */
+  citeableAcquisitions?: readonly CiteableAcquisition[];
+  /**
+   * When an array (including empty), serial linkage is required: cited
+   * acquisition ids must appear here. When null/undefined, legacy callers
+   * may cite any id present in citeableAcquisitions.
+   */
+  linkedInputEvidenceIds?: readonly string[] | null;
   at: number;
   needId: string;
 };
@@ -272,25 +299,6 @@ export function validateMissingInputProposal(
       `resource class ${resourceClass} is owned vocabulary, not an acquisition gap`,
     );
 
-  // Already-covered Requirement-scoped obligation must not reacquire —
-  // but only when the SAME question/purpose is already answered. Same resource
-  // class alone must not suppress a different validated question.
-  if (
-    obligationAlreadyCovered({
-      requirementKey: ctx.requirementKey,
-      contractRevision: ctx.contractRevision,
-      resourceClass,
-      purpose: proposal.purpose,
-      existingNeeds: ctx.existingNeeds,
-      acquisitions: ctx.acquisitions ?? [],
-    })
-  ) {
-    return refuse(
-      "already_covered",
-      `requirement ${ctx.requirementKey} already has verified coverage for this question (${resourceClass})`,
-    );
-  }
-
   const obligations = listInputObligations({
     requiredResourceClasses: ctx.requiredResourceClasses,
     sourceProofs: ctx.sourceProofs,
@@ -310,8 +318,52 @@ export function validateMissingInputProposal(
       `proposal inputCheckId=${proposal.inputCheckId} / class=${resourceClass} does not map to an accepted obligation`,
     );
 
-  // Supporting evidence must belong to this run and be application observations.
+  // evidence_sufficiency: application owns the ResourceNeed purpose from the
+  // Requirement/Outcome Contract (mustBeTrue / expectedOutput). Worker free-text
+  // may refine diagnostics but must not become a stronger mandatory success
+  // condition or a new eligibility/dedupe identity.
+  const workerPurpose = purpose;
+  let authoritativePurpose = workerPurpose;
+  let authoritativeReason = reasonOwnedInsufficient;
+  if (obligation.kind === "evidence_sufficiency") {
+    authoritativePurpose = obligation.purpose;
+    if (
+      workerPurpose.length > 0 &&
+      workerPurpose.toLowerCase() !== authoritativePurpose.toLowerCase()
+    ) {
+      authoritativeReason =
+        `${authoritativeReason} | Worker-proposed question (non-authoritative for eligibility): ${workerPurpose}`.slice(
+          0,
+          500,
+        );
+    }
+  }
+
+  // Already-covered Requirement-scoped obligation must not reacquire —
+  // but only when the SAME question/purpose is already answered. Same resource
+  // class alone must not suppress a different validated question.
+  if (
+    obligationAlreadyCovered({
+      requirementKey: ctx.requirementKey,
+      contractRevision: ctx.contractRevision,
+      resourceClass,
+      purpose: authoritativePurpose,
+      existingNeeds: ctx.existingNeeds,
+      acquisitions: ctx.acquisitions ?? [],
+    })
+  ) {
+    return refuse(
+      "already_covered",
+      `requirement ${ctx.requirementKey} already has verified coverage for this question (${resourceClass})`,
+    );
+  }
+
+  // Supporting evidence: same-run application observations, OR linked verified
+  // acquisitions from this Objective (citeable identity — not Requirement proof).
   const evidenceById = new Map(ctx.evidence.map((e) => [e.id, e]));
+  const citeableById = new Map(
+    (ctx.citeableAcquisitions ?? []).map((a) => [a.resultEvidenceId, a]),
+  );
   const supportingIds = [...new Set(proposal.supportingEvidenceIds.map(String))].slice(
     0,
     16,
@@ -324,32 +376,55 @@ export function validateMissingInputProposal(
 
   for (const id of supportingIds) {
     const item = evidenceById.get(id);
-    if (!item)
+    if (item) {
+      if (item.runId !== ctx.runId)
+        return refuse(
+          "foreign_evidence",
+          `supporting evidence ${id} belongs to a different run`,
+        );
+      if (item.origin !== PROOF_ORIGIN)
+        return refuse(
+          "foreign_evidence",
+          `supporting evidence ${id} is not an application observation`,
+        );
+      // Invalid lookups are never scarcity evidence.
+      if (isInvalidRequestObservation(item))
+        return refuse(
+          "invalid_reference_evidence",
+          `supporting evidence ${id} is INVALID_REQUEST, not NOT_AVAILABLE`,
+        );
+      continue;
+    }
+
+    const acquisition = citeableById.get(id);
+    if (!acquisition)
       return refuse(
         "foreign_evidence",
         `supporting evidence ${id} is not in this objective context`,
       );
-    if (item.runId !== ctx.runId)
+    if (acquisition.verifiedAt == null)
       return refuse(
-        "foreign_evidence",
-        `supporting evidence ${id} belongs to a different run`,
+        "unverified_acquisition",
+        `supporting evidence ${id} is an unverified acquisition`,
       );
-    if (item.origin !== PROOF_ORIGIN)
+    if (acquisition.contractRevision !== ctx.contractRevision)
       return refuse(
-        "foreign_evidence",
-        `supporting evidence ${id} is not an application observation`,
+        "wrong_contract_revision",
+        `supporting evidence ${id} belongs to contract revision ${acquisition.contractRevision}, not ${ctx.contractRevision}`,
       );
-    // Invalid lookups are never scarcity evidence.
-    if (isInvalidRequestObservation(item))
-      return refuse(
-        "invalid_reference_evidence",
-        `supporting evidence ${id} is INVALID_REQUEST, not NOT_AVAILABLE`,
-      );
+    // Serial linkage required when the action declares inputEvidenceIds.
+    if (ctx.linkedInputEvidenceIds !== undefined && ctx.linkedInputEvidenceIds !== null) {
+      if (!ctx.linkedInputEvidenceIds.includes(id))
+        return refuse(
+          "foreign_evidence",
+          `supporting evidence ${id} is not linked to this action (inputEvidenceIds)`,
+        );
+    }
   }
 
   // Authoritative literal scarcity requires at least one NOT_AVAILABLE check.
   // Serial semantic adequacy gaps may cite inspected application observations
-  // without manufacturing a NOT_AVAILABLE token.
+  // and/or linked verified acquisitions without manufacturing a NOT_AVAILABLE token.
   const semanticGap = proposal.semanticAdequacyGap === true;
   const notAvailableSupport = supportingIds.filter((id) => {
     const item = evidenceById.get(id);
@@ -360,6 +435,20 @@ export function validateMissingInputProposal(
       "missing_not_available_evidence",
       "validated gaps require supportingEvidenceIds from a governed NOT_AVAILABLE input check",
     );
+
+  // Semantic gap + linked verified acquisition of the proposed class already on
+  // this action: additional confidence is optional, not a new mandatory success
+  // condition. Distinct required questions without such a link remain admissible.
+  if (
+    semanticGap &&
+    obligation.kind === "evidence_sufficiency" &&
+    hasLinkedVerifiedAcquisitionOfClass(ctx, resourceClass)
+  ) {
+    return refuse(
+      "optional_unknown_not_mandatory",
+      "a linked verified acquisition of this class is already available for this action; residual uncertainty must be disclosed as unknowns and must not create a new mandatory ResourceNeed",
+    );
+  }
 
   // Live coverage must still be NOT_AVAILABLE for literal scarcity.
   // Semantic adequacy may proceed when sources were inspected (AVAILABLE/UNREAD
@@ -413,8 +502,8 @@ export function validateMissingInputProposal(
     workItemId: ctx.workItemId,
     requirementKey: ctx.requirementKey,
     resourceClass,
-    purpose: purpose.slice(0, 500),
-    reasonOwnedInsufficient: reasonOwnedInsufficient.slice(0, 500),
+    purpose: authoritativePurpose.slice(0, 500),
+    reasonOwnedInsufficient: authoritativeReason.slice(0, 500),
     proposedByRunId: ctx.runId,
     at: ctx.at,
     status: "proposed",
@@ -446,8 +535,8 @@ export function validateMissingInputProposal(
       inputCheckId: obligation.inputCheckId,
       supportingEvidenceIds: supportingIds,
       validationAuthority: "application",
-      purpose: purpose.slice(0, 500),
-      reasonOwnedInsufficient: reasonOwnedInsufficient.slice(0, 500),
+      purpose: authoritativePurpose.slice(0, 500),
+      reasonOwnedInsufficient: authoritativeReason.slice(0, 500),
       updatedAt: ctx.at,
     };
   } else if (
@@ -466,6 +555,28 @@ export function validateMissingInputProposal(
   }
 
   return { ok: true, need, created: created || need.id === ctx.needId, obligation };
+}
+
+/**
+ * True when this serial action already has a linked verified acquisition of
+ * the proposed class. Residual semantic uncertainty is then optional for
+ * completion rather than a new mandatory ResourceNeed. Legacy callers that
+ * omit linkedInputEvidenceIds are unaffected.
+ */
+function hasLinkedVerifiedAcquisitionOfClass(
+  ctx: ValidateMissingInputContext,
+  resourceClass: string,
+): boolean {
+  const linked = ctx.linkedInputEvidenceIds;
+  if (linked === undefined || linked === null) return false;
+  for (const acquisition of ctx.citeableAcquisitions ?? []) {
+    if (acquisition.verifiedAt == null) continue;
+    if (acquisition.contractRevision !== ctx.contractRevision) continue;
+    if (acquisition.resourceClass !== resourceClass) continue;
+    if (!linked.includes(acquisition.resultEvidenceId)) continue;
+    return true;
+  }
+  return false;
 }
 
 /**

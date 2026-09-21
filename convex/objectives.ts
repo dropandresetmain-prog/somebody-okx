@@ -1706,6 +1706,22 @@ export const reportMissingInput = internalMutation({
         : {}),
     };
 
+    const managementProtocol = (
+      record as unknown as {
+        management?: { executionProtocol?: string | null };
+      }
+    ).management;
+    const serial = isSerialManagerProtocol(managementProtocol);
+    const linkedIds = workItem.contract.inputEvidenceIds;
+    const acquisitionRows = (record.acquisitionResults ?? []).map((a) => ({
+      resultEvidenceId: a.resultEvidenceId,
+      requirementKey: a.requirementKey,
+      contractRevision: a.contractRevision,
+      resourceClass: a.resourceClass ?? "unknown",
+      verifiedAt: a.verifiedAt,
+      needDedupeKey: a.needDedupeKey ?? null,
+    }));
+
     const validated = validateMissingInputProposal(proposal, {
       objectiveKey: args.objectiveKey,
       requirementKey: args.requirementKey,
@@ -1720,12 +1736,17 @@ export const reportMissingInput = internalMutation({
       controlledResourceClasses: CURRENT_RESOURCE_INVENTORY,
       evidence,
       existingNeeds: (record.resourceNeeds ?? []) as ResourceNeed[],
-      acquisitions: (record.acquisitionResults ?? []).map((a) => ({
+      acquisitions: acquisitionRows.map((a) => ({
         requirementKey: a.requirementKey,
         contractRevision: a.contractRevision,
-        resourceClass: a.resourceClass ?? "unknown",
+        resourceClass: a.resourceClass,
         verifiedAt: a.verifiedAt,
+        needDedupeKey: a.needDedupeKey,
       })),
+      citeableAcquisitions: acquisitionRows,
+      ...(serial && linkedIds !== undefined
+        ? { linkedInputEvidenceIds: linkedIds }
+        : {}),
       at: now,
       needId,
     });

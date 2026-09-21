@@ -538,3 +538,327 @@ test("literal scarcity without NOT_AVAILABLE still refuses when not semantic gap
   if (result.ok) return;
   assert.equal(result.refusalCode, "missing_not_available_evidence");
 });
+
+const linkedAcquisition = {
+  resultEvidenceId: "sim_result_linked_1",
+  requirementKey: "req_prior",
+  contractRevision: 1,
+  resourceClass: "proprietary_data",
+  verifiedAt: at,
+  needDedupeKey: "dedupe_prior",
+};
+
+test("Finding A: linked verified acquisition may be cited for semantic adequacy", () => {
+  const result = validateMissingInputProposal(
+    {
+      inputCheckId: "evidence_sufficiency",
+      resourceClass: "proprietary_data",
+      purpose: "audience language for relaunch wording",
+      reasonOwnedInsufficient:
+        "linked acquisition was inspected but does not answer the obligation alone",
+      supportingEvidenceIds: ["sim_result_linked_1", "ev_inspected_rec"],
+      semanticAdequacyGap: true,
+    },
+    baseCtx({
+      // No serial linkage list → citation allowed; mandatory need still created.
+      citeableAcquisitions: [linkedAcquisition],
+      evidence: [
+        {
+          id: "ev_inspected_rec",
+          sourceClass: "company_record" as const,
+          label: "company/profile",
+          text: "owned launch context without audience language",
+          origin: "application_observation" as const,
+          sourceId: "record:company/profile",
+          recordRef: "company/profile",
+          observedAt: at,
+          recordedBy: "app",
+          runId: "run_1",
+        },
+      ],
+    }),
+  );
+  assert.equal(result.ok, true, result.ok ? "" : result.detail);
+  if (!result.ok) return;
+  assert.ok(result.need.supportingEvidenceIds?.includes("sim_result_linked_1"));
+});
+
+test("Finding A: unlinked acquisition is foreign when serial linkage is required", () => {
+  const result = validateMissingInputProposal(
+    {
+      inputCheckId: "evidence_sufficiency",
+      resourceClass: "proprietary_data",
+      purpose: "audience language",
+      reasonOwnedInsufficient: "citing an acquisition not linked to this action",
+      supportingEvidenceIds: ["sim_result_linked_1"],
+      semanticAdequacyGap: true,
+    },
+    baseCtx({
+      citeableAcquisitions: [linkedAcquisition],
+      linkedInputEvidenceIds: ["sim_result_other"],
+      evidence: [
+        {
+          id: "ev_inspected_rec",
+          sourceClass: "company_record" as const,
+          label: "company/profile",
+          text: "owned launch context",
+          origin: "application_observation" as const,
+          sourceId: "record:company/profile",
+          recordRef: "company/profile",
+          observedAt: at,
+          recordedBy: "app",
+          runId: "run_1",
+        },
+      ],
+    }),
+  );
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+  assert.equal(result.refusalCode, "foreign_evidence");
+});
+
+test("Finding A: unverified acquisition cannot support a gap", () => {
+  const result = validateMissingInputProposal(
+    {
+      inputCheckId: "evidence_sufficiency",
+      resourceClass: "proprietary_data",
+      purpose: "audience language",
+      reasonOwnedInsufficient: "unverified receipt is not evidence",
+      supportingEvidenceIds: ["sim_result_unverified"],
+      semanticAdequacyGap: true,
+    },
+    baseCtx({
+      citeableAcquisitions: [
+        {
+          ...linkedAcquisition,
+          resultEvidenceId: "sim_result_unverified",
+          verifiedAt: null,
+        },
+      ],
+    }),
+  );
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+  assert.equal(result.refusalCode, "unverified_acquisition");
+});
+
+test("Finding A: wrong contract revision acquisition is refused", () => {
+  const result = validateMissingInputProposal(
+    {
+      inputCheckId: "evidence_sufficiency",
+      resourceClass: "proprietary_data",
+      purpose: "audience language",
+      reasonOwnedInsufficient: "stale revision acquisition",
+      supportingEvidenceIds: ["sim_result_linked_1"],
+      semanticAdequacyGap: true,
+    },
+    baseCtx({
+      citeableAcquisitions: [
+        { ...linkedAcquisition, contractRevision: 2 },
+      ],
+    }),
+  );
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+  assert.equal(result.refusalCode, "wrong_contract_revision");
+});
+
+test("Finding A: arbitrary model-supplied evidence id remains foreign", () => {
+  const result = validateMissingInputProposal(
+    {
+      inputCheckId: "evidence_sufficiency",
+      resourceClass: "proprietary_data",
+      purpose: "audience language",
+      reasonOwnedInsufficient: "invented id",
+      supportingEvidenceIds: ["sim_result_invented"],
+      semanticAdequacyGap: true,
+    },
+    baseCtx({
+      citeableAcquisitions: [linkedAcquisition],
+      linkedInputEvidenceIds: ["sim_result_linked_1"],
+    }),
+  );
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+  assert.equal(result.refusalCode, "foreign_evidence");
+});
+
+test("Finding A: acquisition id alone cannot satisfy literal scarcity", () => {
+  const result = validateMissingInputProposal(
+    {
+      inputCheckId: "evidence_sufficiency",
+      resourceClass: "proprietary_data",
+      purpose: "audience language",
+      reasonOwnedInsufficient: "no NOT_AVAILABLE token",
+      supportingEvidenceIds: ["sim_result_linked_1"],
+    },
+    baseCtx({
+      citeableAcquisitions: [linkedAcquisition],
+    }),
+  );
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+  assert.equal(result.refusalCode, "missing_not_available_evidence");
+});
+
+test("Finding B: evidence_sufficiency ResourceNeed purpose is obligation-bounded", () => {
+  const result = validateMissingInputProposal(
+    {
+      inputCheckId: "evidence_sufficiency",
+      resourceClass: "proprietary_data",
+      purpose:
+        "Do these weaknesses measurably reduce signup conversion versus baseline?",
+      reasonOwnedInsufficient:
+        "owned evidence supports hypotheses but cannot establish quantitative causal underperformance",
+      supportingEvidenceIds: ["ev_inspected_rec", "ev_inspected_web"],
+      semanticAdequacyGap: true,
+    },
+    baseCtx({
+      mustBeTrue: "a diagnosis of messaging weaknesses is recorded from available evidence",
+      expectedOutput: "evidence-backed relaunch recommendation with disclosed unknowns",
+      evidence: [
+        {
+          id: "ev_inspected_rec",
+          sourceClass: "company_record" as const,
+          label: "company/profile",
+          text: "owned launch context without causal conversion proof",
+          origin: "application_observation" as const,
+          sourceId: "record:company/profile",
+          recordRef: "company/profile",
+          observedAt: at,
+          recordedBy: "app",
+          runId: "run_1",
+        },
+        {
+          id: "ev_inspected_web",
+          sourceClass: "public_web" as const,
+          label: "public page",
+          text: "public page without proprietary conversion metrics",
+          origin: "application_observation" as const,
+          sourceId: "url:https://example.com/x",
+          url: "https://example.com/x",
+          observedAt: at,
+          recordedBy: "app",
+          runId: "run_1",
+        },
+      ],
+    }),
+  );
+  assert.equal(result.ok, true, result.ok ? "" : result.detail);
+  if (!result.ok) return;
+  assert.equal(
+    result.need.purpose,
+    "evidence-backed relaunch recommendation with disclosed unknowns",
+  );
+  assert.ok(
+    result.need.reasonOwnedInsufficient.includes("Worker-proposed question"),
+  );
+  assert.ok(
+    result.need.reasonOwnedInsufficient.includes("measurably reduce signup conversion"),
+  );
+});
+
+test("Finding B: serial linked same-class acquisition makes residual semantic gap optional", () => {
+  const result = validateMissingInputProposal(
+    {
+      inputCheckId: "evidence_sufficiency",
+      resourceClass: "proprietary_data",
+      purpose:
+        "Do the identified weaknesses measurably reduce signup conversion versus baseline?",
+      reasonOwnedInsufficient:
+        "linked acquisition is qualitative and cannot prove causal conversion effect",
+      supportingEvidenceIds: ["sim_result_linked_1", "ev_inspected_rec"],
+      semanticAdequacyGap: true,
+    },
+    baseCtx({
+      mustBeTrue: "reasons messaging underperforms are identified from verified evidence",
+      expectedOutput: "recorded diagnosis supported by verified evidence",
+      citeableAcquisitions: [linkedAcquisition],
+      linkedInputEvidenceIds: ["sim_result_linked_1"],
+      evidence: [
+        {
+          id: "ev_inspected_rec",
+          sourceClass: "company_record" as const,
+          label: "company/profile",
+          text: "owned launch context",
+          origin: "application_observation" as const,
+          sourceId: "record:company/profile",
+          recordRef: "company/profile",
+          observedAt: at,
+          recordedBy: "app",
+          runId: "run_1",
+        },
+      ],
+    }),
+  );
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+  // Citation was accepted far enough to leave foreign_evidence; residual is optional.
+  assert.equal(result.refusalCode, "optional_unknown_not_mandatory");
+});
+
+test("Finding B: distinct required question without linked acquisition remains admissible", () => {
+  const result = validateMissingInputProposal(
+    {
+      inputCheckId: "evidence_sufficiency",
+      resourceClass: "proprietary_data",
+      purpose: "What language does audience B use for workflow pain?",
+      reasonOwnedInsufficient:
+        "owned sources and public web do not contain audience-B language",
+      supportingEvidenceIds: ["ev_inspected_rec", "ev_inspected_web"],
+      semanticAdequacyGap: true,
+    },
+    baseCtx({
+      requirementKey: "req_relaunch",
+      mustBeTrue: "audience language is grounded in accepted evidence",
+      expectedOutput: "accepted audience-language evidence for the requirement",
+      existingNeeds: [
+        createResourceNeed({
+          id: "need_a",
+          objectiveKey: "obj_f1",
+          resourceClass: "proprietary_data",
+          purpose: "accepted audience-language evidence for the requirement",
+          reasonOwnedInsufficient: "prior gap",
+          requirementKey: "req_other",
+          contractRevision: 1,
+          at,
+          status: "fulfilled",
+          validationAuthority: "application",
+        }),
+      ],
+      evidence: [
+        {
+          id: "ev_inspected_rec",
+          sourceClass: "company_record" as const,
+          label: "company/profile",
+          text: "owned launch context without audience-B language",
+          origin: "application_observation" as const,
+          sourceId: "record:company/profile",
+          recordRef: "company/profile",
+          observedAt: at,
+          recordedBy: "app",
+          runId: "run_1",
+        },
+        {
+          id: "ev_inspected_web",
+          sourceClass: "public_web" as const,
+          label: "public page",
+          text: "public page without audience-B language",
+          origin: "application_observation" as const,
+          sourceId: "url:https://example.com/x",
+          url: "https://example.com/x",
+          observedAt: at,
+          recordedBy: "app",
+          runId: "run_1",
+        },
+      ],
+    }),
+  );
+  assert.equal(result.ok, true, result.ok ? "" : result.detail);
+  if (!result.ok) return;
+  assert.equal(result.need.requirementKey, "req_relaunch");
+  assert.equal(
+    result.need.purpose,
+    "accepted audience-language evidence for the requirement",
+  );
+});
