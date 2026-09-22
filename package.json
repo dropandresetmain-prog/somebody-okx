@@ -4,14 +4,22 @@
   "private": true,
   "scripts": {
     "dev": "next dev --hostname 127.0.0.1",
+    "dev:local": "next dev --hostname 127.0.0.1",
+    "dev:cloud": "node scripts/dev-with-env.mjs .env.cloud.local",
     "build": "next build",
     "start": "next start --hostname 127.0.0.1",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts",
     "m3:seller": "tsx scripts/m3-controlled-seller.ts",
     "typecheck:convex": "tsc -p convex/tsconfig.json --noEmit",
-    "convex:dev": "convex dev",
-    "convex:codegen": "convex codegen"
+    "convex:dev": "convex dev --env-file .env.local",
+    "convex:dev:local": "convex dev --env-file .env.local",
+    "convex:dev:cloud": "convex dev --env-file .env.cloud.local",
+    "convex:codegen": "convex codegen",
+    "gate:local": "node scripts/gate/run-objective.mjs",
+    "gate:cloud": "node scripts/gate/run-objective.mjs --env-file=.env.cloud.local",
+    "gate:peek:local": "node scripts/gate/peek.mjs",
+    "gate:peek:cloud": "node scripts/gate/peek.mjs --env-file=.env.cloud.local"
   },
   "dependencies": {
     "@langchain/langgraph": "^1.4.15",
