@@ -41,3 +41,45 @@ Updated: 22 Sep 2026 (Singapore)
 
 Same runtime + configuration except model identity. Any change that would behave
 differently per model is out of scope by construction.
+
+---
+
+## Milestone 1 — status: COMPLETE
+
+Item commits (each pushed at the item boundary):
+
+| Item | Commit | Content |
+| --- | --- | --- |
+| A | `46aee4d` | Complete supported target view: a tool-required full replacement ≤8,000 is no longer truncated to 1,200 (stored ceiling and MAX_TURNS unchanged); edits bound to exact target + expected version; stale rejections side-effect-free. |
+| B | `46aee4d` | Source/accepted-output continuity: immutable baselines; accepted classification only from durable `acceptedTerminal` — a raw terminal is never "accepted" (unconfirmed/rejected classified as such). |
+| C | `46aee4d` | Quality handoff: lockedCriteria + correction package in the worker observation; bar unchanged. |
+| E (groundwork) | `46aee4d` | Real decision-fingerprint facts begin here. |
+| D | `ab70edf` | Negative-review reopen owns a deduped continuation (single `recovery_event` wake, own identity); request-bound expiry + armed watchdogs for decision/assessment reservations. |
+| D (cont.) | `3325ea9` | Interpretation reservation gets the same bounded expiry/watchdog; late callbacks can only clear their own requestId. |
+| E | `adf508f` | Shared `decisionFingerprintFacts`/`decisionWorkerAvailability` collectors (production + fixtures cannot drift); grounding = latest-decodable-attempt-per-requirement then empty→omit (no revival of an older non-empty attempt); version-true assessment reuse. |
+| F | `cd442d7` | Deterministic scenario harness: `tests/reliabilityScenarios.test.ts` (14 named cases over the 7 families below), `tests/fixtures/reliability/world.ts` (production-builder worlds, dual-clock epochs), continuation audits extended to armed `_scheduled_functions` jobs. No scenario may wake a stranded Objective by hand. |
+
+## The seven defect families (historical, enumerated in the harness)
+
+- **DF1 truncation loss** — context/edit truncated below what the tool requires
+  (gate runs luna-1..3; `77e2b72`, `410d247`).
+- **DF2 stale-write race** — an edit bound to an old view overwrites newer truth
+  (`77e2b72` fence).
+- **DF3 accepted-context lie** — a rejected/unconfirmed terminal presented as
+  accepted output, or baselines mutated/hidden (`c8f197e`).
+- **DF4 correction stranding** — a reopen/correction rides old timers instead of
+  owning its continuation (`f7ead5e` family + V7-D).
+- **DF5 orphaned reservation** — begin wrote a reservation; the action chain
+  died; nothing bounded its expiry (V7-D).
+- **DF6 invalid assessment target** — verdicts bound to the wrong artifact,
+  ambiguous targets, or stale versions (V7-E).
+- **DF7 redecision identity** — fingerprint blind to real changes or reacting to
+  irrelevant ones; newer-empty grounding masked by an older revival (nex-5
+  delivery-failure lineage + V7-E).
+
+## Verification discipline (as of Milestone 1 close)
+
+- Full suite at `cd442d7`: 1007 tests / 996 pass / **11 failures — byte-identical
+  name set to the base `d9ea006` baseline** (`/tmp/fails_d.txt` vs run log).
+- `tsc --noEmit` error set identical to HEAD; `tsc -p convex/tsconfig.json` clean.
+- No new lint script invented; no live model, payment, signing, or merchant call.
