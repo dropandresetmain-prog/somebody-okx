@@ -401,6 +401,104 @@ test("V6WorkspaceView renders distinct loading / not-found / empty / reconnectin
   assert.ok(!ready.includes("Reconnecting"));
 });
 
+test("ready workspace keeps Activity dominant and does not mount a Current Work card above it", () => {
+  const html = renderToStaticMarkup(
+    createElement(V6WorkspaceView, {
+      list: list(),
+      selectedId: "obj_1",
+      onSelect: () => {},
+      onStartNew: () => {},
+      main: {
+        kind: "ready",
+        view: workspace({
+          currentWork: {
+            id: "a1",
+            title: "Write the landing copy",
+            status: "working",
+            intern: { id: "w1", label: "Rae", state: "working" },
+            updatedAt: NOW,
+          },
+        }),
+      },
+    }),
+  );
+  assert.ok(!html.includes('aria-label="Current work"'));
+  assert.ok(html.includes('aria-label="Activity"'));
+  const deliverables = html.indexOf('aria-label="Deliverables"');
+  const checkpoints = html.indexOf('aria-label="Checkpoints"');
+  assert.ok(deliverables >= 0 && checkpoints >= 0 && deliverables < checkpoints);
+});
+
+test("Activity intern assignment uses the approved Intern visual, not an icon substitute", () => {
+  const items: ActivityItem[] = [
+    {
+      id: "act_assign",
+      type: "intern_assigned",
+      occurredAt: NOW,
+      actor: { kind: "somebody", label: "Somebody" },
+      title: "Somebody assigned Rae",
+      importance: "major",
+      payload: {
+        intern: { id: "w1", label: "Rae", specialty: "Growth research", state: "assigned" },
+        assignmentTitle: "Diagnose the launch message",
+        scope: "Inspect launch context.",
+        authorityNote: "Bounded assignment · no spending authority",
+      },
+    },
+  ];
+  const html = renderToStaticMarkup(createElement(Activity, { items }));
+  assert.ok(html.includes("/mascot/intern/intern-neutral.webp"));
+  assert.ok(html.includes("Diagnose the launch message"));
+  assert.ok(html.includes("Bounded assignment"));
+});
+
+test("Activity manager decision renders a selected fork, not a vs sentence", () => {
+  const items: ActivityItem[] = [
+    {
+      id: "act_dec",
+      type: "manager_decision",
+      occurredAt: NOW,
+      actor: { kind: "somebody", label: "Somebody" },
+      title: "Somebody chose to buy audience evidence",
+      importance: "major",
+      payload: {
+        selected: { approach: "BUY", label: "Acquire audience-language evidence" },
+        alternative: { approach: "MAKE", label: "Continue with owned research" },
+        reason: "The gap is current audience language.",
+      },
+    },
+  ];
+  const html = renderToStaticMarkup(createElement(Activity, { items }));
+  assert.ok(html.includes("v6-option is-selected"));
+  assert.ok(html.includes("Acquire audience-language evidence"));
+  assert.ok(html.includes("Continue with owned research"));
+  assert.ok(!html.includes(">vs<"));
+  assert.ok(!html.includes(" vs "));
+});
+
+test("Activity does not use the old inferred causality copy", () => {
+  const items: ActivityItem[] = [
+    {
+      id: "act_b",
+      type: "artifact_changed",
+      occurredAt: NOW,
+      actor: { kind: "intern", id: "w1", label: "Rae" },
+      title: "Landing copy updated",
+      importance: "major",
+      causedByActivityId: "act_a",
+      payload: { deliverableId: "d1", before: "Old", after: "New", changeSummary: "Rewrote the hero" },
+    },
+  ];
+  const html = renderToStaticMarkup(createElement(Activity, { items }));
+  assert.ok(!html.includes("Continues from an earlier linked event"));
+  assert.ok(html.includes("data-caused-by-note"));
+});
+
+test("StartView uses the approved working duo, not a generic mascot-only hero", () => {
+  const html = renderToStaticMarkup(createElement(StartView, { capabilities: ALL_FALSE }));
+  assert.ok(html.includes("/mascot/duo/duo-working-transparent.webp"));
+});
+
 // ── L. Architectural seam ─────────────────────────────────────────────────────
 
 const FORBIDDEN_IMPORT_FRAGMENTS = [
