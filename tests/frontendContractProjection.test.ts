@@ -163,6 +163,11 @@ function source(over: Partial<ProductSource> = {}): ProductSource {
 }
 
 const opts = { now: NOW };
+const LEGAL = {
+  approval: [{ id: "approve", type: "approve" as const, label: "Approve" }],
+  clarification: [{ id: "answer", type: "provide_input" as const, label: "Answer", requiresText: true }],
+  reconciliation: [{ id: "ack", type: "acknowledge" as const, label: "Reconcile" }],
+};
 const status = (s: ProductSource, attentionActions?: Parameters<typeof deriveObjectiveFacts>[1]) => deriveObjectiveFacts(s, attentionActions).status;
 
 // ── Objective status ─────────────────────────────────────────────────────────
@@ -183,17 +188,33 @@ test("status: completed needs row completed AND accepted gate for the current re
   assert.notEqual(status(staleGate), "completed", "a prior-revision gate cannot complete the current revision");
 });
 
-test("status: pending approval → needs_you with no fake actions", () => {
-  const s = source({
+const pendingApproval = () =>
+  source({
     decisions: [
       decision("d1", "r1", { strategy: "BUY", authorization: { kind: "approval_required", question: "Spend $5?", reason: "spend_authority_required" } }),
     ],
   });
-  const facts = deriveObjectiveFacts(s);
+
+test("status: pending approval with NO legal action is waiting, never needs_you", () => {
+  const facts = deriveObjectiveFacts(pendingApproval());
+  assert.equal(facts.status, "waiting");
+  assert.equal(facts.attention, null, "no fabricated action means no Attention");
+  assert.equal(facts.pendingFounder?.attention.id, "d1");
+  const view = projectObjectiveWorkspace(pendingApproval(), opts);
+  assert.equal(view.attention, null);
+  assert.equal(view.somebodyNow.state, "waiting");
+  assert.equal(byType(view.activity, "founder_action_required").length, 0);
+});
+
+test("status: pending approval with a real injected legal action → needs_you", () => {
+  const facts = deriveObjectiveFacts(pendingApproval(), { attentionActions: LEGAL });
   assert.equal(facts.status, "needs_you");
   assert.equal(facts.attention?.attention.type, "approval");
-  assert.deepEqual(facts.attention?.attention.actions, []);
+  assert.deepEqual(facts.attention?.attention.actions, LEGAL.approval);
   assert.equal(facts.attention?.attention.id, "d1");
+  assert.equal(facts.pendingFounder, null);
+  // Actions for an unrelated attention type do not make an approval actionable.
+  assert.equal(deriveObjectiveFacts(pendingApproval(), { attentionActions: { clarification: LEGAL.clarification } }).status, "waiting");
 });
 
 test("status: approval resolved by a later decision no longer needs_you", () => {
@@ -226,14 +247,17 @@ test("status: blocked required requirement, failed and recovery states → block
   assert.equal(status(source({ objective: objective({ controlNotes: [{ type: "control_state", state: "escalated", summary: "s", at: 1 }] }) })), "blocked", "escalated without an ask decision has no legal founder path");
 });
 
-test("status: ASK_FOUNDER escalation → needs_you clarification", () => {
+test("status: ASK_FOUNDER escalation → needs_you only with a legal action, else waiting", () => {
   const s = source({
     objective: objective({ controlNotes: [{ type: "control_state", state: "escalated", summary: "s", at: 1 }] }),
     decisions: [decision("d_ask", "r1", { strategy: "ASK_FOUNDER", rationale: "Which market?" })],
   });
-  const facts = deriveObjectiveFacts(s);
-  assert.equal(facts.status, "needs_you");
-  assert.equal(facts.attention?.attention.type, "clarification");
+  const withAction = deriveObjectiveFacts(s, { attentionActions: LEGAL });
+  assert.equal(withAction.status, "needs_you");
+  assert.equal(withAction.attention?.attention.type, "clarification");
+  const without = deriveObjectiveFacts(s);
+  assert.equal(without.status, "waiting");
+  assert.equal(without.attention, null);
 });
 
 test("status: external provider wait → waiting; live BUY authorized intent in current revision", () => {
@@ -274,7 +298,8 @@ test("status precedence: needs_you beats blocked/waiting/verifying; blocked beat
     requirements: [req("r1"), req("r2", { state: "blocked" })],
     intents: [intent("i1", { state: "handed_off", requirementKey: "r2" })],
   });
-  assert.equal(status(both), "needs_you");
+  assert.equal(status(both, { attentionActions: LEGAL }), "needs_you");
+  assert.equal(status(both), "blocked", "without a legal action the blocked requirement decides");
   const blockedAndWaiting = source({
     requirements: [req("r1"), req("r2", { state: "blocked" })],
     intents: [intent("i1", { state: "handed_off" })],
@@ -291,7 +316,7 @@ test("status precedence: needs_you beats blocked/waiting/verifying; blocked beat
     requirements: [satisfied("r1"), req("r2", { state: "blocked", priority: "supporting" })],
     decisions: [gate(true), approval],
   });
-  assert.equal(status(completedAll), "completed");
+  assert.equal(status(completedAll, { attentionActions: LEGAL }), "completed");
 });
 
 // ── Checkpoints ──────────────────────────────────────────────────────────────
@@ -678,11 +703,12 @@ test("acquisition: verified does not satisfy the requirement or imply completion
   assert.notEqual(view.objective.status, "completed");
 });
 
-test("acquisition: provenance preserved; unknown before a result; simulation/replay carry no amount or transaction", () => {
+test("acquisition: provenance preserved when result-backed; absent (never invented) before a result", () => {
   for (const p of ["live", "simulation", "recorded_replay"] as const) {
     const s = source({ intents: [intent("i1", { state: "verified", resultEvidenceId: "e1" })], objective: objective({ acquisitionResults: [acqResult("i1", "e1", { provenance: p })] }) });
     const [a] = projectAcquisitions(s, deriveObjectiveFacts(s), { transactionFacts: { i1: { status: "confirmed", label: "Confirmed", txHash: "0xabc" } } });
-    assert.equal(a.provenance, p);
+    assert.equal(a.status, "verified");
+    assert.equal(a.provenance, p, "exact persisted provenance");
     if (p === "live") {
       assert.equal(a.transaction?.txHash, "0xabc");
       assert.deepEqual(a.amount, { amount: "2.00", currency: "USD" });
@@ -691,11 +717,19 @@ test("acquisition: provenance preserved; unknown before a result; simulation/rep
       assert.equal(a.amount, undefined);
     }
   }
+  const received = source({ intents: [intent("i1", { state: "result_recorded", resultEvidenceId: "e1" })], objective: objective({ acquisitionResults: [acqResult("i1", "e1", { provenance: "recorded_replay" })] }) });
+  assert.equal(projectAcquisitions(received, deriveObjectiveFacts(received), {})[0].provenance, "recorded_replay");
   const pre = source({ intents: [intent("i1", { state: "handed_off" })] });
   const [p] = projectAcquisitions(pre, deriveObjectiveFacts(pre), {});
   assert.equal(p.status, "in_progress");
-  assert.equal(p.provenance, null);
+  assert.equal("provenance" in p, false, "pre-result: key absent, not null/live/simulation/unknown");
   assert.equal("transaction" in p, false, "handed_off never implies a transaction");
+  const proposed = source({ decisions: [decision("dbuy", "r1", { strategy: "BUY" })] });
+  assert.equal("provenance" in projectAcquisitions(proposed, deriveObjectiveFacts(proposed), {})[0], false);
+  const noRecord = source({ intents: [intent("i1", { state: "verified", resultEvidenceId: "e1" })] });
+  const [nr] = projectAcquisitions(noRecord, deriveObjectiveFacts(noRecord), {});
+  assert.notEqual(nr.status, "verified");
+  assert.equal("provenance" in nr, false);
 });
 
 test("acquisition: failed, reconciliation, proposed and needs_approval mapping", () => {
@@ -709,22 +743,46 @@ test("acquisition: failed, reconciliation, proposed and needs_approval mapping",
 
 // ── Attention ────────────────────────────────────────────────────────────────
 
-test("attention: priority reconciliation > approval > clarification", () => {
+test("attention: priority reconciliation > approval > clarification (legal actions only)", () => {
   const approval = decision("d_appr", "r1", { authorization: { kind: "approval_required", question: "q", reason: "spend_authority_required" }, at: NOW - 10_000 });
   const ask = decision("d_ask", "r2", { strategy: "ASK_FOUNDER", at: NOW - 5000 });
   const s = source({ requirements: [req("r1"), req("r2")], decisions: [ask, approval], intents: [intent("i1", { state: "reconciliation_required" })] });
-  const recon = { reconciliation: [{ id: "a", type: "acknowledge" as const, label: "Reconcile" }] };
-  assert.equal(deriveObjectiveFacts(s, { attentionActions: recon }).attention?.attention.type, "reconciliation");
-  assert.equal(deriveObjectiveFacts(s).attention?.attention.type, "approval", "no legal reconciliation action ⇒ falls to the next source");
-  const askOnly = source({ requirements: [req("r1"), req("r2")], decisions: [ask] });
-  assert.equal(deriveObjectiveFacts(askOnly).attention?.attention.type, "clarification");
+  assert.equal(deriveObjectiveFacts(s, { attentionActions: LEGAL }).attention?.attention.type, "reconciliation");
+  const noRecon = { attentionActions: { approval: LEGAL.approval, clarification: LEGAL.clarification } };
+  assert.equal(deriveObjectiveFacts(s, noRecon).attention?.attention.type, "approval");
+  assert.equal(deriveObjectiveFacts(s, { attentionActions: { clarification: LEGAL.clarification } }).attention?.attention.type, "clarification", "a higher-priority non-actionable source does not hide an actionable one");
+  assert.equal(deriveObjectiveFacts(s).attention, null);
 });
 
 test("attention: actions come only from an implemented adapter", () => {
-  const s = source({ decisions: [decision("d1", "r1", { authorization: { kind: "approval_required", question: "q", reason: "spend_authority_required" } })] });
-  assert.deepEqual(deriveObjectiveFacts(s).attention?.attention.actions, []);
-  const approve = { id: "approve", type: "approve" as const, label: "Approve" };
-  assert.deepEqual(deriveObjectiveFacts(s, { attentionActions: { approval: [approve] } }).attention?.attention.actions, [approve]);
+  assert.equal(deriveObjectiveFacts(pendingApproval()).attention, null);
+  assert.deepEqual(deriveObjectiveFacts(pendingApproval(), { attentionActions: { approval: LEGAL.approval } }).attention?.attention.actions, LEGAL.approval);
+});
+
+test("invariant: needs_you always implies attention with at least one legal action", () => {
+  const scenarios: ProductSource[] = [
+    pendingApproval(),
+    source({ intents: [intent("i1", { state: "reconciliation_required" })] }),
+    source({ objective: objective({ controlNotes: [{ type: "control_state", state: "escalated", summary: "s", at: 1 }] }), decisions: [decision("d_ask", "r1", { strategy: "ASK_FOUNDER" })] }),
+    source({ requirements: [req("r1", { state: "blocked" })] }),
+    source({ objective: objective({ state: "failed" }) }),
+    source({ objective: objective({ state: "approval_required", controlNotes: [{ type: "pending_approval", question: "q", at: 5 }] }) }),
+  ];
+  for (const adapter of [undefined, { attentionActions: LEGAL }, { attentionActions: { approval: LEGAL.approval } }]) {
+    for (const s of scenarios) {
+      const view = projectObjectiveWorkspace(s, { now: NOW, ...(adapter ?? {}) });
+      if (view.objective.status === "needs_you") {
+        assert.ok(view.attention && view.attention.actions.length > 0);
+        assert.equal(view.somebodyNow.state, "needs_you");
+      }
+      if (view.attention) assert.ok(view.attention.actions.length > 0, "Attention is never non-actionable");
+      assert.equal(projectObjectiveSummary(s, adapter ?? {}).hasAttention, view.attention !== null);
+    }
+  }
+  // Legacy note-only approval is also non-actionable without an adapter.
+  const note = scenarios[5];
+  assert.equal(status(note), "waiting");
+  assert.equal(status(note, { attentionActions: { approval: LEGAL.approval } }), "needs_you");
 });
 
 test("attention: a blocker without a legal command is status blocked with attention null; availableActions empty", () => {
@@ -743,12 +801,13 @@ test("somebodyNow state follows product status", () => {
     [source({ contracts: [], requirements: [] }), "interpreting"],
     [source({ assignments: [assignment("a1", "r1")] }), "working"],
     [source({ intents: [intent("i1", { state: "handed_off" })] }), "waiting"],
-    [source({ decisions: [decision("d1", "r1", { authorization: { kind: "approval_required", question: "Spend?", reason: "spend_authority_required" } })] }), "needs_you"],
+    [source({ decisions: [decision("d1", "r1", { authorization: { kind: "approval_required", question: "Spend?", reason: "spend_authority_required" } })] }), "waiting"],
     [source({ requirements: [satisfied("r1")] }), "verifying"],
     [source({ objective: objective({ state: "completed", result: { summary: "All done", completedAt: NOW } }), requirements: [satisfied("r1")], decisions: [gate(true)] }), "completed"],
     [source({ objective: objective({ state: "failed" }) }), "blocked"],
   ];
   for (const [s, expected] of cases) assert.equal(projectObjectiveWorkspace(s, opts).somebodyNow.state, expected);
+  assert.equal(projectObjectiveWorkspace(cases[3][0], { now: NOW, attentionActions: LEGAL }).somebodyNow.state, "needs_you");
 });
 
 test("workspace leaks no raw engine arrays or states", () => {
@@ -771,7 +830,7 @@ test("viewRevision is deterministic and sensitive to source changes", () => {
 
 test("list: grouping and stable sort (updatedAt DESC, id tie-break)", () => {
   const mk = (key: string, updatedAt: number, s: Partial<ProductSource> = {}) =>
-    projectObjectiveSummary({ ...source(s), objective: { ...(s.objective ?? objective()), key, updatedAt } });
+    projectObjectiveSummary({ ...source(s), objective: { ...(s.objective ?? objective()), key, updatedAt } }, { attentionActions: LEGAL });
   const list = groupObjectiveSummaries([
     mk("b", 100),
     mk("a", 100),
@@ -788,11 +847,14 @@ test("list: grouping and stable sort (updatedAt DESC, id tie-break)", () => {
   assert.deepEqual(Object.keys(list.done[0]).sort(), ["hasAttention", "id", "status", "statusLabel", "title", "updatedAt"]);
 });
 
-test("start capabilities advertise only real fields", () => {
-  assert.deepEqual(projectStartCapabilities(), {
-    canCreateObjective: true,
+test("start capabilities reflect the WIRED product command surface (none yet)", () => {
+  const caps = projectStartCapabilities();
+  assert.equal(caps.canCreateObjective, false, "no product create adapter is wired");
+  assert.equal(caps.advanced.spendLimit, false, "spend limit rides the create adapter");
+  assert.deepEqual(caps, {
+    canCreateObjective: false,
     supportsContextRefs: false,
     supportsAttachments: false,
-    advanced: { spendLimit: true, deadline: false, externalEffectPolicy: false },
+    advanced: { spendLimit: false, deadline: false, externalEffectPolicy: false },
   });
 });

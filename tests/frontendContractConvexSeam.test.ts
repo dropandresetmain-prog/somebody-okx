@@ -309,7 +309,7 @@ test("workspace: completed row without gate is verifying; with accepting gate it
   assert.deepEqual(afterList.view.done.map((row: Loose) => row.id), [key]);
 });
 
-test("workspace: pending approval yields needs_you attention with no actions", async () => {
+test("workspace: pending approval with no wired product command is waiting, not needs_you", async () => {
   const t = convexTest(schema, modules);
   const key = "obj_appr";
   await seedObjective(t, key);
@@ -318,14 +318,15 @@ test("workspace: pending approval yields needs_you attention with no actions", a
   await putApprovalDecision(t, key);
 
   const { view } = await workspace(t, key);
-  assert.ok(view.attention);
-  assert.equal(view.attention.type, "approval");
-  assert.deepEqual(view.attention.actions, []);
-  assert.equal(view.objective.status, "needs_you");
+  assert.equal(view.attention, null, "no legal founder action exists, so no Attention");
+  assert.equal(view.objective.status, "waiting");
+  assert.equal(view.somebodyNow.state, "waiting");
   const listed = await list(t);
-  const entry = listed.view.needsYou.find((row: Loose) => row.id === key);
+  assert.equal(listed.view.needsYou.length, 0);
+  const entry = listed.view.inProgress.find((row: Loose) => row.id === key);
   assert.ok(entry);
-  assert.equal(entry.hasAttention, true);
+  assert.equal(entry.hasAttention, false);
+  assert.equal(entry.status, "waiting");
 });
 
 test("workspace: blocked required requirement is blocked with null attention, listed in progress", async () => {
@@ -363,9 +364,9 @@ test("list: groups needsYou/done/inProgress, sorts updatedAt desc then id, expos
   assert.equal(result.found, true);
   assert.equal(result.contractVersion, 1);
   const view = result.view;
-  assert.deepEqual(view.needsYou.map((row: Loose) => row.id), ["obj_ny"]);
+  assert.deepEqual(view.needsYou.map((row: Loose) => row.id), [], "needs_you requires a legal action; none is wired");
   assert.deepEqual(view.done.map((row: Loose) => row.id), ["obj_done"]);
-  assert.deepEqual(view.inProgress.map((row: Loose) => row.id), ["obj_p_new", "obj_p_old"]);
+  assert.deepEqual(view.inProgress.map((row: Loose) => row.id), ["obj_p_new", "obj_p_old", "obj_ny"]);
   for (const row of [...view.needsYou, ...view.done, ...view.inProgress]) {
     assert.deepEqual(Object.keys(row).sort(), ["hasAttention", "id", "status", "statusLabel", "title", "updatedAt"]);
   }
@@ -377,14 +378,14 @@ test("capabilities: returns the fixed start capabilities in the found envelope",
   assert.equal(result.found, true);
   assert.equal(result.contractVersion, 1);
   assert.deepEqual(result.view, {
-    canCreateObjective: true,
+    canCreateObjective: false,
     supportsContextRefs: false,
     supportsAttachments: false,
-    advanced: { spendLimit: true, deadline: false, externalEffectPolicy: false },
+    advanced: { spendLimit: false, deadline: false, externalEffectPolicy: false },
   });
 });
 
-test("workspace: handed_off BUY intent is in_progress with no transaction and null provenance", async () => {
+test("workspace: handed_off BUY intent is in_progress with no transaction and no provenance", async () => {
   const t = convexTest(schema, modules);
   const key = "obj_buy";
   await seedObjective(t, key);
@@ -398,5 +399,5 @@ test("workspace: handed_off BUY intent is in_progress with no transaction and nu
   assert.ok(acquisition);
   assert.equal(acquisition.status, "in_progress");
   assert.ok(!("transaction" in acquisition));
-  assert.equal(acquisition.provenance, null);
+  assert.ok(!("provenance" in acquisition), "provenance is absent before a persisted result");
 });

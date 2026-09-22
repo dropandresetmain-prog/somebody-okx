@@ -307,13 +307,11 @@ export type AcquisitionView = {
   transaction?: TransactionFactView;
   resultSummary?: string;
   /**
-   * Live / simulation / recorded_replay is only durable once a result is
-   * persisted. Before that, provenance is genuinely unknown and is `null` —
-   * never defaulted (a default of "live" would risk portraying a simulation as
-   * a real payment). NOTE: the accepted contract types this as non-null; this
-   * nullable widening is a flagged deviation, see the implementation report.
+   * Present once a result is persisted (verified / result-backed acquisitions
+   * always carry it). Absent before that: provenance is only durable with the
+   * AcquisitionResult and is never defaulted or invented.
    */
-  provenance: ExternalProvenance | null;
+  provenance?: ExternalProvenance;
   updatedAt: number;
 };
 
