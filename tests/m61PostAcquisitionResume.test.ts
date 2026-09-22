@@ -290,6 +290,11 @@ async function seedPostAcquisition(
           decisionAttempts: { [REQ]: 2 },
           pendingDecision: null,
           decisionInputFingerprints: {
+            // This seed also persists one `failedAssignment` (below) — the
+            // portability-gate fix folds a requirement's own terminal delivery
+            // count into the fingerprint, so the persisted value here must
+            // already reflect that one failed delivery (matching what a real
+            // decision pass would compute against this same seeded state).
             [REQ]: computeDecisionInputFingerprint({
               requirementKey: REQ,
               contractRevision: 1,
@@ -299,6 +304,7 @@ async function seedPostAcquisition(
               eligibleOfferingIds: [],
               spendAuthorityUsd: null,
               budgetRemainingUsd: null,
+              terminalDeliveryCount: 1,
             }),
           },
           controlNotes: [],

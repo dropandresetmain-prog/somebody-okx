@@ -842,6 +842,14 @@ export function computeDecisionInputFingerprint(input: {
   eligibleOfferingIds: readonly string[];
   spendAuthorityUsd: number | null;
   budgetRemainingUsd: number | null;
+  /** Count of this requirement's own terminal (failed/superseded) delivery
+   * attempts at the current revision. A new delivery failure is itself a
+   * material fact change (the authorized option just proved non-executable):
+   * without it, a re-decide after a worker/assignment failure can fingerprint
+   * identically to the decision that authorized the failed delivery, and the
+   * begin step silently declines to schedule another pass forever (no timer
+   * is armed for the "executing" control state, so nothing else rescues it). */
+  terminalDeliveryCount?: number;
 }): string {
   const parts = [
     input.requirementKey,
@@ -852,6 +860,7 @@ export function computeDecisionInputFingerprint(input: {
     [...input.eligibleOfferingIds].map((s) => s.toLowerCase()).sort().join(","),
     input.spendAuthorityUsd == null ? "na" : String(input.spendAuthorityUsd),
     input.budgetRemainingUsd == null ? "na" : String(input.budgetRemainingUsd),
+    String(input.terminalDeliveryCount ?? 0),
   ];
   return sha256Hex(parts.join("\u0000")).slice(0, 32);
 }

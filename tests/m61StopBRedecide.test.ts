@@ -118,6 +118,7 @@ function requirementFor(key: string, contract: OutcomeContract): Requirement {
 function fingerprint(input: {
   requiredResourceClasses: readonly string[];
   validatedMissingClasses: readonly string[];
+  terminalDeliveryCount?: number;
 }): string {
   return computeDecisionInputFingerprint({
     requirementKey: REQ,
@@ -128,6 +129,7 @@ function fingerprint(input: {
     eligibleOfferingIds: [],
     spendAuthorityUsd: null,
     budgetRemainingUsd: null,
+    terminalDeliveryCount: input.terminalDeliveryCount ?? 0,
   });
 }
 
@@ -135,9 +137,13 @@ const BEFORE_GAP_FP = fingerprint({
   requiredResourceClasses: [],
   validatedMissingClasses: [],
 });
+// The re-decide this test exercises follows the FIRST run's own assignment
+// leaving "failed" (asserted below) — that terminal delivery is itself the
+// material fact change the portability-gate fix folds into the fingerprint.
 const AFTER_GAP_FP = fingerprint({
   requiredResourceClasses: ["proprietary_data"],
   validatedMissingClasses: ["proprietary_data"],
+  terminalDeliveryCount: 1,
 });
 
 assert.notEqual(BEFORE_GAP_FP, AFTER_GAP_FP, "fingerprints must differ across A1");

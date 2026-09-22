@@ -441,6 +441,23 @@ export function buildConvexManagementPorts(ctx: MutationCtx): ManagementPorts {
         requirement.requirementKey,
         acquisitions,
       );
+      // A terminal (failed/superseded) delivery for THIS requirement at the
+      // current revision is a material fact change in its own right: the
+      // authorized option just proved non-executable. Without folding it in,
+      // a re-decide after a worker/assignment failure can fingerprint
+      // identically to the decision that authorized the failed delivery.
+      const requirementAssignmentRows = await ctx.db
+        .query("assignments")
+        .withIndex("by_objective", (q) => q.eq("objectiveKey", state.objectiveKey))
+        .collect();
+      const terminalDeliveryCount = requirementAssignmentRows.filter((assignmentRow) => {
+        const assignmentData = (assignmentRow as AnyRow).data as Assignment;
+        return (
+          assignmentData.requirementKey === requirement.requirementKey &&
+          assignmentData.contractRevision === currentContractRevision &&
+          (assignmentData.state === "failed" || assignmentData.state === "superseded")
+        );
+      }).length;
       const fingerprint = computeDecisionInputFingerprint({
         requirementKey: requirement.requirementKey,
         contractRevision: currentContractRevision,
@@ -452,6 +469,7 @@ export function buildConvexManagementPorts(ctx: MutationCtx): ManagementPorts {
         eligibleOfferingIds: [],
         spendAuthorityUsd: null,
         budgetRemainingUsd: null,
+        terminalDeliveryCount,
       });
       if (fingerprints[requirement.requirementKey] === fingerprint) return null;
 
