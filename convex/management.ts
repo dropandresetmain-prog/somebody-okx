@@ -1874,11 +1874,26 @@ export const beginInterpretation = internalMutation({
     if (mgmt.interpretationStatus === "pending")
       return { proceed: false as const, reason: "interpretation already in flight" };
     const attempts = (mgmt.interpretationAttempts as number | undefined) ?? 0;
-    if (attempts >= BEGIN_INTERPRETATION_CEILING)
-      return {
-        proceed: false as const,
-        reason: `interpretation ceiling reached (${attempts}/${BEGIN_INTERPRETATION_CEILING}); founder input required`,
-      };
+    if (attempts >= BEGIN_INTERPRETATION_CEILING) {
+      const reason = `interpretation ceiling reached (${attempts}/${BEGIN_INTERPRETATION_CEILING}); founder input required`;
+      // No proposeInterpretation reschedule follows a ceiling refusal, so
+      // without an explicit terminal transition here the Objective is
+      // orphaned: `state` stays "received" (indistinguishable from a just-
+      // submitted Objective) with no wake, no timer and no founder-visible
+      // signal. `escalated` is the same typed terminal the reducer already
+      // uses for other exhausted ceilings; only classification changes here,
+      // never authority.
+      if (data.state !== "escalated") {
+        await ctx.db.patch(row._id, {
+          data: { ...data, state: "escalated", activity: reason.slice(0, 500) },
+        } as never);
+        await ctx.db.insert("objectiveEvents", {
+          objectiveKey: args.objectiveKey,
+          data: { at: Date.now(), kind: "system", text: reason.slice(0, 500) },
+        });
+      }
+      return { proceed: false as const, reason };
+    }
 
     const request = typeof data.request === "string" ? data.request : "";
     if (!request.trim())
