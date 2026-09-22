@@ -434,7 +434,12 @@ function finish(
     requirementKey: input.requirementKey,
     kind: "satisfaction_strategy",
     strategy: authorization.kind === "authorized" ? authorization.strategy : null,
-    optionId: authorization.kind === "authorized" ? authorization.optionId : null,
+    // Keep the selected option identity even when authorization is parked for
+    // founder spend approval — product Needs You derives the bound from it.
+    optionId:
+      authorization.kind === "authorized"
+        ? authorization.optionId
+        : (recommendation?.selectedOptionId ?? null),
     recommendation,
     authorization,
     coarsePlanSummary:

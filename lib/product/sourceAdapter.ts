@@ -183,7 +183,11 @@ export function normalizeDecision(data: Loose): ProductDecision {
     contractRevision: num(data.contractRevision),
     kind: str(data.kind),
     strategy: strOrNull(data.strategy),
-    optionId: strOrNull(data.optionId),
+    // approval_required decisions may persist optionId as null while still
+    // carrying the selected option on recommendation — surface it for Needs You.
+    optionId:
+      strOrNull(data.optionId) ??
+      (recommendation ? strOrNull(recommendation.selectedOptionId) : null),
     authorization:
       authorization.kind === "authorized"
         ? { kind: "authorized" }
