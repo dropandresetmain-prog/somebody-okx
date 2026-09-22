@@ -1,4 +1,4 @@
-// Validators mirroring lib/objective/types.ts for the fresh current-product
+﻿// Validators mirroring lib/objective/types.ts for the fresh current-product
 // tables. Evidence and activity are stored in their own tables and joined in
 // the read model.
 
@@ -286,6 +286,11 @@ export const objectiveRecord = v.object({
             // Material decision-input fingerprint for this reservation (optional
             // for older pending rows).
             inputFingerprint: v.optional(v.string()),
+            // Request-bound expiry (reliability V7 D): the watchdog armed with
+            // this reservation may clear ONLY this requestId, and only after
+            // this deadline. Optional so rows written before the fence stay
+            // readable.
+            expiresAt: v.optional(v.number()),
           }),
           v.null(),
         ),
@@ -318,6 +323,8 @@ export const objectiveRecord = v.object({
             targetArtifactVersion: v.optional(v.number()),
             deliverableRequirementKey: v.optional(v.string()),
             minVersionRequired: v.optional(v.union(v.number(), v.null())),
+            // Request-bound expiry (reliability V7 D) — see pendingDecision.
+            expiresAt: v.optional(v.number()),
           }),
           v.null(),
         ),

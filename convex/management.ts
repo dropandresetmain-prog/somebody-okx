@@ -37,7 +37,12 @@ import type { DecisionPassReads } from "../lib/management/decisionPass";
 import type { DecisionPassResult } from "../lib/management/decision";
 import type { FounderSpendGrant } from "./internal/workforce";
 import { interpretObjective } from "../lib/management/interpretation";
-import { planWakeForDecision, planWakeForInterpretation, planWakeForTimer } from "../lib/management/wakes";
+import {
+  planWakeForDecision,
+  planWakeForInterpretation,
+  planWakeForReopen,
+  planWakeForTimer,
+} from "../lib/management/wakes";
 import {
   decisionFingerprintFacts,
   decisionWorkerAvailability,
@@ -384,7 +389,7 @@ export function buildConvexManagementPorts(ctx: MutationCtx): ManagementPorts {
     // dispatch. The wake re-enters runManagementPass; by then the decision row
     // exists and the reducer routes to dispatch. This is the exact interpretation
     // pattern (beginInterpretation â†’ proposeInterpretation â†’ applyInterpretation).
-    async runDecisionPass(state: GraphState, _ports: ManagementPorts, _at: number): Promise<DecisionPassResult | null> {
+    async runDecisionPass(state: GraphState, _ports: ManagementPorts, at: number): Promise<DecisionPassResult | null> {
       if (!state.focusRequirementKey) return null;
 
       const { contract, currentContractRevision } = await ports.loadContract(state.objectiveKey);
@@ -514,6 +519,9 @@ export function buildConvexManagementPorts(ctx: MutationCtx): ManagementPorts {
               contractRevision: currentContractRevision,
               attempts: cumulative + 1,
               inputFingerprint: fingerprint,
+              // Request-bound expiry (D): the watchdog armed below may only
+              // clear THIS reservation, and only after the bound lapses.
+              expiresAt: at + DECISION_RESERVATION_TTL_MS,
             },
             decisionAttempts: { ...attemptsMap, [requirement.requirementKey]: cumulative + 1 },
           },
@@ -531,6 +539,14 @@ export function buildConvexManagementPorts(ctx: MutationCtx): ManagementPorts {
         requirementKey: requirement.requirementKey,
         contractRevision: currentContractRevision,
       });
+      // Bounded expiry for the reservation (D): if the action chain dies
+      // without ever reaching applyDecision, this watchdog clears EXACTLY this
+      // requestId and returns the objective to the management loop.
+      await ctx.scheduler.runAfter(
+        DECISION_RESERVATION_TTL_MS,
+        internal.management.expireDecisionReservation,
+        { objectiveKey: state.objectiveKey, requestId },
+      );
       return null;
     },
 
@@ -2891,6 +2907,17 @@ async function dispatchExternal(
 
 // SUBSTANTIVE assessments only: one negative assessment reopens the deliverable
 // for one bounded correction, then a second assessment may accept or stop.
+// RELIABILITY V7 (D) — request-bound reservation expiry. A begin→propose→apply
+// chain reserves state (pendingDecision / pendingFinalAssessment) BEFORE the
+// model action runs. If the action dies mid-flight (crash, provider hang past
+// its own bound, dropped schedule), the reservation must not outlive a plausible
+// execution: a watchdog fires after the bound and clears EXACTLY the reservation
+// it was armed for (requestId match), then hands the objective back to the
+// management loop. These bounds exceed any legitimate action runtime, so the
+// watchdog only ever acts on genuinely orphaned reservations.
+export const DECISION_RESERVATION_TTL_MS = 10 * 60_000;
+export const FINAL_ASSESSMENT_RESERVATION_TTL_MS = 10 * 60_000;
+
 export const BEGIN_FINAL_ASSESSMENT_CEILING = 2;
 // NON-substantive failures (provider outage / structurally invalid answer after
 // its one repair). Bounded separately so instability can neither burn the
@@ -3092,6 +3119,29 @@ async function reopenSerialDeliverableAfterNegativeAssessment(
       text: `Final semantic assessment not ready; deliverable reopened for bounded revision: ${rationale.slice(0, 400)}`,
     },
   });
+
+  // RELIABILITY V7 (D) — the reopen OWNS its continuation. The correction must
+  // not wait on an unrelated old worker timer or on some other event happening
+  // to arrive: this wake (deduped on the reopen identity, a SELF reason so it
+  // never launders the no-progress counter) plus this scheduled pass are the
+  // correction's guaranteed next step. A redelivered gate pass rebuilds a
+  // byte-identical wake, so the continuation can never fan out.
+  const wake = planWakeForReopen({
+    objectiveKey,
+    contractRevision,
+    assessmentAttempt: attempts,
+    at,
+  });
+  await ctx.runMutation(internal.internal.workforce.appendWakeEvent, {
+    eventId: wake.eventId,
+    objectiveKey,
+    dedupeKey: wake.dedupeKey,
+    data: wake.event,
+  });
+  await ctx.scheduler.runAfter(0, internal.management.runManagementPass, {
+    objectiveKey,
+    reason: "recovery_event",
+  });
 }
 
 /**
@@ -3193,6 +3243,9 @@ export const beginFinalSemanticAssessment = internalMutation({
             targetArtifactVersion: target.artifactVersion,
             deliverableRequirementKey: target.requirementKey,
             minVersionRequired: target.minVersionRequired,
+            // Request-bound expiry (D): the watchdog may only clear THIS
+            // requestId, and only once the bound has lapsed.
+            expiresAt: args.at + FINAL_ASSESSMENT_RESERVATION_TTL_MS,
           },
           finalAssessmentAttempts: attempts + 1,
         },
@@ -3206,6 +3259,11 @@ export const beginFinalSemanticAssessment = internalMutation({
         requestId,
         contractRevision: revision,
       },
+    );
+    await ctx.scheduler.runAfter(
+      FINAL_ASSESSMENT_RESERVATION_TTL_MS,
+      internal.management.expireFinalAssessmentReservation,
+      { objectiveKey: args.objectiveKey, requestId },
     );
     return { proceed: true as const, requestId };
   },
@@ -3403,6 +3461,112 @@ export const clearPendingFinalAssessment = internalMutation({
     await ctx.scheduler.runAfter(0, internal.management.runManagementPass, {
       objectiveKey: args.objectiveKey,
       reason: "final_assessment_failed",
+    });
+    return null;
+  },
+});
+
+/**
+ * RELIABILITY V7 (D) — request-bound expiry for a decision reservation.
+ *
+ * Armed by the begin step at the moment the reservation is written. It may
+ * only clear EXACTLY the reservation it was armed for: a late watchdog firing
+ * after a newer begin wrote a different requestId does nothing (the newer
+ * reservation keeps its own watchdog). An orphaned reservation is an
+ * infrastructure failure — neither an authorization nor a semantic refusal —
+ * so it is counted against the REFUSAL ceiling (action deaths cannot evade
+ * BEGIN_DECISION_CEILING by looping the begin step forever), then cleared and
+ * handed back to the management loop, which either re-decides or lands in the
+ * reducer's explicit recovery_required. No busy polling: one scheduled check
+ * per reservation, at that reservation's own expiry bound.
+ */
+export const expireDecisionReservation = internalMutation({
+  args: { objectiveKey: v.string(), requestId: v.string() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const row = await ctx.db
+      .query("objectives")
+      .withIndex("by_key", (q) => q.eq("key", args.objectiveKey))
+      .unique();
+    if (!row) return null;
+    const data = (row as AnyRow).data as Record<string, unknown>;
+    const mgmt = (data.management ?? {}) as Record<string, unknown>;
+    const pending = mgmt.pendingDecision as
+      | { requestId: string; requirementKey: string; expiresAt?: number }
+      | null
+      | undefined;
+    // Late-callback guard: a foreign or already-replaced reservation is left
+    // exactly as it is.
+    if (!pending || pending.requestId !== args.requestId) return null;
+    // Bounded expiry: never act before the reservation's own deadline.
+    if (typeof pending.expiresAt === "number" && Date.now() < pending.expiresAt)
+      return null;
+    const refusalMap = {
+      ...((mgmt.decisionRefusalAttempts ?? {}) as Record<string, number>),
+    };
+    refusalMap[pending.requirementKey] =
+      (refusalMap[pending.requirementKey] ?? 0) + 1;
+    await ctx.db.patch(row._id, {
+      data: {
+        ...data,
+        management: {
+          ...mgmt,
+          contractId: (mgmt.contractId as string | null) ?? null,
+          pendingDecision: null,
+          decisionRefusalAttempts: refusalMap,
+        },
+        updatedAt: Date.now(),
+      },
+    } as never);
+    await ctx.db.insert("objectiveEvents", {
+      objectiveKey: args.objectiveKey,
+      data: {
+        at: Date.now(),
+        kind: "decision",
+        text: `decision reservation ${args.requestId} expired without an apply (action chain lost); counted against the refusal ceiling and returned to the loop`,
+      },
+    });
+    await ctx.scheduler.runAfter(0, internal.management.runManagementPass, {
+      objectiveKey: args.objectiveKey,
+      reason: "recovery_event",
+    });
+    return null;
+  },
+});
+
+/**
+ * RELIABILITY V7 (D) — request-bound expiry for a final-assessment
+ * reservation. Same identity discipline: only the armed requestId is cleared,
+ * only after its own bound. Delegates the accounting to
+ * clearPendingFinalAssessment (a lost action is a provider-class failure: the
+ * substantive attempt is refunded and the separate non-substantive budget is
+ * charged, so an unstable chain can neither burn the semantic-negative
+ * allowance nor loop forever).
+ */
+export const expireFinalAssessmentReservation = internalMutation({
+  args: { objectiveKey: v.string(), requestId: v.string() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const row = await ctx.db
+      .query("objectives")
+      .withIndex("by_key", (q) => q.eq("key", args.objectiveKey))
+      .unique();
+    if (!row) return null;
+    const data = (row as AnyRow).data as Record<string, unknown>;
+    const mgmt = (data.management ?? {}) as Record<string, unknown>;
+    const pending = mgmt.pendingFinalAssessment as
+      | { requestId: string; expiresAt?: number }
+      | null
+      | undefined;
+    if (!pending || pending.requestId !== args.requestId) return null;
+    if (typeof pending.expiresAt === "number" && Date.now() < pending.expiresAt)
+      return null;
+    await ctx.runMutation(internal.management.clearPendingFinalAssessment, {
+      objectiveKey: args.objectiveKey,
+      requestId: args.requestId,
+      detail: "final-assessment reservation expired without an apply (action chain lost)",
+      failureKind: "provider_failure",
+      at: Date.now(),
     });
     return null;
   },
