@@ -314,7 +314,7 @@ test("verified acquisition does not visually imply Objective completion", () => 
   assert.ok(!html.includes('data-objective-status="completed"'));
 });
 
-// ── I. Attention — read-only this milestone ──────────────────────────────────
+// ── I. Attention — spend approval action when supplied ───────────────────────
 
 test("Attention renders nothing when null", () => {
   const html = renderToStaticMarkup(createElement(Attention, { attention: null }));
@@ -327,19 +327,36 @@ test("Attention with zero actions renders no manufactured buttons", () => {
   assert.ok(!html.includes("<button"));
 });
 
-test("Attention renders only the supplied actions, always disabled (no live mutation)", () => {
+test("Attention without handler keeps supplied actions disabled", () => {
   const attention: AttentionState = {
     id: "att1",
     revision: "att1:1",
     type: "approval",
     title: "Needs approval",
     detail: "…",
-    actions: [{ id: "a1", type: "approve", label: "Approve" }],
+    actions: [{ id: "approve_spend", type: "approve", label: "Approve $6.80 limit" }],
   };
   const html = renderToStaticMarkup(createElement(Attention, { attention }));
-  assert.ok(html.includes('data-attention-action-id="a1"'));
-  assert.ok(/disabled/.test(html.match(/<button[^>]*data-attention-action-id="a1"[^>]*>/)?.[0] ?? ""));
+  assert.ok(html.includes('data-attention-action-id="approve_spend"'));
+  assert.ok(/disabled/.test(html.match(/<button[^>]*data-attention-action-id="approve_spend"[^>]*>/)?.[0] ?? ""));
   assert.ok(!html.includes(">Decline<"), "must never manufacture an action the contract did not supply");
+});
+
+test("Attention enables returned action when onAction is wired", () => {
+  const attention: AttentionState = {
+    id: "att1",
+    revision: "att1:1",
+    type: "approval",
+    title: "Needs approval",
+    detail: "…",
+    actions: [{ id: "approve_spend", type: "approve", label: "Approve $6.80 limit" }],
+  };
+  const html = renderToStaticMarkup(
+    createElement(Attention, { attention, onAction: () => undefined }),
+  );
+  const btn = html.match(/<button[^>]*data-attention-action-id="approve_spend"[^>]*>/)?.[0] ?? "";
+  assert.ok(btn);
+  assert.ok(!/\sdisabled(=|\s|>)/.test(btn));
 });
 
 // ── J. Start capabilities — current all-false contract ──────────────────────
