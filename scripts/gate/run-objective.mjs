@@ -30,20 +30,32 @@ console.log(`[${label}] objectiveKey=${objectiveKey}`);
 const timeline = [];
 const simulated = new Set();
 let last = null;
-async function read() {
+
+// Normal polling: ONE small status read + the already-lightweight simulation
+// candidate lookup. No full Objective (evidence/events), no full workspace
+// (contracts/assignments/decisions/intents/grants/all-workers) on every tick.
+async function readStatus() {
+  const status = await client.query(api.objectives.getObjectiveStatus, { objectiveKey });
+  let cand = null;
+  try { cand = await client.query(api.m3Driver.simulationCandidate, { operatorToken, objectiveKey }); } catch (e) { cand = { error: String(e?.message ?? e) }; }
+  return { status, cand };
+}
+
+// Full read: only for final evidence capture, where the gate's promise to
+// record complete truth applies.
+async function readFull() {
   const raw = await client.query(api.objectives.getObjective, { objectiveKey });
   const ws = await client.query(api.m5Workspace.getObjectiveWorkspaceV2, { objectiveKey });
   let cand = null;
   try { cand = await client.query(api.m3Driver.simulationCandidate, { operatorToken, objectiveKey }); } catch (e) { cand = { error: String(e?.message ?? e) }; }
   return { raw, ws, cand };
 }
+
 let final = null;
 for (;;) {
-  const s = await read();
-  final = s;
-  const view = s.ws?.view;
-  const state = view?.objective?.state ?? s.raw?.record?.state;
-  const reqs = (view?.requirements ?? []).map((r) => `${r.requirementKey}:${r.state}:${r.strategy}`).join(",");
+  const s = await readStatus();
+  const state = s.status?.state ?? null;
+  const reqs = (s.status?.requirements ?? []).map((r) => `${r.requirementKey}:${r.state}:${r.strategy}`).join(",");
   const line = { t: Math.round((Date.now() - t0) / 1000), state, reqs, cand: s.cand?.intentId ?? null };
   if (JSON.stringify(line) !== JSON.stringify(last)) { timeline.push(line); console.log(`[${label}]`, JSON.stringify(line)); last = line; }
   const intentId = s.cand?.intentId;
@@ -57,11 +69,11 @@ for (;;) {
   }
   if (["completed", "blocked", "escalated", "recovery_required", "failed", "cancelled"].includes(state)) {
     await sleep(15000); // settle: let trailing wakes/idempotent replays land
-    const s2 = await read();
-    const st2 = s2.ws?.view?.objective?.state ?? s2.raw?.record?.state;
-    if (st2 === state) { final = s2; break; }
+    const s2 = await readStatus();
+    const st2 = s2.status?.state ?? null;
+    if (st2 === state) { final = await readFull(); break; }
   }
-  if (Date.now() - t0 > maxMs) { timeline.push({ timeout: true }); break; }
+  if (Date.now() - t0 > maxMs) { timeline.push({ timeout: true }); final = await readFull(); break; }
   await sleep(5000);
 }
 mkdirSync("docs/work/gate-evidence", { recursive: true });

@@ -24,7 +24,10 @@ export default defineSchema({
   // One bounded founder objective per row; the aggregate carries its plan,
   // work items, contract, run state and result atomically.
   objectives: defineTable({ key: v.string(), data: objectiveRecord })
-    .index("by_key", ["key"]),
+    .index("by_key", ["key"])
+    // Ordering for listObjectives: lets it read only the most-recently-updated
+    // N documents instead of collecting and sorting every Objective row.
+    .index("by_updatedAt", ["data.updatedAt"]),
   objectiveEvents: defineTable({
     objectiveKey: v.string(),
     data: activityEvent,
