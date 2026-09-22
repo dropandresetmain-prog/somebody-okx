@@ -2637,19 +2637,70 @@ export const listObjectives = query({
     }),
   ),
   handler: async (ctx) => {
-    const rows = await ctx.db.query("objectives").collect();
-    return rows
-      .map((row) => {
-        const data = (row as { key: string; data: ObjectiveRecord }).data;
-        return {
-          key: row.key,
-          request: data.request,
-          state: data.state,
-          updatedAt: data.updatedAt,
-        };
-      })
-      .sort((a, b) => b.updatedAt - a.updatedAt)
-      .slice(0, 20);
+    // Bounded, indexed read: only the 20 most-recently-updated Objective
+    // documents are loaded, instead of collecting and sorting every row.
+    const rows = await ctx.db
+      .query("objectives")
+      .withIndex("by_updatedAt")
+      .order("desc")
+      .take(20);
+    return rows.map((row) => {
+      const data = (row as { key: string; data: ObjectiveRecord }).data;
+      return {
+        key: row.key,
+        request: data.request,
+        state: data.state,
+        updatedAt: data.updatedAt,
+      };
+    });
+  },
+});
+
+// A small status read for polling loops (e.g. the model-portability gate),
+// which previously called the full getObjective + getObjectiveWorkspaceV2 on
+// every 5-second tick — loading evidence, events, contracts, assignments,
+// decisions, intents, grants and the entire workers table just to watch
+// state transitions. This exposes only what a poll loop needs to decide
+// whether to act or keep waiting; full reads remain for final evidence
+// capture and anywhere actual business decisions are made.
+export const getObjectiveStatus = query({
+  args: { objectiveKey: v.string() },
+  returns: v.union(
+    v.null(),
+    v.object({
+      key: v.string(),
+      state: v.string(),
+      updatedAt: v.number(),
+      requirements: v.array(
+        v.object({
+          requirementKey: v.string(),
+          state: v.string(),
+          strategy: v.union(v.string(), v.null()),
+        }),
+      ),
+    }),
+  ),
+  handler: async (ctx, args) => {
+    const row = await ctx.db
+      .query("objectives")
+      .withIndex("by_key", (q) => q.eq("key", args.objectiveKey))
+      .unique();
+    if (!row) return null;
+    const record = (row as ObjectiveRow).data;
+    const requirementRows = await ctx.db
+      .query("requirements")
+      .withIndex("by_objectiveKey", (q) => q.eq("objectiveKey", args.objectiveKey))
+      .collect();
+    const requirements = requirementRows.map((r) => {
+      const data = (r as { data: { requirementKey: string; state: string; strategy: string | null } }).data;
+      return { requirementKey: data.requirementKey, state: data.state, strategy: data.strategy };
+    });
+    return {
+      key: record.key,
+      state: record.state,
+      updatedAt: record.updatedAt,
+      requirements,
+    };
   },
 });
 

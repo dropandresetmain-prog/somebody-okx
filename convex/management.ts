@@ -948,8 +948,6 @@ export function buildConvexManagementPorts(ctx: MutationCtx): ManagementPorts {
       if (!row) return;
       const data = (row as AnyRow).data as Record<string, unknown>;
       const mgmt = (data.management ?? {}) as Record<string, unknown>;
-      const notes = [...((mgmt.controlNotes ?? []) as Array<Record<string, unknown>>)];
-      notes.push({ type: "control_state", state, summary, at });
       await ctx.db.patch(row._id, {
         data: {
           ...data,
@@ -961,7 +959,12 @@ export function buildConvexManagementPorts(ctx: MutationCtx): ManagementPorts {
           management: {
             ...mgmt,
             contractId: (mgmt.contractId as string | null) ?? null,
-            controlNotes: notes,
+            controlNotes: boundNotes(mgmt.controlNotes, {
+              type: "control_state",
+              state,
+              summary,
+              at,
+            }),
           },
         },
       } as never);
@@ -1210,19 +1213,17 @@ async function persistDecisionRow(
     if (row) {
       const data = (row as AnyRow).data as Record<string, unknown>;
       const mgmt = (data.management ?? {}) as Record<string, unknown>;
-      const notes = [...((mgmt.controlNotes ?? []) as Array<Record<string, unknown>>)];
-      notes.push({
-        type: "pending_approval",
-        question: result.authorization.question,
-        at,
-      });
       await ctx.db.patch(row._id, {
         data: {
           ...data,
           management: {
             ...mgmt,
             contractId: (mgmt.contractId as string | null) ?? null,
-            controlNotes: notes,
+            controlNotes: boundNotes(mgmt.controlNotes, {
+              type: "pending_approval",
+              question: result.authorization.question,
+              at,
+            }),
           },
         },
       } as never);
