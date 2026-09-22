@@ -2024,22 +2024,33 @@ export const applyDecision = internalMutation({
       "string"
         ? (pending as unknown as { inputFingerprint: string }).inputFingerprint
         : null;
+    // Re-read before clearing the reservation. persistDecisionRow (and other
+    // writers) may have appended control notes — especially pending_approval —
+    // after this handler's initial load. Patching the stale `mgmt` snapshot
+    // would wipe those notes and leave Needs You without a legal action.
     const clearPending = async (
       extra: Record<string, unknown> = {},
       storeFingerprint = false,
     ): Promise<void> => {
+      const freshRow = await ctx.db
+        .query("objectives")
+        .withIndex("by_key", (q) => q.eq("key", args.objectiveKey))
+        .unique();
+      if (!freshRow) return;
+      const freshData = (freshRow as AnyRow).data as Record<string, unknown>;
+      const freshMgmt = (freshData.management ?? {}) as Record<string, unknown>;
       const fingerprints = {
-        ...((mgmt.decisionInputFingerprints ?? {}) as Record<string, string>),
+        ...((freshMgmt.decisionInputFingerprints ?? {}) as Record<string, string>),
       };
       if (storeFingerprint && pendingFingerprint) {
         fingerprints[pending.requirementKey] = pendingFingerprint;
       }
-      await ctx.db.patch(row._id, {
+      await ctx.db.patch(freshRow._id, {
         data: {
-          ...data,
+          ...freshData,
           management: {
-            ...mgmt,
-            contractId: (mgmt.contractId as string | null) ?? null,
+            ...freshMgmt,
+            contractId: (freshMgmt.contractId as string | null) ?? null,
             pendingDecision: null,
             ...(storeFingerprint
               ? { decisionInputFingerprints: fingerprints }
@@ -2100,14 +2111,18 @@ export const applyDecision = internalMutation({
     await persistDecisionRow(ctx, result, args.at);
 
     const authorized = result.authorization.kind === "authorized";
+    // approval_required is a successful decision parked for founder authority —
+    // not a model refusal. Burning the refusal ceiling here exhausted Needs You
+    // before the founder could approve (pending_approval note + wait path).
+    const burnsRefusalCeiling = result.authorization.kind === "refused";
 
     // Keep decisionAttempts (sequence) after authorization for identity. Storm
-    // ceiling uses decisionRefusalAttempts — only unauthorized outcomes burn it.
+    // ceiling uses decisionRefusalAttempts — only refused proposals burn it.
     const attemptsMap = { ...((mgmt.decisionAttempts ?? {}) as Record<string, number>) };
     const refusalMap = {
       ...((mgmt.decisionRefusalAttempts ?? {}) as Record<string, number>),
     };
-    if (!authorized) {
+    if (burnsRefusalCeiling) {
       refusalMap[pending.requirementKey] =
         (refusalMap[pending.requirementKey] ?? 0) + 1;
     }
