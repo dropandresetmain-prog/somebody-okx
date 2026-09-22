@@ -1,4 +1,4 @@
-// M6.1 — post-acquisition resume after STOP B / verified external result.
+﻿// M6.1 — post-acquisition resume after STOP B / verified external result.
 //
 // Starting state (physical stall):
 //   - active Requirement, strategy cleared after INPUT_BLOCKED HYBRID failure
@@ -34,14 +34,16 @@ import {
   type ReducerFacts,
 } from "../lib/management/reducer";
 import {
-  computeDecisionInputFingerprint,
   validatedMissingClassesAfterAcquisitions,
   verifiedAcquisitionCoversNeed,
 } from "../lib/objective/inputDiagnosis";
 import { createResourceNeed } from "../lib/objective/resourceNeed";
+import { expectedFingerprintFromWorld } from "./helpers/fingerprintOracle";
+import type { ObjectiveBudget } from "../lib/management/types";
 import type { ResourceNeed } from "../lib/objective/resourceNeed";
 import type { ExternalAcquisitionResult } from "../lib/objective/types";
 import { createWorkContract, createWorkerSpec } from "../lib/workforce";
+import { createBudget } from "../lib/management/budget";
 import type {
   Assignment,
   ExecutionIntent,
@@ -242,11 +244,32 @@ function failedAssignment(key: string): Assignment {
   };
 }
 
+// The seeded decision-input world, split exactly as the production pass sees
+// it: `asOfLastDecision` has NO acquisitions/terminal intents yet (those
+// landed after attempt 2 stored its fingerprint); `asOfNow` adds them.
+function worldAsOfLastDecision(key: string) {
+  const contract = contractFor(key);
+  return {
+    objectiveKey: key,
+    requirement: requirementFor(key, contract),
+    currentContractRevision: 1,
+    allRequirements: [] as Requirement[],
+    resourceNeeds: [needFor(key)],
+    acquisitions: [] as ExternalAcquisitionResult[],
+    intents: [] as ExecutionIntent[],
+    assignments: [failedAssignment(key)],
+    spendAuthorityUsd: null,
+    budget: createBudget(key, now - 20_000),
+    workers: [] as Array<{ lifecycle: string; reservedBy: { objectiveKey: string } | null }>,
+  };
+}
+
 async function seedPostAcquisition(
   t: Backend,
   key: string,
   opts: {
     acquisition?: ExternalAcquisitionResult;
+    intent?: Partial<ExecutionIntent>;
     noProgressCycles?: number;
     skipWake?: boolean;
   } = {},
@@ -255,7 +278,7 @@ async function seedPostAcquisition(
   const requirement = requirementFor(key, contract);
   const need = needFor(key);
   const acquisition = opts.acquisition ?? acquisitionFor(key);
-  const intent = verifiedIntent(key);
+  const intent = { ...verifiedIntent(key), ...opts.intent };
   const assignment = failedAssignment(key);
 
   await t.run(async (ctx) => {
@@ -290,21 +313,13 @@ async function seedPostAcquisition(
           decisionAttempts: { [REQ]: 2 },
           pendingDecision: null,
           decisionInputFingerprints: {
-            // This seed also persists one `failedAssignment` (below) — the
-            // portability-gate fix folds a requirement's own terminal delivery
-            // count into the fingerprint, so the persisted value here must
-            // already reflect that one failed delivery (matching what a real
-            // decision pass would compute against this same seeded state).
-            [REQ]: computeDecisionInputFingerprint({
-              requirementKey: REQ,
-              contractRevision: 1,
-              requiredResourceClasses: ["proprietary_data"],
-              validatedMissingClasses: ["proprietary_data"],
-              prerequisiteStates: [],
-              spendAuthorityUsd: null,
-              budgetRemainingUsd: null,
-              terminalDeliveryCount: 1,
-            }),
+            // What the LAST real decision (attempt 2) saw: an open validated
+            // gap, ONE failed delivery already counted, and no acquisitions /
+            // terminal intents yet. Derived through the SAME shared collector
+            // production uses, so this fixture cannot drift from the gate it
+            // tests. The facts that arrived since (verified intent, landed
+            // acquisition) are what the next pass compares against.
+            [REQ]: expectedFingerprintFromWorld(worldAsOfLastDecision(key)),
           },
           controlNotes: [],
         },
@@ -526,8 +541,12 @@ test("post-acquisition resume: verification wake fulfills need and reserves deci
 test("post-acquisition negative twin: wrong-scoped acquisition does not unlock", async () => {
   const key = "obj_postacq_neg";
   const t = convexTest(schema, modules);
+  // BOTH the acquisition and its terminal intent belong to another
+  // requirement: "something external succeeded" is not enough to re-decide —
+  // scoped identity is. The positive twin above proves the complementary half.
   await seedPostAcquisition(t, key, {
     acquisition: acquisitionFor(key, { requirementKey: "req_other" }),
+    intent: { requirementKey: "req_other" },
     noProgressCycles: 0,
   });
 
@@ -546,6 +565,23 @@ test("post-acquisition negative twin: wrong-scoped acquisition does not unlock",
       summary: outcome.summary,
     };
   });
+  // The oracle confirms WHY nothing happened: with the wrong-scoped facts in,
+  // the material-fact fingerprint is byte-identical to the one attempt 2 stored.
+  const worldNow = {
+    ...worldAsOfLastDecision(key),
+    acquisitions: [acquisitionFor(key, { requirementKey: "req_other" })],
+    intents: [{ ...verifiedIntent(key), requirementKey: "req_other" }],
+  };
+  assert.equal(
+    expectedFingerprintFromWorld(worldNow),
+    expectedFingerprintFromWorld(worldAsOfLastDecision(key)),
+    "wrong-scoped facts must not change the material-fact fingerprint",
+  );
+  assert.notEqual(
+    expectedFingerprintFromWorld({ ...worldNow, acquisitions: [acquisitionFor(key)] }),
+    expectedFingerprintFromWorld(worldAsOfLastDecision(key)),
+    "sanity: a correctly-scoped acquisition DOES change it",
+  );
   assert.equal(after.needs[0]?.status, "active", "wrong-scoped acquisition must not fulfill");
   assert.equal(after.attempts, 2, "fingerprint unchanged → no new decision");
   assert.equal(after.pending, null);

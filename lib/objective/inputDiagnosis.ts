@@ -1,4 +1,4 @@
-// Application-owned missing-input validation.
+﻿// Application-owned missing-input validation.
 //
 // A worker may PROPOSE that a required input is missing. Only this module may
 // promote that proposal into authoritative ResourceNeed truth that affects
@@ -23,7 +23,13 @@ import {
   transitionNeedStatus,
   type ResourceNeed,
 } from "./resourceNeed";
-import type { EvidenceRecord, SourceProof } from "./types";
+import type { EvidenceRecord, ExternalAcquisitionResult, SourceProof } from "./types";
+import type {
+  Assignment,
+  ExecutionIntent,
+  ObjectiveBudget,
+  Requirement,
+} from "../management/types";
 
 const KNOWN_CLASSES = new Set<string>(RESOURCE_CLASSES.map((r) => r.class));
 
@@ -882,6 +888,121 @@ export function computeDecisionInputFingerprint(input: {
     String(input.terminalDeliveryCount ?? 0),
   ];
   return sha256Hex(parts.join("\u0000")).slice(0, 32);
+}
+
+/**
+ * Shared pure fact-collector for the decision-input fingerprint.
+ *
+ * Production (convex/management.ts runDecisionPass) and test fixtures MUST
+ * derive the fingerprint through this one function from the same seeded state
+ * facts: two implementations of "which facts are material" always drift, and
+ * a drifted fixture silently weakens the gate it was meant to prove.
+ */
+export function decisionFingerprintFacts(input: {
+  requirement: Requirement;
+  currentContractRevision: number;
+  allRequirements: readonly Requirement[];
+  resourceNeeds: readonly ResourceNeed[];
+  acquisitions: readonly ExternalAcquisitionResult[];
+  intents: readonly ExecutionIntent[];
+  assignments: readonly Assignment[];
+  spendAuthorityUsd: number | null;
+  budget: ObjectiveBudget | null;
+  workerAvailability: "available" | "unavailable" | "unknown";
+}): string {
+  const {
+    requirement,
+    currentContractRevision,
+    allRequirements,
+    resourceNeeds,
+    acquisitions,
+    intents,
+    assignments,
+    spendAuthorityUsd,
+    budget,
+    workerAvailability,
+  } = input;
+  const validatedMissingClasses = validatedMissingClassesAfterAcquisitions(
+    resourceNeeds,
+    requirement.requirementKey,
+    acquisitions,
+  );
+  const prerequisiteStates = (requirement.dependsOnRequirementKeys ?? [])
+    .map((key) => {
+      const dep = allRequirements.find((r) => r.requirementKey === key);
+      return `${key}:${dep ? dep.state : "absent"}`;
+    })
+    .sort();
+  const needIdentity = resourceNeeds
+    .filter((need) => need.requirementKey === requirement.requirementKey)
+    .map(
+      (need) =>
+        `${need.id}:${need.status}:${need.validationAuthority === "application" ? "v" : "-"}`,
+    )
+    .sort();
+  const acquisitionIdentity = acquisitions
+    .filter(
+      (a) =>
+        a.requirementKey === requirement.requirementKey &&
+        a.contractRevision === currentContractRevision,
+    )
+    .map((a) => `${a.resultEvidenceId}:${a.verifiedAt != null ? "verified" : "pending"}`)
+    .sort();
+  const externalTerminalOutcomes = intents
+    .filter(
+      (intent) =>
+        intent.requirementKey === requirement.requirementKey &&
+        intent.contractRevision === currentContractRevision &&
+        (intent.state === "verified" || intent.state === "failed"),
+    )
+    .map((intent) => `${intent.intentId}:${intent.state}`)
+    .sort();
+  const terminalDeliveryCount = assignments.filter((assignment) => {
+    return (
+      assignment.requirementKey === requirement.requirementKey &&
+      assignment.contractRevision === currentContractRevision &&
+      (assignment.state === "failed" || assignment.state === "superseded")
+    );
+  }).length;
+  const budgetRemainingUsd = budget
+    ? Math.max(
+        0,
+        budget.limits.maxExternalSpendUsd - budget.used.externalSpendCommittedUsd,
+      )
+    : null;
+  return computeDecisionInputFingerprint({
+    requirementKey: requirement.requirementKey,
+    contractRevision: currentContractRevision,
+    requiredResourceClasses: requirement.requiredResourceClasses ?? [],
+    validatedMissingClasses,
+    prerequisiteStates,
+    needIdentity,
+    acquisitionIdentity,
+    externalTerminalOutcomes,
+    spendAuthorityUsd,
+    budgetRemainingUsd,
+    workerAvailability,
+    terminalDeliveryCount,
+  });
+}
+
+/**
+ * Shared availability rule for the fingerprint: only strategies that need an
+ * internal worker are evaluated; worker churn can then never re-open BUY
+ * decisions. A worker counts as usable when free, or when THIS objective holds
+ * the reservation (its own held worker is still staffable).
+ */
+export function decisionWorkerAvailability(input: {
+  strategy: Requirement["strategy"];
+  objectiveKey: string;
+  workers: readonly { lifecycle: string; reservedBy: { objectiveKey: string } | null }[];
+}): "available" | "unavailable" | "unknown" {
+  if (input.strategy !== "MAKE" && input.strategy !== "HYBRID") return "unknown";
+  return input.workers.some(
+    (w) => w.lifecycle === "available" || w.reservedBy?.objectiveKey === input.objectiveKey,
+  )
+    ? "available"
+    : "unavailable";
 }
 
 export type DeliveryFailureClass = "INPUT_BLOCKED" | "EXECUTION_FAILED";

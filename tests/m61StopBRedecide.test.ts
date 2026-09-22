@@ -1,4 +1,4 @@
-// M6.1 STOP B — post-INPUT_BLOCKED redecision.
+﻿// M6.1 STOP B — post-INPUT_BLOCKED redecision.
 //
 // Starts at the successful A1 state: validated gap, worker yielded, MAKE
 // strategy cleared, assignment still looking "running" against a stopped
@@ -28,7 +28,10 @@ import {
   runManagementPass,
 } from "../convex/management";
 import { buildOutcomeContract } from "../lib/management/contract";
-import { computeDecisionInputFingerprint } from "../lib/objective/inputDiagnosis";
+import { createBudget } from "../lib/management/budget";
+import { expectedFingerprintFromWorld } from "./helpers/fingerprintOracle";
+import type { FingerprintWorld } from "./helpers/fingerprintOracle";
+import type { ExternalAcquisitionResult } from "../lib/objective/types";
 import { createWorkContract, createWorkerSpec } from "../lib/workforce";
 import type {
   Assignment,
@@ -115,37 +118,113 @@ function requirementFor(key: string, contract: OutcomeContract): Requirement {
   };
 }
 
-function fingerprint(input: {
-  requiredResourceClasses: readonly string[];
-  validatedMissingClasses: readonly string[];
-  terminalDeliveryCount?: number;
-}): string {
-  return computeDecisionInputFingerprint({
-    requirementKey: REQ,
-    contractRevision: 1,
-    requiredResourceClasses: input.requiredResourceClasses,
-    validatedMissingClasses: input.validatedMissingClasses,
-    prerequisiteStates: [],
-    spendAuthorityUsd: null,
-    budgetRemainingUsd: null,
-    terminalDeliveryCount: input.terminalDeliveryCount ?? 0,
+
+// ── Fingerprint oracle views ───────────────────────────────────────────────
+// Both views are computed by the SAME shared collector production uses
+// (lib/objective/inputDiagnosis.ts decisionFingerprintFacts), so a fixture can
+// never drift from the gate it is meant to prove.
+
+function stopbRequirement(key: string): Requirement {
+  return requirementFor(key, contractFor(key));
+}
+
+/** Attempt 1's world: no validated gap yet, its delivery in flight
+ *  (non-terminal), no external outcomes, founder grant of 25 USD live.
+ *  strategy is null on the requirement row at that moment, so worker
+ *  availability is "unknown" (not evaluated) — exactly what production
+ *  computes for a requirement with no bound strategy. */
+function stopbWorldForAttempt1(key: string): string {
+  return expectedFingerprintFromWorld({
+    objectiveKey: key,
+    requirement: stopbRequirement(key),
+    currentContractRevision: 1,
+    allRequirements: [stopbRequirement(key)],
+    resourceNeeds: [],
+    acquisitions: [],
+    intents: [],
+    assignments: [],
+    spendAuthorityUsd: 25,
+    budget: createBudget(key, now),
+    workers: [],
   });
 }
 
-const BEFORE_GAP_FP = fingerprint({
-  requiredResourceClasses: [],
-  validatedMissingClasses: [],
-});
-// The re-decide this test exercises follows the FIRST run's own assignment
-// leaving "failed" (asserted below) — that terminal delivery is itself the
-// material fact change the portability-gate fix folds into the fingerprint.
-const AFTER_GAP_FP = fingerprint({
-  requiredResourceClasses: ["proprietary_data"],
-  validatedMissingClasses: ["proprietary_data"],
-  terminalDeliveryCount: 1,
-});
-
-assert.notEqual(BEFORE_GAP_FP, AFTER_GAP_FP, "fingerprints must differ across A1");
+/** The world THIS pass re-decides against: the validated input gap has landed
+ *  and the authorized delivery has proven non-executable (terminal `failed`),
+ *  which are precisely the material fact changes re-decision depends on.
+ *  `extra` lets a test layer facts that must (or must not) change the hash. */
+function stopbWorldNow(
+  key: string,
+  extra: Partial<Pick<FingerprintWorld, "acquisitions" | "intents" | "resourceNeeds" | "assignments" | "spendAuthorityUsd" | "workers">> = {},
+): string {
+  const contract = contractFor(key);
+  const requirement = requirementFor(key, contract);
+  const runId = `run_${key}`;
+  const need: ResourceNeed = {
+    id: `need_${key}`,
+    objectiveKey: key,
+    workItemId: `wi:asg_${key}`,
+    resourceClass: "proprietary_data",
+    purpose: "licensed market / audience dataset for messaging evidence",
+    reasonOwnedInsufficient: "owned company_record check returned NOT_AVAILABLE",
+    status: "active",
+    proposedByRunId: runId,
+    createdAt: now,
+    updatedAt: now,
+    requirementKey: REQ,
+    validationAuthority: "application",
+    inputCheckId: "evidence_sufficiency",
+    contractRevision: 1,
+    supportingEvidenceIds: ["ev_check"],
+    dedupeKey: `${key}:proprietary_data:${REQ}`,
+  };
+  const failedDelivery: Assignment = {
+    ...(() => {
+      const wc = createWorkContract({
+        assignment: "Bounded MAKE attempt for messaging evidence",
+        idempotencyScope: `${key}:${REQ}:r1:asg_${key}`,
+        worker: createWorkerSpec([
+          "public_information_research",
+          "company_records_lookup",
+          "growth_launch_operations",
+        ]),
+        sourceProofs: [{ sourceClass: "company_record", minDistinctSources: 1 }],
+      });
+      return {
+        assignmentId: `asg_${key}`,
+        objectiveKey: key,
+        requirementKey: REQ,
+        contractRevision: 1,
+        decisionId: `dec_${key}_${REQ}_r1_a1`,
+        workerKey: wc.workerKey,
+        kind: "internal_make" as const,
+        state: "running" as const,
+        attempt: 1,
+        runId,
+        workContract: wc,
+        resultSummary: null,
+        idempotencyScope: wc.idempotencyScope,
+        createdAt: now,
+        updatedAt: now,
+      };
+    })(),
+    state: "failed",
+  };
+  return expectedFingerprintFromWorld({
+    objectiveKey: key,
+    requirement,
+    currentContractRevision: 1,
+    allRequirements: [requirement],
+    resourceNeeds: [need],
+    acquisitions: [],
+    intents: [],
+    assignments: [failedDelivery],
+    spendAuthorityUsd: 25,
+    budget: createBudget(key, now),
+    workers: [],
+    ...extra,
+  });
+}
 
 async function seedPostA1(
   t: Backend,
@@ -186,6 +265,24 @@ async function seedPostA1(
     contractRevision: 1,
     supportingEvidenceIds: ["ev_check"],
     dedupeKey: `${key}:proprietary_data:${REQ}`,
+  };
+
+  const seededAssignment: Assignment = {
+    assignmentId,
+    objectiveKey: key,
+    requirementKey: REQ,
+    contractRevision: 1,
+    decisionId,
+    workerKey: workContract.workerKey,
+    kind: "internal_make",
+    state: "running",
+    attempt: 1,
+    runId,
+    workContract,
+    resultSummary: null,
+    idempotencyScope: workContract.idempotencyScope,
+    createdAt: now,
+    updatedAt: now,
   };
 
   await t.run(async (ctx) => {
@@ -243,7 +340,11 @@ async function seedPostA1(
           contractId: contract.contractId,
           currentContractRevision: 1,
           decisionAttempts: { [REQ]: 1 },
-          decisionInputFingerprints: { [REQ]: BEFORE_GAP_FP },
+          // What attempt 1's world looked like: no validated gap recorded
+          // then, its delivery still in flight, no external outcomes. Derived
+          // through the SAME collector production uses — never a hardcoded
+          // hash that can silently drift from the gate it tests.
+          decisionInputFingerprints: { [REQ]: stopbWorldForAttempt1(key) },
           pendingDecision: null,
           controlNotes: [],
           interpretationStatus: "done",
@@ -297,23 +398,7 @@ async function seedPostA1(
       },
     });
 
-    const assignment: Assignment = {
-      assignmentId,
-      objectiveKey: key,
-      requirementKey: REQ,
-      contractRevision: 1,
-      decisionId,
-      workerKey: workContract.workerKey,
-      kind: "internal_make",
-      state: "running",
-      attempt: 1,
-      runId,
-      workContract,
-      resultSummary: null,
-      idempotencyScope: workContract.idempotencyScope,
-      createdAt: now,
-      updatedAt: now,
-    };
+    const assignment: Assignment = seededAssignment;
     await (putAssignment as unknown as Handler)._handler(ctx, {
       assignmentId,
       objectiveKey: key,
@@ -361,7 +446,16 @@ async function seedPostA1(
     }
   });
 
-  return { contract, requirement, runId, assignmentId, decisionId, workContract };
+  return {
+    contract,
+    requirement,
+    runId,
+    assignmentId,
+    decisionId,
+    workContract,
+    need,
+    assignment: seededAssignment,
+  };
 }
 
 async function invokePass(t: Backend, key: string, reason = "worker_result") {
@@ -423,8 +517,14 @@ test("STOP B: INPUT_BLOCKED → reconcile assignment → decide_requirement → 
   assert.equal(pending!.attempts, 2);
   assert.equal(
     pending!.inputFingerprint,
-    AFTER_GAP_FP,
-    "reservation fingerprint must include validated gap",
+    stopbWorldNow(key),
+    "reservation fingerprint must fold the material facts of this world: " +
+      "validated input gap + the requirement's own terminal delivery",
+  );
+  assert.notEqual(
+    pending!.inputFingerprint,
+    stopbWorldForAttempt1(key),
+    "and must differ from the world attempt 1 decided in",
   );
 
   const reads = (await t.run(async (ctx) =>

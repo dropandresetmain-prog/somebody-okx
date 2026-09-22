@@ -39,9 +39,9 @@ import type { FounderSpendGrant } from "./internal/workforce";
 import { interpretObjective } from "../lib/management/interpretation";
 import { planWakeForDecision, planWakeForInterpretation, planWakeForTimer } from "../lib/management/wakes";
 import {
-  computeDecisionInputFingerprint,
+  decisionFingerprintFacts,
+  decisionWorkerAvailability,
   isValidatedInputGap,
-  validatedMissingClassesAfterAcquisitions,
   verifiedAcquisitionCoversNeed,
 } from "../lib/objective/inputDiagnosis";
 import type { ResourceNeed } from "../lib/objective/resourceNeed";
@@ -232,6 +232,12 @@ export function buildConvexManagementPorts(ctx: MutationCtx): ManagementPorts {
         .query("managerialDecisions")
         .withIndex("by_objectiveKey", (q) => q.eq("objectiveKey", objectiveKey))
         .collect();
+      // Track the LATEST decodable grounding attempt per requirement by `at`,
+      // WITHOUT pre-classifying empty vs nonempty. Classification happens after
+      // the latest applicable attempt is chosen (item E): a newer empty attempt
+      // (a retryable model/proposal failure) must not be masked by reviving an
+      // older non-empty grounding. Only rows that actually carry an `options`
+      // array count as grounding attempts here; gate/refusal rows are skipped.
       const byKey = new Map<string, { at: number; options: GroundedOption[] }>();
       for (const row of rows) {
         const data = (row as AnyRow).data as Record<string, unknown>;
@@ -252,12 +258,6 @@ export function buildConvexManagementPorts(ctx: MutationCtx): ManagementPorts {
         }
 
         if (!options) continue;
-        // Empty options[] is NOT application grounding — it means the proposal
-        // produced no candidates (Case A: retryable model/proposal failure).
-        // Omitting the key lets the reducer schedule another decide attempt
-        // while BEGIN_DECISION_CEILING remains. Genuine no-eligible paths
-        // persist at least one ineligible candidate option.
-        if (options.length === 0) continue;
         const at = data.at as number;
         const existing = byKey.get(key);
         if (!existing || at > existing.at) {
@@ -265,7 +265,17 @@ export function buildConvexManagementPorts(ctx: MutationCtx): ManagementPorts {
         }
       }
       const result = new Map<string, GroundedOption[]>();
-      for (const [key, value] of byKey) result.set(key, value.options);
+      for (const [key, value] of byKey) {
+        // Empty options[] is NOT application grounding — it means the LATEST
+        // attempt produced no candidates (Case A: retryable model/proposal
+        // failure). Omitting the key lets the reducer schedule another decide
+        // attempt while BEGIN_DECISION_CEILING remains. We do NOT fall back to
+        // an older non-empty grounding, because that would silently mask the
+        // newer failure. Genuine no-eligible paths persist at least one
+        // ineligible candidate option, so they land here as non-empty.
+        if (value.options.length === 0) continue;
+        result.set(key, value.options);
+      }
       return result;
     },
 
@@ -426,6 +436,9 @@ export function buildConvexManagementPorts(ctx: MutationCtx): ManagementPorts {
       // Fact-change fingerprint: duplicate wakes with unchanged material
       // management facts must not burn another strategic decision attempt.
       // A newly validated input gap changes the fingerprint and permits decide.
+      // The material facts come from decisionFingerprintFacts (the SAME pure
+      // collector the fixtures use) — production and test can never drift on
+      // "which facts are material".
       const fingerprints = (mgmt.decisionInputFingerprints ?? {}) as Record<
         string,
         string
@@ -434,66 +447,20 @@ export function buildConvexManagementPorts(ctx: MutationCtx): ManagementPorts {
         .resourceNeeds ?? []) as ResourceNeed[];
       const acquisitions = ((data as { acquisitionResults?: ExternalAcquisitionResult[] })
         .acquisitionResults ?? []) as ExternalAcquisitionResult[];
-      // Verified acquisitions are MATERIAL coverage facts: a still-open need
-      // whose scoped input is already supplied must not fingerprint as "missing".
-      const validatedMissing = validatedMissingClassesAfterAcquisitions(
-        objectiveNeeds,
-        requirement.requirementKey,
-        acquisitions,
-      );
-      // A terminal (failed/superseded) delivery for THIS requirement at the
-      // current revision is a material fact change in its own right: the
-      // authorized option just proved non-executable. Without folding it in,
-      // a re-decide after a worker/assignment failure can fingerprint
-      // identically to the decision that authorized the failed delivery.
-      const requirementAssignmentRows = await ctx.db
+      const fingerprintAssignmentRows = await ctx.db
         .query("assignments")
         .withIndex("by_objective", (q) => q.eq("objectiveKey", state.objectiveKey))
         .collect();
-      const terminalDeliveryCount = requirementAssignmentRows.filter((assignmentRow) => {
-        const assignmentData = (assignmentRow as AnyRow).data as Assignment;
-        return (
-          assignmentData.requirementKey === requirement.requirementKey &&
-          assignmentData.contractRevision === currentContractRevision &&
-          (assignmentData.state === "failed" || assignmentData.state === "superseded")
-        );
-      }).length;
-      // Material facts for the fingerprint, each bounded and identity-based.
-      const prerequisiteStates = (requirement.dependsOnRequirementKeys ?? [])
-        .map((key) => {
-          const dep = requirements.find((r) => r.requirementKey === key);
-          return `${key}:${dep ? dep.state : "absent"}`;
-        })
-        .sort();
-      const needIdentity = objectiveNeeds
-        .filter((need) => need.requirementKey === requirement.requirementKey)
-        .map(
-          (need) =>
-            `${need.id}:${need.status}:${need.validationAuthority === "application" ? "v" : "-"}`,
-        )
-        .sort();
-      const acquisitionIdentity = acquisitions
-        .filter(
-          (a) =>
-            a.requirementKey === requirement.requirementKey &&
-            a.contractRevision === currentContractRevision,
-        )
-        .map((a) => `${a.resultEvidenceId}:${a.verifiedAt != null ? "verified" : "pending"}`)
-        .sort();
-      const intentRowsForFingerprint = await ctx.db
+      const fingerprintAssignments = fingerprintAssignmentRows.map(
+        (row) => (row as AnyRow).data as Assignment,
+      );
+      const fingerprintIntentRows = await ctx.db
         .query("executionIntents")
         .withIndex("by_objective", (q) => q.eq("objectiveKey", state.objectiveKey))
         .collect();
-      const externalTerminalOutcomes = intentRowsForFingerprint
-        .map((intentRow) => (intentRow as AnyRow).data as ExecutionIntent)
-        .filter(
-          (intent) =>
-            intent.requirementKey === requirement.requirementKey &&
-            intent.contractRevision === currentContractRevision &&
-            (intent.state === "verified" || intent.state === "failed"),
-        )
-        .map((intent) => `${intent.intentId}:${intent.state}`)
-        .sort();
+      const fingerprintIntents = fingerprintIntentRows.map(
+        (row) => (row as AnyRow).data as ExecutionIntent,
+      );
       // Authority changes are material: a spend grant that appears, moves, or
       // is revoked changes what a BUY decision could honestly authorize.
       const grantForFingerprint = (await ctx.runQuery(
@@ -504,46 +471,28 @@ export function buildConvexManagementPorts(ctx: MutationCtx): ManagementPorts {
         internal.internal.workforce.readBudget,
         { objectiveKey: state.objectiveKey },
       )) as ObjectiveBudget | null;
-      const budgetRemainingUsd = budgetForFingerprint
-        ? Math.max(
-            0,
-            budgetForFingerprint.limits.maxExternalSpendUsd -
-              budgetForFingerprint.used.externalSpendCommittedUsd,
-          )
-        : null;
       // Availability of execution capacity for the strategy this requirement
-      // last bound (generic: any free worker, or one already held by THIS
-      // objective, can staff a MAKE/HYBRID). "unknown" for strategies that
-      // need no worker, so worker churn cannot re-open BUY decisions.
+      // last bound, via the shared rule the fixtures use.
       const workerRowsForFingerprint = (await ctx.runQuery(
         internal.internal.workforce.listWorkers,
         {},
       )) as Array<{ lifecycle: string; reservedBy: { objectiveKey: string } | null }>;
-      const strategyNeedsWorker =
-        requirement.strategy === "MAKE" || requirement.strategy === "HYBRID";
-      const workerAvailability: "available" | "unavailable" | "unknown" =
-        !strategyNeedsWorker
-          ? "unknown"
-          : workerRowsForFingerprint.some(
-              (w) =>
-                w.lifecycle === "available" ||
-                w.reservedBy?.objectiveKey === state.objectiveKey,
-            )
-            ? "available"
-            : "unavailable";
-      const fingerprint = computeDecisionInputFingerprint({
-        requirementKey: requirement.requirementKey,
-        contractRevision: currentContractRevision,
-        requiredResourceClasses: requirement.requiredResourceClasses ?? [],
-        validatedMissingClasses: validatedMissing,
-        prerequisiteStates,
-        needIdentity,
-        acquisitionIdentity,
-        externalTerminalOutcomes,
+      const workerAvailability = decisionWorkerAvailability({
+        strategy: requirement.strategy,
+        objectiveKey: state.objectiveKey,
+        workers: workerRowsForFingerprint,
+      });
+      const fingerprint = decisionFingerprintFacts({
+        requirement,
+        currentContractRevision,
+        allRequirements: requirements,
+        resourceNeeds: objectiveNeeds,
+        acquisitions,
+        intents: fingerprintIntents,
+        assignments: fingerprintAssignments,
         spendAuthorityUsd: grantForFingerprint?.limitUsd ?? null,
-        budgetRemainingUsd,
+        budget: budgetForFingerprint,
         workerAvailability,
-        terminalDeliveryCount,
       });
       if (fingerprints[requirement.requirementKey] === fingerprint) return null;
 
@@ -823,11 +772,37 @@ export function buildConvexManagementPorts(ctx: MutationCtx): ManagementPorts {
           meetsMinimumBar: boolean;
           contractRevision: number;
           rationale: string;
+          artifactKey?: string | null;
+          artifactVersion?: number | null;
         } | null })?.finalSemanticAssessment ?? null;
         const pendingAssessment = omgmt.pendingFinalAssessment as
           | { requestId: string; contractRevision: number }
           | null
           | undefined;
+        // A persisted assessment only counts as CURRENT when it describes the
+        // exact governed artifact version standing now. Contract-revision
+        // equality alone would let a verdict on v3 bless a v4 edit that landed
+        // afterwards — the assessment must vouch for THIS content. If the
+        // target cannot be resolved, no assessment can vouch for it: stale.
+        const assessmentRequirements = await ports.loadRequirements(
+          proposal.objectiveKey,
+          currentContractRevision,
+        );
+        const assessmentTarget = resolveGovernedAssessmentTarget({
+          requirements: assessmentRequirements,
+          artifacts: ((odata?.companyArtifacts ?? []) as Array<{
+            key: string;
+            version: number;
+            content?: string;
+          }>),
+          contractRevision: currentContractRevision,
+        });
+        const assessmentIsCurrent =
+          assessment != null &&
+          assessment.contractRevision === currentContractRevision &&
+          assessmentTarget.ok &&
+          assessment.artifactKey === assessmentTarget.artifactKey &&
+          assessment.artifactVersion === assessmentTarget.artifactVersion;
         // Persist an explicit BLOCKED gate verdict so settle/reducer honor it
         // (never a silent executing loop when the assessment cannot be obtained).
         const persistBlockedGate = async (
@@ -875,8 +850,8 @@ export function buildConvexManagementPorts(ctx: MutationCtx): ManagementPorts {
           ((omgmt.finalAssessmentProviderFailures as number | undefined) ?? 0) +
           ((omgmt.finalAssessmentStructuralFailures as number | undefined) ?? 0);
         if (
-          !assessment ||
-          assessment.contractRevision !== currentContractRevision
+          !assessmentIsCurrent ||
+          !assessment
         ) {
           const pendingNow =
             pendingAssessment &&
@@ -3160,12 +3135,6 @@ export const beginFinalSemanticAssessment = internalMutation({
         proceed: false as const,
         reason: `final assessment provider/structural failure ceiling reached (${nonSubstantive}/${BEGIN_FINAL_ASSESSMENT_NONSUBSTANTIVE_CEILING})`,
       };
-    const existing = (
-      data as { finalSemanticAssessment?: { contractRevision?: number } | null }
-    ).finalSemanticAssessment;
-    if (existing && existing.contractRevision === revision)
-      return { proceed: false as const, reason: "current assessment already persisted" };
-
     const reqRows = await ctx.db
       .query("requirements")
       .withIndex("by_objectiveKey", (q) => q.eq("objectiveKey", args.objectiveKey))
@@ -3184,6 +3153,26 @@ export const beginFinalSemanticAssessment = internalMutation({
     if (!target.ok) {
       return { proceed: false as const, reason: target.reason };
     }
+
+    // Reuse a persisted assessment ONLY when it vouches for the exact governed
+    // artifact version standing now — revision equality alone would let a
+    // verdict on an older version bless a newer edit made after the review.
+    const existing = (
+      data as {
+        finalSemanticAssessment?: {
+          contractRevision?: number;
+          artifactKey?: string | null;
+          artifactVersion?: number | null;
+        } | null;
+      }
+    ).finalSemanticAssessment;
+    if (
+      existing &&
+      existing.contractRevision === revision &&
+      existing.artifactKey === target.artifactKey &&
+      existing.artifactVersion === target.artifactVersion
+    )
+      return { proceed: false as const, reason: "current assessment already persisted" };
 
     // Identity stays unique across REFUNDED non-substantive failures: the attempt
     // number alone would repeat after a refund, so the failure count is part of it.
