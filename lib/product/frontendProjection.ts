@@ -46,6 +46,11 @@ import type {
   StartCapabilitiesView,
   TransactionFactView,
 } from "../../app/product/contracts";
+import {
+  deriveSpendApprovalCandidate,
+  formatSpendUsd,
+  type SpendApprovalCandidate,
+} from "./spendApprovalPolicy";
 
 // ── Normalized source rows (the adapter seam; structural subsets) ────────────
 
@@ -228,9 +233,10 @@ export type ProjectionOptions = {
   /** Wall clock for run-lease staleness only. Never feeds viewRevision. */
   now: number;
   /**
-   * Legal founder actions per attention type, supplied only by an implemented
-   * product command adapter. Absent ⇒ no actions (contract §32). A
-   * reconciliation only becomes Attention when at least one legal action exists.
+   * Legal founder actions per attention type for NON-spend families still under
+   * test injection (clarification / reconciliation). Spend approval actions are
+   * NEVER taken from this map — they come only from deriveSpendApprovalCandidate
+   * so read and command seams cannot drift (contract §32 / §41).
    */
   attentionActions?: Partial<Record<AttentionType, AttentionActionView[]>>;
   /**
@@ -239,6 +245,23 @@ export type ProjectionOptions = {
    */
   transactionFacts?: Record<string, TransactionFactView>;
 };
+
+/**
+ * Merge optional injected actions with the shared spend-approval policy.
+ * Approval buttons appear only when deriveSpendApprovalCandidate yields a hit.
+ */
+export function resolveAttentionActions(
+  source: StatusSource,
+  injected: Partial<Record<AttentionType, AttentionActionView[]>> = {},
+): { actions: Partial<Record<AttentionType, AttentionActionView[]>>; spend: SpendApprovalCandidate | null } {
+  const spend = deriveSpendApprovalCandidate(source);
+  const actions: Partial<Record<AttentionType, AttentionActionView[]>> = { ...injected };
+  // Strip any injected approval actions — they must not arm material_ambiguity,
+  // waiver, or external-effect approvals that have no Product Command.
+  delete actions.approval;
+  if (spend) actions.approval = [spend.action];
+  return { actions, spend };
+}
 
 // ── Small helpers ────────────────────────────────────────────────────────────
 
@@ -411,6 +434,7 @@ function deriveAttention(
   effState: string,
   options: Pick<ProjectionOptions, "attentionActions">,
   onlyActionable: boolean,
+  spend: SpendApprovalCandidate | null,
 ): AttentionCandidate | null {
   const actions = options.attentionActions ?? {};
   // `needs_you` promises the founder can DO something. With onlyActionable a
@@ -452,23 +476,36 @@ function deriveAttention(
   );
 
   // 2. Current approval: the latest decision for an active requirement asks for it.
+  // Spend-approval actions come only from the shared policy (spend candidate).
   const approvals = [...latest.values()].filter(
     (row) => row.authorization.kind === "approval_required" && activeKeys.has(row.requirementKey),
   );
-  const approval = has("approval") ? latestBy(approvals, (row) => row.at, (row) => row.decisionId) : null;
+  const approval = latestBy(approvals, (row) => row.at, (row) => row.decisionId);
   if (approval && approval.authorization.kind === "approval_required") {
-    return {
-      raisedAt: approval.at,
-      attention: {
-        id: approval.decisionId,
-        revision: `${approval.decisionId}:${approval.at}`,
-        type: "approval",
-        title: "Somebody needs your approval",
-        detail: clip(approval.authorization.question, 400),
-        context: { reason: approval.authorization.reason },
-        actions: actions.approval ?? [],
-      },
-    };
+    const isSpend =
+      spend !== null &&
+      spend.attentionId === approval.decisionId &&
+      spend.attentionRevision === `${approval.decisionId}:${approval.at}`;
+    const approvalActions = isSpend ? [spend.action] : [];
+    if (!onlyActionable || approvalActions.length > 0) {
+      return {
+        raisedAt: approval.at,
+        attention: {
+          id: approval.decisionId,
+          revision: `${approval.decisionId}:${approval.at}`,
+          type: "approval",
+          title: "Somebody needs your approval",
+          detail: clip(approval.authorization.question, 400),
+          context: {
+            reason: approval.authorization.reason,
+            ...(isSpend
+              ? { amount: { amount: formatSpendUsd(spend.priceUsd), currency: "USD" } }
+              : {}),
+          },
+          actions: approvalActions,
+        },
+      };
+    }
   }
 
   // 3. ASK_FOUNDER / escalation clarification: latest decision for the
@@ -495,6 +532,7 @@ function deriveAttention(
 
   // The durable pending_approval control note is a second way the same fact is
   // recorded; fall back to it only when no decision row explains the state.
+  // Note-only fallback never carries a spend action (no decision/option price).
   return has("approval") ? approvalFromNote(source.objective, effState, actions) : null;
 }
 
@@ -552,9 +590,17 @@ export function deriveObjectiveFacts(source: StatusSource, options: Pick<Project
   // revision accepted. Anything weaker is not "completed" in the product.
   const completionAccepted = effState === "completed" && gate !== null && gate.accepted === true;
 
-  const attention = completionAccepted ? null : deriveAttention(source, revision, effState, options, true);
+  // Shared spend-approval policy is the only source of approval Attention actions.
+  const { actions: attentionActions, spend } = resolveAttentionActions(source, options.attentionActions);
+  const actionOptions = { attentionActions };
+
+  const attention = completionAccepted
+    ? null
+    : deriveAttention(source, revision, effState, actionOptions, true, spend);
   const pendingFounder =
-    completionAccepted || attention ? null : deriveAttention(source, revision, effState, options, false);
+    completionAccepted || attention
+      ? null
+      : deriveAttention(source, revision, effState, actionOptions, false, spend);
 
   const blockedRequired = requiredOrdered.find((req) => req.state === "blocked") ?? null;
   const reconciling = latestBy(

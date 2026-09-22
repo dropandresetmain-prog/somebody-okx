@@ -1,6 +1,6 @@
 # Somebody × OKX — Frontend Contracts
 
-Status: **ACCEPTED V1 PRODUCT CONTRACT — READS + CREATE OBJECTIVE WIRED**  
+Status: **ACCEPTED V1 PRODUCT CONTRACT — READS + CREATE OBJECTIVE + SPEND APPROVAL WIRED**  
 Reconciled: **22 September 2026**  
 Frontend proposal reviewed: `docs/frontend-contracts-v1@324f09ec275573bb9a807a12310a22c12ebb60e2`  
 Backend truth reviewed: `build/model-portability-milestone-2@a8090f8`  
@@ -10,8 +10,9 @@ This document is the single product-facing contract SSOT between the current M6.
 
 It defines **projection semantics**, not new engine authority.
 
-Product reads (`getObjectiveListV1`, `getObjectiveWorkspaceV1`, `getStartCapabilitiesV1`)
-and the Create Objective Product Command (`createObjectiveV1`) are wired.
+Product reads (`getObjectiveListV1`, `getObjectiveWorkspaceV1`, `getStartCapabilitiesV1`),
+the Create Objective Product Command (`createObjectiveV1`), and Submit Attention Action V1
+(`submitAttentionActionV1` — **spend approval only**) are wired.
 Other Product Commands remain reserved / unwired.
 
 ---
@@ -1051,14 +1052,16 @@ Advertised StartCapabilities:
 - `canCreateObjective`: **true** (Create Objective Product Command is wired);
 - `supportsContextRefs`: **false**;
 - `supportsAttachments`: **false**;
-- `advanced.spendLimit`: **false**;
+- `advanced.spendLimit`: **false** (create-time spend limit remains unwired; runtime spend approval is a separate Attention command);
 - `advanced.deadline`: **false**;
 - `advanced.externalEffectPolicy`: **false**.
 
 Unsupported optional Create Objective fields (contextRefs / advanced options)
 are rejected as `not_allowed` if supplied — they are not silently accepted.
 
-Other Product Commands (attention, founder free text, resume/retry) remain unwired.
+Submit Attention Action V1 is wired for **spend approval only** (`approve_spend` /
+`spend_authority_required`). Other Attention action families and founder free text /
+resume/retry remain unwired.
 
 The older controlled setup route remains operator-protected/demo-bounded and is
 not the V6 Product Command API.
@@ -1110,7 +1113,25 @@ type SubmitAttentionActionCommand = {
 
 Contract accepted.
 
-Implementation status: **product adapter not yet unified**.
+Implementation status: **wired for spend approval only** via
+`productCommands.submitAttentionActionV1`.
+
+Current legal action:
+
+| Field | Current V1 backend truth |
+| --- | --- |
+| `actionId = approve_spend` | **wired** — persists bounded `FounderSpendGrant`, resolves the exact `pending_approval`, writes `approval_resolved` wake, schedules normal management pass |
+| other action ids | unsupported — rejected as `not_allowed` |
+| `text` | unsupported — rejected as `not_allowed` |
+
+Needs You (`objective.status = needs_you`) is emitted only when this legal
+spend-approval action is actually available. Other `approval_required` reasons
+(`material_ambiguity`, `waiver_requires_authorization`,
+`external_effect_requires_approval`) remain non-actionable and project as
+waiting/blocked without buttons.
+
+This command grants bounded M4 spend authority. It does **not** equal M3 payment,
+does not submit a transaction, and does not mark a Requirement satisfied.
 
 Specific internal approval/reconciliation mechanics must not be exposed directly to React.
 
