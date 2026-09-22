@@ -1,6 +1,6 @@
 "use client";
 
-import type { AcquisitionView, ObjectiveListView, ObjectiveWorkspaceView } from "./contracts";
+import type { AcquisitionView, AttentionActionView, ObjectiveListView, ObjectiveWorkspaceView } from "./contracts";
 import { Sidebar } from "./components/Sidebar";
 import { ObjectiveHeader } from "./components/ObjectiveHeader";
 import { Checkpoints } from "./components/Checkpoints";
@@ -23,24 +23,53 @@ export function V6WorkspaceView({
   onSelect,
   onStartNew,
   main,
+  onAttentionAction,
+  pendingAttentionActionId,
+  attentionError,
+  attentionAcknowledgement,
 }: {
   list: ObjectiveListView;
   selectedId: string | null;
   onSelect: (id: string) => void;
   onStartNew: () => void;
   main: MainPaneState;
+  onAttentionAction?: (action: AttentionActionView) => void;
+  pendingAttentionActionId?: string | null;
+  attentionError?: string | null;
+  attentionAcknowledgement?: string | null;
 }) {
   return (
     <div className="v6-shell">
       <Sidebar list={list} selectedId={selectedId} onSelect={onSelect} onStartNew={onStartNew} />
       <main className="v6-main" data-main-pane={main.kind}>
-        <MainPane main={main} onStartNew={onStartNew} />
+        <MainPane
+          main={main}
+          onStartNew={onStartNew}
+          onAttentionAction={onAttentionAction}
+          pendingAttentionActionId={pendingAttentionActionId}
+          attentionError={attentionError}
+          attentionAcknowledgement={attentionAcknowledgement}
+        />
       </main>
     </div>
   );
 }
 
-function MainPane({ main, onStartNew }: { main: MainPaneState; onStartNew: () => void }) {
+function MainPane({
+  main,
+  onStartNew,
+  onAttentionAction,
+  pendingAttentionActionId,
+  attentionError,
+  attentionAcknowledgement,
+}: {
+  main: MainPaneState;
+  onStartNew: () => void;
+  onAttentionAction?: (action: AttentionActionView) => void;
+  pendingAttentionActionId?: string | null;
+  attentionError?: string | null;
+  attentionAcknowledgement?: string | null;
+}) {
   switch (main.kind) {
     case "loading":
       return (
@@ -84,7 +113,13 @@ function MainPane({ main, onStartNew }: { main: MainPaneState; onStartNew: () =>
               <Activity items={main.view.activity} acquisitions={main.view.acquisitions} />
             </div>
             <div className="v6-column-rail">
-              <Attention attention={main.view.attention} />
+              <Attention
+                attention={main.view.attention}
+                onAction={onAttentionAction}
+                pendingActionId={pendingAttentionActionId}
+                error={attentionError}
+                acknowledgement={attentionAcknowledgement}
+              />
               <Deliverables deliverables={main.view.deliverables} />
               <Checkpoints progress={main.view.progress} />
               <OrphanAcquisitions activity={main.view.activity} acquisitions={main.view.acquisitions} />

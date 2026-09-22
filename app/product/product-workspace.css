@@ -1368,8 +1368,18 @@
 
 .v6-approve:disabled,
 .v6-secondary:disabled {
-  opacity: 0.72;
+  opacity: 0.55;
   cursor: not-allowed;
+}
+
+.v6-attention-ack {
+  margin: 8px 0 0;
+  color: var(--ink-2);
+}
+
+.v6-attention-error {
+  margin: 8px 0 0;
+  color: #8a3b2b;
 }
 
 .v6-secondary {
