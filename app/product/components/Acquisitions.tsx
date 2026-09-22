@@ -9,7 +9,10 @@ export function Acquisitions({ acquisitions }: { acquisitions: AcquisitionView[]
   if (acquisitions.length === 0) return null;
   return (
     <section className="v6-rail-card" aria-label="Acquisitions">
-      <p className="kicker">Acquisitions</p>
+      <div className="v6-rail-card-head">
+        <h3>Acquisitions</h3>
+        <span>Secondary</span>
+      </div>
       <ul className="v6-acquisition-list">
         {acquisitions.map((acquisition) => (
           <AcquisitionReceipt key={acquisition.id} acquisition={acquisition} />

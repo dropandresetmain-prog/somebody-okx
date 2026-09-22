@@ -117,6 +117,63 @@ export function internPresentation(state: InternState): { icon: IconName; label:
   return INTERN_POSE[state];
 }
 
+export function somebodyByline(state: SomebodyNowState): string {
+  switch (state) {
+    case "interpreting":
+      return "Somebody · latest update";
+    case "working":
+      return "Somebody · latest update";
+    case "waiting":
+      return "Somebody · waiting";
+    case "needs_you":
+      return "Somebody · waiting for authority";
+    case "verifying":
+      return "Somebody · checking the outcome";
+    case "completed":
+      return "Somebody · final check complete";
+    case "blocked":
+      return "Somebody · stopped";
+  }
+}
+
+export function activityTypeLabel(type: ActivityType): string {
+  switch (type) {
+    case "objective_interpreted":
+      return "Somebody";
+    case "intern_assigned":
+      return "Delegated";
+    case "work_started":
+    case "work_resumed":
+      return "Now";
+    case "work_summary":
+      return "Work";
+    case "work_completed":
+      return "Assignment";
+    case "finding_added":
+      return "Finding";
+    case "evidence_gap_identified":
+      return "Evidence gap";
+    case "manager_decision":
+      return "Managerial decision";
+    case "founder_action_required":
+      return "Somebody needs your say";
+    case "acquisition_started":
+    case "acquisition_submitted":
+    case "external_result_received":
+    case "external_result_verified":
+      return "External capability";
+    case "artifact_changed":
+      return "Artifact changed";
+    case "verification_started":
+    case "verification_completed":
+      return "Verification";
+    case "objective_completed":
+      return "Verified";
+    case "objective_blocked":
+      return "Stopped";
+  }
+}
+
 export function deliverableTone(status: DeliverableStatus): Tone {
   switch (status) {
     case "draft":
@@ -192,5 +249,11 @@ export function activityIcon(type: ActivityType): IconName {
 }
 
 export function activityWeightClass(importance: ActivityImportance): string {
-  return `activity-item--${importance}`;
+  return `v6-activity-item--${importance}`;
+}
+
+export function activityEventClass(importance: ActivityImportance): string {
+  if (importance === "major") return "v6-event--major";
+  if (importance === "minor") return "v6-event--minor";
+  return "";
 }

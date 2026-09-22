@@ -1,16 +1,16 @@
-import type { ObjectiveListView, ObjectiveWorkspaceView } from "./contracts";
+"use client";
+
+import type { AcquisitionView, ObjectiveListView, ObjectiveWorkspaceView } from "./contracts";
 import { Sidebar } from "./components/Sidebar";
 import { ObjectiveHeader } from "./components/ObjectiveHeader";
 import { Checkpoints } from "./components/Checkpoints";
-import { CurrentWork } from "./components/CurrentWork";
 import { Activity } from "./components/Activity";
 import { Deliverables } from "./components/Deliverables";
 import { Acquisitions } from "./components/Acquisitions";
 import { Attention } from "./components/Attention";
 
-// Pure presentational V6 shell (task §8). Receives ONLY product-contract data
-// plus UI callbacks — no Convex, no raw engine imports, no state
-// recalculation. `ProductWorkspace.tsx` is the only caller.
+// Pure presentational V6 shell. Receives ONLY product-contract data plus UI
+// callbacks — no Convex, no raw engine imports, no state recalculation.
 export type MainPaneState =
   | { kind: "loading" }
   | { kind: "no_objectives" }
@@ -53,8 +53,9 @@ function MainPane({ main, onStartNew }: { main: MainPaneState; onStartNew: () =>
         <div className="state-card v6-state-card" data-empty="true">
           <h1>Give Somebody an objective</h1>
           <p className="muted">Nothing has been started yet.</p>
-          <button type="button" className="button primary large" onClick={onStartNew}>
-            Start a new objective
+          <button type="button" className="v6-start-cta" onClick={onStartNew}>
+            <span>Start a new objective</span>
+            <span aria-hidden="true">＋</span>
           </button>
         </div>
       );
@@ -73,20 +74,38 @@ function MainPane({ main, onStartNew }: { main: MainPaneState; onStartNew: () =>
               Reconnecting… showing the last known state.
             </p>
           ) : null}
-          <ObjectiveHeader objective={main.view.objective} somebodyNow={main.view.somebodyNow} />
+          <ObjectiveHeader
+            objective={main.view.objective}
+            somebodyNow={main.view.somebodyNow}
+            currentWork={main.view.currentWork}
+          />
           <div className="v6-columns">
             <div className="v6-column-primary">
-              <Attention attention={main.view.attention} />
-              <CurrentWork currentWork={main.view.currentWork} />
-              <Activity items={main.view.activity} />
+              <Activity items={main.view.activity} acquisitions={main.view.acquisitions} />
             </div>
             <div className="v6-column-rail">
-              <Checkpoints progress={main.view.progress} />
+              <Attention attention={main.view.attention} />
               <Deliverables deliverables={main.view.deliverables} />
-              <Acquisitions acquisitions={main.view.acquisitions} />
+              <Checkpoints progress={main.view.progress} />
+              <OrphanAcquisitions activity={main.view.activity} acquisitions={main.view.acquisitions} />
             </div>
           </div>
         </div>
       );
   }
+}
+
+function OrphanAcquisitions({
+  activity,
+  acquisitions,
+}: {
+  activity: ObjectiveWorkspaceView["activity"];
+  acquisitions: AcquisitionView[];
+}) {
+  const related = new Set(
+    activity.flatMap((item) => (item.related?.acquisitionId ? [item.related.acquisitionId] : [])),
+  );
+  const orphans = acquisitions.filter((item) => !related.has(item.id));
+  if (orphans.length === 0) return null;
+  return <Acquisitions acquisitions={orphans} />;
 }
