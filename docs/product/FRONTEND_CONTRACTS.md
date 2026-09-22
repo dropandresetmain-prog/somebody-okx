@@ -943,7 +943,7 @@ type AcquisitionView = {
   status: AcquisitionProductStatus;
   transaction?: TransactionFactView;
   resultSummary?: string;
-  provenance: ExternalProvenance;
+  provenance?: ExternalProvenance;
   updatedAt: number;
 };
 ```

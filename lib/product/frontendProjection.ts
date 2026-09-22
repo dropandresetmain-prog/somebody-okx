@@ -330,7 +330,13 @@ export type ObjectiveFacts = {
   completeKeys: Set<string>;
   gate: { accepted: boolean; at: number } | null;
   completionAccepted: boolean;
+  /** Dominant Attention — present ONLY when it carries at least one legal action. */
   attention: AttentionCandidate | null;
+  /**
+   * The engine wants a founder decision (approval/clarification) but no legal
+   * product action exists yet. Never surfaced as Attention; projects `waiting`.
+   */
+  pendingFounder: AttentionCandidate | null;
   status: ObjectiveProductStatus;
   /** Timestamp of the fact that put the objective in its current status. */
   statusAt: number;
@@ -404,8 +410,14 @@ function deriveAttention(
   revision: number | null,
   effState: string,
   options: Pick<ProjectionOptions, "attentionActions">,
+  onlyActionable: boolean,
 ): AttentionCandidate | null {
   const actions = options.attentionActions ?? {};
+  // `needs_you` promises the founder can DO something. With onlyActionable a
+  // source type is considered only when a legal action exists for it; without
+  // it, the same sources are found so the projection can report the truthful
+  // non-actionable state (waiting) instead of a fabricated button.
+  const has = (type: AttentionType) => !onlyActionable || (actions[type] ?? []).length > 0;
 
   // 1. Reconciliation — an ambiguous financial state is unresolved whatever the
   // contract revision. It is Attention ONLY with a legal founder action.
@@ -431,7 +443,7 @@ function deriveAttention(
     }
   }
 
-  if (revision === null) return approvalFromNote(source.objective, effState, actions);
+  if (revision === null) return has("approval") ? approvalFromNote(source.objective, effState, actions) : null;
 
   const decisions = currentStrategyDecisions(source, revision);
   const latest = latestDecisionByRequirement(decisions);
@@ -443,7 +455,7 @@ function deriveAttention(
   const approvals = [...latest.values()].filter(
     (row) => row.authorization.kind === "approval_required" && activeKeys.has(row.requirementKey),
   );
-  const approval = latestBy(approvals, (row) => row.at, (row) => row.decisionId);
+  const approval = has("approval") ? latestBy(approvals, (row) => row.at, (row) => row.decisionId) : null;
   if (approval && approval.authorization.kind === "approval_required") {
     return {
       raisedAt: approval.at,
@@ -466,7 +478,7 @@ function deriveAttention(
     if (!isAsk || row.authorization.kind === "approval_required") return false;
     return row.requirementKey === "" ? effState === "escalated" : activeKeys.has(row.requirementKey);
   });
-  const ask = latestBy(asks, (row) => row.at, (row) => row.decisionId);
+  const ask = has("clarification") ? latestBy(asks, (row) => row.at, (row) => row.decisionId) : null;
   if (ask) {
     return {
       raisedAt: ask.at,
@@ -483,7 +495,7 @@ function deriveAttention(
 
   // The durable pending_approval control note is a second way the same fact is
   // recorded; fall back to it only when no decision row explains the state.
-  return approvalFromNote(source.objective, effState, actions);
+  return has("approval") ? approvalFromNote(source.objective, effState, actions) : null;
 }
 
 function approvalFromNote(
@@ -540,7 +552,9 @@ export function deriveObjectiveFacts(source: StatusSource, options: Pick<Project
   // revision accepted. Anything weaker is not "completed" in the product.
   const completionAccepted = effState === "completed" && gate !== null && gate.accepted === true;
 
-  const attention = completionAccepted ? null : deriveAttention(source, revision, effState, options);
+  const attention = completionAccepted ? null : deriveAttention(source, revision, effState, options, true);
+  const pendingFounder =
+    completionAccepted || attention ? null : deriveAttention(source, revision, effState, options, false);
 
   const blockedRequired = requiredOrdered.find((req) => req.state === "blocked") ?? null;
   const reconciling = latestBy(
@@ -554,7 +568,10 @@ export function deriveObjectiveFacts(source: StatusSource, options: Pick<Project
     (note) => String(note.summary ?? ""),
   );
   const interpretationStalled = revision === null && objective.interpretationStatus === "refused";
-  const stateBlocked = BLOCKED_CONTROL_STATES.has(effState) || effState === "failed";
+  // "escalated" with an unanswerable founder question is a quiescent wait, not a
+  // dead end; every other blocked state stays blocked.
+  const stateBlocked =
+    (BLOCKED_CONTROL_STATES.has(effState) && !(effState === "escalated" && pendingFounder !== null)) || effState === "failed";
 
   const blocked =
     stateBlocked || reconciling !== null || blockedRequired !== null || interpretationStalled;
@@ -603,9 +620,13 @@ export function deriveObjectiveFacts(source: StatusSource, options: Pick<Project
   } else if (blocked) {
     status = "blocked";
     statusAt = blockedAt ?? objective.updatedAt;
-  } else if (waitingOnBoundary || waitingState || effState === "approval_required") {
+  } else if (waitingOnBoundary || waitingState || effState === "approval_required" || pendingFounder) {
     status = "waiting";
-    statusAt = waitingOnBoundary ? Math.max(...liveIntents.map((row) => row.updatedAt)) : objective.updatedAt;
+    statusAt = waitingOnBoundary
+      ? Math.max(...liveIntents.map((row) => row.updatedAt))
+      : pendingFounder
+        ? pendingFounder.raisedAt
+        : objective.updatedAt;
   } else if (verifying) {
     status = "verifying";
   } else if (contract === null) {
@@ -624,6 +645,7 @@ export function deriveObjectiveFacts(source: StatusSource, options: Pick<Project
     gate,
     completionAccepted,
     attention,
+    pendingFounder,
     status,
     statusAt,
     blockerNote,
@@ -710,8 +732,9 @@ export function projectProgress(source: StatusSource, facts: ObjectiveFacts): Pr
   // Active = owned by the current decision/assignment/intent; otherwise the
   // first unresolved executable required Requirement in serial order.
   const owned = ownedRequirementKeys(source, revision);
-  if (facts.attention) {
-    const owner = source.decisions.find((row) => row.decisionId === facts.attention?.attention.id);
+  const ownerCandidate = facts.attention ?? facts.pendingFounder;
+  if (ownerCandidate) {
+    const owner = source.decisions.find((row) => row.decisionId === ownerCandidate.attention.id);
     if (owner && owner.requirementKey) owned.add(owner.requirementKey);
   }
   const requiredKeys = new Set(facts.requiredOrdered.map((req) => req.requirementKey));
@@ -939,10 +962,12 @@ export function projectSomebodyNow(source: ProductSource, facts: ObjectiveFacts,
       );
       return {
         state: "waiting",
-        headline: intent ? `Waiting on ${externalLabel(intent)}` : "Waiting",
+        headline: intent ? `Waiting on ${externalLabel(intent)}` : facts.pendingFounder ? "Waiting for a decision" : "Waiting",
         detail: intent
           ? "An authorized external action is waiting at the outside boundary. Nothing else runs until it resolves."
-          : "Somebody is waiting on a real external or timed condition. Nothing runs until it resolves.",
+          : facts.pendingFounder
+            ? facts.pendingFounder.attention.detail
+            : "Somebody is waiting on a real external or timed condition. Nothing runs until it resolves.",
         updatedAt: facts.statusAt,
       };
     }
@@ -1027,7 +1052,7 @@ export function projectAcquisitions(
       default:
         status = "reconciliation_required";
     }
-    const provenance = result?.provenance ?? null;
+    const provenance = result?.provenance;
     const showResult = result !== null && (status === "verified" || status === "result_received");
     // A live/M3 fact is never attached to simulation or replay (§36).
     const tx = provenance === "live" ? options.transactionFacts?.[intent.intentId] : undefined;
@@ -1039,7 +1064,7 @@ export function projectAcquisitions(
       status,
       ...(tx ? { transaction: tx } : {}),
       ...(showResult ? { resultSummary: clip(result.content, 240) } : {}),
-      provenance,
+      ...(provenance ? { provenance } : {}),
       updatedAt: intent.updatedAt,
     });
   }
@@ -1059,9 +1084,9 @@ export function projectAcquisitions(
       const label =
         selected?.label ?? source.requirements.find((req) => req.requirementKey === decision.requirementKey && req.contractRevision === facts.revision)?.title ?? "External resource";
       if (decision.authorization.kind === "approval_required") {
-        views.push({ id: decision.decisionId, resourceLabel: label, status: "needs_approval", provenance: null, updatedAt: decision.at });
+        views.push({ id: decision.decisionId, resourceLabel: label, status: "needs_approval", updatedAt: decision.at });
       } else if (decision.authorization.kind === "authorized") {
-        views.push({ id: decision.decisionId, resourceLabel: label, status: "proposed", provenance: null, updatedAt: decision.at });
+        views.push({ id: decision.decisionId, resourceLabel: label, status: "proposed", updatedAt: decision.at });
       }
     }
   }
@@ -1601,15 +1626,17 @@ export function groupObjectiveSummaries(summaries: ObjectiveSummaryView[]): Obje
 }
 
 /**
- * Advertises only what the controlled setup path can do today (§39). Context
- * refs, attachments, deadline and external-effect policy are unsupported and
- * stay false; nothing here implements a command.
+ * Advertises only what V6 may legally invoke through a WIRED product command
+ * (§38–39). No V6 Product Command adapter exists yet, so nothing is
+ * advertised — the internal controlled setup mutation is a latent backend
+ * capability, not a product capability. Flip a flag only in the commit that
+ * wires the matching adapter.
  */
 export function projectStartCapabilities(): StartCapabilitiesView {
   return {
-    canCreateObjective: true,
+    canCreateObjective: false,
     supportsContextRefs: false,
     supportsAttachments: false,
-    advanced: { spendLimit: true, deadline: false, externalEffectPolicy: false },
+    advanced: { spendLimit: false, deadline: false, externalEffectPolicy: false },
   };
 }
