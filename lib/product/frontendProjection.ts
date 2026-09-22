@@ -1627,14 +1627,12 @@ export function groupObjectiveSummaries(summaries: ObjectiveSummaryView[]): Obje
 
 /**
  * Advertises only what V6 may legally invoke through a WIRED product command
- * (§38–39). No V6 Product Command adapter exists yet, so nothing is
- * advertised — the internal controlled setup mutation is a latent backend
- * capability, not a product capability. Flip a flag only in the commit that
- * wires the matching adapter.
+ * (§38–39). Create Objective is wired via productCommands.createObjectiveV1;
+ * flip additional flags only in the commit that wires the matching adapter.
  */
 export function projectStartCapabilities(): StartCapabilitiesView {
   return {
-    canCreateObjective: false,
+    canCreateObjective: true,
     supportsContextRefs: false,
     supportsAttachments: false,
     advanced: { spendLimit: false, deadline: false, externalEffectPolicy: false },
