@@ -65,11 +65,15 @@ export type ContinuationAudit = {
   objectiveState: string;
   /** Unconsumed wakes: each one is a scheduled continuation the loop will act on. */
   outstandingWakes: Array<{ eventId: string; reason: string; refId: string }>;
+  /** Pending scheduler jobs for this objective (watchdogs, passes, timers). */
+  armedJobs: Array<{ name: string; scheduledTime: number }>;
   /** Live reservations and whether they carry a bounded expiry. */
   reservations: Array<{
     kind: "decision" | "finalAssessment" | "interpretation";
     requestId: string;
     expiresAt: number | null;
+    /** A pending expire*Reservation job for this exact requestId is armed. */
+    watchdogArmed: boolean;
   }>;
   /** Runs still holding a lease that has not lapsed. */
   liveRuns: Array<{ runId: string; leaseUntil: number }>;
@@ -95,8 +99,29 @@ type LooseDb = {
     withIndex: LooseIndex;
     filter: (fn: (q: unknown) => unknown) => { collect(): Promise<Array<{ data: unknown }>> };
   };
+  system: {
+    query: (tableName: string) => {
+      collect(): Promise<Array<Record<string, unknown>>>;
+    };
+  };
 };
 type LooseCtx = { db: LooseDb };
+
+/** Name of the scheduler job each reservation kind's watchdog runs under. */
+const WATCHDOG_JOB_NAMES: Record<
+  "decision" | "finalAssessment" | "interpretation",
+  string
+> = {
+  decision: "management:expireDecisionReservation",
+  finalAssessment: "management:expireFinalAssessmentReservation",
+  interpretation: "management:expireInterpretationReservation",
+};
+
+function normalizeModulePath(name: unknown): string {
+  // convex-test records scheduled functions as "module:export" paths already;
+  // keep this defensive in case a version prefixes them differently.
+  return String(name ?? "");
+}
 
 /** Read the durable continuation facts for one objective. Pure observation —
  * it writes nothing and schedules nothing. */
@@ -117,6 +142,7 @@ export async function auditContinuation(
       return {
         objectiveState: "MISSING_ROW",
         outstandingWakes: [],
+        armedJobs: [],
         reservations: [],
         liveRuns: [],
         inFlightWork: [],
@@ -137,6 +163,36 @@ export async function auditContinuation(
         refId: w.data.refId,
       }));
 
+    // Armed scheduler jobs are durable, observable facts: a pending
+    // runManagementPass / expire*Reservation row means the continuation is
+    // genuinely scheduled, not merely claimed. convex-test keeps them in
+    // `_scheduled_functions` until they fire.
+    const scheduledRows = await ctx.db.system
+      .query("_scheduled_functions")
+      .collect();
+    const armedJobs: ContinuationAudit["armedJobs"] = [];
+    const watchdogRequests = new Map<string, string[]>();
+    for (const job of scheduledRows) {
+      const name = normalizeModulePath(job.name);
+      const argsText = JSON.stringify(job.args ?? []);
+      if (!argsText.includes(`"objectiveKey":"${objectiveKey}"`)) continue;
+      const state = job.state as { kind?: string } | undefined;
+      if (state && state.kind !== "pending" && state.kind !== "in_progress")
+        continue;
+      armedJobs.push({
+        name,
+        scheduledTime: Number(job.scheduledTime ?? 0),
+      });
+      for (const kind of ["decision", "finalAssessment", "interpretation"] as const) {
+        if (name !== WATCHDOG_JOB_NAMES[kind]) continue;
+        const match = argsText.match(/"requestId":"([^"]+)"/);
+        if (!match) continue;
+        const list = watchdogRequests.get(kind) ?? [];
+        list.push(match[1]!);
+        watchdogRequests.set(kind, list);
+      }
+    }
+
     const reservations: ContinuationAudit["reservations"] = [];
     const pendingDecision = mgmt.pendingDecision as
       | { requestId?: string; expiresAt?: number }
@@ -147,6 +203,9 @@ export async function auditContinuation(
         kind: "decision",
         requestId: pendingDecision.requestId,
         expiresAt: typeof pendingDecision.expiresAt === "number" ? pendingDecision.expiresAt : null,
+        watchdogArmed: (watchdogRequests.get("decision") ?? []).includes(
+          pendingDecision.requestId,
+        ),
       });
     const pendingAssessment = mgmt.pendingFinalAssessment as
       | { requestId?: string; expiresAt?: number }
@@ -158,6 +217,9 @@ export async function auditContinuation(
         requestId: pendingAssessment.requestId,
         expiresAt:
           typeof pendingAssessment.expiresAt === "number" ? pendingAssessment.expiresAt : null,
+        watchdogArmed: (watchdogRequests.get("finalAssessment") ?? []).includes(
+          pendingAssessment.requestId,
+        ),
       });
     if (mgmt.interpretationStatus === "pending")
       reservations.push({
@@ -166,6 +228,9 @@ export async function auditContinuation(
         // The interpretation cursor's bound is the watchdog armed alongside it;
         // status "pending" alone is NOT a bounded expiry.
         expiresAt: null,
+        watchdogArmed: (watchdogRequests.get("interpretation") ?? []).includes(
+          String(mgmt.interpretationRequestId ?? "?"),
+        ),
       });
 
     const liveRuns: ContinuationAudit["liveRuns"] = [];
@@ -218,6 +283,7 @@ export async function auditContinuation(
     return {
       objectiveState: String(data.state),
       outstandingWakes,
+      armedJobs,
       reservations,
       liveRuns,
       inFlightWork,
@@ -259,7 +325,14 @@ export function checkContinuation(
     audit.liveRuns.length > 0 ||
     (audit.reservations.length > 0 &&
       audit.reservations.every((r) => r.expiresAt !== null && r.expiresAt > now));
-  const scheduled = audit.outstandingWakes.length > 0;
+  // A scheduled continuation is durable evidence: an unconsumed wake row, OR a
+  // pending scheduler job that runs a management pass for this objective
+  // (convex-test keeps scheduled functions in `_scheduled_functions` until
+  // they fire — watchdog arms, timer wakes, and pass hand-offs all land here).
+  const scheduledPasses = audit.armedJobs.filter((j) =>
+    j.name.endsWith("runManagementPass"),
+  ).length;
+  const scheduled = audit.outstandingWakes.length > 0 || scheduledPasses > 0;
   const external =
     audit.inFlightWork.length > 0 ||
     audit.externalWait !== null ||
