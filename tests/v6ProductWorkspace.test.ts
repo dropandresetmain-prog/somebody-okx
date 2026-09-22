@@ -434,11 +434,17 @@ test("primary V6 files import no raw M6.1/M5 domain modules", () => {
 });
 
 test("the live container references only the three V1 product read queries", () => {
-  const src = readFileSync(join(__dirname, "..", "app", "product", "ProductWorkspace.tsx"), "utf8");
-  assert.ok(src.includes("api.productWorkspace.getObjectiveListV1"));
-  assert.ok(src.includes("api.productWorkspace.getObjectiveWorkspaceV1"));
-  assert.ok(!src.includes("api.objectives.listObjectives"));
-  assert.ok(!src.includes("api.m5Workspace"));
+  // Product reads live behind the useProductWorkspace seam (live Convex vs demo
+  // playback). The presentational ProductWorkspace container must stay query-free.
+  const seam = readFileSync(join(__dirname, "..", "app", "demo", "useProductWorkspace.ts"), "utf8");
+  assert.ok(seam.includes("api.productWorkspace.getObjectiveListV1"));
+  assert.ok(seam.includes("api.productWorkspace.getObjectiveWorkspaceV1"));
+  assert.ok(!seam.includes("api.objectives.listObjectives"));
+  assert.ok(!seam.includes("api.m5Workspace"));
+  const container = readFileSync(join(__dirname, "..", "app", "product", "ProductWorkspace.tsx"), "utf8");
+  assert.ok(container.includes("useProductWorkspace"));
+  assert.ok(!container.includes("api.objectives.listObjectives"));
+  assert.ok(!container.includes("api.m5Workspace"));
   const startSrc = readFileSync(join(__dirname, "..", "app", "start", "StartContainer.tsx"), "utf8");
   assert.ok(startSrc.includes("api.productWorkspace.getStartCapabilitiesV1"));
 });

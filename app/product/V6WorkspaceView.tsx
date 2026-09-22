@@ -67,7 +67,14 @@ function MainPane({ main, onStartNew }: { main: MainPaneState; onStartNew: () =>
       );
     case "ready":
       return (
-        <div className="v6-workspace" data-stale={main.stale ? "true" : "false"}>
+        <div
+          className="v6-workspace"
+          data-stale={main.stale ? "true" : "false"}
+          // Soft cross-fade when the product-data source advances a frame
+          // (live or demo). Keyed by objective status + activity length only —
+          // no demo-specific branching.
+          key={`${main.view.objective.status}:${main.view.activity.length}:${main.view.deliverables.map((d) => d.version).join(",")}`}
+        >
           {main.stale ? (
             <p className="muted v6-reconnecting" role="status">
               Reconnecting… showing the last known state.

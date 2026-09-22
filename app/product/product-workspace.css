@@ -498,6 +498,132 @@
   margin-bottom: 12px;
 }
 
+.v6-workspace {
+  animation: v6-frame-in 220ms ease-out;
+}
+
+@keyframes v6-frame-in {
+  from {
+    opacity: 0.72;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Demo Console — faint top-right presentation control (hackathon only). */
+.demo-console {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 40;
+}
+
+.demo-console-trigger {
+  appearance: none;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 12px;
+  padding: 6px 10px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  opacity: 0.35;
+  transition: opacity 160ms ease;
+}
+
+.demo-console-trigger:hover,
+.demo-console-trigger:focus-visible,
+.demo-console[data-open="true"] .demo-console-trigger,
+.demo-console-trigger[aria-expanded="true"] {
+  opacity: 1;
+}
+
+.demo-console-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: min(320px, calc(100vw - 32px));
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: 14px 14px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.demo-console-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.demo-console-block {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.demo-console-label {
+  margin: 0;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+
+.demo-console-value,
+.demo-console-clock {
+  margin: 0;
+  font-size: 13px;
+}
+
+.demo-console-clock {
+  font-variant-numeric: tabular-nums;
+}
+
+.demo-console-option {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 8px;
+  align-items: center;
+  font-size: 13px;
+  margin: 2px 0;
+}
+
+.demo-console-meta {
+  color: var(--ink-2);
+  font-size: 12px;
+}
+
+.demo-console-run {
+  width: 100%;
+}
+
+.demo-console-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.demo-console-actions .button {
+  font-size: 12px;
+  padding: 6px 10px;
+}
+
+.demo-console-source {
+  margin: 0;
+  font-size: 11px;
+  color: var(--ink-2);
+  line-height: 1.4;
+  word-break: break-all;
+}
+
 @media (max-width: 900px) {
   .v6-shell {
     grid-template-columns: 1fr;
