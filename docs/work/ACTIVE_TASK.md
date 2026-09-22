@@ -1,97 +1,77 @@
-# ACTIVE TASK — M6.1 manager–execution mini-refactor
-
-Updated: 21 September 2026 (Singapore)
-Status: **GATE 1 CANDIDATE DEPLOYED / PHYSICAL GATE 1 NOT RUN**
+# ACTIVE_TASK — OKX Final Release Candidate
 
 ## Goal
 
-Somebody chooses one bounded MAKE or BUY action, receives its actual result,
-reassesses, and continues until it delivers a persisted, evidence-backed
-relaunch recommendation.
+Converge accepted side-lanes into the latest product candidate, prove one real
+current-path E2E Objective, prove truthful demo-playback fallback, run the
+canonical promotion gate once on the exact frozen SHA, then freeze and push.
+No feature work. Defects only if they block the canonical demo.
 
-## Branch / base
+## Base / Branch
 
-- Branch: `refactor/m6-1-manager-execution-loop`
-- Astra-approved Gate 1 candidate SHA: `a0ee4fe18febda01cd049513e08f9bd7e196b50d`
-- Implementation closure SHA (code under candidate): `0feefcd`
-- Preserved: `stash@{0}`; untracked `scripts/_tmp-*`
+| Field | Value |
+|---|---|
+| Base SHA (verified) | `600b6fc664b974ca13a58125d3f8b008f639d6ee` |
+| Base message | `test(product): verify founder spend approval seam` |
+| Release branch | `release/okx-final-candidate` |
+| Worktree | `C:\Dev\somebody-okx-okx-final-candidate` |
+| Current HEAD | `9a91109` (pre-freeze; focused tests pending) |
+| Merged main | NO |
 
-## Deployment checkpoint (Gate 1 preflight)
+## Integration checklist
 
-- **Deployed SHA:** `a0ee4fe18febda01cd049513e08f9bd7e196b50d`
-- **Environment:** Convex development `clean-tapir-151` (`dropandreset-main` /
-  `somebody-okx`, dev deployment `somebody-okx-m1`)
-- **URL host:** `clean-tapir-151.convex.cloud` (from local `NEXT_PUBLIC_CONVEX_URL`)
-- **Command:** `npx convex dev --once` (21 Sep 2026 ~19:43 +08)
-- **Result:** success — Convex functions ready (~14.7s)
-- **Convex CLI / package:** `1.45.0`
-- **Gate 1 physical run:** **NOT RUN** (no fresh canonical Objective created in
-  this pass)
-- **Next action:** fresh execution chat for **physical Gate 1 Run #1** on this
-  deployment and pinned runtime configuration
+1. [x] Create release branch/worktree from exact `600b6fc`
+2. [x] Integrate I/O hardening `5f0fe43` → `118e7b7` (clean auto-merge objectives.ts)
+3. [x] Local-Convex workflow `b54a212` → `323140b` (dev-only; included)
+4. [x] Demo playback from `23a6a21` → `9a91109` (conflicts resolved)
+5. [ ] Focused integration tests green
+6. [ ] Commit remaining fixes if any; push; freeze candidate SHA
+7. [ ] Real current-path E2E (product `/start`, not seeded)
+8. [ ] Browser acceptance (V6 lifecycle screenshots)
+9. [ ] Demo playback fallback acceptance
+10. [ ] Promotion gate on exact frozen SHA
+11. [ ] Final freeze: clean working tree, remote tip == candidate SHA
 
-### Sanitized runtime configuration (deployment env)
+## Side-lanes
 
-| Variable | Present | Notes |
-| --- | --- | --- |
-| `AI_PROVIDER` | yes | `openrouter` |
-| `AI_MODEL` | yes | `deepseek/deepseek-v4.1-flash` (founder-approved paid pin) |
-| `LIVE_AI_ENABLED` | yes | `true` |
-| `SOMEBODY_DEMO_OPERATOR_TOKEN` | yes | operator gate configured |
-| `OPENROUTER_API_KEY` | yes | not logged |
-| `M4_M3_EXECUTION_ENABLED` | **absent** | live M3/payment execution disabled |
+| Lane | SHA | Status |
+|---|---|---|
+| I/O hardening | `5f0fe43` → `118e7b7` | integrated; create path + bounds preserved |
+| Local Convex workflow | `b54a212` → `323140b` | integrated (dev scripts/docs only) |
+| Demo playback console | `23a6a21` → `9a91109` | integrated; ProductWorkspace keeps spend approval + DemoConsole |
 
-Local `.env.local` still lists a free-tier `AI_MODEL` for probes; **server-side**
-model selection for Gate 1 follows Convex deployment env above.
+## Conflict resolutions
 
-### Post-deploy smoke (minimal)
+- `ProductWorkspace.tsx`: useProductWorkspace + DemoConsole + live submitAttentionActionV1 (disabled during demo)
+- `product-workspace.css`: keep V6 fidelity animations; add demo-console styles; keep 1000px breakpoint
+- `v6ProductWorkspace.test.ts`: assert reads via seam; assert spend command still in container
 
-- `scripts/_tmp-m61-conn-preflight.mjs`: 8/8 `listObjectives` reads OK; operator
-  path OK; IPv4 TCP/TLS OK
-- `objectives.listObjectives` reachable; `m3Driver.simulationCandidate` operator
-  gate refuses bad token; read path OK on historical objective
-- No fresh Objective created; no physical loop attempted
+## Current checkpoint
 
-### Prior accepted evidence (not re-run this pass)
+Side-lanes converged at `9a91109`. Next: focused integration tests.
 
-- Pass-3 fixer finalization / focused closure tests and clean `typecheck:convex`
-  recorded at `0feefcd` / `a0ee4fe` docs checkpoint
+## Next action
 
-## Checkpoint (finalization pass — complete)
+Run focused product/I/O/demo tests + `npm run typecheck:convex`.
 
-- Starting SHA: `7d49913990ff3ea8dd8251b62c0b65ecea235e42`
-- Final pushed SHA: `0feefcd`
+## Critical constraints
 
-## This pass (finalization-and-evidence)
+- Do NOT work on `build/founder-spend-approval-v1` directly.
+- Do NOT merge random historical branches.
+- Do NOT add features / redesign / opportunistic refactors.
+- Preserve: createObjectiveV1, submitAttentionActionV1, Product Reads only, V6 fidelity.
+- Financial: no unauthorized mainnet; truthful provenance.
+- After freeze: no source edits during gate unless blocker; then new SHA + full re-gate.
+- Re-read this file before live E2E, final gate, and completion.
 
-### Completed implementation
+## Acceptance evidence checklist
 
-- [x] Serial result-contract alignment: `allowEmptyRisksUnknowns` on serial
-      WorkContracts; `evaluateCompletion` accepts empty risks/unknowns arrays
-      when permitted; missing/malformed arrays still fail; legacy nonempty kept
-- [x] Correction test uses production `executeWorker` + worker-model double;
-      no workItems/run replacement after dispatch; no force-delivery bookkeeping
-- [x] `executeWorker` seam asserts `completed===true`, empty `unmet`, durable
-      run/WI state, matching `worker_result` wake; Objective stays separate
-- [x] Convex tsc: assessment return typing + observation provenance narrowing
-
-### Tested seams (behavioral regressions; not physical Gate 1)
-
-- [x] Serial empty risks/unknowns finalize via production WorkContract + finishRun
-- [x] Negative → corrective new run → real artifact revision → WI finalize →
-      assessment #2 → completed (no post-rejection state repair)
-- [x] Old assignment cannot satisfy corrective action
-- [x] Second negative → explicit `blocked` stop
-- [x] `executeWorker` seam completed + wake evidence
-- [x] F/G production whole-chain regressions still pass
-
-### Remaining physical acceptance
-
-- [ ] Physical Gate 1 Run #1 (live models on deployed candidate; acquisition
-      boundary simulated only)
-- [ ] Gate 2
-
-## Do not
-
-Resume historical failed Objectives / live payment / Gate 2 / M6.2 / merge to
-main / touch `stash@{0}` without explicit instruction
+- [ ] Objective created via V6 Product Command
+- [ ] Intern work + finding/evidence
+- [ ] MAKE/BUY + Needs You spend approval via UI
+- [ ] FounderSpendGrant + approval_resolved wake
+- [ ] External result with truthful provenance
+- [ ] Artifact change + semantic assessment + completion
+- [ ] Browser states A–F
+- [ ] Demo playback load/advance/reset/restore live
+- [ ] Promotion gate classified; exact SHA frozen + pushed

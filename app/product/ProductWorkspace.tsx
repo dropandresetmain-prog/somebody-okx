@@ -1,6 +1,6 @@
 "use client";
 
-// V6 live container (task §8/§19). Product reads come through useProductWorkspace
+// V6 live container. Product reads come through useProductWorkspace
 // (live Convex vs explicit demo playback). Spend approval stays on the live
 // Product Command path only — playback never mutates live Objective state.
 
