@@ -14,7 +14,6 @@ const base = {
   requiredResourceClasses: [] as string[],
   validatedMissingClasses: [] as string[],
   prerequisiteStates: [] as string[],
-  eligibleOfferingIds: [] as string[],
   spendAuthorityUsd: null,
   budgetRemainingUsd: null,
 };

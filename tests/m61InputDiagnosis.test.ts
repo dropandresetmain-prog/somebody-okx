@@ -259,7 +259,6 @@ test("F2: decision fingerprint ignores wording and changes on validated gap", ()
     requiredResourceClasses: [] as string[],
     validatedMissingClasses: [] as string[],
     prerequisiteStates: [] as string[],
-    eligibleOfferingIds: [] as string[],
     spendAuthorityUsd: 10 as number | null,
     budgetRemainingUsd: 50 as number | null,
   };

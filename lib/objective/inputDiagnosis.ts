@@ -839,9 +839,25 @@ export function computeDecisionInputFingerprint(input: {
   requiredResourceClasses: readonly string[];
   validatedMissingClasses: readonly string[];
   prerequisiteStates: readonly string[];
-  eligibleOfferingIds: readonly string[];
+  /**
+   * Identity of this requirement's ResourceNeeds (`needId:status:validated`)
+   * — a newly validated gap or a withdrawn need is material. Bounded by the
+   * caller to the needs actually in scope.
+   */
+  needIdentity?: readonly string[];
+  /** Identity of scoped acquisitions and whether each is verified. */
+  acquisitionIdentity?: readonly string[];
+  /** Terminal (verified/failed) external outcomes for this requirement. */
+  externalTerminalOutcomes?: readonly string[];
+  /** Live founder spend authority bound in USD (null = none). Authority
+   * changes are material: a revoked grant must not fingerprint as the world
+   * in which the prior BUY was authorized. */
   spendAuthorityUsd: number | null;
+  /** Remaining external-spend budget in USD (null = no budget row). */
   budgetRemainingUsd: number | null;
+  /** Availability of a worker that could execute the current strategy at the
+   * current revision (unknown = not evaluated at fingerprint time). */
+  workerAvailability?: "available" | "unavailable" | "unknown";
   /** Count of this requirement's own terminal (failed/superseded) delivery
    * attempts at the current revision. A new delivery failure is itself a
    * material fact change (the authorized option just proved non-executable):
@@ -857,7 +873,10 @@ export function computeDecisionInputFingerprint(input: {
     [...input.requiredResourceClasses].map((s) => s.toLowerCase()).sort().join(","),
     [...input.validatedMissingClasses].map((s) => s.toLowerCase()).sort().join(","),
     [...input.prerequisiteStates].map((s) => s.toLowerCase()).sort().join(","),
-    [...input.eligibleOfferingIds].map((s) => s.toLowerCase()).sort().join(","),
+    [...(input.needIdentity ?? [])].sort().join(","),
+    [...(input.acquisitionIdentity ?? [])].sort().join(","),
+    [...(input.externalTerminalOutcomes ?? [])].sort().join(","),
+    input.workerAvailability ?? "unknown",
     input.spendAuthorityUsd == null ? "na" : String(input.spendAuthorityUsd),
     input.budgetRemainingUsd == null ? "na" : String(input.budgetRemainingUsd),
     String(input.terminalDeliveryCount ?? 0),

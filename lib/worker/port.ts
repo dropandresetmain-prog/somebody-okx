@@ -52,6 +52,14 @@ export type WorkerCommand =
       // exact provider-result evidence it used. The application validates these
       // ids; the model cannot mint causal proof by naming arbitrary strings.
       usedAcquisitionEvidenceIds?: string[];
+      /**
+       * Serial: the artifact version the worker was actually SHOWN when it
+       * composed this replacement. The application rejects a write whose bound
+       * version no longer matches — a stale view must not silently overwrite
+       * a newer revision. Populated by the runtime from the observation it
+       * last returned to the model, never by the model.
+       */
+      expectedArtifactVersion?: number;
     };
 
 /** Bounded missing-input finding a worker may propose with submit_result. */
@@ -136,6 +144,13 @@ export type WorkerObservation = {
   /**
    * Serial: application-loaded bounded input package (company records,
    * target artifact, prior outputs, linked acquisitions). Not a tool call.
+   *
+   * `targetArtifact.content` is the COMPLETE current version the writing
+   * worker must replace (bounded only by the stored replacement ceiling the
+   * tool itself enforces). `complete` says so explicitly; `truncated` stays
+   * the literal completeness fact, so the model is never told a partial view
+   * is whole. `priorActionOutputs` carries the application's accepted-output
+   * classification: only `status: "accepted"` rows are authoritative output.
    */
   loadedInputPackage?: {
     companyRecords: Array<{
@@ -149,6 +164,8 @@ export type WorkerObservation = {
       version: number;
       content: string;
       truncated: boolean;
+      complete?: boolean;
+      exceedsReplacementCeiling?: boolean;
     } | null;
     priorActionOutputs: Array<{
       runId: string;
@@ -156,10 +173,27 @@ export type WorkerObservation = {
       fit: string;
       recommendedNextAction: string;
       truncated: boolean;
+      status?: "accepted" | "diagnostic";
+      classification?: string;
     }>;
     linkedAcquisitions: Array<WorkerAcquiredInput & { truncated: boolean }>;
     targetArtifactKey: string | null;
     inputEvidenceIds: string[];
+    /** Locked completion criteria this action is assessed against (verbatim). */
+    lockedCriteria?: {
+      requirementKey: string;
+      mustBeTrue: string;
+      expectedOutput: string | null;
+      minimumCompletionBar: string;
+      contractRevision: number;
+    } | null;
+    /** Corrective handoff: locked-criteria review rationale, as application data. */
+    correction?: {
+      reviewCritique: string;
+      reviewUnknowns?: string[];
+      reviewRecommendedAction?: string;
+      classification: string;
+    } | null;
   };
   unmetCompletionRequirements: string[];
   /** When set, the worker must stop — application accepted an input gap. */

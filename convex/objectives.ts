@@ -61,7 +61,7 @@ import {
   CANONICAL_LAUNCH_ARTIFACT,
   CANONICAL_OBJECTIVE_REQUEST,
 } from "../lib/objective/seedData";
-import { createArtifact, applyArtifactChange } from "../lib/objective/artifact";
+import { createArtifact, applyArtifactChange, MAX_CONTENT_CHARS as MAX_ARTIFACT_CONTENT_CHARS } from "../lib/objective/artifact";
 import type { ResourceClass } from "../lib/workforce/types";
 import type {
   ActivityEvent,
@@ -1176,6 +1176,8 @@ export const readWorkerObservation = internalQuery({
             version: v.number(),
             content: v.string(),
             truncated: v.boolean(),
+            complete: v.boolean(),
+            exceedsReplacementCeiling: v.boolean(),
           }),
           v.null(),
         ),
@@ -1186,6 +1188,8 @@ export const readWorkerObservation = internalQuery({
             fit: v.string(),
             recommendedNextAction: v.string(),
             truncated: v.boolean(),
+            status: v.string(),
+            classification: v.string(),
           }),
         ),
         linkedAcquisitions: v.array(
@@ -1203,6 +1207,26 @@ export const readWorkerObservation = internalQuery({
         ),
         targetArtifactKey: v.union(v.string(), v.null()),
         inputEvidenceIds: v.array(v.string()),
+        lockedCriteria: v.optional(
+          v.union(
+            v.object({
+              requirementKey: v.string(),
+              mustBeTrue: v.string(),
+              expectedOutput: v.union(v.string(), v.null()),
+              minimumCompletionBar: v.string(),
+              contractRevision: v.number(),
+            }),
+            v.null(),
+          ),
+        ),
+        correction: v.optional(
+          v.object({
+            reviewCritique: v.string(),
+            reviewUnknowns: v.optional(v.array(v.string())),
+            reviewRecommendedAction: v.optional(v.string()),
+            classification: v.string(),
+          }),
+        ),
       }),
     ),
     unmetCompletionRequirements: v.array(v.string()),
@@ -1254,13 +1278,27 @@ export const readWorkerObservation = internalQuery({
         ? allAcquired.filter((a) => linkedIds.includes(a.resultEvidenceId))
         : allAcquired;
 
+    // The COMPLETE supported target artifact is provided to writing workers:
+    // `update_company_artifact` requires a full replacement up to the stored
+    // ceiling (MAX_CONTENT_CHARS), so a truncated view would force a worker to
+    // rewrite from an incomplete picture. The ceiling is NOT raised here; the
+    // worker sees exactly what it may replace.
     const TEXT_CAP = 2000;
+    // Serial writing workers are evaluated against the LOCKED completion
+    // criteria; pass the verbatim bar and this action's requirement statement
+    // into the package so correction happens against the same contract the
+    // gate will use — unchanged, neither widened nor narrowed here.
+    const lockedCriteria = serial
+      ? await loadLockedCriteriaForRun(ctx.db, record, workItem)
+      : null;
     const loadedInputPackage = serial
       ? buildLoadedInputPackage({
           contract,
           record,
           acquiredInputs,
           textCap: TEXT_CAP,
+          artifactCap: MAX_ARTIFACT_CONTENT_CHARS,
+          lockedCriteria,
         })
       : undefined;
 
@@ -1304,8 +1342,18 @@ function buildLoadedInputPackage(input: {
     text: string;
   }>;
   textCap: number;
+  /** Full-replacement ceiling a writing worker may submit (MAX_CONTENT_CHARS). */
+  artifactCap: number;
+  /** Locked completion criteria for this action, loaded from current revision. */
+  lockedCriteria: {
+    requirementKey: string;
+    mustBeTrue: string;
+    expectedOutput: string | null;
+    minimumCompletionBar: string;
+    contractRevision: number;
+  } | null;
 }) {
-  const { contract, record, acquiredInputs, textCap } = input;
+  const { contract, record, acquiredInputs, textCap, artifactCap, lockedCriteria } = input;
   const canReadCompany = contract.allowedToolPermissions.includes(
     "read_company_record",
   );
@@ -1327,26 +1375,47 @@ function buildLoadedInputPackage(input: {
     version: number;
     content: string;
     truncated: boolean;
+    complete: boolean;
+    exceedsReplacementCeiling: boolean;
   } | null = null;
   if (targetKey) {
     const art = (record.companyArtifacts ?? []).find((a) => a.key === targetKey);
     if (art) {
-      const truncated = art.content.length > textCap;
+      // The writing worker sees the COMPLETE current version it must replace
+      // (bounded only by the stored ceiling the tool itself enforces). The old
+      // view truncated to textCap (2,000) — and the runtime truncated again to
+      // 1,200 — while `update_company_artifact` requires a complete replacement
+      // up to MAX_CONTENT_CHARS: a worker was forced to rewrite text it could
+      // not read. Accuracy metadata travels with the payload: `truncated`
+      // stays the literal completeness fact, `complete` asserts the supported
+      // package is whole, and an over-ceiling artifact (which the tool cannot
+      // replace) is flagged instead of silently cut.
+      const exceeds = art.content.length > artifactCap;
       targetArtifact = {
         key: art.key,
         version: art.version,
-        content: truncated ? art.content.slice(0, textCap) : art.content,
-        truncated,
+        content: exceeds ? art.content.slice(0, artifactCap) : art.content,
+        truncated: exceeds,
+        complete: !exceeds,
+        exceedsReplacementCeiling: exceeds,
       };
     }
   }
 
+  // Accepted-output continuity: only the application's durable accepted
+  // terminal record makes prior output "accepted". A stored `record.result`
+  // without a matching accepted terminal is a diagnostic view of what a run
+  // CLAIMED, never authoritative input the next action may build on as fact.
+  const accepted = record.acceptedTerminal ?? null;
+  const unconfirmed = record.lastUnconfirmedTerminal ?? null;
   const priorActionOutputs: Array<{
     runId: string;
     summary: string;
     fit: string;
     recommendedNextAction: string;
     truncated: boolean;
+    status: "accepted" | "diagnostic";
+    classification: string;
   }> = [];
   if (
     record.result &&
@@ -1358,12 +1427,22 @@ function buildLoadedInputPackage(input: {
     const next = record.result.recommendedNextAction ?? "";
     const truncated =
       summary.length > textCap || fit.length > textCap || next.length > textCap;
+    const isAccepted =
+      accepted?.outcome === "accepted" &&
+      accepted.runId === record.result.runId &&
+      accepted.terminal === "DELIVERED";
     priorActionOutputs.push({
       runId: record.result.runId,
       summary: summary.slice(0, textCap),
       fit: fit.slice(0, textCap),
       recommendedNextAction: next.slice(0, 500),
       truncated,
+      status: isAccepted ? "accepted" : "diagnostic",
+      classification: isAccepted
+        ? `accepted:${accepted.terminal}`
+        : unconfirmed && unconfirmed.runId === record.result.runId
+          ? `refused_unconfirmed:${unconfirmed.terminal}`
+          : "unaccepted_result",
     });
   }
 
@@ -1372,6 +1451,63 @@ function buildLoadedInputPackage(input: {
     truncated: a.text.length >= textCap,
   }));
 
+  // Correction continuity: when management reopened a deliverable after a
+  // negative final assessment, the corrective worker must see the locked bar
+  // it is being measured against and the review rationale — as DATA, without
+  // any new approval authority. The critique lives on management state; the
+  // locked criteria travel with the contract the application already holds.
+  const management = (
+    record as unknown as {
+      management?: {
+        lastFinalAssessmentCritique?: string | null;
+        currentContractRevision?: number;
+      };
+      finalSemanticAssessment?: {
+        meetsMinimumBar: boolean;
+        rationale: string;
+        assumptionsUnknowns?: string[];
+        recommendedNextAction?: string;
+        contractRevision: number;
+      } | null;
+    }
+  ).management ?? (record as unknown as { management?: never }).management;
+  const critique =
+    typeof (record as unknown as { management?: { lastFinalAssessmentCritique?: string | null } })
+      .management?.lastFinalAssessmentCritique === "string"
+      ? String(
+          (record as unknown as { management: { lastFinalAssessmentCritique: string } })
+            .management.lastFinalAssessmentCritique,
+        ).slice(0, 800)
+      : null;
+  const negativeReview = (
+    record as unknown as { finalSemanticAssessment?: {
+      meetsMinimumBar: boolean;
+      rationale: string;
+      assumptionsUnknowns?: string[];
+      recommendedNextAction?: string;
+    } | null }
+  ).finalSemanticAssessment;
+  const correction =
+    critique !== null
+      ? {
+          reviewCritique: critique,
+          ...(negativeReview && negativeReview.meetsMinimumBar === false
+            ? {
+                reviewUnknowns: (negativeReview.assumptionsUnknowns ?? [])
+                  .slice(0, 6)
+                  .map((text) => text.slice(0, 300)),
+                reviewRecommendedAction: String(
+                  negativeReview.recommendedNextAction ?? "",
+                ).slice(0, 500),
+              }
+            : {}),
+          // The critique is application review output, not independent source
+          // evidence: it must not be cited as company fact, and it neither
+          // adds nor removes anything from the locked bar below.
+          classification: "application_review" as const,
+        }
+      : null;
+
   return {
     companyRecords,
     targetArtifact,
@@ -1379,6 +1515,88 @@ function buildLoadedInputPackage(input: {
     linkedAcquisitions,
     targetArtifactKey: targetKey,
     inputEvidenceIds: [...(contract.inputEvidenceIds ?? [])],
+    ...(lockedCriteria ? { lockedCriteria } : {}),
+    ...(correction ? { correction } : {}),
+  };
+}
+
+/**
+ * Load the LOCKED completion criteria this action will be assessed against:
+ * the bound Requirement's statement/expectedOutput and the contract's
+ * minimumCompletionBar, at the requirement's own contractRevision. This is a
+ * read-only projection of the same rows the gate and the final assessor use —
+ * it changes no bar and grants no authority.
+ */
+async function loadLockedCriteriaForRun(
+  db: QueryCtx["db"],
+  record: ObjectiveRecord,
+  workItem: { id?: string } | null | undefined,
+): Promise<{
+  requirementKey: string;
+  mustBeTrue: string;
+  expectedOutput: string | null;
+  minimumCompletionBar: string;
+  contractRevision: number;
+} | null> {
+  const workItemId = workItem?.id;
+  if (!workItemId?.startsWith("wi:")) return null;
+  const assignmentId = workItemId.slice(3);
+  if (!assignmentId) return null;
+  const assignmentRows = await db
+    .query("assignments")
+    .withIndex("by_objective", (q) => q.eq("objectiveKey", record.key))
+    .collect();
+  const assignment = assignmentRows
+    .map((row) => (row as { data: { assignmentId: string; requirementKey?: string; contractRevision?: number } }).data)
+    .find((data) => data.assignmentId === assignmentId);
+  if (!assignment?.requirementKey) return null;
+  const reqRows = await db
+    .query("requirements")
+    .withIndex("by_objectiveRequirement", (q) =>
+      q.eq("objectiveKey", record.key).eq("requirementKey", assignment.requirementKey!),
+    )
+    .collect();
+  if (reqRows.length === 0) return null;
+  const sameAsDispatch =
+    typeof assignment.contractRevision === "number"
+      ? reqRows.find(
+          (row) =>
+            (row as { data: { contractRevision?: number } }).data.contractRevision ===
+            assignment.contractRevision,
+        ) ?? null
+      : null;
+  const latest =
+    sameAsDispatch ??
+    reqRows.reduce((max, row) => {
+      const rev = (row as { data: { contractRevision?: number } }).data.contractRevision ?? 0;
+      const maxRev = (max as { data: { contractRevision?: number } }).data.contractRevision ?? 0;
+      return rev >= maxRev ? row : max;
+    });
+  const data = (latest as {
+    data: {
+      contractRevision?: number;
+      mustBeTrue?: string;
+      expectedOutput?: string | null;
+    };
+  }).data;
+  const contractRows = await db
+    .query("outcomeContracts")
+    .withIndex("by_objective", (q) => q.eq("objectiveKey", record.key))
+    .collect();
+  if (contractRows.length === 0) return null;
+  const latestContract = contractRows.reduce((max, row) =>
+    (row as { revision: number }).revision > (max as { revision: number }).revision ? row : max,
+  );
+  return {
+    requirementKey: assignment.requirementKey,
+    mustBeTrue: String(data.mustBeTrue ?? "").slice(0, 2000),
+    expectedOutput:
+      typeof data.expectedOutput === "string" ? data.expectedOutput.slice(0, 2000) : null,
+    minimumCompletionBar: String(
+      (latestContract as { data: { minimumCompletionBar?: string } }).data
+        .minimumCompletionBar ?? "",
+    ).slice(0, 800),
+    contractRevision: data.contractRevision ?? (latestContract as { revision: number }).revision,
   };
 }
 
@@ -1440,6 +1658,10 @@ export const updateCompanyArtifact = internalMutation({
     // reference acquisition results whose intent is verified with a matching
     // resultEvidenceId; the application owns the truth, never the model.
     usedAcquisitionEvidenceIds: v.optional(v.array(v.string())),
+    // Serial: the exact artifact version the composing view showed, bound by
+    // the runtime (never model-supplied). Absent = legacy write path without a
+    // shown-version fence.
+    expectedArtifactVersion: v.optional(v.number()),
   },
   returns: v.object({ key: v.string(), version: v.number() }),
   handler: async (ctx, args) => {
@@ -1475,6 +1697,20 @@ export const updateCompanyArtifact = internalMutation({
           "This assignment has no targetArtifactKey; artifact mutation is not authorized",
         );
       }
+    }
+
+    // Stale-view fence (serial): an edit bound to a shown version must match
+    // the target's CURRENT version. Rejected before provenance validation or
+    // any write, so the refusal has no side effects.
+    if (
+      serial &&
+      args.expectedArtifactVersion !== undefined &&
+      args.expectedArtifactVersion !== artifacts[targetIdx].version
+    ) {
+      throw new ToolStatusError(
+        "stale",
+        `update_company_artifact refused: edit bound to v${args.expectedArtifactVersion} but ${artifacts[targetIdx].key} is now v${artifacts[targetIdx].version}; recompose from the current version`,
+      );
     }
 
     const intentRows = await ctx.db

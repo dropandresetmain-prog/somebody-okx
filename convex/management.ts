@@ -458,17 +458,91 @@ export function buildConvexManagementPorts(ctx: MutationCtx): ManagementPorts {
           (assignmentData.state === "failed" || assignmentData.state === "superseded")
         );
       }).length;
+      // Material facts for the fingerprint, each bounded and identity-based.
+      const prerequisiteStates = (requirement.dependsOnRequirementKeys ?? [])
+        .map((key) => {
+          const dep = requirements.find((r) => r.requirementKey === key);
+          return `${key}:${dep ? dep.state : "absent"}`;
+        })
+        .sort();
+      const needIdentity = objectiveNeeds
+        .filter((need) => need.requirementKey === requirement.requirementKey)
+        .map(
+          (need) =>
+            `${need.id}:${need.status}:${need.validationAuthority === "application" ? "v" : "-"}`,
+        )
+        .sort();
+      const acquisitionIdentity = acquisitions
+        .filter(
+          (a) =>
+            a.requirementKey === requirement.requirementKey &&
+            a.contractRevision === currentContractRevision,
+        )
+        .map((a) => `${a.resultEvidenceId}:${a.verifiedAt != null ? "verified" : "pending"}`)
+        .sort();
+      const intentRowsForFingerprint = await ctx.db
+        .query("executionIntents")
+        .withIndex("by_objective", (q) => q.eq("objectiveKey", state.objectiveKey))
+        .collect();
+      const externalTerminalOutcomes = intentRowsForFingerprint
+        .map((intentRow) => (intentRow as AnyRow).data as ExecutionIntent)
+        .filter(
+          (intent) =>
+            intent.requirementKey === requirement.requirementKey &&
+            intent.contractRevision === currentContractRevision &&
+            (intent.state === "verified" || intent.state === "failed"),
+        )
+        .map((intent) => `${intent.intentId}:${intent.state}`)
+        .sort();
+      // Authority changes are material: a spend grant that appears, moves, or
+      // is revoked changes what a BUY decision could honestly authorize.
+      const grantForFingerprint = (await ctx.runQuery(
+        internal.internal.workforce.activeSpendGrant,
+        { objectiveKey: state.objectiveKey },
+      )) as { limitUsd: number } | null;
+      const budgetForFingerprint = (await ctx.runQuery(
+        internal.internal.workforce.readBudget,
+        { objectiveKey: state.objectiveKey },
+      )) as ObjectiveBudget | null;
+      const budgetRemainingUsd = budgetForFingerprint
+        ? Math.max(
+            0,
+            budgetForFingerprint.limits.maxExternalSpendUsd -
+              budgetForFingerprint.used.externalSpendCommittedUsd,
+          )
+        : null;
+      // Availability of execution capacity for the strategy this requirement
+      // last bound (generic: any free worker, or one already held by THIS
+      // objective, can staff a MAKE/HYBRID). "unknown" for strategies that
+      // need no worker, so worker churn cannot re-open BUY decisions.
+      const workerRowsForFingerprint = (await ctx.runQuery(
+        internal.internal.workforce.listWorkers,
+        {},
+      )) as Array<{ lifecycle: string; reservedBy: { objectiveKey: string } | null }>;
+      const strategyNeedsWorker =
+        requirement.strategy === "MAKE" || requirement.strategy === "HYBRID";
+      const workerAvailability: "available" | "unavailable" | "unknown" =
+        !strategyNeedsWorker
+          ? "unknown"
+          : workerRowsForFingerprint.some(
+              (w) =>
+                w.lifecycle === "available" ||
+                w.reservedBy?.objectiveKey === state.objectiveKey,
+            )
+            ? "available"
+            : "unavailable";
       const fingerprint = computeDecisionInputFingerprint({
         requirementKey: requirement.requirementKey,
         contractRevision: currentContractRevision,
         requiredResourceClasses: requirement.requiredResourceClasses ?? [],
         validatedMissingClasses: validatedMissing,
-        prerequisiteStates: (requirement.dependsOnRequirementKeys ?? []).map(
-          (key) => `${key}:pending`,
-        ),
-        eligibleOfferingIds: [],
-        spendAuthorityUsd: null,
-        budgetRemainingUsd: null,
+        prerequisiteStates,
+        needIdentity,
+        acquisitionIdentity,
+        externalTerminalOutcomes,
+        spendAuthorityUsd: grantForFingerprint?.limitUsd ?? null,
+        budgetRemainingUsd,
+        workerAvailability,
         terminalDeliveryCount,
       });
       if (fingerprints[requirement.requirementKey] === fingerprint) return null;

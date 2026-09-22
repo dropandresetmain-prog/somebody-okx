@@ -301,7 +301,6 @@ async function seedPostAcquisition(
               requiredResourceClasses: ["proprietary_data"],
               validatedMissingClasses: ["proprietary_data"],
               prerequisiteStates: [],
-              eligibleOfferingIds: [],
               spendAuthorityUsd: null,
               budgetRemainingUsd: null,
               terminalDeliveryCount: 1,

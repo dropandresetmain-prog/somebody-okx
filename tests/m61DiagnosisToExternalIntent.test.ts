@@ -537,7 +537,6 @@ test("F4 negative twin: EXECUTION_FAILED creates no ResourceNeed and no BUY", as
     requiredResourceClasses: [],
     validatedMissingClasses: [],
     prerequisiteStates: [],
-    eligibleOfferingIds: [],
     spendAuthorityUsd: 25,
     budgetRemainingUsd: 50,
   });
@@ -547,7 +546,6 @@ test("F4 negative twin: EXECUTION_FAILED creates no ResourceNeed and no BUY", as
     requiredResourceClasses: [],
     validatedMissingClasses: [],
     prerequisiteStates: [],
-    eligibleOfferingIds: [],
     spendAuthorityUsd: 25,
     budgetRemainingUsd: 50,
   });

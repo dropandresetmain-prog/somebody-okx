@@ -126,7 +126,6 @@ function fingerprint(input: {
     requiredResourceClasses: input.requiredResourceClasses,
     validatedMissingClasses: input.validatedMissingClasses,
     prerequisiteStates: [],
-    eligibleOfferingIds: [],
     spendAuthorityUsd: null,
     budgetRemainingUsd: null,
     terminalDeliveryCount: input.terminalDeliveryCount ?? 0,

@@ -599,6 +599,15 @@ async function actCommand(
                 .filter((id) => id.length > 0)
                 .slice(0, 8)
             : undefined;
+          // Target/version binding written by the runtime from the observation
+          // it actually showed the model. The mutation refuses the write when
+          // the bound version is no longer current (stale view) — with no side
+          // effects, before any provenance check can pass.
+          const expectedArtifactVersion =
+            typeof command.expectedArtifactVersion === "number" &&
+            Number.isInteger(command.expectedArtifactVersion)
+              ? command.expectedArtifactVersion
+              : undefined;
           const result = await ctx.runMutation(
             internal.objectives.updateCompanyArtifact,
             {
@@ -608,6 +617,9 @@ async function actCommand(
               changeNote,
               ...(usedAcquisitionEvidenceIds
                 ? { usedAcquisitionEvidenceIds }
+                : {}),
+              ...(expectedArtifactVersion !== undefined
+                ? { expectedArtifactVersion }
                 : {}),
             },
           );
