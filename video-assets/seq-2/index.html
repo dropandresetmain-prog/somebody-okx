@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>Somebody × OKX — SEQ 2 Make vs Buy</title>
+<style>
+:root{
+  --paper:#f5f2eb;
+  --paper-deep:#e7e0d4;
+  --surface:rgba(255,255,255,.78);
+  --surface-strong:#fffdf9;
+  --ink:#22231f;
+  --ink-2:#4f4f49;
+  --muted:#77736b;
+  --line:rgba(34,35,31,.12);
+  --line-strong:rgba(34,35,31,.20);
+  --orange:#e4602a;
+  --orange-wash:#fde9de;
+  --green:#2e7d4f;
+  --blue:#2f66b3;
+  --shadow:0 24px 70px rgba(42,37,29,.08);
+  --w:1920px;
+  --h:1080px;
+  font-family:Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  color:var(--ink);
+  background:#ded8cd;
+  text-rendering:geometricPrecision;
+  font-synthesis:none;
+}
+*{box-sizing:border-box}
+html,body{width:100%;height:100%;margin:0;overflow:hidden}
+body{background:#ded8cd}
+.viewport{position:relative;width:100vw;height:100vh;overflow:hidden}
+.stage{position:absolute;left:50%;top:50%;width:var(--w);height:var(--h);overflow:hidden;transform:translate(-50%,-50%) scale(var(--stage-scale,1));transform-origin:center;background:var(--paper);isolation:isolate}
+.stage:before{content:"";position:absolute;inset:0;z-index:-2;background:linear-gradient(rgba(255,255,255,.12),rgba(255,255,255,.12)),var(--paper)}
+.stage:after{content:"";position:absolute;inset:44px;z-index:30;border:1px solid rgba(34,35,31,.045);border-radius:40px;pointer-events:none}
+.scene{position:absolute;inset:0;padding:96px 122px;opacity:0;visibility:hidden;transition:opacity .42s ease,transform .48s cubic-bezier(.2,.72,.2,1);transform:translateY(8px);pointer-events:none}
+.stage[data-beat="1"] .beat-1,.stage[data-beat="2"] .beat-2,.stage[data-beat="3"] .beat-3,.stage[data-beat="4"] .beat-4,.stage[data-beat="5"] .beat-5{opacity:1;visibility:visible;transform:none}
+.eyebrow{margin:0;color:var(--muted);font-size:25px;font-weight:680;letter-spacing:-.025em}
+.kicker{font-size:18px;font-weight:760;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.label{font-size:19px;font-weight:760;letter-spacing:.11em;text-transform:uppercase}
+.mascot{display:block;object-fit:contain;user-select:none;-webkit-user-drag:none;filter:drop-shadow(0 22px 32px rgba(45,39,31,.09))}
+
+/* BEAT 1 — the question */
+.beat-1{display:grid;grid-template-columns:1fr 360px;align-items:center;gap:60px}
+.b1-copy{padding-left:38px}
+.b1-copy .eyebrow{opacity:0;transform:translateY(12px)}
+.b1-copy h1{margin:22px 0 0;max-width:1060px;font-size:78px;line-height:1.01;font-weight:720;letter-spacing:-.058em;opacity:0;transform:translateY(13px)}
+.b1-pair{display:flex;align-items:center;gap:34px;margin-top:54px;opacity:0;transform:translateY(12px)}
+.choice-word{font-size:128px;line-height:.84;font-weight:800;letter-spacing:-.08em}
+.choice-word.make{color:var(--ink)}
+.choice-word.buy{color:var(--orange)}
+.or{font-size:26px;font-weight:700;color:var(--muted);padding-top:16px}
+.b1-mascot{width:330px;height:430px;opacity:0;transform:translateY(12px) scale(.985)}
+.stage.is-playing[data-beat="1"] .b1-copy .eyebrow{animation:rise .55s cubic-bezier(.2,.75,.2,1) .12s forwards}
+.stage.is-playing[data-beat="1"] .b1-copy h1{animation:rise .62s cubic-bezier(.2,.75,.2,1) .28s forwards}
+.stage.is-playing[data-beat="1"] .b1-pair{animation:rise .58s cubic-bezier(.2,.75,.2,1) 1.02s forwards}
+.stage.is-playing[data-beat="1"] .b1-mascot{animation:mascot-in .72s cubic-bezier(.2,.75,.2,1) .36s forwards}
+
+/* Persistent MAKE/BUY frame for beats 2–4 */
+.split-shell{position:absolute;left:122px;right:122px;top:112px;bottom:112px;display:grid;grid-template-columns:1fr 1px 1fr;background:transparent}
+.split-rule{background:var(--line-strong);height:100%;transform:scaleY(.84);transform-origin:center}
+.side{position:relative;display:flex;flex-direction:column;min-width:0}
+.side.make{padding-right:78px}.side.buy{padding-left:78px}
+.side-head{display:flex;align-items:baseline;justify-content:space-between;gap:30px}
+.side-title{font-size:66px;line-height:1;font-weight:800;letter-spacing:-.062em}
+.side.make .side-title{color:var(--ink)}.side.buy .side-title{color:var(--orange)}
+.side-note{font-size:20px;font-weight:650;color:var(--muted)}
+
+/* BEAT 2 — familiar examples */
+.beat-2{padding:0}
+.example-window{position:relative;flex:1;display:grid;place-items:center;margin-top:28px}
+.example{position:absolute;inset:0;display:grid;place-items:center;opacity:0;transform:translateY(12px);transition:opacity .36s ease,transform .4s cubic-bezier(.2,.72,.2,1)}
+.example.is-active{opacity:1;transform:none}
+.example-card{width:100%;min-height:360px;display:grid;place-items:center;text-align:center;border:1px solid var(--line);border-radius:30px;background:var(--surface);box-shadow:var(--shadow);padding:44px}
+.example-icon{width:78px;height:78px;border-radius:22px;display:grid;place-items:center;margin-bottom:24px;background:rgba(34,35,31,.05);font-size:34px;font-weight:800;color:var(--muted)}
+.side.buy .example-icon{background:var(--orange-wash);color:var(--orange)}
+.example strong{display:block;font-size:49px;line-height:1.02;font-weight:760;letter-spacing:-.055em;max-width:590px}
+.example small{display:block;margin-top:18px;color:var(--muted);font-size:20px;font-weight:620}
+.example-count{position:absolute;left:50%;bottom:10px;transform:translateX(-50%);display:flex;gap:8px}
+.example-count i{width:8px;height:8px;border-radius:50%;background:rgba(34,35,31,.16);transition:width .3s ease,background .3s ease}
+.example-count i.is-active{width:32px;border-radius:999px;background:var(--ink)}
+
+/* BEAT 3 — AI expands MAKE */
+.beat-3{padding:0}
+.beat-3 .split-shell{grid-template-columns:1.18fr 1px .82fr;transition:grid-template-columns .6s cubic-bezier(.2,.75,.2,1)}
+.ai-copy{margin-top:40px;max-width:650px}
+.ai-copy h2{margin:10px 0 0;font-size:53px;line-height:1.04;letter-spacing:-.055em}
+.ai-copy p{margin:20px 0 0;color:var(--muted);font-size:25px;line-height:1.35;font-weight:580}
+.capability-field{position:relative;flex:1;margin-top:32px;border:1px solid var(--line);border-radius:32px;background:rgba(255,255,255,.46);overflow:hidden}
+.capability-field:before{content:"INTERNAL CAPABILITY";position:absolute;left:26px;top:22px;font-size:15px;letter-spacing:.14em;font-weight:800;color:var(--muted)}
+.capability{position:absolute;padding:18px 28px;border-radius:18px;background:var(--surface-strong);border:1px solid var(--line);box-shadow:0 14px 36px rgba(42,37,29,.055);font-size:24px;font-weight:720;letter-spacing:-.03em;opacity:0;transform:translateY(12px) scale(.98)}
+.c1{left:74px;top:126px}.c2{right:92px;top:106px}.c3{left:210px;bottom:110px}.c4{right:164px;bottom:86px}
+.stage.is-playing[data-beat="3"] .capability{animation:cap-in .48s cubic-bezier(.2,.78,.25,1) forwards}
+.stage.is-playing[data-beat="3"] .c1{animation-delay:.45s}.stage.is-playing[data-beat="3"] .c2{animation-delay:.82s}.stage.is-playing[data-beat="3"] .c3{animation-delay:1.19s}.stage.is-playing[data-beat="3"] .c4{animation-delay:1.56s}
+.ai-weight{margin:auto 0;color:var(--muted);font-size:23px;line-height:1.4;font-weight:590;max-width:480px}
+.ai-weight strong{display:block;margin-bottom:14px;color:var(--ink);font-size:42px;line-height:1.04;letter-spacing:-.05em}
+
+/* BEAT 4 — external reality */
+.beat-4{padding:0}
+.beat-4 .split-shell{grid-template-columns:.92fr 1px 1.08fr}
+.internal-summary{display:flex;align-items:flex-start;gap:18px;flex-wrap:wrap;margin-top:42px}
+.internal-chip{padding:13px 18px;border:1px solid var(--line);border-radius:14px;background:rgba(255,255,255,.52);color:var(--ink-2);font-size:18px;font-weight:690}
+.reality-copy{margin-top:54px}
+.reality-copy h2{margin:10px 0 0;font-size:53px;line-height:1.04;letter-spacing:-.055em;max-width:620px}
+.resource-stack{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:38px}
+.resource{position:relative;min-height:156px;padding:24px 26px;border-radius:22px;border:1px solid rgba(228,96,42,.18);background:rgba(255,253,249,.78);box-shadow:0 14px 34px rgba(42,37,29,.05);opacity:0;transform:translateX(12px)}
+.resource span{display:block;color:var(--orange);font-size:14px;font-weight:800;letter-spacing:.12em;text-transform:uppercase}.resource strong{display:block;margin-top:14px;font-size:27px;line-height:1.05;letter-spacing:-.035em}
+.stage.is-playing[data-beat="4"] .resource{animation:resource-in .42s cubic-bezier(.2,.75,.2,1) forwards}
+.stage.is-playing[data-beat="4"] .r1{animation-delay:.28s}.stage.is-playing[data-beat="4"] .r2{animation-delay:.56s}.stage.is-playing[data-beat="4"] .r3{animation-delay:.84s}.stage.is-playing[data-beat="4"] .r4{animation-delay:1.12s}
+.reality-line{position:absolute;left:50%;bottom:12px;transform:translateX(-50%);white-space:nowrap;color:var(--muted);font-size:22px;font-weight:650;letter-spacing:-.03em;opacity:0}
+.stage.is-playing[data-beat="4"] .reality-line{animation:rise .45s ease 1.45s forwards}
+
+/* BEAT 5 — thesis */
+.beat-5{display:grid;grid-template-columns:1fr 1px 1fr;align-items:center;padding:122px 150px}
+.final-rule{height:600px;background:var(--line-strong);transform:scaleY(0);transform-origin:center;opacity:0}
+.final-side{display:flex;flex-direction:column;justify-content:center;min-width:0}
+.final-side.left{align-items:flex-end;text-align:right;padding-right:92px}.final-side.right{align-items:flex-start;text-align:left;padding-left:92px}
+.final-kicker{font-size:18px;font-weight:800;letter-spacing:.15em;text-transform:uppercase;color:var(--muted);opacity:0;transform:translateY(10px)}
+.final-side h2{margin:18px 0 0;max-width:660px;font-size:86px;line-height:.96;font-weight:790;letter-spacing:-.065em;opacity:0;transform:translateY(14px)}
+.final-side.right h2{color:var(--orange)}
+.final-mascot{position:absolute;left:50%;bottom:60px;width:170px;height:200px;transform:translateX(-50%) translateY(12px);opacity:0;z-index:2}
+.stage.is-playing[data-beat="5"] .final-rule{animation:final-rule .55s ease .06s forwards}
+.stage.is-playing[data-beat="5"] .final-kicker{animation:rise .5s ease .2s forwards}
+.stage.is-playing[data-beat="5"] .final-side h2{animation:rise .62s cubic-bezier(.2,.75,.2,1) .38s forwards}
+.stage.is-playing[data-beat="5"] .final-mascot{animation:final-mascot .6s cubic-bezier(.2,.75,.2,1) .66s forwards}
+
+@keyframes rise{to{opacity:1;transform:translateY(0)}}
+@keyframes mascot-in{to{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes cap-in{to{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes resource-in{to{opacity:1;transform:translateX(0)}}
+@keyframes final-rule{to{opacity:1;transform:scaleY(1)}}
+@keyframes final-mascot{to{opacity:1;transform:translateX(-50%) translateY(0)}}
+
+@media(prefers-reduced-motion:reduce){
+  .scene{transition:none}.b1-copy .eyebrow,.b1-copy h1,.b1-pair,.b1-mascot,.capability,.resource,.reality-line,.final-rule,.final-kicker,.final-side h2,.final-mascot{animation:none!important;opacity:1!important;transform:none!important}.final-mascot{transform:translateX(-50%)!important}.example{transition:none}.example.is-active{opacity:1}
+}
+</style>
+</head>
+<body>
+<div class="viewport">
+<main class="stage" id="stage" data-beat="1">
+  <section class="scene beat-1" aria-label="Every company makes or buys">
+    <div class="b1-copy">
+      <p class="eyebrow">Every company runs on the same decision.</p>
+      <h1>Do we make this ourselves —<br>or buy it from someone else?</h1>
+      <div class="b1-pair" aria-hidden="true">
+        <span class="choice-word make">MAKE</span>
+        <span class="or">or</span>
+        <span class="choice-word buy">BUY</span>
+      </div>
+    </div>
+    <img class="mascot b1-mascot" src="../assets/somebody-neutral.webp" alt="" draggable="false">
+  </section>
+
+  <section class="scene beat-2" aria-label="Familiar make versus buy examples">
+    <div class="split-shell">
+      <div class="side make">
+        <div class="side-head"><span class="side-title">MAKE</span><span class="side-note">inside the company</span></div>
+        <div class="example-window">
+          <div class="example example-make ex-1 is-active"><div class="example-card"><div><div class="example-icon">01</div><strong>BUILD SOFTWARE</strong><small>create the capability yourself</small></div></div></div>
+          <div class="example example-make ex-2"><div class="example-card"><div><div class="example-icon">02</div><strong>HIRE EXPERTISE</strong><small>add the capability to the team</small></div></div></div>
+          <div class="example example-make ex-3"><div class="example-card"><div><div class="example-icon">03</div><strong>RESEARCH INTERNALLY</strong><small>produce the knowledge yourself</small></div></div></div>
+        </div>
+      </div>
+      <div class="split-rule"></div>
+      <div class="side buy">
+        <div class="side-head"><span class="side-title">BUY</span><span class="side-note">from outside</span></div>
+        <div class="example-window">
+          <div class="example example-buy ex-1 is-active"><div class="example-card"><div><div class="example-icon">↗</div><strong>SUBSCRIBE</strong><small>use software someone else built</small></div></div></div>
+          <div class="example example-buy ex-2"><div class="example-card"><div><div class="example-icon">↗</div><strong>OUTSOURCE</strong><small>bring in specialist capability</small></div></div></div>
+          <div class="example example-buy ex-3"><div class="example-card"><div><div class="example-icon">↗</div><strong>BUY DATA</strong><small>acquire information you cannot create</small></div></div></div>
+        </div>
+      </div>
+      <div class="example-count" aria-hidden="true"><i class="is-active"></i><i></i><i></i></div>
+    </div>
+  </section>
+
+  <section class="scene beat-3" aria-label="AI expands internal capability">
+    <div class="split-shell">
+      <div class="side make">
+        <div class="side-head"><span class="side-title">MAKE</span><span class="side-note">AI changes the economics</span></div>
+        <div class="ai-copy"><span class="kicker">Intelligence</span><h2>More capability can now be created inside.</h2></div>
+        <div class="capability-field" aria-hidden="true">
+          <div class="capability c1">Research</div>
+          <div class="capability c2">Write</div>
+          <div class="capability c3">Analyse</div>
+          <div class="capability c4">Code</div>
+        </div>
+      </div>
+      <div class="split-rule"></div>
+      <div class="side buy">
+        <div class="side-head"><span class="side-title">BUY</span><span class="side-note">still matters</span></div>
+        <div class="ai-weight"><strong>Intelligence is becoming cheap to create.</strong>But an autonomous company still depends on things it cannot simply think into existence.</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="scene beat-4" aria-label="Scarce resources remain external">
+    <div class="split-shell">
+      <div class="side make">
+        <div class="side-head"><span class="side-title">MAKE</span><span class="side-note">internal intelligence</span></div>
+        <div class="reality-copy"><span class="kicker">Inside</span><h2>The company can create more of the thinking.</h2></div>
+        <div class="internal-summary" aria-hidden="true"><span class="internal-chip">Research</span><span class="internal-chip">Write</span><span class="internal-chip">Analyse</span><span class="internal-chip">Code</span></div>
+      </div>
+      <div class="split-rule"></div>
+      <div class="side buy">
+        <div class="side-head"><span class="side-title">BUY</span><span class="side-note">external reality</span></div>
+        <div class="resource-stack">
+          <div class="resource r1"><span>Outside</span><strong>Proprietary Data</strong></div>
+          <div class="resource r2"><span>Outside</span><strong>Specialist Services</strong></div>
+          <div class="resource r3"><span>Outside</span><strong>Infrastructure</strong></div>
+          <div class="resource r4"><span>Outside</span><strong>Access</strong></div>
+        </div>
+      </div>
+      <div class="reality-line">Intelligence can be created internally. Reality still has to come from somewhere.</div>
+    </div>
+  </section>
+
+  <section class="scene beat-5" aria-label="Know what to make and what to buy">
+    <div class="final-side left"><span class="final-kicker">An autonomous company must know</span><h2>WHAT TO<br>MAKE.</h2></div>
+    <div class="final-rule"></div>
+    <div class="final-side right"><span class="final-kicker">and just as importantly</span><h2>WHAT TO<br>BUY.</h2></div>
+    <img class="mascot final-mascot" src="../assets/somebody-neutral.webp" alt="" draggable="false">
+  </section>
+</main>
+</div>
+<script>
+(()=>{
+  const W=1920,H=1080,DURATION=20000;
+  const stage=document.getElementById('stage');
+  if(!stage)return;
+  let token=0,timers=[];
+  const schedule=[
+    [0,1],
+    [3100,2],
+    [8700,3],
+    [12450,4],
+    [16450,5]
+  ];
+  const exampleTimes=[
+    [3400,0],
+    [5150,1],
+    [6900,2]
+  ];
+  function fit(){stage.style.setProperty('--stage-scale',String(Math.min(innerWidth/W,innerHeight/H)))}
+  function clearTimers(){for(const id of timers)clearTimeout(id);timers=[]}
+  function setBeat(n){stage.dataset.beat=String(n)}
+  function setExample(index){
+    document.querySelectorAll('.beat-2 .example').forEach(el=>el.classList.toggle('is-active',el.classList.contains(`ex-${index+1}`)));
+    document.querySelectorAll('.example-count i').forEach((el,i)=>el.classList.toggle('is-active',i===index));
+  }
+  async function preload(){
+    await Promise.all([...document.images].map(async img=>{
+      if(!img.complete)await new Promise(r=>{img.addEventListener('load',r,{once:true});img.addEventListener('error',r,{once:true})});
+      if(typeof img.decode==='function'){try{await img.decode()}catch{}}
+    }));
+  }
+  function restart(){
+    token++;const current=token;clearTimers();
+    stage.classList.remove('is-playing');setBeat(1);setExample(0);void stage.offsetWidth;
+    requestAnimationFrame(()=>requestAnimationFrame(()=>{if(current!==token)return;stage.classList.add('is-playing')}));
+    for(const [ms,beat] of schedule.slice(1))timers.push(setTimeout(()=>{if(current===token)setBeat(beat)},ms));
+    for(const [ms,index] of exampleTimes.slice(1))timers.push(setTimeout(()=>{if(current===token)setExample(index)},ms));
+  }
+  addEventListener('resize',fit,{passive:true});
+  addEventListener('keydown',e=>{if(e.repeat)return;const k=e.key.toLowerCase();if(k==='r'||k===' '){e.preventDefault();restart()}});
+  stage.addEventListener('dblclick',restart);
+  window.SomebodySeq2={restart,durationMs:DURATION,setBeat,setExample};
+  fit();preload().then(restart);
+})();
+</script>
+</body>
+</html>
