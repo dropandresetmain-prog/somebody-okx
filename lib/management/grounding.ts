@@ -85,6 +85,10 @@ export function groundRegistryOfferings(
     const purposeScopeCompatible = externalOfferingAcceptsPurpose({
       serviceId: offering.serviceId,
       purpose,
+      // The need's required class stays descriptive context here — the
+      // product's structured scope declaration can refuse a class it does
+      // not sell regardless of registry membership or prose.
+      resourceClass: requiredResourceClass,
     });
 
     // The single resource class this offering supplies for the need. When the

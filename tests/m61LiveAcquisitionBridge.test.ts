@@ -159,6 +159,8 @@ async function invoke(
     ...fact,
     evidenceId: fact.evidenceId ?? undefined,
     acquisitionContentHash: fact.acquisitionContentHash,
+    acquisitionDeclaredResourceClass:
+      fact.acquisitionDeclaredResourceClass ?? null,
     acquisitionContent: extra.acquisitionContent,
     attestation: sign(fact),
     driverToken: token,
@@ -262,12 +264,19 @@ test("A: verification_passed writes exactly one live acquisition with synthetic 
       note: "verified",
       at: at + 2,
       acquisitionContentHash: extracted.contentHash,
+      // Adapter-declared fulfillment class, bound into the attestation.
+      acquisitionDeclaredResourceClass: extracted.resourceClass,
     };
     await invoke(bridge.ctx, verifyFact, { acquisitionContent: extracted.content });
     assert.equal(bridge.current().state, "verified");
     assert.equal(bridge.acquisitions().length, 1);
     const row = bridge.acquisitions()[0]!;
     assert.equal(row.provenance, "live");
+    assert.equal(
+      row.resourceClass,
+      "proprietary_data",
+      "writeback stores the verified adapter-declared class, never an unknown fallback",
+    );
     assert.ok(row.content.includes("SYNTHETIC"));
     assert.ok(row.content.toLowerCase().includes("synthetic"));
     assert.equal(row.responseHash, extracted.contentHash);
@@ -343,10 +352,104 @@ test("A: mismatched content hash fails closed", async () => {
             note: "v",
             at: at + 2,
             acquisitionContentHash: extracted.contentHash,
+            acquisitionDeclaredResourceClass: extracted.resourceClass,
           },
           { acquisitionContent: extracted.content + "\nTAMPERED" },
         ),
       /hash does not match/,
+    );
+    assert.equal(bridge.acquisitions().length, 0);
+  } finally {
+    if (previousToken === undefined) delete process.env.M4_M3_DRIVER_TOKEN;
+    else process.env.M4_M3_DRIVER_TOKEN = previousToken;
+    if (previousKey === undefined) delete process.env.M4_M3_FACT_ATTESTATION_KEY;
+    else process.env.M4_M3_FACT_ATTESTATION_KEY = previousKey;
+  }
+});
+
+test("A: writeback refuses a well-signed fact whose declared class mismatches the authorized offering", async () => {
+  // Correctly signed by a key-holding driver, but the ADAPTER-DECLARED class in
+  // the fact differs from the class the intent's authorized offering supplies:
+  // naming a class (here, in the attested fact) never overrides the authorized
+  // binding — the writeback fails closed.
+  const previousToken = process.env.M4_M3_DRIVER_TOKEN;
+  const previousKey = process.env.M4_M3_FACT_ATTESTATION_KEY;
+  process.env.M4_M3_DRIVER_TOKEN = token;
+  process.env.M4_M3_FACT_ATTESTATION_KEY = key;
+  try {
+    const bridge = writebackFixture();
+    await invoke(bridge.ctx, {
+      intentId: "int_live", expectedUpdatedAt: at, eventKind: "submitted",
+      eventId: "ev_s4", dedupeKey: "intent:int_live:submitted:ev4",
+      evidenceId: null, note: "s", at, acquisitionContentHash: null,
+    });
+    await invoke(bridge.ctx, {
+      intentId: "int_live", expectedUpdatedAt: bridge.current().updatedAt,
+      eventKind: "provider_result", eventId: "ev_r4",
+      dedupeKey: "intent:int_live:provider_result:ev4",
+      evidenceId: "ev_result_4", note: "r", at: at + 1, acquisitionContentHash: null,
+    });
+    const extracted = extractLiveAcquisitionContent(makeProtectedResult())!;
+    await assert.rejects(
+      () =>
+        invoke(
+          bridge.ctx,
+          {
+            intentId: "int_live", expectedUpdatedAt: bridge.current().updatedAt,
+            eventKind: "verification_passed", eventId: "ev_v4",
+            dedupeKey: "intent:int_live:verification_result:ev4",
+            evidenceId: "ev_verify_4", note: "v", at: at + 2,
+            acquisitionContentHash: extracted.contentHash,
+            acquisitionDeclaredResourceClass: "privileged_access",
+          },
+          { acquisitionContent: extracted.content },
+        ),
+      /refusing mismatched acquisition writeback/,
+    );
+    assert.equal(bridge.acquisitions().length, 0);
+  } finally {
+    if (previousToken === undefined) delete process.env.M4_M3_DRIVER_TOKEN;
+    else process.env.M4_M3_DRIVER_TOKEN = previousToken;
+    if (previousKey === undefined) delete process.env.M4_M3_FACT_ATTESTATION_KEY;
+    else process.env.M4_M3_FACT_ATTESTATION_KEY = previousKey;
+  }
+});
+
+test("A: verified live writeback without the adapter-declared class fails closed", async () => {
+  const previousToken = process.env.M4_M3_DRIVER_TOKEN;
+  const previousKey = process.env.M4_M3_FACT_ATTESTATION_KEY;
+  process.env.M4_M3_DRIVER_TOKEN = token;
+  process.env.M4_M3_FACT_ATTESTATION_KEY = key;
+  try {
+    const bridge = writebackFixture();
+    await invoke(bridge.ctx, {
+      intentId: "int_live", expectedUpdatedAt: at, eventKind: "submitted",
+      eventId: "ev_s5", dedupeKey: "intent:int_live:submitted:ev5",
+      evidenceId: null, note: "s", at, acquisitionContentHash: null,
+    });
+    await invoke(bridge.ctx, {
+      intentId: "int_live", expectedUpdatedAt: bridge.current().updatedAt,
+      eventKind: "provider_result", eventId: "ev_r5",
+      dedupeKey: "intent:int_live:provider_result:ev5",
+      evidenceId: "ev_result_5", note: "r", at: at + 1, acquisitionContentHash: null,
+    });
+    const extracted = extractLiveAcquisitionContent(makeProtectedResult())!;
+    // Legacy-shaped fact: content hash present, declared class absent. Even a
+    // correctly signed fact cannot write acquisition truth without it.
+    await assert.rejects(
+      () =>
+        invoke(
+          bridge.ctx,
+          {
+            intentId: "int_live", expectedUpdatedAt: bridge.current().updatedAt,
+            eventKind: "verification_passed", eventId: "ev_v5",
+            dedupeKey: "intent:int_live:verification_result:ev5",
+            evidenceId: "ev_verify_5", note: "v", at: at + 2,
+            acquisitionContentHash: extracted.contentHash,
+          },
+          { acquisitionContent: extracted.content },
+        ),
+      /requires the adapter-declared resource class/,
     );
     assert.equal(bridge.acquisitions().length, 0);
   } finally {
@@ -503,4 +606,72 @@ test("B: controlled merchant with incompatible purpose is not fulfillable", () =
   });
   assert.equal(offerings[0]!.executionPathConfigured, true);
   assert.equal(offerings[0]!.purposeScopeCompatible, false);
+});
+
+test("B: negated out-of-scope wording does not false-reject a valid qualitative request", () => {
+  // Keyword-luck must not punish disclaimers: "do not infer causal uplift" is
+  // exactly what the product's own limitation says it does NOT do.
+  assert.equal(
+    externalOfferingAcceptsPurpose({
+      serviceId: "founder_narrative_pulse",
+      purpose:
+        "Qualitative founder-messaging research for the relaunch; do not infer causal uplift or measured conversion",
+    }),
+    true,
+  );
+  const { offerings } = groundRegistryOfferings({
+    registry: VERIFIED_SERVICE_REGISTRY,
+    discovered: SNAPSHOT_OFFERINGS.filter(
+      (o) => o.serviceId === "founder_narrative_pulse",
+    ),
+    requiredResourceClass: "proprietary_data",
+    at,
+    purpose:
+      "Qualitative founder-messaging research for the relaunch; do not infer causal uplift or measured conversion",
+  });
+  assert.equal(offerings[0]!.purposeScopeCompatible, true);
+});
+
+test("B: structured purposeKind is the fulfillment authority — no prose scraping needed", () => {
+  // Terse, domain-keyword-free request: accepted on the typed declaration.
+  assert.equal(
+    externalOfferingAcceptsPurpose({
+      serviceId: "founder_narrative_pulse",
+      purpose: "Deliver the recorded input for this authorized need.",
+      purposeKind: M3_SUPPORTED_PURPOSE_KIND,
+      resourceClass: "proprietary_data",
+    }),
+    true,
+  );
+  // A typed kind the product does not declare is refused even with benign prose.
+  assert.equal(
+    externalOfferingAcceptsPurpose({
+      serviceId: "founder_narrative_pulse",
+      purpose: "Deliver the recorded input for this authorized need.",
+      purposeKind: "quantitative_conversion_measurement",
+      resourceClass: "proprietary_data",
+    }),
+    false,
+  );
+  // A class the product does not sell is refused even with a matching kind.
+  assert.equal(
+    externalOfferingAcceptsPurpose({
+      serviceId: "founder_narrative_pulse",
+      purpose: "Deliver the recorded input for this authorized need.",
+      purposeKind: M3_SUPPORTED_PURPOSE_KIND,
+      resourceClass: "privileged_access",
+    }),
+    false,
+  );
+  // Structured acceptance still cannot launder an affirmative out-of-scope
+  // claim: the product does not sell it, kind or no kind.
+  assert.equal(
+    externalOfferingAcceptsPurpose({
+      serviceId: "founder_narrative_pulse",
+      purpose: "Measure conversion uplift from A/B tests for the founder launch",
+      purposeKind: M3_SUPPORTED_PURPOSE_KIND,
+      resourceClass: "proprietary_data",
+    }),
+    false,
+  );
 });

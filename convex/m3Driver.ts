@@ -6,6 +6,8 @@ import { internal } from "./_generated/api";
 import { advanceIntent, applyRailEvent } from "../lib/management/intents";
 import { canonicalM3DriverFact, type M3DriverFact } from "../lib/management/m3DriverFacts";
 import { sha256Hex } from "../lib/management/sha256";
+import { resolveCompatibleClasses } from "../lib/market/registry";
+import { VERIFIED_SERVICE_REGISTRY } from "../lib/market/registryData";
 import {
   CANONICAL_SIMULATED_SOCIAL_RESULT,
 } from "../lib/objective/seedData";
@@ -142,6 +144,14 @@ export const apply = mutation({
     acquisitionContentHash: v.optional(v.union(v.string(), v.null())),
     /** Normalized human-usable content; must hash to acquisitionContentHash. */
     acquisitionContent: v.optional(v.string()),
+    /**
+     * The resource class the ADAPTER declares it fulfilled, bound into the
+     * attestation. Required with the content hash on a live verified writeback
+     * and verified against the intent's authorized target class — a driver can
+     * attest one class and write another only if BOTH the signature and the
+     * authorized binding agree. Never a model-selected value.
+     */
+    acquisitionDeclaredResourceClass: v.optional(v.union(v.string(), v.null())),
     attestation: v.string(),
     driverToken: v.string(),
   },
@@ -149,14 +159,23 @@ export const apply = mutation({
   handler: async (ctx, args) => {
     authorize(args.driverToken);
     const acquisitionContentHash = args.acquisitionContentHash ?? null;
+    const acquisitionDeclaredResourceClass =
+      args.acquisitionDeclaredResourceClass ?? null;
     await assertFactAttestation({
       intentId: args.intentId, expectedUpdatedAt: args.expectedUpdatedAt,
       eventKind: args.eventKind, eventId: args.eventId, dedupeKey: args.dedupeKey,
       evidenceId: args.evidenceId ?? null, note: args.note, at: args.at,
       acquisitionContentHash,
+      acquisitionDeclaredResourceClass,
     }, args.attestation);
     if (args.eventKind !== "verification_passed" && acquisitionContentHash !== null) {
       throw new Error("acquisition content hash is only valid on verification_passed");
+    }
+    if (
+      args.eventKind !== "verification_passed" &&
+      acquisitionDeclaredResourceClass !== null
+    ) {
+      throw new Error("declared resource class is only valid on verification_passed");
     }
     if (args.eventKind !== "verification_passed" && args.acquisitionContent) {
       throw new Error("acquisition content is only valid on verification_passed");
@@ -236,6 +255,25 @@ export const apply = mutation({
       if (typeof content !== "string") {
         throw new Error("verification_passed with content hash requires acquisitionContent");
       }
+      // Fulfillment authority: the adapter-declared class must be attested and
+      // must equal the class the intent's AUTHORIZED offering was bound to. The
+      // writeback stores this verified declaration — never a silent "unknown"
+      // fallback, and never a class the model or worker simply named.
+      if (!acquisitionDeclaredResourceClass) {
+        throw new Error(
+          "live acquisition writeback requires the adapter-declared resource class in the attested fact",
+        );
+      }
+      if (!intent.target.resourceClass) {
+        throw new Error(
+          "authorized intent has no bound target resource class; refusing unbound acquisition writeback",
+        );
+      }
+      if (acquisitionDeclaredResourceClass !== intent.target.resourceClass) {
+        throw new Error(
+          `adapter declared resource class ${acquisitionDeclaredResourceClass} but the authorized offering supplies ${intent.target.resourceClass}; refusing mismatched acquisition writeback`,
+        );
+      }
       assertAttestedLiveAcquisitionContent(content, acquisitionContentHash);
       const resultEvidenceId = moved.intent.resultEvidenceId;
       if (!resultEvidenceId) {
@@ -278,7 +316,9 @@ export const apply = mutation({
           providerId: intent.target.providerId ?? "unknown",
           serviceId: intent.target.serviceId ?? "unknown",
           offeringId: intent.target.offeringId ?? "unknown",
-          resourceClass: intent.target.resourceClass ?? "unknown",
+          // Verified above: attested adapter declaration === authorized target
+          // class. The writeback stores the declaration, not a silent fallback.
+          resourceClass: acquisitionDeclaredResourceClass,
           content,
           responseHash: acquisitionContentHash,
           recordedAt: args.at,
@@ -466,6 +506,24 @@ export const simulateVerifiedAcquisition = mutation({
     if (intent.target.resourceClass !== CANONICAL_SIMULATED_SOCIAL_RESULT.resourceClass) {
       throw new Error("intent target resource class does not match the simulated fixture");
     }
+    // Fulfillment authority (simulated boundary): when the authorized serviceId
+    // resolves in the verified registry, the registry's declared classes — not
+    // the intent target alone, and never a model-named class — must include
+    // the class this writeback would store. Unverified or absent registry rows
+    // (demo fixtures with synthetic service ids) cannot supply this check; the
+    // fixture-class equality above still pins the stored class.
+    const declaredForService = resolveCompatibleClasses(
+      { serviceId: intent.target.serviceId ?? "" },
+      VERIFIED_SERVICE_REGISTRY,
+    );
+    if (
+      declaredForService.length > 0 &&
+      !declaredForService.includes(CANONICAL_SIMULATED_SOCIAL_RESULT.resourceClass)
+    ) {
+      throw new Error(
+        `registry declares no simulated-fixture class for service ${intent.target.serviceId}; refusing mismatched acquisition writeback`,
+      );
+    }
     // Spend authority: a priced intent must still be covered by a live grant.
     const priceUsd = intent.terms.priceUsd;
     if (priceUsd !== null && priceUsd > 0) {
@@ -540,7 +598,10 @@ export const simulateVerifiedAcquisition = mutation({
       providerId: intent.target.providerId ?? "unknown",
       serviceId: intent.target.serviceId ?? "unknown",
       offeringId: intent.target.offeringId ?? "unknown",
-      resourceClass: intent.target.resourceClass ?? "unknown",
+      // Verified above: the intent's authorized class equals the fixture's
+      // declared class and (when registry-declared) the registry agrees. Store
+      // the verified declaration itself — never a silent "unknown" fallback.
+      resourceClass: CANONICAL_SIMULATED_SOCIAL_RESULT.resourceClass,
       content,
       responseHash,
       recordedAt: now,

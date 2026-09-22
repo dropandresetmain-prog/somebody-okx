@@ -24,6 +24,78 @@ export const M3_SUPPORTED_PURPOSE_KIND =
 
 export type M3SupportedPurposeKind = typeof M3_SUPPORTED_PURPOSE_KIND;
 
+/**
+ * Adapter-owned structured fulfillment scope for founder_narrative_pulse.
+ * This — not model or worker prose — is the fulfillment authority: the exact
+ * governed ResourceClass the product may supply and the exact typed purpose
+ * kinds it may fulfill. Grounding, execution capability, and acquisition
+ * writeback all verify against this declaration.
+ */
+export const M3_PRODUCT_FULFILLMENT_SCOPE = {
+  serviceId: M3_PRODUCT_SERVICE_ID,
+  resourceClasses: [M3_PRODUCT_RESOURCE_CLASS] as const,
+  purposeKinds: [M3_SUPPORTED_PURPOSE_KIND] as const,
+} as const;
+
+/**
+ * Deterministic, NEGATION-AWARE out-of-scope claim detection for the
+ * prose-fallback mode only (no structured purposeKind supplied — e.g.
+ * pre-grounding over a ResourceNeed's descriptive purpose). A forbidden
+ * phrase that sits under a negation in its own clause ("do not infer causal
+ * uplift", "no live twitter data", "…; not causal attribution") is a
+ * disclaimer, not a claim, and must not reject an otherwise valid qualitative
+ * request. A phrase asserted affirmatively is out of scope. Free text is
+ * descriptive context: this gate refuses claims the product cannot deliver;
+ * acceptance still requires the typed adapter scope path or the declared
+ * in-scope research domain below.
+ */
+const OUT_OF_SCOPE_CLAIM_PHRASES: readonly string[] = [
+  "conversion rate",
+  "conversion uplift",
+  "a/b test",
+  "causal",
+  "attribution",
+  "statistically significant",
+  "p-value",
+  "live twitter",
+  "twitter firehose",
+  "newsliquid",
+  "customer analytics",
+  "revenue forecast",
+  "price of bitcoin",
+  "financial market",
+  "stock price",
+];
+
+// Word-boundary cues prevent token accidents ("note" is not "no"; "annotate"
+// is not "not"). Clause = the text between the occurrence and the nearest
+// preceding clause/sentence separator. A cue at the very start of the clause
+// still matches: \b anchors correctly there.
+const NEGATION_CUE =
+  /(?:\b(?:not|no|nor|never|without|cannot|can'?t|avoid\w*|exclude\w*|disclaim\w*|refrain\w*|lack\w*)\b|free of)/;
+
+export function affirmativelyClaimsOutOfScopePhrase(
+  loweredPurpose: string,
+): string | null {
+  for (const phrase of OUT_OF_SCOPE_CLAIM_PHRASES) {
+    let searchFrom = 0;
+    for (;;) {
+      const at = loweredPurpose.indexOf(phrase, searchFrom);
+      if (at === -1) break;
+      searchFrom = at + phrase.length;
+      let clauseStart = 0;
+      for (const separator of [".", ";", "!", "?", "\n", ",", "—"]) {
+        const idx = loweredPurpose.lastIndexOf(separator, at - 1);
+        if (idx + 1 > clauseStart) clauseStart = idx + 1;
+      }
+      const clause = loweredPurpose.slice(clauseStart, at);
+      if (NEGATION_CUE.test(clause)) continue; // disclaimer context, not claim
+      return phrase;
+    }
+  }
+  return null;
+}
+
 export const M3_PRODUCT_LIMITATION =
   "Controlled synthetic TESTNET evidence from the Somebody founder_narrative_pulse product. NOT live Twitter, NewsLiquid, customer analytics, or conversion measurement. Does not claim causal attribution or measured conversion uplift.";
 
@@ -179,8 +251,13 @@ export function buildM3MerchantRequestHeaders(input: {
  * Deterministic purpose compatibility for this product.
  *
  * Authority is the typed purpose kind + product/resource identity — not a
- * broad keyword scrape. Free-text purpose is required for traceability and is
- * checked only with a fail-closed out-of-scope gate.
+ * broad keyword scrape. Free-text purpose is required for traceability. It is
+ * never ACCEPTING authority by itself in structured mode, and in descriptive
+ * fallback mode (no purposeKind — e.g. grounding over a ResourceNeed's
+ * free-text purpose) it is checked only with a fail-closed, NEGATION-AWARE
+ * out-of-scope gate plus the product's declared research-domain signals. A
+ * disclaimer ("do not infer causal uplift") never false-rejects a valid
+ * qualitative request.
  */
 export function resolveSupportedPurposeKind(
   request: M3MerchantProductRequest,
@@ -206,41 +283,28 @@ export function resolveSupportedPurposeKind(
     };
   }
 
-  const lowered = purpose.toLowerCase();
-  const outOfScopeSignals = [
-    "conversion rate",
-    "conversion uplift",
-    "a/b test",
-    "causal",
-    "attribution",
-    "statistically significant",
-    "p-value",
-    "live twitter",
-    "twitter firehose",
-    "newsliquid",
-    "customer analytics",
-    "revenue forecast",
-    "price of bitcoin",
-    "financial market",
-    "stock price",
-  ];
-  for (const signal of outOfScopeSignals) {
-    if (lowered.includes(signal)) {
-      return {
-        ok: false,
-        error: "unsupported_product_scope",
-        detail: `requested purpose requires ${signal}, which founder_narrative_pulse does not sell`,
-      };
-    }
+  // Fail-closed even under a correct typed kind: an AFFIRMATIVE claim of
+  // delivery the product does not sell is out of scope. Negated phrasing
+  // ("do not infer causal uplift") is a disclaimer, not a claim.
+  const claim = affirmativelyClaimsOutOfScopePhrase(purpose.toLowerCase());
+  if (claim) {
+    return {
+      ok: false,
+      error: "unsupported_product_scope",
+      detail: `requested purpose requires ${claim}, which founder_narrative_pulse does not sell`,
+    };
   }
 
-  // Typed kind present and matching, or omitted with purpose that did not trip
-  // the fail-closed out-of-scope gate and targets this product's declared
-  // qualitative founder-messaging research scope via in-scope signals.
+  // Structured authority: typed kind present and matching → accept without
+  // any further prose analysis. Free text never overrides the typed kind.
   if (explicitKind === M3_SUPPORTED_PURPOSE_KIND) {
     return { ok: true, purposeKind: M3_SUPPORTED_PURPOSE_KIND, purpose: purpose.slice(0, 500) };
   }
 
+  // Descriptive fallback (no structured kind): the product's declared
+  // research-domain signals keep an unrelated request from matching by luck
+  // of the disclaimer gate alone.
+  const lowered = purpose.toLowerCase();
   const inScopeSignals = [
     "founder",
     "one-person",

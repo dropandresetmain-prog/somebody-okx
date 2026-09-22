@@ -105,6 +105,10 @@ async function main() {
           eventKind === "verification_passed"
             ? change.acquisitionContentHash ?? null
             : null,
+        acquisitionDeclaredResourceClass:
+          eventKind === "verification_passed"
+            ? change.acquisitionDeclaredResourceClass ?? null
+            : null,
       };
       const attestationKey = process.env.M4_M3_FACT_ATTESTATION_KEY;
       if (!attestationKey) throw new Error("M4_M3_FACT_ATTESTATION_KEY is required to attest a financial M3 fact for Convex writeback");

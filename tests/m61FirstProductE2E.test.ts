@@ -580,6 +580,34 @@ test("M6.1 simulation fails closed: no token, wrong token, wrong resource class,
     /does not match the simulated fixture/,
   );
 
+  // Registry disclaims the class (M2/G fulfillment authority): the intent's
+  // target class MATCHES the fixture — but the verified registry declares a
+  // different class for that serviceId. The authorized offering's declaration,
+  // not the class named on the intent, decides what may be written back.
+  await t.mutation(async (ctx) => {
+    const disclaimed: ExecutionIntent = {
+      intentId: "int_registry_disclaim", idempotencyKey: "idem_disclaim", objectiveKey: key,
+      requirementKey: REQ, contractRevision: 1, decisionId: "dec_disclaim",
+      kind: "external_acquisition", strategy: "BUY",
+      target: { offeringId: "3460:xbird_twitter_x_api", providerId: "3460", serviceId: "xbird_twitter_x_api", resourceClass: CANONICAL_SIMULATED_SOCIAL_RESULT.resourceClass, endpointRef: null },
+      terms: { priceUsd: null, priceProvenance: "unknown", requiresApproval: false, approvalId: null },
+      state: "authorized", attempts: 0, lastEventId: null, resultEvidenceId: null,
+      verificationEvidenceId: null, boundaryNote: "b", createdAt: now, updatedAt: now,
+    };
+    await (putIntent as unknown as Handler)._handler(ctx, {
+      intentId: disclaimed.intentId, objectiveKey: key, idempotencyKey: disclaimed.idempotencyKey, data: disclaimed,
+    });
+  });
+  await assert.rejects(
+    () => t.mutation(async (ctx) =>
+      (simulateVerifiedAcquisition as unknown as Handler)._handler(ctx, {
+        operatorToken: OPERATOR_TOKEN,
+        intentId: "int_registry_disclaim",
+      }),
+    ),
+    /refusing mismatched acquisition writeback/,
+  );
+
   // Missing founder grant: a priced intent without a live grant is refused.
   await t.mutation(async (ctx) => {
     const unbacked: ExecutionIntent = {

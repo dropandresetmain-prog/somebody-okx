@@ -13,6 +13,7 @@
 
 import { Agent, Runner, OpenAIProvider, tool, type Model } from "@openai/agents";
 import { z } from "zod";
+import { GOVERNED_RESOURCE_CLASSES, RESOURCE_CLASSES } from "../workforce/catalog";
 import type { WorkContract } from "../objective/types";
 import type {
   ModelNoteInput,
@@ -31,13 +32,32 @@ export const MAX_TURNS = 8;
 // derived by the application (normalizeGapSubmission); the serial model never
 // sees them. Literal scarcity and semantic inadequacy use the same shape — the
 // application distinguishes them from the cited evidence.
+// The serial model boundary accepts ONLY the canonical governed vocabulary,
+// derived from the single ownership authority (workforce RESOURCE_CLASSES) —
+// never a second hardcoded list that can drift. This enum is a REQUEST
+// vocabulary, not fulfillment authority: naming a governed class never makes
+// an offering eligible or a need satisfied; the application's validators and
+// the adapter/registry declarations decide that downstream.
 const canonicalGapShape = {
-  resourceClass: z.string().min(1).max(120),
+  resourceClass: z
+    .enum(GOVERNED_RESOURCE_CLASSES)
+    .describe(
+      "One exact governed ResourceClass value (the enumerated options). Never free text.",
+    ),
   unansweredQuestion: z.string().min(1).max(500),
   observedEvidenceIds: z.array(z.string().min(1).max(160)).max(16),
   whyInsufficient: z.string().min(1).max(500),
   howAdditionalWouldChange: z.string().min(1).max(500).optional(),
 };
+const GOVERNED_CLASS_LIST = RESOURCE_CLASSES.map(
+  (resource) => [resource.class, resource.ownership] as const,
+);
+const EXTERNAL_GOVERNED_CLASS_NAMES = GOVERNED_CLASS_LIST.filter(
+  ([, ownership]) => ownership === "external",
+).map(([name]) => name);
+const OWNED_GOVERNED_CLASS_NAMES = GOVERNED_CLASS_LIST.filter(
+  ([, ownership]) => ownership === "owned",
+).map(([name]) => name);
 const legacyGapShape = {
   inputCheckId: z.string().min(1).max(120),
   resourceClass: z.string().min(1).max(120),
@@ -485,6 +505,42 @@ export async function runWorker(
     }
   };
 
+  // Serial path: a call that violates a canonical tool schema (for example a
+  // resourceClass outside the governed enum) is rejected by the SDK BEFORE
+  // execute() runs, which would bypass the application's telemetry entirely.
+  // Reclassify it as exactly what it is — a deterministic structural refusal —
+  // so it counts as a failed action and the duplicate-failure stop keeps
+  // working. Never widen an arbitrary exception into `refused` (toolStatusOf
+  // discipline): anything that is not an invalid-input failure is transient.
+  const serialSchemaBoundaryError =
+    (toolName: string) =>
+    async (_runContext: unknown, error: unknown): Promise<string> => {
+      const invalidInput =
+        error instanceof Error && error.name === "InvalidToolInputError";
+      const detail = invalidInput
+        ? `INVALID_REQUEST: ${toolName} rejected at the serial schema boundary — ${
+            (error as Error).message
+          }: ${
+            (error as { originalError?: Error }).originalError?.message ??
+            "input does not match the canonical shape"
+          }`
+        : "Tool action failed";
+      const current = modelSafeObservation(await port.read());
+      trackActionOutcome(
+        toolName,
+        (error as { toolInvocation?: { input?: unknown } })?.toolInvocation
+          ?.input ?? detail,
+        detail,
+        invalidInput ? "refused" : "transient_error",
+      );
+      return JSON.stringify({
+        error: detail,
+        status: invalidInput ? "refused" : "transient_error",
+        observation: current,
+        ...controlFor(current),
+      });
+    };
+
   // For read tools, the result string includes the bounded observed content
   // wrapped in the untrusted marker so the model sees what it read.
   const actRead = async (command: WorkerCommand, sourceClass: string) => {
@@ -543,7 +599,7 @@ export async function runWorker(
         name: "submit_result",
         description: serial
           ? "Terminal handoff: DELIVERED (work done), NEEDS_INPUT (evidence gap in missingInputs: resourceClass, unansweredQuestion, observedEvidenceIds you actually inspected, whyInsufficient, howAdditionalWouldChange), or EXECUTION_ERROR. The application validates the handoff: a DELIVERED with unmet action obligations is REFUSED (status=refused, unmetObligations listed) and you may perform the missing action and resubmit in this same run."
-          : "Submit the structured evaluation: summary, fit, risks, unknowns and the recommended next action. Optionally include missingInputs findings for application validation (resourceClass must be a governed external class such as proprietary_data).",
+          : `Submit the structured evaluation: summary, fit, risks, unknowns and the recommended next action. Optionally include missingInputs findings for application validation (resourceClass must be a governed external class such as ${EXTERNAL_GOVERNED_CLASS_NAMES[0] ?? "proprietary_data"}).`,
         parameters: z.object({
           summary: z.string().min(1).max(2000),
           fit: z.string().min(1).max(2000),
@@ -609,6 +665,12 @@ export async function runWorker(
           }
           return payload;
         },
+        // Serial submit_result carries the same canonical gap schema in
+        // missingInputs; an invalid governed class there is likewise a counted
+        // structural refusal, never a telemetry bypass.
+        errorFunction: serial
+          ? serialSchemaBoundaryError("submit_result")
+          : undefined,
       });
     return tool({
       name: "request_completion",
@@ -714,8 +776,10 @@ export async function runWorker(
     if (permission === "request_resource")
       return tool({
         name: "request_resource",
+        // Class guidance is DERIVED from the canonical catalog — the tool text
+        // must not hardcode a second class list that can drift from the enum.
         description:
-          "Propose a missing input the application should validate. Pass observedEvidenceIds from same-run application observations and/or linked verified acquisition resultEvidenceIds already on this action. resourceClass MUST be a governed external class such as proprietary_data, privileged_access, specialist_compute, human_voice_contact, physical_presence, or attestation — never a free-form phrase and never an already-owned class (company_records, public_web, llm_reasoning, company_tools, ordinary_compute). Citing a linked acquisition explains what it does or does not establish; it does not satisfy the Requirement by itself. The application decides whether the gap is authoritative; you cannot mark a resource fulfilled, choose a provider, or force BUY.",
+          `Propose a missing input the application should validate. Pass observedEvidenceIds from same-run application observations and/or linked verified acquisition resultEvidenceIds already on this action. resourceClass MUST be a governed external class (${EXTERNAL_GOVERNED_CLASS_NAMES.join(", ")}) — never a free-form phrase and never an already-owned class (${OWNED_GOVERNED_CLASS_NAMES.join(", ")}). Citing a linked acquisition explains what it does or does not establish; it does not satisfy the Requirement by itself. The application decides whether the gap is authoritative; you cannot mark a resource fulfilled, choose a provider, or force BUY.`,
         parameters: serial
           ? z.object(canonicalGapShape)
           : z.object({
@@ -735,6 +799,11 @@ export async function runWorker(
             type: "request_resource",
             ...(args as { resourceClass: string }),
           } as WorkerCommand),
+        // Governed-enum violations are counted structural refusals, not
+        // silent telemetry bypasses (see serialSchemaBoundaryError).
+        errorFunction: serial
+          ? serialSchemaBoundaryError("request_resource")
+          : undefined,
       });
     if (permission === "update_company_artifact")
       return tool({

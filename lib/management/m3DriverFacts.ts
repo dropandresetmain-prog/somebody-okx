@@ -13,6 +13,14 @@ export type M3DriverFact = {
    * writeback. Bound into the attestation so content cannot be swapped after signing.
    */
   acquisitionContentHash: string | null;
+  /**
+   * Resource class the ADAPTER/authorized offering declares it actually
+   * fulfilled, bound into the attestation alongside the content hash. Required
+   * with the hash on a live verified writeback: the writeback must be verifiable
+   * against the intent's authorized target class, so a driver cannot attest one
+   * class and write another. Never a model-selected value.
+   */
+  acquisitionDeclaredResourceClass?: string | null;
 };
 
 /** Stable JSON avoids a caller choosing an equivalent-but-differently-encoded fact. */
@@ -21,5 +29,6 @@ export function canonicalM3DriverFact(fact: M3DriverFact): string {
     fact.intentId, fact.expectedUpdatedAt, fact.eventKind, fact.eventId,
     fact.dedupeKey, fact.evidenceId, fact.note, fact.at,
     fact.acquisitionContentHash,
+    fact.acquisitionDeclaredResourceClass ?? null,
   ]);
 }

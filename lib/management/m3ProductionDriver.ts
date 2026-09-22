@@ -34,6 +34,12 @@ export type M3DriverWrite = {
    */
   acquisitionContent?: string | null;
   acquisitionContentHash?: string | null;
+  /**
+   * Fulfillment authority: the resource class the ADAPTER declares it actually
+   * fulfilled (from the protected result), bound into the attested fact and
+   * verified against the intent's authorized target class by Convex writeback.
+   */
+  acquisitionDeclaredResourceClass?: string | null;
 };
 
 export type M3DriverStore = {
@@ -160,6 +166,7 @@ async function persist(
         at: result.intent.updatedAt,
         acquisitionContent: writeback?.content ?? null,
         acquisitionContentHash: writeback?.contentHash ?? null,
+        acquisitionDeclaredResourceClass: writeback?.resourceClass ?? null,
       }
     : null;
   if (result.purchase) {

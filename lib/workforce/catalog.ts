@@ -198,6 +198,16 @@ export function getToolPermission(
 export function isOwnedResourceClass(resource: string): boolean {
   return resourceByClass.get(resource as ResourceClass)?.ownership === "owned";
 }
+
+/**
+ * The canonical governed class vocabulary, derived from RESOURCE_CLASSES — the
+ * single ownership authority above. Consumers (the worker tool boundary,
+ * fixtures) MUST use this instead of duplicating a second hardcoded list: a
+ * copied list drifts silently, and a drifted class vocabulary is exactly the
+ * failure mode this repo's defect history records.
+ */
+export const GOVERNED_RESOURCE_CLASSES: readonly ResourceClass[] =
+  RESOURCE_CLASSES.map((resource) => resource.class);
 // Models may propose capability keys; only controlled keys survive.
 export function validateCapabilityKeys(proposed: readonly string[]): {
   accepted: CapabilityKey[];
