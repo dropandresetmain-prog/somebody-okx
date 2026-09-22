@@ -1,11 +1,12 @@
-// Snapshot an Objective's evidence without running it: node scripts/gate/dump.mjs <label> <objectiveKey> [note]
-import { readFileSync, writeFileSync, mkdirSync } from "fs";
+// Snapshot an Objective's evidence without running it:
+// node scripts/gate/dump.mjs <label> <objectiveKey> [note] [--env-file=.env.cloud.local]
+import { writeFileSync, mkdirSync } from "fs";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "../../convex/_generated/api.js";
-const env = readFileSync(".env.local", "utf8");
-const q = (n) => env.match(new RegExp(`^\s*${n}\s*=\s*(.+)$`, "m"))[1].trim().replace(/^["']|["']$/g, "");
-const c = new ConvexHttpClient(q("NEXT_PUBLIC_CONVEX_URL"));
-const [label, objectiveKey, note] = process.argv.slice(2);
+import { loadGateEnv } from "./envFile.mjs";
+const { args, get } = loadGateEnv(process.argv.slice(2));
+const c = new ConvexHttpClient(get("NEXT_PUBLIC_CONVEX_URL"));
+const [label, objectiveKey, note] = args;
 const raw = await c.query(api.objectives.getObjective, { objectiveKey });
 const ws = await c.query(api.m5Workspace.getObjectiveWorkspaceV2, { objectiveKey });
 mkdirSync("docs/work/gate-evidence", { recursive: true });

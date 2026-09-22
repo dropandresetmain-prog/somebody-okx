@@ -1,25 +1,22 @@
 /**
  * Model Portability Gate — one counted canonical Objective, natural path.
- * Usage: node scripts/gate/run-objective.mjs <label> [maxMinutes=45]
+ * Usage: node scripts/gate/run-objective.mjs <label> [maxMinutes=45] [--env-file=.env.cloud.local]
+ * Defaults to LOCAL Convex (.env.local); pass --env-file=.env.cloud.local for cloud.
  * Only the deployed AI_MODEL differs between runs. No forced BUY, no state repair.
  * If (and only if) the engine authorizes an external intent, the SAME transparent
  * simulation entry used by M6.1 Gate 1 (m3Driver.simulateVerifiedAcquisition) is invoked.
  * Writes docs/work/gate-evidence/run-<label>-<objectiveKey>.json (raw record + workspace view + timeline).
  */
-import { readFileSync, writeFileSync, mkdirSync } from "fs";
+import { writeFileSync, mkdirSync } from "fs";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "../../convex/_generated/api.js";
+import { loadGateEnv } from "./envFile.mjs";
 
-const env = readFileSync(".env.local", "utf8");
-const req = (n) => {
-  const m = env.match(new RegExp(`^\s*${n}\s*=\s*(.+)$`, "m"));
-  if (!m) throw new Error(`${n} missing`);
-  return m[1].trim().replace(/^["']|["']$/g, "");
-};
-const client = new ConvexHttpClient(req("NEXT_PUBLIC_CONVEX_URL"));
-const operatorToken = req("SOMEBODY_DEMO_OPERATOR_TOKEN");
-const label = process.argv[2] ?? "run";
-const maxMs = Number(process.argv[3] ?? 45) * 60_000;
+const { args, get } = loadGateEnv(process.argv.slice(2));
+const client = new ConvexHttpClient(get("NEXT_PUBLIC_CONVEX_URL"));
+const operatorToken = get("SOMEBODY_DEMO_OPERATOR_TOKEN");
+const label = args[0] ?? "run";
+const maxMs = Number(args[1] ?? 45) * 60_000;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const t0 = Date.now();

@@ -16,6 +16,7 @@ Read current truth in this order:
 4. [DECISIONS_LOG.md](DECISIONS_LOG.md) — settled decisions and supersessions.
 5. [BUILD_DELTA.md](BUILD_DELTA.md) — implementation/provenance evidence.
 6. [docs/work/ACTIVE_TASK.md](docs/work/ACTIVE_TASK.md) — current demo-convergence working ledger.
+7. [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) — local-Convex-first development workflow.
 
 Current code/runtime/schema and newer accepted decisions outrank stale plans.
 
