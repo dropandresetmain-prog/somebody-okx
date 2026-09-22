@@ -1,11 +1,33 @@
-import { DuoArt } from "../product/characters";
-import type { StartCapabilitiesView } from "../product/contracts";
+"use client";
 
-// /start — capability-gated composer shell. Creation has no legal command
-// this milestone, so canCreateObjective is (truthfully) false; this view never
-// fakes submission. Unsupported controls stay hidden. The composer still
-// looks like the approved V6 start state, not an engineering-disabled form.
-export function StartView({ capabilities }: { capabilities: StartCapabilitiesView | null }) {
+import { useCallback, useEffect, useRef, useState } from "react";
+import { DuoArt } from "../product/characters";
+import type {
+  ProductCommandResult,
+  StartCapabilitiesView,
+} from "../product/contracts";
+import {
+  CREATE_TRANSITION_COPY,
+  canSubmitCreate,
+  productErrorCopy,
+  shouldShowSuccessTransition,
+  transitionDurationMs,
+  trimObjectiveRequest,
+} from "./startCreateFlow";
+
+type StartViewProps = {
+  capabilities: StartCapabilitiesView | null;
+  onCreate?: (request: string) => Promise<ProductCommandResult>;
+  onNavigateToObjective?: (objectiveId: string) => void;
+};
+
+// /start — capability-gated composer. When canCreateObjective is true, submits
+// through the Product Command adapter only. Unsupported controls stay hidden.
+export function StartView({
+  capabilities,
+  onCreate,
+  onNavigateToObjective,
+}: StartViewProps) {
   const loaded = capabilities !== null;
   const canCreate = capabilities?.canCreateObjective ?? false;
   const showContext = Boolean(capabilities?.supportsContextRefs);
@@ -15,6 +37,78 @@ export function StartView({ capabilities }: { capabilities: StartCapabilitiesVie
   const showPolicy = Boolean(capabilities?.advanced.externalEffectPolicy);
   const showAdvanced = showSpend || showDeadline || showPolicy;
   const showTools = showContext || showAttachments;
+
+  const [request, setRequest] = useState("");
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [transitionObjectiveId, setTransitionObjectiveId] = useState<string | null>(null);
+  const navigateTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (navigateTimer.current) clearTimeout(navigateTimer.current);
+    };
+  }, []);
+
+  const submittable = canSubmitCreate(request, canCreate, pending);
+
+  const finishNavigate = useCallback(
+    (objectiveId: string) => {
+      onNavigateToObjective?.(objectiveId);
+    },
+    [onNavigateToObjective],
+  );
+
+  const handleSubmit = useCallback(async () => {
+    if (!onCreate || !submittable || pending) return;
+    setError(null);
+    setPending(true);
+    try {
+      const trimmed = trimObjectiveRequest(request);
+      const result = await onCreate(trimmed);
+      if (!result.accepted) {
+        setError(productErrorCopy(result.error));
+        setPending(false);
+        return;
+      }
+      if (!shouldShowSuccessTransition(result)) {
+        setPending(false);
+        return;
+      }
+      // Accepted → short walking-duo presentation, then navigate. Do not wait
+      // for interpretation / contract / work. No automatic retry.
+      setTransitionObjectiveId(result.objectiveId);
+      const reduced =
+        typeof window !== "undefined" &&
+        window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      const delay = transitionDurationMs(reduced);
+      if (delay <= 0) {
+        finishNavigate(result.objectiveId);
+        return;
+      }
+      navigateTimer.current = setTimeout(() => {
+        finishNavigate(result.objectiveId);
+      }, delay);
+    } catch {
+      setError("Objective creation is unavailable right now. Try again in a moment.");
+      setPending(false);
+    }
+  }, [finishNavigate, onCreate, pending, request, submittable]);
+
+  if (transitionObjectiveId) {
+    return (
+      <div className="v6-start" data-start-phase="transition">
+        <div className="v6-start-transition" role="status" aria-live="polite">
+          <DuoArt
+            pose="walking"
+            className="v6-start-transition-duo"
+            alt="Somebody and the Intern heading out"
+          />
+          <p className="v6-start-transition-copy">{CREATE_TRANSITION_COPY}</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="v6-start">
@@ -38,7 +132,9 @@ export function StartView({ capabilities }: { capabilities: StartCapabilitiesVie
         <textarea
           id="v6-start-request"
           rows={5}
-          disabled={!canCreate}
+          disabled={!canCreate || pending}
+          value={request}
+          onChange={(e) => setRequest(e.target.value)}
           placeholder="Our launch messaging isn’t working. Figure out what’s wrong and get a better relaunch ready…"
         />
         <div className="v6-composer-bar">
@@ -50,8 +146,15 @@ export function StartView({ capabilities }: { capabilities: StartCapabilitiesVie
           ) : (
             <div />
           )}
-          <button type="button" className="v6-send-btn" disabled data-start-submit="true">
-            Start objective →
+          <button
+            type="button"
+            className="v6-send-btn"
+            disabled={!submittable}
+            data-start-submit="true"
+            data-pending={pending ? "true" : "false"}
+            onClick={() => void handleSubmit()}
+          >
+            {pending ? "Starting…" : "Start objective →"}
           </button>
         </div>
         {showAdvanced ? (
@@ -76,9 +179,19 @@ export function StartView({ capabilities }: { capabilities: StartCapabilitiesVie
             ) : null}
           </div>
         ) : null}
-        <p className="muted v6-start-note" role="status">
-          {loaded ? "Starting a new objective isn’t available yet." : "Checking what’s available…"}
-        </p>
+        {error ? (
+          <p className="muted v6-start-note v6-start-error" role="alert">
+            {error}
+          </p>
+        ) : (
+          <p className="muted v6-start-note" role="status">
+            {!loaded
+              ? "Checking what’s available…"
+              : canCreate
+                ? "Somebody will interpret this and get to work."
+                : "Starting a new objective isn’t available yet."}
+          </p>
+        )}
       </div>
 
       <div className="v6-empty-zones">
