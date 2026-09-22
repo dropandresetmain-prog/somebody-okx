@@ -531,7 +531,7 @@ test("primary V6 files import no raw M6.1/M5 domain modules", () => {
   }
 });
 
-test("the live container references only the three V1 product read queries", () => {
+test("the live container references product reads; /start uses the create command", () => {
   const src = readFileSync(join(__dirname, "..", "app", "product", "ProductWorkspace.tsx"), "utf8");
   assert.ok(src.includes("api.productWorkspace.getObjectiveListV1"));
   assert.ok(src.includes("api.productWorkspace.getObjectiveWorkspaceV1"));
@@ -539,4 +539,6 @@ test("the live container references only the three V1 product read queries", () 
   assert.ok(!src.includes("api.m5Workspace"));
   const startSrc = readFileSync(join(__dirname, "..", "app", "start", "StartContainer.tsx"), "utf8");
   assert.ok(startSrc.includes("api.productWorkspace.getStartCapabilitiesV1"));
+  assert.ok(startSrc.includes("api.productCommands.createObjectiveV1"));
+  assert.ok(!startSrc.includes("api.objectives.submitObjective"));
 });

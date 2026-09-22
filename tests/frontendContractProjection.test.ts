@@ -847,12 +847,12 @@ test("list: grouping and stable sort (updatedAt DESC, id tie-break)", () => {
   assert.deepEqual(Object.keys(list.done[0]).sort(), ["hasAttention", "id", "status", "statusLabel", "title", "updatedAt"]);
 });
 
-test("start capabilities reflect the WIRED product command surface (none yet)", () => {
+test("start capabilities advertise wired Create Objective only", () => {
   const caps = projectStartCapabilities();
-  assert.equal(caps.canCreateObjective, false, "no product create adapter is wired");
-  assert.equal(caps.advanced.spendLimit, false, "spend limit rides the create adapter");
+  assert.equal(caps.canCreateObjective, true, "createObjectiveV1 is wired");
+  assert.equal(caps.advanced.spendLimit, false, "spend limit is not on the product command");
   assert.deepEqual(caps, {
-    canCreateObjective: false,
+    canCreateObjective: true,
     supportsContextRefs: false,
     supportsAttachments: false,
     advanced: { spendLimit: false, deadline: false, externalEffectPolicy: false },
