@@ -1,0 +1,73 @@
+.v6-start-page {
+  min-height: 100vh;
+  background: var(--paper);
+  color: var(--ink);
+  padding: 32px 24px 64px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.v6-start-back {
+  align-self: flex-start;
+  text-decoration: none;
+}
+
+.v6-start {
+  max-width: 560px;
+  width: 100%;
+  margin-top: 24px;
+}
+
+.v6-start-hero {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 28px;
+}
+
+.v6-start-hero h1 {
+  font-family: var(--font-display-stack);
+  font-size: 30px;
+  margin: 8px 0 4px;
+}
+
+.v6-start-composer {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  box-shadow: var(--shadow-card);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.v6-start-composer label {
+  font-weight: 600;
+}
+
+.v6-start-composer textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  font: inherit;
+  background: var(--paper-sunk);
+  resize: vertical;
+}
+
+.v6-start-field {
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.v6-start-note {
+  margin: 0;
+  text-align: center;
+}
