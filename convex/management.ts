@@ -1996,6 +1996,15 @@ export const beginInterpretation = internalMutation({
       request,
       founderResolvedQuestions: resolved,
     });
+    // Request-bound expiry (D): an action chain that dies before
+    // applyInterpretation must not leave `interpretationStatus: "pending"`
+    // forever — that cursor blocks beginInterpretation ("already in flight"),
+    // so without this watchdog the Objective is a permanent orphan.
+    await ctx.scheduler.runAfter(
+      INTERPRETATION_RESERVATION_TTL_MS,
+      internal.management.expireInterpretationReservation,
+      { objectiveKey: args.objectiveKey, requestId },
+    );
     return {
       proceed: true as const,
       requestId,
@@ -2915,6 +2924,7 @@ async function dispatchExternal(
 // it was armed for (requestId match), then hands the objective back to the
 // management loop. These bounds exceed any legitimate action runtime, so the
 // watchdog only ever acts on genuinely orphaned reservations.
+export const INTERPRETATION_RESERVATION_TTL_MS = 10 * 60_000;
 export const DECISION_RESERVATION_TTL_MS = 10 * 60_000;
 export const FINAL_ASSESSMENT_RESERVATION_TTL_MS = 10 * 60_000;
 
@@ -3461,6 +3471,67 @@ export const clearPendingFinalAssessment = internalMutation({
     await ctx.scheduler.runAfter(0, internal.management.runManagementPass, {
       objectiveKey: args.objectiveKey,
       reason: "final_assessment_failed",
+    });
+    return null;
+  },
+});
+
+/**
+ * RELIABILITY V7 (D) — request-bound expiry for an interpretation reservation.
+ *
+ * The `pending` cursor is the reservation, and requestId is its identity: a
+ * late watchdog only acts while the reservation it armed is still the current
+ * one AND its own bound has lapsed. A lost action chain becomes the SAME typed
+ * refusal the deterministic parser produces — the attempt count is already
+ * burned by begin, so the existing ceiling (and its explicit `escalated`
+ * transition) governs retries; this only guarantees the cursor can never
+ * strand the Objective silently.
+ */
+export const expireInterpretationReservation = internalMutation({
+  args: { objectiveKey: v.string(), requestId: v.string() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const row = await ctx.db
+      .query("objectives")
+      .withIndex("by_key", (q) => q.eq("key", args.objectiveKey))
+      .unique();
+    if (!row) return null;
+    const data = (row as AnyRow).data as Record<string, unknown>;
+    const mgmt = (data.management ?? {}) as Record<string, unknown>;
+    if (
+      mgmt.interpretationStatus !== "pending" ||
+      mgmt.interpretationRequestId !== args.requestId
+    )
+      return null; // applied, replaced, or terminal — leave truth alone
+    const detail = `interpretation reservation ${args.requestId} expired without an apply (action chain lost)`.slice(0, 600);
+    await ctx.db.patch(row._id, {
+      data: {
+        ...data,
+        management: {
+          ...mgmt,
+          contractId: (mgmt.contractId as string | null) ?? null,
+          interpretationStatus: "refused",
+          interpretationDetail: detail,
+          controlNotes: boundNotes(mgmt.controlNotes, {
+            type: "interpretation_refused",
+            errors: ["action chain lost before apply"],
+            providerError: detail,
+            at: Date.now(),
+          }),
+        },
+        updatedAt: Date.now(),
+      },
+    } as never);
+    await ctx.db.insert("objectiveEvents", {
+      objectiveKey: args.objectiveKey,
+      data: { at: Date.now(), kind: "system", text: detail },
+    });
+    // Hand the refusal back to whatever drives re-interpretation: the begin
+    // step's ceiling check now sees a real attempt count and either re-begins
+    // (via a founder/management wake) or escalates explicitly.
+    await ctx.scheduler.runAfter(0, internal.management.runManagementPass, {
+      objectiveKey: args.objectiveKey,
+      reason: "recovery_event",
     });
     return null;
   },
