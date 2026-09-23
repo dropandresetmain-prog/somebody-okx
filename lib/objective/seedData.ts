@@ -9,6 +9,8 @@
 // not advice.
 
 import type { ResourceClass } from "../workforce/types";
+import type { AuthorizedPurposePolicy } from "../management/types";
+import { M3_SUPPORTED_PURPOSE_KIND } from "../payment/m3FounderNarrativeProduct";
 
 // The canonical failing-launch objective request. This is seed text, not logic.
 // It asks for a better relaunch, permits bounded spend when justified, and
@@ -80,6 +82,18 @@ Observed audience-language patterns for one-person-company founders:
 - Generic "automate your workflows" language feels broad and tool-like; concrete language about owning an outcome and finishing the job is easier to understand.
 Recommended messaging implication: lead with the founder outcome and accountability, then explain the make-versus-buy capability underneath.`,
 } as const;
+
+// V7 review R4 final scope-origin correction — the canonical demo's
+// APPLICATION-OWNED purpose-scope policy. This is the one Requirement kind
+// (the founder-facing relaunch deliverable) the canonical demo deliberately
+// authorizes to request founder_narrative_pulse's single supported purpose
+// kind. Setup code (setupCanonicalDemoObjective) writes this onto the
+// Objective BEFORE interpretation runs; interpretation/the model never sees
+// or chooses it. General Objectives get no such policy and stay fail-closed.
+export const CANONICAL_AUTHORIZED_PURPOSE_POLICY: AuthorizedPurposePolicy = {
+  purposeKind: M3_SUPPORTED_PURPOSE_KIND,
+  targetRequirementKind: "deliverable",
+};
 
 // A second, LATER need used only to prove the seam is repeatable: after the
 // purchased intelligence changes the message, the worker needs an external

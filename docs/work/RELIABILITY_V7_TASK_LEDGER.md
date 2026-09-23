@@ -245,3 +245,81 @@ identically on both SHAs with a pre-existing Turbopack/environment error
 filesystem root") unrelated to any TypeScript/source change.
 
 Status: READY FOR FINAL RE-REVIEW (not self-approved).
+
+## V7 final scope-origin correction (production reachability)
+
+Independent review of `a9e98bd` (docs-only tip `fb78219`) found R1–R4's authority
+mechanics PASS but flagged one blocker: production never created the Requirement
+authority the R4 check requires, so the demo's legitimate `founder_narrative_pulse`
+BUY path was unreachable outside a test-only `putRequirement` patch. This section
+closes that gap. Branch: `fix/reliability-v7-purpose-origin`, from `fb78219`.
+
+**Design.** An `AuthorizedPurposePolicy` (`lib/management/types.ts`) is an
+APPLICATION-OWNED fact — `{ purposeKind, targetRequirementKind }` — written only by
+Objective setup code, before interpretation ever runs.
+`setupCanonicalDemoObjective` (`convex/objectives.ts`) records the demo's one policy
+(`CANONICAL_AUTHORIZED_PURPOSE_POLICY` in `lib/objective/seedData.ts`, sourced from
+the adapter's own `M3_SUPPORTED_PURPOSE_KIND` — no second taxonomy) onto
+`Objective.management.authorizedPurposePolicy` at creation. `applyInterpretation`
+(`convex/management.ts`) passes the CURRENT Objective's policy — never
+`rawContract`/`rawRequirements`, i.e. never model output — into `interpretObjective`
+(`lib/management/interpretation.ts`), which calls the new
+`bindAuthorizedPurposePolicy` (`lib/management/contract.ts`) after building the
+semantic Requirements and before they are persisted. Binding matches ONLY on
+`requirementKind` — a value interpretation itself coerces into a two-member governed
+enum (`parseRequirementProposals`), never free text — and fails closed (grants
+nothing) on an ungoverned `purposeKind` or on zero/multiple structural matches, so an
+ambiguous or invalid policy target never silently over-grants. Nothing here touches
+`validateMissingInputProposal`'s `authorizedPurposeKinds` check, R1–R3, replay,
+payment rail, or provider adapter logic.
+
+General (non-canonical) Objectives get no policy and stay fail-closed exactly as
+before. `convex/objectiveValidators.ts` gained the matching optional
+`management.authorizedPurposePolicy` validator (governed `targetRequirementKind`
+union; unconstrained `purposeKind` string, re-validated at bind time).
+
+**Test-only patch removed.** `tests/m61ProductionWholeChain.test.ts` no longer calls
+`putRequirement` to stamp `authorizedPurposeKinds` after interpretation; `seedFounderOnly`
+now seeds `authorizedPurposePolicy` the same way it seeds any other application-owned
+fact (spend grant, budget) — before interpretation — and asserts what production
+itself wrote. Test F (and G) still pass end to end, including
+`ExecutionIntent.requestedPurposeKind === "founder_messaging_qualitative"`.
+
+**New tests** (`tests/v7ReviewR4ScopeOrigin.test.ts`, 6 cases, all passing): the real
+`setupCanonicalDemoObjective` → `beginInterpretation` → `applyInterpretation` path
+originates `authorizedPurposeKinds` with no manual patch; a general Objective with no
+policy stays fail-closed even when the worker proposes the adapter's exact declared
+kind; only the structurally-targeted Requirement in a multi-Requirement scoped
+Objective is granted (the unrelated one stays unscoped); a worker-proposed kind the
+policy didn't grant is still refused; Requirement prose paraphrase neither creates
+nor removes the grant in either direction.
+
+### Gate
+
+Same-machine methodology as the prior entry (105 test files minus the confirmed
+pre-existing `tests/m3GateInterpretationCeilingEscalates.test.ts` hang, 104 for the
+baseline before this branch's new test file existed):
+
+| | tests | pass | fail |
+| --- | --- | --- | --- |
+| baseline `fb78219` (104 files) | 1068 | 1058 | 10 |
+| candidate (105 files, this branch) | 1074 | 1064 | 10 |
+
+The +6 tests are exactly the new scope-origin file; the 10 failing test names are
+byte-identical between the two runs (`m2LegacyObligations` A6 ×4,
+`m61CausalPipelineCp4` CP4, `m61DiagnosisToExternalIntent` F4,
+`managementDecision` ×2, `managementFinishGate` ×2) — all pre-existing, none touch
+purpose-scope/authority code. Root `tsc --noEmit`: baseline 68 lines, candidate 74;
+the delta is fully explained (6 new lines = the new test file reproducing an
+already-repo-wide `ctx.db.withIndex` convex-test typing gap present in 7 other
+pre-existing files; line-number shifts in `m61ProductionWholeChain.test.ts` match
+the exact lines added; one pre-existing error's printed type text
+(`m61SerialManagerLoop.test.ts:1090`) grows by exactly the one field this branch
+added to the shared `management` type) — zero new error classes. Convex
+`tsc -p convex/tsconfig.json --noEmit`: clean on both. `next build` on the candidate:
+compiles, then fails typecheck with the identical error set above (no Turbopack/
+symlink issue reproduced in this environment) — confirms the failure is the same
+pre-existing typecheck debt, not a build regression. No signing/payment/merchant/
+provider/model invocation.
+
+Status: READY FOR FINAL RE-REVIEW (not self-approved).

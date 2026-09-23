@@ -9,9 +9,11 @@
 
 import { validateCapabilitySpec } from "./capability";
 import { isSatisfactionStrategy } from "./types";
+import { isGovernedPurposeKind } from "../workforce/catalog";
 import type { ProofFacts } from "./requirements";
 import type { ParsedOutcomeContract, ParsedRequirementProposal } from "./proposals";
 import type {
+  AuthorizedPurposePolicy,
   OutcomeContract,
   OutcomeLevel,
   ProofSpec,
@@ -175,6 +177,39 @@ export function buildSemanticRequirement(input: {
       updatedAt: input.at,
     },
   };
+}
+
+/**
+ * V7 review R4 final scope-origin correction — binds an APPLICATION-OWNED
+ * purpose-scope policy onto the ONE newly-interpreted Requirement it
+ * structurally targets.
+ *
+ * The policy pre-exists interpretation (written only by Objective setup, e.g.
+ * setupCanonicalDemoObjective) and is NEVER derived from interpretation/model
+ * output, Requirement prose, or a worker's proposed purposeKind. Matching
+ * uses only `requirementKind` — a value interpretation itself coerces into a
+ * small governed enum (parseRequirementProposals), never free text.
+ *
+ * Fails closed: an ungoverned purposeKind, or zero / more than one
+ * structurally-matching Requirement in this interpretation batch, grants
+ * nothing rather than guessing which row was meant.
+ */
+export function bindAuthorizedPurposePolicy(
+  requirements: readonly Requirement[],
+  policy: AuthorizedPurposePolicy | null | undefined,
+): Requirement[] {
+  if (!policy) return [...requirements];
+  if (!isGovernedPurposeKind(policy.purposeKind)) return [...requirements];
+  const matches = requirements.filter(
+    (requirement) => requirement.requirementKind === policy.targetRequirementKind,
+  );
+  if (matches.length !== 1) return [...requirements];
+  const target = matches[0]!;
+  return requirements.map((requirement) =>
+    requirement === target
+      ? { ...requirement, authorizedPurposeKinds: [policy.purposeKind] }
+      : requirement,
+  );
 }
 
 export function buildRequirement(

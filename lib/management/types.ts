@@ -108,6 +108,24 @@ export type RequirementPriority = "required" | "supporting";
  */
 export type RequirementKind = "deliverable" | "input";
 
+/**
+ * V7 review R4 final scope-origin correction — the APPLICATION-OWNED source
+ * that grants Requirement.authorizedPurposeKinds. Written only by Objective
+ * setup code (e.g. setupCanonicalDemoObjective) BEFORE interpretation runs;
+ * never by interpretation/model output, Requirement prose, or a worker's
+ * proposed purposeKind — those remain proposals only. Binding onto a
+ * newly-interpreted Requirement uses ONLY the structural, application-
+ * validated requirementKind discriminator, never free text (title/
+ * mustBeTrue/scope/expectedOutput). Absent = no purpose scope authorized for
+ * this Objective's Requirements (fail closed, unchanged from today).
+ */
+export type AuthorizedPurposePolicy = {
+  /** Governed PURPOSE_SCOPES kind; re-validated at bind time, never trusted blindly. */
+  purposeKind: string;
+  /** The ONE structurally-targeted Requirement kind this policy authorizes. */
+  targetRequirementKind: RequirementKind;
+};
+
 // CRITICAL: provider-candidate rejection ≠ satisfaction; MAKE decision ≠
 // satisfaction; worker-run completion ≠ satisfaction. Only an accepted
 // resolution with current proof moves state to "satisfied".

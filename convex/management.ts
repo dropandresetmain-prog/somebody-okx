@@ -70,6 +70,7 @@ import type { ProofFacts, RequirementEvent } from "../lib/management/requirement
 import { checkBudget } from "../lib/management/budget";
 import type {
   Assignment,
+  AuthorizedPurposePolicy,
   BudgetVerdict,
   CompletionProposal,
   CompletionVerdict,
@@ -1796,6 +1797,12 @@ export const applyInterpretation = internalMutation({
       spendGrantPresent: grant != null,
       spendLimitUsd: grant?.limitUsd ?? null,
       serialManagerProtocol: true,
+      // V7 review R4 final scope-origin correction — read-only pass-through of
+      // the CURRENT Objective's application-owned policy (set only by setup
+      // code such as setupCanonicalDemoObjective); never derived from
+      // args.rawContract/args.rawRequirements (model output).
+      authorizedPurposePolicy:
+        (mgmt.authorizedPurposePolicy as AuthorizedPurposePolicy | null | undefined) ?? null,
     });
     if (!interpreted.ok) {
       // Typed refusal, persisted as a cursor so the loop cannot retry-storm a

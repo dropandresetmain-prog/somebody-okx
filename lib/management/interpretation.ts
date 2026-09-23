@@ -26,12 +26,16 @@
 // has not resolved keeps `requiresFounderApproval: true`, so the reducer parks the
 // Objective in approval_required instead of acting on a guess (locked decision 1).
 
-import { buildOutcomeContract, buildSemanticRequirement } from "./contract";
+import {
+  bindAuthorizedPurposePolicy,
+  buildOutcomeContract,
+  buildSemanticRequirement,
+} from "./contract";
 import {
   parseOutcomeContractProposal,
   parseRequirementProposals,
 } from "./proposals";
-import type { Requirement } from "./types";
+import type { AuthorizedPurposePolicy, Requirement } from "./types";
 import type { OutcomeContract } from "./types";
 
 export type InterpretationInput = {
@@ -53,6 +57,14 @@ export type InterpretationInput = {
   spendGrantPresent?: boolean;
   spendLimitUsd?: number | null;
   serialManagerProtocol?: boolean;
+  /**
+   * V7 review R4 final scope-origin correction — the CURRENT Objective's
+   * application-owned purpose-scope policy (Objective.management, set only by
+   * setup code such as setupCanonicalDemoObjective). Never sourced from
+   * `rawContract`/`rawRequirements` (model output). Absent = no purpose scope
+   * authorized for any Requirement produced by this interpretation.
+   */
+  authorizedPurposePolicy?: AuthorizedPurposePolicy | null;
 };
 
 /**
@@ -164,7 +176,7 @@ export function interpretObjective(input: InterpretationInput): InterpretationRe
   // strategy it authorizes, and only requirements.ts/completion.ts can ever call
   // a proof-less row unsatisfied — which it does, so an unpersisted strategy is
   // "not yet resolvable", never "free to complete".
-  const requirements: Requirement[] = [];
+  let requirements: Requirement[] = [];
   for (const proposed of parsedRequirements.value) {
     const built = buildSemanticRequirement({
       objectiveKey: input.objectiveKey,
@@ -179,6 +191,7 @@ export function interpretObjective(input: InterpretationInput): InterpretationRe
     requirements.push(built.requirement);
   }
   if (errors.length) return { ok: false, errors };
+  requirements = bindAuthorizedPurposePolicy(requirements, input.authorizedPurposePolicy);
 
   const required = requirements.filter((requirement) => requirement.priority === "required");
   if (required.length === 0)

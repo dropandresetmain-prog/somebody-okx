@@ -58,6 +58,7 @@ import {
 } from "../lib/objective/runGuards";
 import { providerConfiguration } from "../lib/worker/modelSelection";
 import {
+  CANONICAL_AUTHORIZED_PURPOSE_POLICY,
   CANONICAL_LAUNCH_ARTIFACT,
   CANONICAL_OBJECTIVE_REQUEST,
 } from "../lib/objective/seedData";
@@ -3017,8 +3018,13 @@ export const setupCanonicalDemoObjective = mutation({
       // The management engine owns this row from the start (contractId null
       // until beginInterpretation rewrites it with the durable contract; the
       // engine's own guard sets interpretationStatus itself).
+      // V7 review R4 final scope-origin correction — the canonical demo's
+      // application-owned purpose-scope policy is recorded HERE, before
+      // interpretation ever runs, so the authority applyInterpretation later
+      // binds onto the deliverable Requirement pre-exists any model output.
       management: {
         contractId: null,
+        authorizedPurposePolicy: CANONICAL_AUTHORIZED_PURPOSE_POLICY,
       },
     } as ObjectiveRecord;
     await ctx.db.insert("objectives", { key, data: record });

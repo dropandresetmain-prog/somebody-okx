@@ -20,7 +20,7 @@ import {
   makeConvexPort,
   proposeFinalSemanticAssessment,
 } from "../convex/objectiveRunner";
-import { initBudget, putRequirement } from "../convex/internal/workforce";
+import { initBudget } from "../convex/internal/workforce";
 import {
   finishRun,
   readWorkerObservation,
@@ -38,6 +38,7 @@ import { installStructuredChatDouble } from "../lib/management/modelBoundary";
 import type { Assignment, Requirement } from "../lib/management/types";
 import type { ObjectiveRecord } from "../lib/objective/types";
 import type { WorkContract } from "../lib/workforce";
+import { CANONICAL_AUTHORIZED_PURPOSE_POLICY } from "../lib/objective/seedData";
 
 const modules = {
   "../convex/schema.ts": () => import("../convex/schema"),
@@ -151,7 +152,18 @@ async function seedFounderOnly(
             history: [],
           },
         ],
-        management: { contractId: null, controlNotes: [] },
+        // V7 review R4 final scope-origin correction — the same
+        // application-owned policy setupCanonicalDemoObjective records,
+        // seeded here the same way this helper seeds any other
+        // application-owned fact (spend grant, budget): BEFORE
+        // interpretation runs. applyInterpretation (real production code)
+        // is what turns this into the deliverable Requirement's
+        // authorizedPurposeKinds — nothing here touches the Requirement.
+        management: {
+          contractId: null,
+          controlNotes: [],
+          authorizedPurposePolicy: CANONICAL_AUTHORIZED_PURPOSE_POLICY,
+        },
       } as never,
     });
     await (initBudget as unknown as Handler)._handler(ctx, {
@@ -360,21 +372,14 @@ test("F production whole-chain: founder → MAKE → gap → BUY sim → MAKE ar
     await seedFounderOnly(t, key);
     await interpretDeliverable(t, key, reqKey);
 
-    // V7 review R4 final correction — application-owned purpose-scope
-    // authority. Interpretation output never grants this (constraint B): it
-    // is asserted here the same way the test asserts any other
-    // application-owned fact (spend grant, budget), deterministically and
-    // independently of the Requirement's own prose or the worker's later
-    // proposal. This is the demo's one genuinely authorized Requirement.
+    // V7 review R4 final scope-origin correction — PRODUCTION itself (real
+    // applyInterpretation, binding the application-owned policy seeded by
+    // seedFounderOnly onto the one deliverable Requirement) originates this
+    // authority. No manual putRequirement patch: this asserts what
+    // production already wrote, the same way the test asserts any other
+    // application-owned fact (spend grant, budget).
     const req0 = (await readReqs(t, key))[0]!;
-    await t.mutation(async (ctx) =>
-      (putRequirement as unknown as Handler)._handler(ctx, {
-        objectiveKey: key,
-        requirementKey: reqKey,
-        data: { ...req0, authorizedPurposeKinds: ["founder_messaging_qualitative"] },
-        currentContractRevision: 1,
-      }),
-    );
+    assert.deepEqual(req0.authorizedPurposeKinds, ["founder_messaging_qualitative"]);
 
     const afterInterp = await readObj(t, key);
     assert.equal(afterInterp.management.executionProtocol, M61_SERIAL_V1);

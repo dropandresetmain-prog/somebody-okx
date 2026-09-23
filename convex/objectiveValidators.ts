@@ -341,6 +341,24 @@ export const objectiveRecord = v.object({
       releasedAcquisitionIntentIds: v.optional(v.array(v.string())),
       lastFinalAssessmentCritique: v.optional(v.union(v.string(), v.null())),
       lastFinalAssessmentFailure: v.optional(v.union(v.string(), v.null())),
+      // V7 review R4 final scope-origin correction — the APPLICATION-OWNED
+      // policy that pre-exists interpretation and grants purpose-scope
+      // authority to the ONE Requirement it structurally targets. Written
+      // only by Objective setup code (e.g. setupCanonicalDemoObjective);
+      // never by interpretation/model output. Absent = no purpose scope
+      // authorized (unchanged fail-closed default).
+      authorizedPurposePolicy: v.optional(
+        v.union(
+          v.object({
+            purposeKind: v.string(),
+            targetRequirementKind: v.union(
+              v.literal("deliverable"),
+              v.literal("input"),
+            ),
+          }),
+          v.null(),
+        ),
+      ),
     }),
   ),
 });
