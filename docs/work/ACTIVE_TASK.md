@@ -1,77 +1,68 @@
-# ACTIVE_TASK — OKX Final Release Candidate
+# ACTIVE TASK — Luna V6 Demo Replay Verification
+
+Updated: 23 September 2026 (Singapore)
+Status: **READY FOR FOUNDER REPLAY**
 
 ## Goal
 
-Converge accepted side-lanes into the latest product candidate, prove one real
-current-path E2E Objective, prove truthful demo-playback fallback, run the
-canonical promotion gate once on the exact frozen SHA, then freeze and push.
-No feature work. Defects only if they block the canonical demo.
+Verify the successful historical Luna run through the current V6 Demo Replay UI
+and leave it ready for founder manual inspection.
 
-## Base / Branch
+## Current source
 
 | Field | Value |
 |---|---|
-| Base SHA (verified) | `600b6fc664b974ca13a58125d3f8b008f639d6ee` |
-| Base message | `test(product): verify founder spend approval seam` |
-| Release branch | `release/okx-final-candidate` |
-| Worktree | `C:\Dev\somebody-okx-okx-final-candidate` |
-| Current HEAD | `9a91109` (pre-freeze; focused tests pending) |
+| Release tip | `release/okx-final-candidate` @ `46d2af76271b259a25d52ae1e72666f540d47303` |
+| Working worktree | `C:\Dev\somebody-okx-luna-v6-replay` |
+| Fix branch (if any) | `demo/luna-v6-replay-check` |
+| Dirty release worktree (preserved, unused) | `C:\Dev\somebody-okx-okx-final-candidate` |
 | Merged main | NO |
 
-## Integration checklist
+## Authoritative replay scenario
 
-1. [x] Create release branch/worktree from exact `600b6fc`
-2. [x] Integrate I/O hardening `5f0fe43` → `118e7b7` (clean auto-merge objectives.ts)
-3. [x] Local-Convex workflow `b54a212` → `323140b` (dev-only; included)
-4. [x] Demo playback from `23a6a21` → `9a91109` (conflicts resolved)
-5. [ ] Focused integration tests green
-6. [ ] Commit remaining fixes if any; push; freeze candidate SHA
-7. [ ] Real current-path E2E (product `/start`, not seeded)
-8. [ ] Browser acceptance (V6 lifecycle screenshots)
-9. [ ] Demo playback fallback acceptance
-10. [ ] Promotion gate on exact frozen SHA
-11. [ ] Final freeze: clean working tree, remote tip == candidate SHA
+| Field | Value |
+|---|---|
+| Scenario ID | `luna-relaunch-recovery` |
+| Label | Luna — Relaunch Recovery |
+| Objective | `obj_1790046504201_vporlj` |
+| Model | `openai/gpt-5.6-luna` |
+| Candidate | `8f53da0` |
+| Evidence | `docs/work/gate-evidence/8f53da0/run-luna-5-obj_1790046504201_vporlj.json` |
+| Provenance | `simulation` (historical truth — do not relabel) |
+| Original duration | 141000 ms |
+| Demo sequence | 26000 ms |
+| Source module | `lib/demo/scenarios/lunaRelaunch.ts` |
 
-## Side-lanes
+## Out of scope
 
-| Lane | SHA | Status |
-|---|---|---|
-| I/O hardening | `5f0fe43` → `118e7b7` | integrated; create path + bounds preserved |
-| Local Convex workflow | `b54a212` → `323140b` | integrated (dev scripts/docs only) |
-| Demo playback console | `23a6a21` → `9a91109` | integrated; ProductWorkspace keeps spend approval + DemoConsole |
+- real E2E
+- fresh Objective execution
+- model calls
+- provider calls
+- backend debugging
+- payment
+- final release gate
+- production deployment
 
-## Conflict resolutions
+## Checklist
 
-- `ProductWorkspace.tsx`: useProductWorkspace + DemoConsole + live submitAttentionActionV1 (disabled during demo)
-- `product-workspace.css`: keep V6 fidelity animations; add demo-console styles; keep 1000px breakpoint
-- `v6ProductWorkspace.test.ts`: assert reads via seam; assert spend command still in container
-
-## Current checkpoint
-
-Side-lanes converged at `9a91109`. Next: focused integration tests.
-
-## Next action
-
-Run focused product/I/O/demo tests + `npm run typecheck:convex`.
+- [x] local Git state reconciled
+- [x] Demo Console available
+- [x] successful Luna scenario source verified
+- [x] focused demo tests pass
+- [x] current V6 starts locally
+- [x] 26s demo replay completes
+- [x] 141s original replay completes
+- [x] pause/resume/restart/reset work
+- [x] reset restores live UI
+- [x] replay causes zero Product Command mutations
+- [x] founder receives exact manual run instructions
 
 ## Critical constraints
 
-- Do NOT work on `build/founder-spend-approval-v1` directly.
-- Do NOT merge random historical branches.
-- Do NOT add features / redesign / opportunistic refactors.
-- Preserve: createObjectiveV1, submitAttentionActionV1, Product Reads only, V6 fidelity.
-- Financial: no unauthorized mainnet; truthful provenance.
-- After freeze: no source edits during gate unless blocker; then new SHA + full re-gate.
-- Re-read this file before live E2E, final gate, and completion.
-
-## Acceptance evidence checklist
-
-- [ ] Objective created via V6 Product Command
-- [ ] Intern work + finding/evidence
-- [ ] MAKE/BUY + Needs You spend approval via UI
-- [ ] FounderSpendGrant + approval_resolved wake
-- [ ] External result with truthful provenance
-- [ ] Artifact change + semantic assessment + completion
-- [ ] Browser states A–F
-- [ ] Demo playback load/advance/reset/restore live
-- [ ] Promotion gate classified; exact SHA frozen + pushed
+- Do NOT run real E2E or the release/promotion gate.
+- Do NOT modify live manager/runtime to make a run pass.
+- Do NOT regenerate the Luna scenario from a different run.
+- Do NOT fabricate Needs You / approvals / live provenance.
+- Fix only real replay/UI blockers; no general design polish.
+- Wait for the separate backend-fix lane before any real E2E/release gate.

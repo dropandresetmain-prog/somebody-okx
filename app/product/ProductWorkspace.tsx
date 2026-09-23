@@ -12,6 +12,7 @@ import type { AttentionActionView, ProductCommandResult } from "./contracts";
 import { V6WorkspaceView } from "./V6WorkspaceView";
 import { useProductWorkspace } from "../demo/useProductWorkspace";
 import { DemoConsole } from "../demo/DemoConsole";
+import { DemoActivityFollow } from "../demo/DemoActivityFollow";
 import "./product-workspace.css";
 
 function attentionErrorCopy(result: Extract<ProductCommandResult, { accepted: false }>): string {
@@ -80,6 +81,8 @@ export function ProductWorkspace({ initialObjectiveId }: { initialObjectiveId?: 
   const liveAttention =
     !demoActive && main.kind === "ready" && main.view.attention ? onAttentionAction : undefined;
 
+  const activityCount = main.kind === "ready" ? main.view.activity.length : 0;
+
   return (
     <>
       <V6WorkspaceView
@@ -93,6 +96,7 @@ export function ProductWorkspace({ initialObjectiveId }: { initialObjectiveId?: 
         attentionError={attentionError}
         attentionAcknowledgement={attentionAck}
       />
+      {demoActive ? <DemoActivityFollow activityCount={activityCount} /> : null}
       <DemoConsole />
     </>
   );
