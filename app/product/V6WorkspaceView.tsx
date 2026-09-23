@@ -9,6 +9,20 @@ import { Deliverables } from "./components/Deliverables";
 import { Acquisitions } from "./components/Acquisitions";
 import { Attention } from "./components/Attention";
 
+/** Historical demo / fixture frames may omit liveness — fill a truthful idle default. */
+function withLiveness(view: ObjectiveWorkspaceView): ObjectiveWorkspaceView {
+  if (view.liveness) return view;
+  return {
+    ...view,
+    liveness: {
+      active: false,
+      phase: "idle",
+      lastProgressAt: view.objective.updatedAt,
+      detail: "Waiting for the next engine step.",
+    },
+  };
+}
+
 // Pure presentational V6 shell. Receives ONLY product-contract data plus UI
 // callbacks — no Convex, no raw engine imports, no state recalculation.
 export type MainPaneState =
@@ -95,7 +109,8 @@ function MainPane({
           <p className="muted">This objective isn&apos;t there anymore, or the link is wrong.</p>
         </div>
       );
-    case "ready":
+    case "ready": {
+      const view = withLiveness(main.view);
       return (
         <div
           className="v6-workspace"
@@ -103,7 +118,7 @@ function MainPane({
           // Soft cross-fade when the product-data source advances a frame
           // (live or demo). Keyed by objective status + activity length only —
           // no demo-specific branching.
-          key={`${main.view.objective.status}:${main.view.activity.length}:${main.view.deliverables.map((d) => d.version).join(",")}`}
+          key={`${view.objective.status}:${view.activity.length}:${view.deliverables.map((d) => d.version).join(",")}`}
         >
           {main.stale ? (
             <p className="muted v6-reconnecting" role="status">
@@ -111,31 +126,32 @@ function MainPane({
             </p>
           ) : null}
           <ObjectiveHeader
-            objective={main.view.objective}
-            liveness={main.view.liveness}
-            somebodyNow={main.view.somebodyNow}
-            currentWork={main.view.currentWork}
-            deliverables={main.view.deliverables}
+            objective={view.objective}
+            liveness={view.liveness}
+            somebodyNow={view.somebodyNow}
+            currentWork={view.currentWork}
+            deliverables={view.deliverables}
           />
           <div className="v6-columns">
             <div className="v6-column-primary">
-              <Activity items={main.view.activity} acquisitions={main.view.acquisitions} />
+              <Activity items={view.activity} acquisitions={view.acquisitions} />
             </div>
             <div className="v6-column-rail">
               <Attention
-                attention={main.view.attention}
+                attention={view.attention}
                 onAction={onAttentionAction}
                 pendingActionId={pendingAttentionActionId}
                 error={attentionError}
                 acknowledgement={attentionAcknowledgement}
               />
-              <Deliverables deliverables={main.view.deliverables} />
-              <Checkpoints progress={main.view.progress} />
-              <OrphanAcquisitions activity={main.view.activity} acquisitions={main.view.acquisitions} />
+              <Deliverables deliverables={view.deliverables} />
+              <Checkpoints progress={view.progress} />
+              <OrphanAcquisitions activity={view.activity} acquisitions={view.acquisitions} />
             </div>
           </div>
         </div>
       );
+    }
   }
 }
 

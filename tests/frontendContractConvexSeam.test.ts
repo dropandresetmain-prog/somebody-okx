@@ -267,7 +267,7 @@ test("workspace: executing objective projects to a product view with no engine r
   assert.equal(view.objective.status, "working");
   assert.deepEqual(
     Object.keys(view).sort(),
-    ["objective", "progress", "somebodyNow", "currentWork", "activity", "deliverables", "acquisitions", "attention", "availableActions"].sort(),
+    ["objective", "progress", "somebodyNow", "liveness", "currentWork", "activity", "deliverables", "acquisitions", "attention", "availableActions"].sort(),
   );
   for (const forbidden of ["requirements", "assignments", "workers", "decisions", "intents", "external", "evidence", "xray"]) {
     assert.ok(!(forbidden in view), `view must not expose ${forbidden}`);
