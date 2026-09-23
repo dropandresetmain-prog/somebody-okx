@@ -357,3 +357,83 @@ test("createObjectiveV1 without policy leaves social authority absent; with poli
   if (rejected.accepted) return;
   assert.equal(rejected.error.code, "validation_error");
 });
+
+// ── Testnet-demo application policy binding for the real /start surface ────
+//
+// This is Testnet-demo APPLICATION policy, not general production authority.
+// It is mode-bound to SOMEBODY_EXECUTION_MODE=testnet_demo only, uses the
+// existing structured AuthorizedPurposePolicy (no keyword matching, no
+// model-created scope, no worker self-authorization), and Requirement
+// binding remains structural / contract-revision-bound via the unchanged
+// bindAuthorizedPurposePolicy seam.
+
+async function createViaStartWithMode(
+  mode: string | undefined,
+): Promise<{ authorizedPurposePolicy?: { purposeKind: string } | null }> {
+  const prev = process.env.SOMEBODY_EXECUTION_MODE;
+  if (mode === undefined) delete process.env.SOMEBODY_EXECUTION_MODE;
+  else process.env.SOMEBODY_EXECUTION_MODE = mode;
+  try {
+    const t = convexTest(schema, modules);
+    const result = (await t.mutation(async (ctx) =>
+      call(createObjectiveV1, ctx, { request: VALID_REQUEST }),
+    )) as ProductCommandResult;
+    assert.equal(result.accepted, true);
+    if (!result.accepted) throw new Error("unreachable");
+    const row = await t.run(async (ctx) => {
+      const rows = await ctx.db.query("objectives").collect();
+      return rows.find(
+        (r) => (r as { key: string }).key === result.objectiveId,
+      ) as {
+        data: { management?: { authorizedPurposePolicy?: unknown } };
+      };
+    });
+    return {
+      authorizedPurposePolicy: (row.data.management?.authorizedPurposePolicy ??
+        null) as { purposeKind: string } | null,
+    };
+  } finally {
+    if (prev === undefined) delete process.env.SOMEBODY_EXECUTION_MODE;
+    else process.env.SOMEBODY_EXECUTION_MODE = prev;
+  }
+}
+
+test("disabled + /start → no external social purpose authority", async () => {
+  const { authorizedPurposePolicy } = await createViaStartWithMode("disabled");
+  assert.equal(authorizedPurposePolicy ?? null, null);
+});
+
+test("mainnet_live + /start → no automatic external social purpose authority", async () => {
+  const { authorizedPurposePolicy } = await createViaStartWithMode(
+    "mainnet_live",
+  );
+  assert.equal(authorizedPurposePolicy ?? null, null);
+});
+
+test("testnet_demo + /start → bounded SUBMISSION_EXTERNAL_SOCIAL_PURPOSE_POLICY", async () => {
+  const { authorizedPurposePolicy } = await createViaStartWithMode(
+    "testnet_demo",
+  );
+  assert.equal(
+    authorizedPurposePolicy?.purposeKind,
+    EXTERNAL_SOCIAL_INTELLIGENCE_PURPOSE_KIND,
+  );
+  assert.deepEqual(
+    authorizedPurposePolicy,
+    SUBMISSION_EXTERNAL_SOCIAL_PURPOSE_POLICY,
+  );
+});
+
+test("testnet_demo /start policy still cannot execute a mismatched (purpose-incompatible) merchant", async () => {
+  // The mode-bound policy only authorizes external_social_intelligence
+  // Requirements to be sourced; it grants no merchant-specific eligibility.
+  // Purpose-incompatible controlled merchants (Token Market Intelligence,
+  // Wallet / Onchain Risk Intelligence) remain rejected by the unchanged
+  // eligibility seam covered in tests/testnetBuyCp3Eligibility.test.ts —
+  // this test only re-asserts the policy itself carries no merchant identity.
+  assert.equal(
+    "provider" in SUBMISSION_EXTERNAL_SOCIAL_PURPOSE_POLICY,
+    false,
+    "the policy authorizes a purpose kind, never a specific merchant",
+  );
+});

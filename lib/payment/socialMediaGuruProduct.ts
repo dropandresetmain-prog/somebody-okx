@@ -612,10 +612,7 @@ export function buildSocialMediaGuruRequest(input: {
   query: Record<string, string>;
   headers: Record<string, string>;
 } {
-  const purposeKind =
-    validatedRequestedPurposeKind(input.need) ??
-    input.need.requestedPurposeKind ??
-    null;
+  const purposeKind = validatedRequestedPurposeKind(input.need);
   const purpose = normalizeSocialMediaGuruPurpose(input.need.purpose);
   const headers: Record<string, string> = {
     "x-somebody-resource-class": SOCIAL_MEDIA_GURU_RESOURCE_CLASS,
@@ -625,7 +622,7 @@ export function buildSocialMediaGuruRequest(input: {
   };
   if (purpose) headers["x-somebody-purpose"] = purpose;
   if (purposeKind) headers["x-somebody-purpose-kind"] = purposeKind;
-  if (input.need.needId) headers["x-somebody-request-id"] = input.need.needId;
+  if (input.need.id) headers["x-somebody-request-id"] = input.need.id;
   return {
     method: "GET",
     path: "/m3/social-media-guru",

@@ -14,6 +14,8 @@ import {
   createReceivedObjective,
   normalizeObjectiveRequest,
 } from "./objectiveCreate";
+import { readSomebodyExecutionMode } from "../lib/execution/executionMode";
+import { SUBMISSION_EXTERNAL_SOCIAL_PURPOSE_POLICY } from "../lib/objective/seedData";
 import {
   APPROVE_SPEND_ACTION_ID,
   deriveSpendApprovalCandidate,
@@ -164,13 +166,25 @@ export const createObjectiveV1 = mutation({
     try {
       // This is the real `/start` founder product path — Objectives created
       // here belong in the product sidebar. Purpose-scope authority is only
-      // attached when the caller passes an explicit structured policy.
+      // attached when the caller passes an explicit structured policy, OR —
+      // Testnet-demo application policy only, NOT general production
+      // authority — when SOMEBODY_EXECUTION_MODE=testnet_demo, in which case
+      // the bounded SUBMISSION_EXTERNAL_SOCIAL_PURPOSE_POLICY is attached so
+      // the founder-facing Testnet BUY E2E is runnable from the real /start
+      // surface. `disabled` and `mainnet_live` never receive this
+      // auto-attachment; an explicit caller-supplied policy always wins.
+      const executionMode = readSomebodyExecutionMode();
+      const authorizedPurposePolicy =
+        args.authorizedPurposePolicy ??
+        (executionMode === "testnet_demo"
+          ? SUBMISSION_EXTERNAL_SOCIAL_PURPOSE_POLICY
+          : null);
       const { key } = await createReceivedObjective(
         ctx,
         normalized.request,
         "visible",
         {
-          authorizedPurposePolicy: args.authorizedPurposePolicy ?? null,
+          authorizedPurposePolicy,
         },
       );
       return {
