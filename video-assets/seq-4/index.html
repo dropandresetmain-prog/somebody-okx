@@ -9,7 +9,7 @@
 :root{
   --paper:#f5f2eb;--paper2:#ebe5d9;--surface:#fffdf9;--ink:#22231f;--ink2:#55534d;
   --muted:#77736b;--line:rgba(34,35,31,.14);--line2:rgba(34,35,31,.24);--orange:#e4602a;
-  --orange-dark:#b0451a;--wash:#fde9de;--green:#2e7d4f;--green-wash:#e2f0e7;--purple:#5f4b8b;
+  --orange-dark:#b0451a;--wash:#fde9de;--green:#2e7d4f;--green-wash:#e2f0e7;--purple:#5f4b8b;--black:#11110f;
   --blue:#315f9b;--convex:#ef6c43;--w:1920px;--h:1080px;--fade:780ms;
   font-family:Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
   color:var(--ink);background:#ded8cd;text-rendering:geometricPrecision;font-synthesis:none;
@@ -49,7 +49,7 @@
 .external-result{position:absolute;left:92px;right:92px;bottom:120px;padding:18px;border:1px solid var(--line);border-radius:18px;background:var(--surface);text-align:center;color:var(--ink2);font-size:15px;font-weight:760;opacity:.6}
 
 /* Somebody + management loop */
-.somebody-stage{position:absolute;left:120px;top:190px;width:300px;height:350px;z-index:8}
+.somebody-stage{position:absolute;left:125px;top:137px;width:300px;height:350px;z-index:8}
 .somebody-state{position:absolute;inset:0;width:100%;height:100%;opacity:0;transform:translateY(8px) scale(.988);transition:opacity 780ms ease,transform 780ms cubic-bezier(.2,.72,.2,1)}
 .somebody-state.visible{opacity:1;transform:none}
 .loop-ring{position:absolute;left:55px;top:92px;width:440px;height:440px;border-radius:50%;border:2px solid rgba(34,35,31,.12);opacity:0;transform:scale(.96);transition:opacity 700ms ease,transform 760ms cubic-bezier(.2,.72,.2,1)}
@@ -73,8 +73,8 @@
 .stage.delegate .assignment-card{opacity:1;transform:none}
 .worker-runtime{position:absolute;left:690px;top:130px;width:240px;height:510px;opacity:0;transform:translateX(18px);transition:opacity 760ms ease,transform 820ms cubic-bezier(.2,.72,.2,1)}
 .stage.worker-on .worker-runtime{opacity:1;transform:none}
-.worker-art{position:absolute;left:0;top:74px;width:240px;height:280px;border-radius:28px;overflow:hidden}
-.worker-art img{width:100%;height:100%;object-fit:contain;filter:drop-shadow(0 20px 34px rgba(43,38,30,.08))}
+.worker-art{position:absolute;left:0;top:74px;width:240px;height:280px;border-radius:28px;overflow:hidden;opacity:1;transform:none;transition:opacity 700ms ease,transform 760ms cubic-bezier(.2,.72,.2,1)}
+.worker-art img{width:100%;height:100%;object-fit:contain;filter:drop-shadow(0 20px 34px rgba(43,38,30,.08))}.stage.result-in .worker-art{opacity:0;transform:translateY(4px) scale(.985)}
 .worker-label{position:absolute;left:0;right:0;top:0;text-align:center}.worker-label b{font-size:25px;letter-spacing:-.04em}.worker-label span{display:block;color:var(--muted);font-size:13px;margin-top:4px;font-weight:650}
 .sdk-plate{position:absolute;left:8px;right:8px;bottom:35px;padding:17px 18px;border-radius:18px;background:#171715;color:white;text-align:center;opacity:0;transform:translateY(10px);transition:opacity 620ms ease,transform 680ms ease}
 .stage.sdk-on .sdk-plate{opacity:1;transform:none}.sdk-plate b{font-size:18px;letter-spacing:-.025em}.sdk-plate small{display:block;margin-top:5px;color:#c7c7c2;font-size:11px;letter-spacing:.08em;text-transform:uppercase}
@@ -95,7 +95,7 @@
 .stage.state-flow .to-state{opacity:1;transform:rotate(55deg) scaleX(1)}.stage.state-flow .external-to-state{opacity:1;transform:rotate(125deg) scaleX(1)}
 .stage.wake .from-state{opacity:1;transform:rotate(-55deg) scaleX(1)}
 .wake-badge{position:absolute;left:378px;top:520px;padding:9px 13px;border-radius:999px;background:var(--wash);color:var(--orange-dark);font-size:12px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;opacity:0;transform:translateY(8px);transition:opacity 520ms ease,transform 560ms ease;z-index:20}.stage.wake .wake-badge{opacity:1;transform:none}
-.finding-ghost{position:absolute;left:690px;top:140px;width:235px;height:280px;opacity:0;transform:translateY(10px);transition:opacity 700ms ease,transform 760ms ease;z-index:12}.finding-ghost img{width:100%;height:100%}.stage.result-in .finding-ghost{opacity:1;transform:none}
+.finding-ghost{position:absolute;left:690px;top:204px;width:240px;height:280px;opacity:0;transform:translateY(10px);transition:opacity 700ms ease,transform 760ms ease;z-index:12}.finding-ghost img{width:100%;height:100%}.stage.result-in .finding-ghost{opacity:1;transform:none}
 
 /* Beat 4: model proposes, application controls */
 .authority{position:absolute;left:75px;right:75px;top:70px;bottom:60px;z-index:45;background:rgba(245,242,235,.97);opacity:0;transform:scale(.992);transition:opacity 760ms ease,transform 760ms cubic-bezier(.2,.72,.2,1)}
@@ -108,7 +108,7 @@
 .auth-panel p{margin:11px 0 0;color:var(--muted);font-size:16px;line-height:1.45}
 .auth-items{display:flex;gap:10px;flex-wrap:wrap;margin-top:25px}.auth-items span{padding:11px 15px;border:1px solid var(--line);border-radius:999px;background:var(--paper);font-size:14px;font-weight:800}
 .proposal{text-align:center;opacity:0;transform:scale(.95);transition:opacity 560ms ease,transform 600ms ease}.stage.proposal-on .proposal{opacity:1;transform:none}.proposal .arrow{font-size:46px;color:var(--orange)}.proposal b{display:block;font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
-.gate{position:absolute;left:50%;bottom:110px;transform:translateX(-50%);display:flex;align-items:center;gap:18px;opacity:0;transition:opacity 560ms ease}.stage.gate-on .gate{opacity:1}.gate-box{padding:15px 19px;border-radius:16px;background:var(--black);color:white;font-size:15px;font-weight:900;letter-spacing:.08em;text-transform:uppercase}.real-action{padding:14px 18px;border-radius:16px;border:1px solid var(--green);color:var(--green);background:var(--green-wash);font-size:15px;font-weight:900;opacity:.25;transform:scale(.96);transition:opacity 520ms ease,transform 520ms ease}.stage.action-approved .real-action{opacity:1;transform:none}
+.gate{position:absolute;left:50%;bottom:200px;transform:translateX(-50%);display:flex;align-items:center;gap:18px;opacity:0;transition:opacity 560ms ease}.stage.gate-on .gate{opacity:1}.gate-box{padding:15px 19px;border-radius:16px;background:var(--black);color:white;font-size:15px;font-weight:900;letter-spacing:.08em;text-transform:uppercase}.real-action{padding:14px 18px;border-radius:16px;border:1px solid var(--green);color:var(--green);background:var(--green-wash);font-size:15px;font-weight:900;opacity:.25;transform:scale(.96);transition:opacity 520ms ease,transform 520ms ease}.stage.action-approved .real-action{opacity:1;transform:none}
 
 /* Beat 5 simple mental model */
 .final-loop{position:absolute;inset:0;background:var(--paper);z-index:70;opacity:0;transition:opacity 820ms ease;pointer-events:none}.stage.final-on .final-loop{opacity:1}
