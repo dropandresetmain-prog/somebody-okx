@@ -15,6 +15,10 @@ import type {
 } from "./types";
 import { parse402Challenge, bindTermsToApproval, parseAtomicAmount } from "./challenge";
 import { assertIdempotencyDistinct } from "./purchase";
+import {
+  assertNetworkMaySignOrSubmit,
+  readSomebodyExecutionMode,
+} from "../execution/executionMode";
 
 export type { PaymentExecutor, PaymentSubmissionResult };
 
@@ -155,6 +159,12 @@ export async function executeApprovedPayment(
   if (!prepared.purchaseId || !prepared.idempotencyKey) {
     throw new Error("Cannot execute payment without a durable purchase identity");
   }
+  // Application policy gate: refuse Mainnet under testnet_demo before the
+  // executor touches a wallet — even if railConfig was misconfigured.
+  assertNetworkMaySignOrSubmit(
+    readSomebodyExecutionMode(),
+    prepared.terms.network,
+  );
   return executor.executeApprovedPayment({
     purchaseId: prepared.purchaseId,
     idempotencyKey: prepared.idempotencyKey,
