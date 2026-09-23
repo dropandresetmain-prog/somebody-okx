@@ -1,0 +1,762 @@
+{
+  "contractVersion": 1,
+  "found": true,
+  "generatedAt": 1790184692433,
+  "view": {
+    "acquisitions": [],
+    "activity": [
+      {
+        "actor": {
+          "kind": "somebody",
+          "label": "Somebody"
+        },
+        "detail": "Produce an evidence-grounded, launch-ready social media marketing plan for the app across TikTok, Instagram, Facebook, and X for the coming launch week.",
+        "id": "activity:objective_interpreted:contract_interpret_obj_1790181742573_ohzr6j_a1:r1",
+        "importance": "major",
+        "occurredAt": 1790181768013,
+        "title": "Somebody defined the outcome",
+        "type": "objective_interpreted"
+      },
+      {
+        "actor": {
+          "kind": "somebody",
+          "label": "Somebody"
+        },
+        "id": "activity:manager_decision:dec_obj_1790181742573_ohzr6j_req_01_r1_a1",
+        "importance": "major",
+        "occurredAt": 1790181778575,
+        "payload": {
+          "reason": "Select the eligible internal MAKE option because it provides governed public-information research, the stated capability needed to produce a dated, source-referenced evidence set for TikTok, Instagram, Facebook, and X. Its eligibility checks confirm that required inputs are owned, primitives are go…",
+          "selected": {
+            "approach": "MAKE",
+            "label": "eligible, available and capability-matched"
+          }
+        },
+        "title": "Somebody chose to make: eligible, available and capability-matched",
+        "type": "manager_decision"
+      },
+      {
+        "actor": {
+          "kind": "somebody",
+          "label": "Somebody"
+        },
+        "detail": "Current channel evidence is available",
+        "id": "activity:intern_assigned:asg_19ba0d1fe4300cd4cb1894fa",
+        "importance": "standard",
+        "occurredAt": 1790181778783,
+        "payload": {
+          "assignmentTitle": "Current channel evidence is available",
+          "intern": {
+            "id": "worker_company_records_lookup-document_drafting-public_information_research",
+            "label": "worker_company_records_lookup-document_drafting-public_information_research",
+            "specialty": "Retrieve the requested facts from company records and record them with their source. Report gaps instead of inferring m…",
+            "state": "done"
+          },
+          "scope": "Relevant, recent, and traceable evidence about trends, audience behavior, content patterns, and platform-relevant considerations is available for TikTok, Instagram, Facebook, and X, with dates, sourc…"
+        },
+        "related": {
+          "internId": "worker_company_records_lookup-document_drafting-public_information_research"
+        },
+        "title": "Somebody assigned worker_company_records_lookup-document_drafting-public_information_research",
+        "type": "intern_assigned"
+      },
+      {
+        "actor": {
+          "id": "worker_company_records_lookup-document_drafting-public_information_research",
+          "kind": "intern",
+          "label": "worker_company_records_lookup-document_drafting-public_information_research"
+        },
+        "id": "activity:finding_added:ev_1790181787221_6vdibl",
+        "importance": "minor",
+        "occurredAt": 1790181787218,
+        "payload": {
+          "evidenceRefs": [
+            {
+              "id": "ev_1790181787221_6vdibl",
+              "label": "Public page: 2025 TikTok trends, audience behavior, content patterns, and platform considerations; capture publication…"
+            }
+          ],
+          "finding": "Newsroom | TikTok About Newsroom Careers Contact Watch TikTok September 18, 2026 • News TikTok Celebrates MILEY’s New Album Bass Persuades With Exclusive In-App Experience Miley is turning up the volume on TikTok with Bass Persuades and bringing fans along for the rideMILEY (@miley) is kicking off a bold new era on TikTok with the release of her highly anticipated tenth studio album Bass Persuade…"
+        },
+        "related": {
+          "evidenceIds": [
+            "ev_1790181787221_6vdibl"
+          ],
+          "internId": "worker_company_records_lookup-document_drafting-public_information_research"
+        },
+        "title": "Public page: 2025 TikTok trends, audience behavior, content patterns, and platform considerations; capture publication…",
+        "type": "finding_added"
+      },
+      {
+        "actor": {
+          "id": "worker_company_records_lookup-document_drafting-public_information_research",
+          "kind": "intern",
+          "label": "worker_company_records_lookup-document_drafting-public_information_research"
+        },
+        "id": "activity:finding_added:ev_1790181800358_zzjy58",
+        "importance": "minor",
+        "occurredAt": 1790181800296,
+        "payload": {
+          "evidenceRefs": [
+            {
+              "id": "ev_1790181800358_zzjy58",
+              "label": "Public page: Instagram ranking signals and content distribution; publication date, audience/content implications, and s…"
+            }
+          ],
+          "finding": "Instagram Ranking Explained | How Our Algorithm Works | About Instagram Instagram Ranking Explained By Adam Mosseri May 31, 2023 We want to do a better job of explaining how Instagram works. There are a lot of misconceptions out there, and we recognize that we can do more to help people, especially creators, understand what we do. Today, we’re updating our original post to shed more light on how…"
+        },
+        "related": {
+          "evidenceIds": [
+            "ev_1790181800358_zzjy58"
+          ],
+          "internId": "worker_company_records_lookup-document_drafting-public_information_research"
+        },
+        "title": "Public page: Instagram ranking signals and content distribution; publication date, audience/content implications, and s…",
+        "type": "finding_added"
+      },
+      {
+        "actor": {
+          "id": "worker_company_records_lookup-document_drafting-public_information_research",
+          "kind": "intern",
+          "label": "worker_company_records_lookup-document_drafting-public_information_research"
+        },
+        "detail": "application-verified against the current revision's proof obligations",
+        "id": "activity:work_summary:asg_19ba0d1fe4300cd4cb1894fa:run_080a8943c5a0a13c05500443",
+        "importance": "standard",
+        "occurredAt": 1790181830085,
+        "payload": {
+          "summary": "application-verified against the current revision's proof obligations"
+        },
+        "related": {
+          "internId": "worker_company_records_lookup-document_drafting-public_information_research"
+        },
+        "title": "worker_company_records_lookup-document_drafting-public_information_research reported back",
+        "type": "work_summary"
+      },
+      {
+        "actor": {
+          "id": "worker_company_records_lookup-document_drafting-public_information_research",
+          "kind": "intern",
+          "label": "worker_company_records_lookup-document_drafting-public_information_research"
+        },
+        "detail": "Current channel evidence is available",
+        "id": "activity:work_completed:asg_19ba0d1fe4300cd4cb1894fa:verified",
+        "importance": "standard",
+        "occurredAt": 1790181830085,
+        "related": {
+          "internId": "worker_company_records_lookup-document_drafting-public_information_research"
+        },
+        "title": "worker_company_records_lookup-document_drafting-public_information_research's work was accepted",
+        "type": "work_completed"
+      },
+      {
+        "actor": {
+          "kind": "somebody",
+          "label": "Somebody"
+        },
+        "id": "activity:manager_decision:dec_obj_1790181742573_ohzr6j_req_02_r1_a2",
+        "importance": "major",
+        "occurredAt": 1790181847230,
+        "payload": {
+          "reason": "Select the internal MAKE option because it is the only eligible option and its governed company-record lookup capability directly supports assembling the required bounded launch brief. It has passed checks for owned inputs, governed primitives, available proof, and worker availability. The brief sh…",
+          "selected": {
+            "approach": "MAKE",
+            "label": "eligible, available and capability-matched"
+          }
+        },
+        "title": "Somebody chose to make: eligible, available and capability-matched",
+        "type": "manager_decision"
+      },
+      {
+        "actor": {
+          "kind": "somebody",
+          "label": "Somebody"
+        },
+        "detail": "Launch context is defined",
+        "id": "activity:intern_assigned:asg_83a4e4d80e56bcf8237d4b62",
+        "importance": "standard",
+        "occurredAt": 1790181847433,
+        "payload": {
+          "assignmentTitle": "Launch context is defined",
+          "intern": {
+            "id": "worker_company_records_lookup-document_drafting-growth_launch_operations",
+            "label": "worker_company_records_lookup-document_drafting-growth_launch_operations",
+            "specialty": "Retrieve the requested facts from company records and record them with their source. Report gaps instead of inferring m…",
+            "state": "done"
+          },
+          "scope": "The app's launch timing, core value proposition, primary audience, relevant constraints, desired launch outcome, and available company facts are sufficiently defined for a channel plan, with explicit…"
+        },
+        "related": {
+          "internId": "worker_company_records_lookup-document_drafting-growth_launch_operations"
+        },
+        "title": "Somebody assigned worker_company_records_lookup-document_drafting-growth_launch_operations",
+        "type": "intern_assigned"
+      },
+      {
+        "actor": {
+          "id": "worker_company_records_lookup-document_drafting-growth_launch_operations",
+          "kind": "intern",
+          "label": "worker_company_records_lookup-document_drafting-growth_launch_operations"
+        },
+        "id": "activity:finding_added:ev_1790181852603_vcfk5t",
+        "importance": "minor",
+        "occurredAt": 1790181852601,
+        "payload": {
+          "evidenceRefs": [
+            {
+              "id": "ev_1790181852603_vcfk5t",
+              "label": "Launch brief"
+            }
+          ],
+          "finding": "Launch brief Somebody has launched, but the page is not converting well. What we know: signup conversion is weak, and many visitors do not immediately recognise that Somebody is built for founders running very small companies or understand how it differs from other AI tools. The current page leans on broad \"AI manager\" and \"automate your workflows\" language. We suspect the positioning is too gene…"
+        },
+        "related": {
+          "evidenceIds": [
+            "ev_1790181852603_vcfk5t"
+          ],
+          "internId": "worker_company_records_lookup-document_drafting-growth_launch_operations"
+        },
+        "title": "Launch brief",
+        "type": "finding_added"
+      },
+      {
+        "actor": {
+          "id": "worker_company_records_lookup-document_drafting-growth_launch_operations",
+          "kind": "intern",
+          "label": "worker_company_records_lookup-document_drafting-growth_launch_operations"
+        },
+        "id": "activity:finding_added:ev_1790181856454_q9y845",
+        "importance": "minor",
+        "occurredAt": 1790181856453,
+        "payload": {
+          "evidenceRefs": [
+            {
+              "id": "ev_1790181856454_q9y845",
+              "label": "Company profile"
+            }
+          ],
+          "finding": "About Somebody Somebody is an AI manager for founders running one-person companies and lean teams. It is designed to take responsibility for moving an objective forward: organising work inside the company, bringing in outside help when needed, and staying with the job until there is a usable result. The product is for founders who personally carry several parts of the business and need important…"
+        },
+        "related": {
+          "evidenceIds": [
+            "ev_1790181856454_q9y845"
+          ],
+          "internId": "worker_company_records_lookup-document_drafting-growth_launch_operations"
+        },
+        "title": "Company profile",
+        "type": "finding_added"
+      },
+      {
+        "actor": {
+          "id": "worker_company_records_lookup-document_drafting-growth_launch_operations",
+          "kind": "intern",
+          "label": "worker_company_records_lookup-document_drafting-growth_launch_operations"
+        },
+        "id": "activity:finding_added:ev_1790181862773_ushn3e",
+        "importance": "minor",
+        "occurredAt": 1790181862770,
+        "payload": {
+          "evidenceRefs": [
+            {
+              "id": "ev_1790181862773_ushn3e",
+              "label": "Partnership evaluation criteria"
+            }
+          ],
+          "finding": "Partnership evaluation criteria (internal): 1. Relevance: the target must serve SME / one-person-company buyers with a product the company can resell, refer or integrate. 2. Reliability: publicly verifiable operating history of at least 12 months, or a credible parent organisation. 3. Reachability: an identified business contact channel (public business email or partner form). 4. Risk posture: no…"
+        },
+        "related": {
+          "evidenceIds": [
+            "ev_1790181862773_ushn3e"
+          ],
+          "internId": "worker_company_records_lookup-document_drafting-growth_launch_operations"
+        },
+        "title": "Partnership evaluation criteria",
+        "type": "finding_added"
+      },
+      {
+        "actor": {
+          "id": "worker_company_records_lookup-document_drafting-growth_launch_operations",
+          "kind": "intern",
+          "label": "worker_company_records_lookup-document_drafting-growth_launch_operations"
+        },
+        "detail": "application-verified against the current revision's proof obligations",
+        "id": "activity:work_summary:asg_83a4e4d80e56bcf8237d4b62:run_65bac0fc4de92c3dd0f1740f",
+        "importance": "standard",
+        "occurredAt": 1790181879402,
+        "payload": {
+          "summary": "application-verified against the current revision's proof obligations"
+        },
+        "related": {
+          "internId": "worker_company_records_lookup-document_drafting-growth_launch_operations"
+        },
+        "title": "worker_company_records_lookup-document_drafting-growth_launch_operations reported back",
+        "type": "work_summary"
+      },
+      {
+        "actor": {
+          "id": "worker_company_records_lookup-document_drafting-growth_launch_operations",
+          "kind": "intern",
+          "label": "worker_company_records_lookup-document_drafting-growth_launch_operations"
+        },
+        "detail": "Launch context is defined",
+        "id": "activity:work_completed:asg_83a4e4d80e56bcf8237d4b62:verified",
+        "importance": "standard",
+        "occurredAt": 1790181879402,
+        "related": {
+          "internId": "worker_company_records_lookup-document_drafting-growth_launch_operations"
+        },
+        "title": "worker_company_records_lookup-document_drafting-growth_launch_operations's work was accepted",
+        "type": "work_completed"
+      },
+      {
+        "actor": {
+          "kind": "somebody",
+          "label": "Somebody"
+        },
+        "id": "activity:manager_decision:dec_obj_1790181742573_ohzr6j_req_03_r1_a1",
+        "importance": "major",
+        "occurredAt": 1790181891465,
+        "payload": {
+          "reason": "Select the internal MAKE option. It is the only eligible option and covers the required capabilities: company-record lookup and document drafting, with inputs owned, governed primitives, available proof, and an available worker. The satisfied prerequisites provide the product, audience, positioning…",
+          "selected": {
+            "approach": "MAKE",
+            "label": "eligible, available and capability-matched"
+          }
+        },
+        "title": "Somebody chose to make: eligible, available and capability-matched",
+        "type": "manager_decision"
+      },
+      {
+        "actor": {
+          "kind": "somebody",
+          "label": "Somebody"
+        },
+        "detail": "Four-channel marketing plan is complete",
+        "id": "activity:intern_assigned:asg_0a1d4228c74e44941bcc863e",
+        "importance": "standard",
+        "occurredAt": 1790181891672,
+        "payload": {
+          "assignmentTitle": "Four-channel marketing plan is complete",
+          "intern": {
+            "id": "worker_company_records_lookup-document_drafting-growth_launch_operations",
+            "label": "worker_company_records_lookup-document_drafting-growth_launch_operations",
+            "specialty": "Retrieve the requested facts from company records and record them with their source. Report gaps instead of inferring m…",
+            "state": "done"
+          },
+          "scope": "A founder-facing marketing plan covers TikTok, Instagram, Facebook, and X with channel-specific roles, audience and message alignment, content requirements, launch-week timing, prioritization, and cl…"
+        },
+        "related": {
+          "internId": "worker_company_records_lookup-document_drafting-growth_launch_operations"
+        },
+        "title": "Somebody assigned worker_company_records_lookup-document_drafting-growth_launch_operations",
+        "type": "intern_assigned"
+      },
+      {
+        "actor": {
+          "id": "worker_company_records_lookup-document_drafting-growth_launch_operations",
+          "kind": "intern",
+          "label": "worker_company_records_lookup-document_drafting-growth_launch_operations"
+        },
+        "id": "activity:finding_added:ev_1790181895543_m74qbd",
+        "importance": "minor",
+        "occurredAt": 1790181895541,
+        "payload": {
+          "evidenceRefs": [
+            {
+              "id": "ev_1790181895543_m74qbd",
+              "label": "Company profile"
+            }
+          ],
+          "finding": "About Somebody Somebody is an AI manager for founders running one-person companies and lean teams. It is designed to take responsibility for moving an objective forward: organising work inside the company, bringing in outside help when needed, and staying with the job until there is a usable result. The product is for founders who personally carry several parts of the business and need important…"
+        },
+        "related": {
+          "evidenceIds": [
+            "ev_1790181895543_m74qbd"
+          ],
+          "internId": "worker_company_records_lookup-document_drafting-growth_launch_operations"
+        },
+        "title": "Company profile",
+        "type": "finding_added"
+      },
+      {
+        "actor": {
+          "id": "worker_company_records_lookup-document_drafting-growth_launch_operations",
+          "kind": "intern",
+          "label": "worker_company_records_lookup-document_drafting-growth_launch_operations"
+        },
+        "id": "activity:finding_added:ev_1790181899071_l9k4tu",
+        "importance": "minor",
+        "occurredAt": 1790181899067,
+        "payload": {
+          "evidenceRefs": [
+            {
+              "id": "ev_1790181899071_l9k4tu",
+              "label": "Launch brief"
+            }
+          ],
+          "finding": "Launch brief Somebody has launched, but the page is not converting well. What we know: signup conversion is weak, and many visitors do not immediately recognise that Somebody is built for founders running very small companies or understand how it differs from other AI tools. The current page leans on broad \"AI manager\" and \"automate your workflows\" language. We suspect the positioning is too gene…"
+        },
+        "related": {
+          "evidenceIds": [
+            "ev_1790181899071_l9k4tu"
+          ],
+          "internId": "worker_company_records_lookup-document_drafting-growth_launch_operations"
+        },
+        "title": "Launch brief",
+        "type": "finding_added"
+      },
+      {
+        "actor": {
+          "id": "worker_company_records_lookup-document_drafting-growth_launch_operations",
+          "kind": "intern",
+          "label": "worker_company_records_lookup-document_drafting-growth_launch_operations"
+        },
+        "detail": "Created a review-only founder-facing marketing plan grounded in company/profile and launch/context, covering all four requested channels, roles, alignment, content, timing, prioritization, assumptions, and evidence gaps. No publishing or s…",
+        "id": "activity:artifact_changed:objective/deliverable:2",
+        "importance": "major",
+        "occurredAt": 1790181938188,
+        "payload": {
+          "after": "Objective deliverable\n\nFounder-facing marketing plan — review draft only\nStatus: Draft for founder review. Do not publish or send yet.\n\nEvidence base\n- Company profile (company/profile): Somebody is an AI manager for founders running one-person companies and lean teams. It helps organise work, bring in outside help when needed, and stay with an objective until there is a usable result. The product is for founders personally carrying several parts of the business who need important work to keep …",
+          "before": "Objective deliverable\n\nThis is the governed workspace for this Objective's produced output.\nIt starts empty of worker-authored content.\nStatus: Draft seed — awaiting a real worker update.",
+          "changeSummary": "Created a review-only founder-facing marketing plan grounded in company/profile and launch/context, covering all four requested channels, roles, alignment, content, timing, prioritization, assumptions, and evidence gaps. No publishing or sending performed.",
+          "deliverableId": "deliverable:obj_1790181742573_ohzr6j:objective/deliverable"
+        },
+        "related": {
+          "deliverableId": "deliverable:obj_1790181742573_ohzr6j:objective/deliverable",
+          "internId": "worker_company_records_lookup-document_drafting-growth_launch_operations"
+        },
+        "title": "Objective deliverable updated to version 2",
+        "type": "artifact_changed"
+      },
+      {
+        "actor": {
+          "id": "worker_company_records_lookup-document_drafting-growth_launch_operations",
+          "kind": "intern",
+          "label": "worker_company_records_lookup-document_drafting-growth_launch_operations"
+        },
+        "detail": "application-verified against the current revision's proof obligations",
+        "id": "activity:work_summary:asg_0a1d4228c74e44941bcc863e:run_e019ff0006e5c579bb01be49",
+        "importance": "standard",
+        "occurredAt": 1790181943280,
+        "payload": {
+          "summary": "application-verified against the current revision's proof obligations"
+        },
+        "related": {
+          "internId": "worker_company_records_lookup-document_drafting-growth_launch_operations"
+        },
+        "title": "worker_company_records_lookup-document_drafting-growth_launch_operations reported back",
+        "type": "work_summary"
+      },
+      {
+        "actor": {
+          "id": "worker_company_records_lookup-document_drafting-growth_launch_operations",
+          "kind": "intern",
+          "label": "worker_company_records_lookup-document_drafting-growth_launch_operations"
+        },
+        "detail": "Four-channel marketing plan is complete",
+        "id": "activity:work_completed:asg_0a1d4228c74e44941bcc863e:verified",
+        "importance": "standard",
+        "occurredAt": 1790181943280,
+        "related": {
+          "internId": "worker_company_records_lookup-document_drafting-growth_launch_operations"
+        },
+        "title": "worker_company_records_lookup-document_drafting-growth_launch_operations's work was accepted",
+        "type": "work_completed"
+      },
+      {
+        "actor": {
+          "kind": "somebody",
+          "label": "Somebody"
+        },
+        "id": "activity:manager_decision:dec_obj_1790181742573_ohzr6j_req_04_r1_a1",
+        "importance": "major",
+        "occurredAt": 1790181954304,
+        "payload": {
+          "reason": "Select the internal MAKE option because it is the only eligible option and directly covers the required capabilities: company-record lookup, public-information research, document drafting, and growth-launch operations. Those capabilities are sufficient to create an evidence-linked measurement and d…",
+          "selected": {
+            "approach": "MAKE",
+            "label": "no eligible available persistent worker exists for the required capability envelope"
+          }
+        },
+        "title": "Somebody chose to make: no eligible available persistent worker exists for the required capability enve…",
+        "type": "manager_decision"
+      },
+      {
+        "actor": {
+          "kind": "somebody",
+          "label": "Somebody"
+        },
+        "detail": "Plan claims and outcomes are verifiable",
+        "id": "activity:intern_assigned:asg_74941a6b5abc6c7133593849",
+        "importance": "standard",
+        "occurredAt": 1790181954521,
+        "payload": {
+          "assignmentTitle": "Plan claims and outcomes are verifiable",
+          "intern": {
+            "id": "worker_company_records_lookup-document_drafting-growth_launch_operations-public_information_research",
+            "label": "worker_company_records_lookup-document_drafting-growth_launch_operations-public_information_research",
+            "specialty": "Retrieve the requested facts from company records and record them with their source. Report gaps instead of inferring m…",
+            "state": "done"
+          },
+          "scope": "The plan distinguishes evidence from assumptions, traces trend-based recommendations to sources, defines measurable success indicators and target interpretations, and states how results should inform…"
+        },
+        "related": {
+          "internId": "worker_company_records_lookup-document_drafting-growth_launch_operations-public_information_research"
+        },
+        "title": "Somebody assigned worker_company_records_lookup-document_drafting-growth_launch_operations-public_information_research",
+        "type": "intern_assigned"
+      },
+      {
+        "actor": {
+          "id": "worker_company_records_lookup-document_drafting-growth_launch_operations-public_information_research",
+          "kind": "intern",
+          "label": "worker_company_records_lookup-document_drafting-growth_launch_operations-public_information_research"
+        },
+        "detail": "Plan claims and outcomes are verifiable",
+        "id": "activity:work_started:run_813ad481b76b6524f201c961",
+        "importance": "minor",
+        "occurredAt": 1790181954521,
+        "related": {
+          "internId": "worker_company_records_lookup-document_drafting-growth_launch_operations-public_information_research"
+        },
+        "title": "worker_company_records_lookup-document_drafting-growth_launch_operations-public_information_research started work",
+        "type": "work_started"
+      },
+      {
+        "actor": {
+          "id": "worker_company_records_lookup-document_drafting-growth_launch_operations-public_information_research",
+          "kind": "intern",
+          "label": "worker_company_records_lookup-document_drafting-growth_launch_operations-public_information_research"
+        },
+        "id": "activity:finding_added:ev_1790181960200_5qgq4h",
+        "importance": "minor",
+        "occurredAt": 1790181960195,
+        "payload": {
+          "evidenceRefs": [
+            {
+              "id": "ev_1790181960200_5qgq4h",
+              "label": "Launch brief"
+            }
+          ],
+          "finding": "Launch brief Somebody has launched, but the page is not converting well. What we know: signup conversion is weak, and many visitors do not immediately recognise that Somebody is built for founders running very small companies or understand how it differs from other AI tools. The current page leans on broad \"AI manager\" and \"automate your workflows\" language. We suspect the positioning is too gene…"
+        },
+        "related": {
+          "evidenceIds": [
+            "ev_1790181960200_5qgq4h"
+          ],
+          "internId": "worker_company_records_lookup-document_drafting-growth_launch_operations-public_information_research"
+        },
+        "title": "Launch brief",
+        "type": "finding_added"
+      },
+      {
+        "actor": {
+          "id": "worker_company_records_lookup-document_drafting-growth_launch_operations-public_information_research",
+          "kind": "intern",
+          "label": "worker_company_records_lookup-document_drafting-growth_launch_operations-public_information_research"
+        },
+        "id": "activity:finding_added:ev_1790181965021_fr7pvm",
+        "importance": "minor",
+        "occurredAt": 1790181965019,
+        "payload": {
+          "evidenceRefs": [
+            {
+              "id": "ev_1790181965021_fr7pvm",
+              "label": "Company profile"
+            }
+          ],
+          "finding": "About Somebody Somebody is an AI manager for founders running one-person companies and lean teams. It is designed to take responsibility for moving an objective forward: organising work inside the company, bringing in outside help when needed, and staying with the job until there is a usable result. The product is for founders who personally carry several parts of the business and need important…"
+        },
+        "related": {
+          "evidenceIds": [
+            "ev_1790181965021_fr7pvm"
+          ],
+          "internId": "worker_company_records_lookup-document_drafting-growth_launch_operations-public_information_research"
+        },
+        "title": "Company profile",
+        "type": "finding_added"
+      },
+      {
+        "actor": {
+          "id": "worker_company_records_lookup-document_drafting-growth_launch_operations-public_information_research",
+          "kind": "intern",
+          "label": "worker_company_records_lookup-document_drafting-growth_launch_operations-public_information_research"
+        },
+        "detail": "Req_04 update: added sourced evidence-versus-assumption distinctions, measurable success indicators and interpretations, explicit target gaps, and bounded launch-week decision rules. Review-only status retained.",
+        "id": "activity:artifact_changed:objective/deliverable:3",
+        "importance": "major",
+        "occurredAt": 1790182023495,
+        "payload": {
+          "after": "Objective deliverable\n\nFounder-facing marketing plan - review draft only\nStatus: Draft for founder review. Do not publish or send yet.\n\nEvidence base\n- Company profile (company/profile): Somebody is an AI manager for founders running one-person companies and lean teams. It organises work, brings in outside help when needed, and stays with an objective until there is a usable result. Positioning should be practical and outcome-focused; do not imply replacement of the founder or guaranteed result…",
+          "before": "Objective deliverable\n\nFounder-facing marketing plan — review draft only\nStatus: Draft for founder review. Do not publish or send yet.\n\nEvidence base\n- Company profile (company/profile): Somebody is an AI manager for founders running one-person companies and lean teams. It helps organise work, bring in outside help when needed, and stay with an objective until there is a usable result. The product is for founders personally carrying several parts of the business who need important work to keep …",
+          "changeSummary": "Req_04 update: added sourced evidence-versus-assumption distinctions, measurable success indicators and interpretations, explicit target gaps, and bounded launch-week decision rules. Review-only status retained.",
+          "deliverableId": "deliverable:obj_1790181742573_ohzr6j:objective/deliverable"
+        },
+        "related": {
+          "deliverableId": "deliverable:obj_1790181742573_ohzr6j:objective/deliverable",
+          "internId": "worker_company_records_lookup-document_drafting-growth_launch_operations-public_information_research"
+        },
+        "title": "Objective deliverable updated to version 3",
+        "type": "artifact_changed"
+      },
+      {
+        "actor": {
+          "id": "worker_company_records_lookup-document_drafting-growth_launch_operations-public_information_research",
+          "kind": "intern",
+          "label": "worker_company_records_lookup-document_drafting-growth_launch_operations-public_information_research"
+        },
+        "detail": "application-verified against the current revision's proof obligations",
+        "id": "activity:work_summary:asg_74941a6b5abc6c7133593849:run_813ad481b76b6524f201c961",
+        "importance": "standard",
+        "occurredAt": 1790182028936,
+        "payload": {
+          "summary": "application-verified against the current revision's proof obligations"
+        },
+        "related": {
+          "internId": "worker_company_records_lookup-document_drafting-growth_launch_operations-public_information_research"
+        },
+        "title": "worker_company_records_lookup-document_drafting-growth_launch_operations-public_information_research reported back",
+        "type": "work_summary"
+      },
+      {
+        "actor": {
+          "id": "worker_company_records_lookup-document_drafting-growth_launch_operations-public_information_research",
+          "kind": "intern",
+          "label": "worker_company_records_lookup-document_drafting-growth_launch_operations-public_information_research"
+        },
+        "detail": "Plan claims and outcomes are verifiable",
+        "id": "activity:work_completed:asg_74941a6b5abc6c7133593849:verified",
+        "importance": "standard",
+        "occurredAt": 1790182028936,
+        "related": {
+          "internId": "worker_company_records_lookup-document_drafting-growth_launch_operations-public_information_research"
+        },
+        "title": "worker_company_records_lookup-document_drafting-growth_launch_operations-public_information_research's work was accepted",
+        "type": "work_completed"
+      },
+      {
+        "actor": {
+          "kind": "somebody",
+          "label": "Somebody"
+        },
+        "detail": "The deliverable meets the locked marketing_plan_complete bar. It provides a coherent plan for TikTok, Instagram, Facebook, and X; identifies the audience and evidence-grounded positioning; assigns channel-specific roles; specifies content direction, launch-week sequencing, prioritization, measureme…",
+        "id": "activity:verification_completed:r1:objective/deliverable@3:1790182038280",
+        "importance": "major",
+        "occurredAt": 1790182038280,
+        "payload": {
+          "checks": [
+            {
+              "label": "Meets the minimum completion bar",
+              "status": "passed"
+            }
+          ],
+          "remainingUnknowns": [
+            "No current, dated, channel-specific trend or audience-behavior evidence is included.",
+            "CTA, destination, owners, budget, capacity, assets, exact launch date, attribution implementation, baseline, numeric targets, and review method remain unspecified.",
+            "The channel roles and one-week sequence are explicitly provisional hypotheses rather than validated channel results."
+          ]
+        },
+        "related": {
+          "evidenceIds": [
+            "ev_1790181856454_q9y845",
+            "ev_1790181899071_l9k4tu"
+          ]
+        },
+        "title": "The deliverable meets the required outcome",
+        "type": "verification_completed"
+      },
+      {
+        "actor": {
+          "kind": "somebody",
+          "label": "Somebody"
+        },
+        "detail": "budget limit maxNoProgressCycles: 3 consecutive cycles produced no materially new observation",
+        "id": "activity:objective_blocked:escalated:1790182254535",
+        "importance": "major",
+        "occurredAt": 1790182254535,
+        "title": "Objective blocked",
+        "type": "objective_blocked"
+      }
+    ],
+    "attention": null,
+    "availableActions": [],
+    "currentWork": null,
+    "deliverables": [
+      {
+        "content": "Objective deliverable\n\nFounder-facing marketing plan - review draft only\nStatus: Draft for founder review. Do not publish or send yet.\n\nEvidence base\n- Company profile (company/profile): Somebody is an AI manager for founders running one-person companies and lean teams. It organises work, brings in outside help when needed, and stays with an objective until there is a usable result. Positioning should be practical and outcome-focused; do not imply replacement of the founder or guaranteed results.\n- Launch brief (launch/context): signup conversion is weak; many visitors do not recognise the target audience or how the product differs from other AI tools. Current language is broad, and strong evidence for founders' own problem wording is not yet available.\n\nCore relaunch message\nSomebody helps founders running one-person companies and lean teams keep important work moving by organising the work, bringing in help when needed, and staying with the objective through a usable result. Lead with the founder and practical outcome. Avoid replacement or guaranteed-result claims.\n\nAudience and message alignment\nPrimary audience: founders running one-person companies and lean teams, especially those personally carrying several business functions.\nEvidence-based problem: important work needs to keep moving without adding another tool to manage; visitors may not recognise the audience or differentiation.\nMessage job: make the audience and practical role clear, then show how Somebody stays with an objective rather than using generic AI language.\nCTA: not specified in the records; propose only after review of destination and wording.\n\nChannel plan\nTikTok - provisional discovery/testing. Show a founder multi-role workload and the keep-an-objective-moving promise in short demonstrations.\nInstagram - provisional core launch storytelling. Use visual explainers and product stories so one-person-company and lean-team founders recognise themselves and understand the difference from generic AI tools.\nFacebook - provisional targeted explanation and community reuse. Provide accessible context and detail using approved assets.\nX - provisional message testing and founder conversation. Test concise practical positioning and invite discussion.\nAll channel content must use an audience qualifier, practical outcome framing, evidence-safe CTAs, and no unsupported guarantees. These roles and priorities are hypotheses, not measured channel results.\n\nProvisional launch-week timing\nNo exact relaunch date is recorded. Before the week: review message, destination, CTA, claims, creative capacity, and measurement plan. Day 1: approved explainer on Instagram and X. Day 2: TikTok founder scenario adapted for Instagram Reels. Day 3: Facebook explanation and X question. Day 4: second TikTok/Instagram scenario. Day 5: compare channel-level attention and signup signals and select the strongest evidence-safe message. Days 6-7: repeat the best approved format, document learnings, and prepare founder review. Planning only; no posting or sending is authorized.\n\nPrioritization\nClarify audience and product difference because weak signup conversion and audience/differentiation confusion are evidenced problems. Provisionally start with Instagram and X for the message system, TikTok for scenario tests, and Facebook for detail/context. Reuse one approved message across channels. Review qualitative responses and signup results before adding effort or budget. No budget, capacity, success target, or baseline is recorded.\n\nMeasurement, target interpretation, and launch-week decisions\nEvidence versus assumptions:\n- Evidence: launch/context reports weak signup conversion, unclear audience and differentiation, broad current language, and no strong evidence for founder wording. Company/profile defines the audience and practical product role.\n- Assumption: the provisional channel roles and priorities may be useful tests; no channel-performance evidence establishes superiority.\n- Assumption: clearer audience-and-role wording may improve understanding and signup behaviour; proposed wording is a test, not validated customer language.\n\nSuccess indicators:\n1. Signup conversion rate by channel and message/format: signups divided by attributable visits. Interpret against a supplied pre-launch baseline; without a baseline or numeric target, make no pass/fail claim.\n2. Attributable visits by channel and message/format: visits assigned to an approved launch item. Use for comparison only where tracking is equivalent; it is not product-market-fit evidence by itself.\n3. Audience recognition: count and proportion of reviewed responses identifying Somebody as for founders running one-person companies or lean teams. Treat as a research signal and do not generalise from an unspecified sample.\n4. Differentiation comprehension: count and proportion of reviewed responses describing the practical role rather than generic AI language. Compare variants descriptively; no target is recorded.\n5. Qualitative themes: code approved feedback with source, date, channel, and message variant. Use to refine wording only after review; do not infer prevalence without a defined sample and method.\n\nTarget status and decision rules\nNo numeric baseline, target, sample size, attribution method, exact relaunch date, or owner is recorded. These are gaps, not values to infer. Before publication or sending, the founder should approve the baseline window, numeric targets, tracking method, response-review method, and owner. At Day 5, select a message/format for Days 6-7 only if measurement is available and it is directionally stronger on the agreed signup and comprehension indicators; the founder must define directionally stronger. If tracking is unavailable, responses are insufficiently reviewed, or comparison is unfair, do not declare a winner or add effort/budget. If a message is weaker, pause repetition and review audience label, differentiation explanation, destination, and CTA before changing channel priority. Do not infer causality from untracked or confounded comparisons. Results inform only the next approved message/format iteration and review decision; they do not authorise publishing, sending, budget, or channel expansion.\n\nAssumptions and gaps\nA one-week sequence is assumed; exact date is missing. Channel account ownership, audience size, capacity, format constraints, quantified objective, baseline, comparison window, attribution, sample and coding method, budget, owner, CTA, destination, assets, cadence, audience research, validated wording, and evidence of channel/message improvement are missing. Confirm through company records or research; do not infer.\n\nReview decision requested\nApprove or revise the core message, channel roles, timing, CTA/destination, owners, budget/capacity, measurement definitions, baseline, numeric targets, attribution, qualitative review method, and decision rules before publication or sending.\n\nOriginal seed retained\nThis is the governed workspace for this Objective's produced output.\nStatus: Draft seed - awaiting a real worker update.",
+        "evidenceRefs": [
+          {
+            "id": "ev_1790181856454_q9y845",
+            "label": "Company profile"
+          },
+          {
+            "id": "ev_1790181899071_l9k4tu",
+            "label": "Launch brief"
+          }
+        ],
+        "id": "deliverable:obj_1790181742573_ohzr6j:objective/deliverable",
+        "recommendedNextMove": "Use this as the founder-review draft, then add current traceable channel evidence and resolve the stated operational gaps before treating it as launch-ready or publishing.",
+        "status": "current",
+        "summary": "Req_04 update: added sourced evidence-versus-assumption distinctions, measurable success indicators and interpretations, explicit target gaps, and bounded launch-week decision rules. Review-only status retained.",
+        "title": "Objective deliverable",
+        "type": "document",
+        "unknowns": [
+          "No current, dated, channel-specific trend or audience-behavior evidence is included.",
+          "CTA, destination, owners, budget, capacity, assets, exact launch date, attribution implementation, baseline, numeric targets, and review method remain unspecified.",
+          "The channel roles and one-week sequence are explicitly provisional hypotheses rather than validated channel results."
+        ],
+        "updatedAt": 1790182023495,
+        "version": 3
+      }
+    ],
+    "liveness": {
+      "active": false,
+      "detail": "No active engine step.",
+      "lastProgressAt": 1790182254535,
+      "phase": "idle"
+    },
+    "objective": {
+      "createdAt": 1790181742573,
+      "id": "obj_1790181742573_ohzr6j",
+      "request": "We're launching our app this week and need to do social media marketing on TikTok, Instagram, Facebook and X. I need you to come up with a marketing plan based on the latest trends on these channels, preferably with some real evidence",
+      "status": "blocked",
+      "title": "We're launching our app this week and need to do social med…",
+      "updatedAt": 1790182254535
+    },
+    "progress": {
+      "checkpoints": [
+        {
+          "detail": "Relevant, recent, and traceable evidence about trends, audience behavior, content patterns, and platform-relevant considerations is available for TikTok, Insta…",
+          "id": "checkpoint:req:1:req_01",
+          "label": "Current channel evidence is available",
+          "state": "complete"
+        },
+        {
+          "detail": "The app's launch timing, core value proposition, primary audience, relevant constraints, desired launch outcome, and available company facts are sufficiently d…",
+          "id": "checkpoint:req:1:req_02",
+          "label": "Launch context is defined",
+          "state": "complete"
+        },
+        {
+          "detail": "A founder-facing marketing plan covers TikTok, Instagram, Facebook, and X with channel-specific roles, audience and message alignment, content requirements, la…",
+          "id": "checkpoint:req:1:req_03",
+          "label": "Four-channel marketing plan is complete",
+          "state": "complete"
+        },
+        {
+          "detail": "The plan distinguishes evidence from assumptions, traces trend-based recommendations to sources, defines measurable success indicators and target interpretatio…",
+          "id": "checkpoint:req:1:req_04",
+          "label": "Plan claims and outcomes are verifiable",
+          "state": "complete"
+        }
+      ]
+    },
+    "somebodyNow": {
+      "detail": "budget limit maxNoProgressCycles: 3 consecutive cycles produced no materially new observation",
+      "headline": "Blocked",
+      "state": "blocked",
+      "updatedAt": 1790182254535
+    }
+  },
+  "viewRevision": "v1:a558e8e29cf652bb"
+}
