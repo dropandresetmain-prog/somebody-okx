@@ -1,43 +1,208 @@
-import { Mascot } from "../somebody/Mascot";
-import type { StartCapabilitiesView } from "../product/contracts";
+"use client";
 
-// /start — capability-gated composer shell (task §17). Creation has no legal
-// command this milestone, so canCreateObjective is (truthfully) always false
-// right now; this view never fakes submission and never calls a setup or
-// legacy create mutation. Controls for context/attachments/advanced only
-// render when their StartCapabilitiesView flag is true.
-export function StartView({ capabilities }: { capabilities: StartCapabilitiesView | null }) {
+import { useCallback, useEffect, useRef, useState } from "react";
+import { DuoArt } from "../product/characters";
+import type {
+  ProductCommandResult,
+  StartCapabilitiesView,
+} from "../product/contracts";
+import {
+  CREATE_TRANSITION_COPY,
+  canSubmitCreate,
+  productErrorCopy,
+  shouldShowSuccessTransition,
+  transitionDurationMs,
+  trimObjectiveRequest,
+} from "./startCreateFlow";
+
+type StartViewProps = {
+  capabilities: StartCapabilitiesView | null;
+  onCreate?: (request: string) => Promise<ProductCommandResult>;
+  onNavigateToObjective?: (objectiveId: string) => void;
+};
+
+// /start — capability-gated composer. When canCreateObjective is true, submits
+// through the Product Command adapter only. Unsupported controls stay hidden.
+export function StartView({
+  capabilities,
+  onCreate,
+  onNavigateToObjective,
+}: StartViewProps) {
   const loaded = capabilities !== null;
   const canCreate = capabilities?.canCreateObjective ?? false;
+  const showContext = Boolean(capabilities?.supportsContextRefs);
+  const showAttachments = Boolean(capabilities?.supportsAttachments);
+  const showSpend = Boolean(capabilities?.advanced.spendLimit);
+  const showDeadline = Boolean(capabilities?.advanced.deadline);
+  const showPolicy = Boolean(capabilities?.advanced.externalEffectPolicy);
+  const showAdvanced = showSpend || showDeadline || showPolicy;
+  const showTools = showContext || showAttachments;
+
+  const [request, setRequest] = useState("");
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [transitionObjectiveId, setTransitionObjectiveId] = useState<string | null>(null);
+  const navigateTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (navigateTimer.current) clearTimeout(navigateTimer.current);
+    };
+  }, []);
+
+  const submittable = canSubmitCreate(request, canCreate, pending);
+
+  const finishNavigate = useCallback(
+    (objectiveId: string) => {
+      onNavigateToObjective?.(objectiveId);
+    },
+    [onNavigateToObjective],
+  );
+
+  const handleSubmit = useCallback(async () => {
+    if (!onCreate || !submittable || pending) return;
+    setError(null);
+    setPending(true);
+    try {
+      const trimmed = trimObjectiveRequest(request);
+      const result = await onCreate(trimmed);
+      if (!result.accepted) {
+        setError(productErrorCopy(result.error));
+        setPending(false);
+        return;
+      }
+      if (!shouldShowSuccessTransition(result)) {
+        setPending(false);
+        return;
+      }
+      // Accepted → short walking-duo presentation, then navigate. Do not wait
+      // for interpretation / contract / work. No automatic retry.
+      setTransitionObjectiveId(result.objectiveId);
+      const reduced =
+        typeof window !== "undefined" &&
+        window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      const delay = transitionDurationMs(reduced);
+      if (delay <= 0) {
+        finishNavigate(result.objectiveId);
+        return;
+      }
+      navigateTimer.current = setTimeout(() => {
+        finishNavigate(result.objectiveId);
+      }, delay);
+    } catch {
+      setError("Objective creation is unavailable right now. Try again in a moment.");
+      setPending(false);
+    }
+  }, [finishNavigate, onCreate, pending, request, submittable]);
+
+  if (transitionObjectiveId) {
+    return (
+      <div className="v6-start" data-start-phase="transition">
+        <div className="v6-start-transition" role="status" aria-live="polite">
+          <DuoArt
+            pose="walking"
+            className="v6-start-transition-duo"
+            alt="Somebody and the Intern heading out"
+          />
+          <p className="v6-start-transition-copy">{CREATE_TRANSITION_COPY}</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="v6-start">
       <div className="v6-start-hero">
-        <Mascot pose="typing" size="lg" />
-        <p className="kicker">Start</p>
+        <div className="v6-start-hero-art">
+          <DuoArt
+            pose="working"
+            className="v6-start-hero-duo"
+            alt="Somebody working while the Intern eagerly brings ideas"
+          />
+        </div>
+        <p className="v6-objective-kicker">New objective</p>
         <h1>Give Somebody an objective</h1>
-        <p className="muted">Say what you need done. Somebody turns it into an outcome that can be proved.</p>
+        <p>Describe the result you want. Add context, files or limits only when they matter.</p>
       </div>
 
       <div className="v6-start-composer" data-can-create={canCreate ? "true" : "false"}>
-        <label htmlFor="v6-start-request">Objective</label>
-        <textarea id="v6-start-request" rows={5} disabled placeholder="What do you need Somebody to do?" />
+        <label className="sr-only" htmlFor="v6-start-request">
+          Objective
+        </label>
+        <textarea
+          id="v6-start-request"
+          rows={5}
+          disabled={!canCreate || pending}
+          value={request}
+          onChange={(e) => setRequest(e.target.value)}
+          placeholder="Our launch messaging isn’t working. Figure out what’s wrong and get a better relaunch ready…"
+        />
+        <div className="v6-composer-bar">
+          {showTools ? (
+            <div className="v6-composer-tools">
+              {showContext ? <div className="v6-tool-btn v6-start-field">Context</div> : null}
+              {showAttachments ? <div className="v6-tool-btn v6-start-field">Attachments</div> : null}
+            </div>
+          ) : (
+            <div />
+          )}
+          <button
+            type="button"
+            className="v6-send-btn"
+            disabled={!submittable}
+            data-start-submit="true"
+            data-pending={pending ? "true" : "false"}
+            onClick={() => void handleSubmit()}
+          >
+            {pending ? "Starting…" : "Start objective →"}
+          </button>
+        </div>
+        {showAdvanced ? (
+          <div className="v6-advanced">
+            {showSpend ? (
+              <div className="v6-advanced-card v6-start-field">
+                <span>Spending authority</span>
+                <strong>Spend limit</strong>
+              </div>
+            ) : null}
+            {showDeadline ? (
+              <div className="v6-advanced-card v6-start-field">
+                <span>Deadline</span>
+                <strong>Deadline</strong>
+              </div>
+            ) : null}
+            {showPolicy ? (
+              <div className="v6-advanced-card v6-start-field">
+                <span>External effects</span>
+                <strong>External effect policy</strong>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+        {error ? (
+          <p className="muted v6-start-note v6-start-error" role="alert">
+            {error}
+          </p>
+        ) : (
+          <p className="muted v6-start-note" role="status">
+            {!loaded
+              ? "Checking what’s available…"
+              : canCreate
+                ? "Somebody will interpret this and get to work."
+                : "Starting a new objective isn’t available yet."}
+          </p>
+        )}
+      </div>
 
-        {capabilities?.supportsContextRefs ? <div className="v6-start-field">Context</div> : null}
-        {capabilities?.supportsAttachments ? <div className="v6-start-field">Attachments</div> : null}
-        {capabilities?.advanced.spendLimit ? <div className="v6-start-field">Spend limit</div> : null}
-        {capabilities?.advanced.deadline ? <div className="v6-start-field">Deadline</div> : null}
-        {capabilities?.advanced.externalEffectPolicy ? <div className="v6-start-field">External effect policy</div> : null}
-
-        <button type="button" className="button primary large" disabled data-start-submit="true">
-          Start objective
-        </button>
-
-        <p className="muted v6-start-note" role="status">
-          {loaded
-            ? "Starting a new objective isn't available yet in this milestone."
-            : "Checking what's available…"}
-        </p>
+      <div className="v6-empty-zones">
+        <div className="v6-empty-zone">
+          <strong>Activity</strong>
+          <span>Meaningful moves will appear here once Somebody starts managing the objective.</span>
+        </div>
+        <div className="v6-empty-zone">
+          <strong>Deliverable</strong>
+          <span>Nothing to show yet. Output appears when there is something real to review.</span>
+        </div>
       </div>
     </div>
   );

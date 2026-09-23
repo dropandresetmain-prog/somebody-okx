@@ -216,6 +216,141 @@ test("Activity degrades gracefully when an optional payload is absent", () => {
   assert.ok(html.includes("Somebody chose to make: landing copy"));
 });
 
+test("Activity MAKE/BUY decisions use founder-facing headlines while preserving selected truth", () => {
+  const make: ActivityItem = {
+    id: "act_make",
+    type: "manager_decision",
+    occurredAt: NOW,
+    actor: { kind: "somebody", label: "Somebody" },
+    title: "Somebody chose to make: landing copy",
+    importance: "major",
+    payload: {
+      selected: { approach: "MAKE", label: "Use the Intern" },
+      alternative: { approach: "BUY", label: "Buy a writer" },
+      reason: "Internal capacity is enough.",
+    },
+  };
+  const buy: ActivityItem = {
+    id: "act_buy",
+    type: "manager_decision",
+    occurredAt: NOW,
+    actor: { kind: "somebody", label: "Somebody" },
+    title: "Somebody chose to buy audience evidence",
+    importance: "major",
+    payload: {
+      selected: { approach: "BUY", label: "Acquire audience-language evidence" },
+      alternative: { approach: "MAKE", label: "Continue with owned research" },
+      reason: "The gap is current audience language.",
+    },
+  };
+  const makeHtml = renderToStaticMarkup(createElement(Activity, { items: [make] }));
+  assert.ok(makeHtml.includes("Keep this in-house"));
+  assert.ok(makeHtml.includes("Use the Intern"));
+  assert.ok(makeHtml.includes("v6-option is-selected"));
+  assert.ok(makeHtml.includes("<summary>Why</summary>"));
+  assert.ok(makeHtml.includes("Internal capacity is enough."));
+
+  const buyHtml = renderToStaticMarkup(createElement(Activity, { items: [buy] }));
+  assert.ok(buyHtml.includes("Bring in outside help"));
+  assert.ok(buyHtml.includes("Acquire audience-language evidence"));
+  assert.ok(buyHtml.includes("Continue with owned research"));
+});
+
+test("ObjectiveHeader completed state uses verified treatment; working/blocked stay non-green", () => {
+  const completed = renderToStaticMarkup(
+    createElement(ObjectiveHeader, {
+      objective: { ...workspace().objective, status: "completed" },
+      somebodyNow: { state: "completed", headline: "The required outcome is verified.", detail: "Saved.", updatedAt: NOW },
+    }),
+  );
+  assert.ok(completed.includes('data-objective-status="completed"'));
+  assert.ok(completed.includes("Somebody · objective verified"));
+  assert.ok(completed.includes("tone-verified"));
+
+  const working = renderToStaticMarkup(
+    createElement(ObjectiveHeader, {
+      objective: workspace().objective,
+      somebodyNow: workspace().somebodyNow,
+    }),
+  );
+  assert.ok(working.includes('data-objective-status="working"'));
+  assert.ok(!working.includes("Somebody · objective verified"));
+  assert.match(working, /v6-somebody-card[^>]*data-objective-status="working"/);
+
+  const blocked = renderToStaticMarkup(
+    createElement(ObjectiveHeader, {
+      objective: { ...workspace().objective, status: "blocked" },
+      somebodyNow: { state: "blocked", headline: "Stopped", detail: "Missing authority.", updatedAt: NOW },
+    }),
+  );
+  assert.ok(blocked.includes('data-objective-status="blocked"'));
+  assert.ok(!blocked.includes("Somebody · objective verified"));
+
+  const needsYou = renderToStaticMarkup(
+    createElement(ObjectiveHeader, {
+      objective: { ...workspace().objective, status: "needs_you" },
+      somebodyNow: { state: "needs_you", headline: "Needs you", detail: "Approve spend.", updatedAt: NOW },
+    }),
+  );
+  assert.ok(needsYou.includes('data-objective-status="needs_you"'));
+  assert.ok(!needsYou.includes("Somebody · objective verified"));
+});
+
+test("Deliverables unknowns stay available behind a disclosure without inventing counts", () => {
+  const withUnknowns = renderToStaticMarkup(
+    createElement(Deliverables, {
+      deliverables: [
+        {
+          id: "d1",
+          title: "Relaunch recommendation",
+          type: "document",
+          version: 2,
+          status: "verified",
+          summary: "Revised messaging.",
+          recommendedNextMove: "Publish when ready",
+          unknowns: ["Audience size still approximate", "Channel mix untested"],
+          updatedAt: NOW,
+        },
+      ],
+    }),
+  );
+  assert.ok(withUnknowns.includes("2 remaining unknowns"));
+  assert.ok(withUnknowns.includes("Audience size still approximate"));
+  assert.ok(withUnknowns.includes("Channel mix untested"));
+
+  const none = renderToStaticMarkup(
+    createElement(Deliverables, {
+      deliverables: [
+        {
+          id: "d2",
+          title: "Brief",
+          type: "document",
+          version: 1,
+          status: "current",
+          updatedAt: NOW,
+        },
+      ],
+    }),
+  );
+  assert.ok(!none.includes("remaining unknown"));
+});
+
+test("Activity objective completion avoids duplicating the deliverable summary", () => {
+  const item: ActivityItem = {
+    id: "act_done",
+    type: "objective_completed",
+    occurredAt: NOW,
+    actor: { kind: "somebody", label: "Somebody" },
+    title: "Objective complete",
+    detail: "A very long deliverable summary that belongs on the Deliverables card.",
+    importance: "major",
+  };
+  const html = renderToStaticMarkup(createElement(Activity, { items: [item] }));
+  assert.ok(html.includes("Objective complete"));
+  assert.ok(html.includes("The final deliverable is ready to review."));
+  assert.ok(!html.includes("A very long deliverable summary that belongs on the Deliverables card."));
+});
+
 test("Activity renders type-specific treatments for major event types", () => {
   const items: ActivityItem[] = [
     {
@@ -242,6 +377,9 @@ test("Activity renders type-specific treatments for major event types", () => {
   assert.ok(html.includes("Screenshot"));
   assert.ok(html.includes("Old copy"));
   assert.ok(html.includes("New copy"));
+  assert.ok(html.includes("Landing copy"));
+  assert.ok(html.includes("Now version 2"));
+  assert.ok(!html.includes("Rewrote the hero"), "diff owns the change; skip redundant summary prose");
 });
 
 // ── G. Deliverables ───────────────────────────────────────────────────────────
@@ -314,7 +452,7 @@ test("verified acquisition does not visually imply Objective completion", () => 
   assert.ok(!html.includes('data-objective-status="completed"'));
 });
 
-// ── I. Attention — read-only this milestone ──────────────────────────────────
+// ── I. Attention — spend approval action when supplied ───────────────────────
 
 test("Attention renders nothing when null", () => {
   const html = renderToStaticMarkup(createElement(Attention, { attention: null }));
@@ -327,19 +465,36 @@ test("Attention with zero actions renders no manufactured buttons", () => {
   assert.ok(!html.includes("<button"));
 });
 
-test("Attention renders only the supplied actions, always disabled (no live mutation)", () => {
+test("Attention without handler keeps supplied actions disabled", () => {
   const attention: AttentionState = {
     id: "att1",
     revision: "att1:1",
     type: "approval",
     title: "Needs approval",
     detail: "…",
-    actions: [{ id: "a1", type: "approve", label: "Approve" }],
+    actions: [{ id: "approve_spend", type: "approve", label: "Approve $6.80 limit" }],
   };
   const html = renderToStaticMarkup(createElement(Attention, { attention }));
-  assert.ok(html.includes('data-attention-action-id="a1"'));
-  assert.ok(/disabled/.test(html.match(/<button[^>]*data-attention-action-id="a1"[^>]*>/)?.[0] ?? ""));
+  assert.ok(html.includes('data-attention-action-id="approve_spend"'));
+  assert.ok(/disabled/.test(html.match(/<button[^>]*data-attention-action-id="approve_spend"[^>]*>/)?.[0] ?? ""));
   assert.ok(!html.includes(">Decline<"), "must never manufacture an action the contract did not supply");
+});
+
+test("Attention enables returned action when onAction is wired", () => {
+  const attention: AttentionState = {
+    id: "att1",
+    revision: "att1:1",
+    type: "approval",
+    title: "Needs approval",
+    detail: "…",
+    actions: [{ id: "approve_spend", type: "approve", label: "Approve $6.80 limit" }],
+  };
+  const html = renderToStaticMarkup(
+    createElement(Attention, { attention, onAction: () => undefined }),
+  );
+  const btn = html.match(/<button[^>]*data-attention-action-id="approve_spend"[^>]*>/)?.[0] ?? "";
+  assert.ok(btn);
+  assert.ok(!/\sdisabled(=|\s|>)/.test(btn));
 });
 
 // ── J. Start capabilities — current all-false contract ──────────────────────
@@ -401,6 +556,104 @@ test("V6WorkspaceView renders distinct loading / not-found / empty / reconnectin
   assert.ok(!ready.includes("Reconnecting"));
 });
 
+test("ready workspace keeps Activity dominant and does not mount a Current Work card above it", () => {
+  const html = renderToStaticMarkup(
+    createElement(V6WorkspaceView, {
+      list: list(),
+      selectedId: "obj_1",
+      onSelect: () => {},
+      onStartNew: () => {},
+      main: {
+        kind: "ready",
+        view: workspace({
+          currentWork: {
+            id: "a1",
+            title: "Write the landing copy",
+            status: "working",
+            intern: { id: "w1", label: "Rae", state: "working" },
+            updatedAt: NOW,
+          },
+        }),
+      },
+    }),
+  );
+  assert.ok(!html.includes('aria-label="Current work"'));
+  assert.ok(html.includes('aria-label="Activity"'));
+  const deliverables = html.indexOf('aria-label="Deliverables"');
+  const checkpoints = html.indexOf('aria-label="Checkpoints"');
+  assert.ok(deliverables >= 0 && checkpoints >= 0 && deliverables < checkpoints);
+});
+
+test("Activity intern assignment uses the approved Intern visual, not an icon substitute", () => {
+  const items: ActivityItem[] = [
+    {
+      id: "act_assign",
+      type: "intern_assigned",
+      occurredAt: NOW,
+      actor: { kind: "somebody", label: "Somebody" },
+      title: "Somebody assigned Rae",
+      importance: "major",
+      payload: {
+        intern: { id: "w1", label: "Rae", specialty: "Growth research", state: "assigned" },
+        assignmentTitle: "Diagnose the launch message",
+        scope: "Inspect launch context.",
+        authorityNote: "Bounded assignment · no spending authority",
+      },
+    },
+  ];
+  const html = renderToStaticMarkup(createElement(Activity, { items }));
+  assert.ok(html.includes("/mascot/intern/intern-neutral.webp"));
+  assert.ok(html.includes("Diagnose the launch message"));
+  assert.ok(html.includes("Bounded assignment"));
+});
+
+test("Activity manager decision renders a selected fork, not a vs sentence", () => {
+  const items: ActivityItem[] = [
+    {
+      id: "act_dec",
+      type: "manager_decision",
+      occurredAt: NOW,
+      actor: { kind: "somebody", label: "Somebody" },
+      title: "Somebody chose to buy audience evidence",
+      importance: "major",
+      payload: {
+        selected: { approach: "BUY", label: "Acquire audience-language evidence" },
+        alternative: { approach: "MAKE", label: "Continue with owned research" },
+        reason: "The gap is current audience language.",
+      },
+    },
+  ];
+  const html = renderToStaticMarkup(createElement(Activity, { items }));
+  assert.ok(html.includes("v6-option is-selected"));
+  assert.ok(html.includes("Acquire audience-language evidence"));
+  assert.ok(html.includes("Continue with owned research"));
+  assert.ok(!html.includes(">vs<"));
+  assert.ok(!html.includes(" vs "));
+});
+
+test("Activity does not use the old inferred causality copy", () => {
+  const items: ActivityItem[] = [
+    {
+      id: "act_b",
+      type: "artifact_changed",
+      occurredAt: NOW,
+      actor: { kind: "intern", id: "w1", label: "Rae" },
+      title: "Landing copy updated",
+      importance: "major",
+      causedByActivityId: "act_a",
+      payload: { deliverableId: "d1", before: "Old", after: "New", changeSummary: "Rewrote the hero" },
+    },
+  ];
+  const html = renderToStaticMarkup(createElement(Activity, { items }));
+  assert.ok(!html.includes("Continues from an earlier linked event"));
+  assert.ok(html.includes("data-caused-by-note"));
+});
+
+test("StartView uses the approved working duo, not a generic mascot-only hero", () => {
+  const html = renderToStaticMarkup(createElement(StartView, { capabilities: ALL_FALSE }));
+  assert.ok(html.includes("/mascot/duo/duo-working-transparent.webp"));
+});
+
 // ── L. Architectural seam ─────────────────────────────────────────────────────
 
 const FORBIDDEN_IMPORT_FRAGMENTS = [
@@ -433,12 +686,21 @@ test("primary V6 files import no raw M6.1/M5 domain modules", () => {
   }
 });
 
-test("the live container references only the three V1 product read queries", () => {
-  const src = readFileSync(join(__dirname, "..", "app", "product", "ProductWorkspace.tsx"), "utf8");
-  assert.ok(src.includes("api.productWorkspace.getObjectiveListV1"));
-  assert.ok(src.includes("api.productWorkspace.getObjectiveWorkspaceV1"));
-  assert.ok(!src.includes("api.objectives.listObjectives"));
-  assert.ok(!src.includes("api.m5Workspace"));
+test("the live container references product reads via useProductWorkspace; /start uses the create command", () => {
+  // Product reads live behind the useProductWorkspace seam (live Convex vs demo
+  // playback). ProductWorkspace keeps the live spend-approval command only.
+  const seam = readFileSync(join(__dirname, "..", "app", "demo", "useProductWorkspace.ts"), "utf8");
+  assert.ok(seam.includes("api.productWorkspace.getObjectiveListV1"));
+  assert.ok(seam.includes("api.productWorkspace.getObjectiveWorkspaceV1"));
+  assert.ok(!seam.includes("api.objectives.listObjectives"));
+  assert.ok(!seam.includes("api.m5Workspace"));
+  const container = readFileSync(join(__dirname, "..", "app", "product", "ProductWorkspace.tsx"), "utf8");
+  assert.ok(container.includes("useProductWorkspace"));
+  assert.ok(container.includes("api.productCommands.submitAttentionActionV1"));
+  assert.ok(!container.includes("api.objectives.listObjectives"));
+  assert.ok(!container.includes("api.m5Workspace"));
   const startSrc = readFileSync(join(__dirname, "..", "app", "start", "StartContainer.tsx"), "utf8");
   assert.ok(startSrc.includes("api.productWorkspace.getStartCapabilitiesV1"));
+  assert.ok(startSrc.includes("api.productCommands.createObjectiveV1"));
+  assert.ok(!startSrc.includes("api.objectives.submitObjective"));
 });

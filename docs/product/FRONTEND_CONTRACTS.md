@@ -1,6 +1,6 @@
 # Somebody × OKX — Frontend Contracts
 
-Status: **ACCEPTED V1 PRODUCT CONTRACT — IMPLEMENTATION NOT YET WIRED**  
+Status: **ACCEPTED V1 PRODUCT CONTRACT — READS + CREATE OBJECTIVE + SPEND APPROVAL WIRED**  
 Reconciled: **22 September 2026**  
 Frontend proposal reviewed: `docs/frontend-contracts-v1@324f09ec275573bb9a807a12310a22c12ebb60e2`  
 Backend truth reviewed: `build/model-portability-milestone-2@a8090f8`  
@@ -10,7 +10,10 @@ This document is the single product-facing contract SSOT between the current M6.
 
 It defines **projection semantics**, not new engine authority.
 
-No production wiring is implemented by this document.
+Product reads (`getObjectiveListV1`, `getObjectiveWorkspaceV1`, `getStartCapabilitiesV1`),
+the Create Objective Product Command (`createObjectiveV1`), and Submit Attention Action V1
+(`submitAttentionActionV1` — **spend approval only**) are wired.
+Other Product Commands remain reserved / unwired.
 
 ---
 
@@ -1038,18 +1041,30 @@ type StartCapabilitiesView = {
 
 ## 39. Current backend capability
 
-At backend checkpoint `a8090f8`, the known M6.1 founder-start seam is the controlled canonical setup path:
+**Implementation status (Create Objective):** wired.
 
-- founder request: supported;
-- bounded demo spend limit: supported;
-- context refs: not supported by this product seam;
-- attachments: not supported;
-- deadline: not supported;
-- external-effect policy input: not supported.
+V6 `/start` creates Objectives through the Product Command adapter
+`productCommands.createObjectiveV1`, which reuses the authoritative
+`createReceivedObjective` / legacy `submitObjective` semantics.
 
-The existing setup route is operator-protected/demo-bounded and is not itself the final generic V6 Product Command API.
+Advertised StartCapabilities:
 
-The product projection must advertise only the capability of the actual command adapter that V6 wires.
+- `canCreateObjective`: **true** (Create Objective Product Command is wired);
+- `supportsContextRefs`: **false**;
+- `supportsAttachments`: **false**;
+- `advanced.spendLimit`: **false** (create-time spend limit remains unwired; runtime spend approval is a separate Attention command);
+- `advanced.deadline`: **false**;
+- `advanced.externalEffectPolicy`: **false**.
+
+Unsupported optional Create Objective fields (contextRefs / advanced options)
+are rejected as `not_allowed` if supplied — they are not silently accepted.
+
+Submit Attention Action V1 is wired for **spend approval only** (`approve_spend` /
+`spend_authority_required`). Other Attention action families and founder free text /
+resume/retry remain unwired.
+
+The older controlled setup route remains operator-protected/demo-bounded and is
+not the V6 Product Command API.
 
 No fake persistence.
 
@@ -1075,13 +1090,14 @@ Current support:
 
 | Field | Current V1 backend truth |
 | --- | --- |
-| `request` | supported by controlled M6.1 setup path |
-| `contextRefs` | unsupported by current product start seam |
-| `advanced.spendLimit` | supported only by bounded controlled setup adapter |
-| `advanced.deadline` | unsupported |
-| `advanced.externalEffectPolicy` | unsupported |
+| `request` | **wired** via `productCommands.createObjectiveV1` |
+| `contextRefs` | unsupported — rejected as `not_allowed` |
+| `advanced.spendLimit` | unsupported on the product command — rejected as `not_allowed` |
+| `advanced.deadline` | unsupported — rejected as `not_allowed` |
+| `advanced.externalEffectPolicy` | unsupported — rejected as `not_allowed` |
 
-V6 wiring should create one narrow Product Command adapter rather than call internal mutations directly.
+V6 React must call the Product Command adapter only — never
+`api.objectives.submitObjective` or internal/demo setup mutations.
 
 ## 41. Attention action
 
@@ -1097,7 +1113,25 @@ type SubmitAttentionActionCommand = {
 
 Contract accepted.
 
-Implementation status: **product adapter not yet unified**.
+Implementation status: **wired for spend approval only** via
+`productCommands.submitAttentionActionV1`.
+
+Current legal action:
+
+| Field | Current V1 backend truth |
+| --- | --- |
+| `actionId = approve_spend` | **wired** — persists bounded `FounderSpendGrant`, resolves the exact `pending_approval`, writes `approval_resolved` wake, schedules normal management pass |
+| other action ids | unsupported — rejected as `not_allowed` |
+| `text` | unsupported — rejected as `not_allowed` |
+
+Needs You (`objective.status = needs_you`) is emitted only when this legal
+spend-approval action is actually available. Other `approval_required` reasons
+(`material_ambiguity`, `waiver_requires_authorization`,
+`external_effect_requires_approval`) remain non-actionable and project as
+waiting/blocked without buttons.
+
+This command grants bounded M4 spend authority. It does **not** equal M3 payment,
+does not submit a transaction, and does not mark a Requirement satisfied.
 
 Specific internal approval/reconciliation mechanics must not be exposed directly to React.
 
@@ -1293,7 +1327,7 @@ It means the acquisition result/receipt itself is verified, not Requirement sati
 | M3 transaction truth is not currently joined into M5 workspace | **Act Now** only if V6 displays transaction status | M5 explicitly says payment view is derived from M4 and M3 is separate authority | join authoritative M3 read fact or omit transaction | only for transaction UI |
 | Typed V6 Activity payload projection does not yet exist | **Act Now** | MissionStory is useful precursor but coarser | implement deterministic V6 mapper | yes for Activity |
 | Generic Attention command adapter absent | **Investigate Now** | internal authority paths exist but not one product command | implement only required demo-safe actions; otherwise actions=[] | no for read-only card |
-| Generic create-objective product adapter absent | **Act Now** for interactive /start | controlled setup exists, not final product API | thin validated adapter over supported fields | yes for /start |
+| Generic create-objective product adapter absent | **Resolved** | `productCommands.createObjectiveV1` reuses authoritative create semantics; `canCreateObjective=true` | keep other command flags false until wired | yes for /start |
 | Generic founder free-text input absent | **Park for Later** | no accepted ingestion semantics | do not advertise | no |
 | Generic resume/retry action absent | **Park for Later** | no safe generic product primitive | availableActions=[] | no |
 | Historical multiple final-assessment events are not durably reconstructable | **Ignore / Accept Risk for V1** | current record retains current/latest assessment, not full history | show current/latest truth; persist history later only if product needs it | no |

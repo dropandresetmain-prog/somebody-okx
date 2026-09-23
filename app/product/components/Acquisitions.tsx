@@ -1,4 +1,5 @@
 import type { AcquisitionView } from "../contracts";
+import { humanizeKey } from "../humanize";
 import { ACQUISITION_STATUS_LABEL, acquisitionTone } from "../presentation";
 
 // Acquisitions receipt treatment (contract §34–36). Renders ONLY supplied
@@ -9,7 +10,10 @@ export function Acquisitions({ acquisitions }: { acquisitions: AcquisitionView[]
   if (acquisitions.length === 0) return null;
   return (
     <section className="v6-rail-card" aria-label="Acquisitions">
-      <p className="kicker">Acquisitions</p>
+      <div className="v6-rail-card-head">
+        <h3>Outside help</h3>
+        <span>{acquisitions.length}</span>
+      </div>
       <ul className="v6-acquisition-list">
         {acquisitions.map((acquisition) => (
           <AcquisitionReceipt key={acquisition.id} acquisition={acquisition} />
@@ -30,8 +34,8 @@ function AcquisitionReceipt({ acquisition }: { acquisition: AcquisitionView }) {
           </span>
         ) : null}
       </div>
-      <p className="v6-acquisition-resource">{acquisition.resourceLabel}</p>
-      {acquisition.providerLabel ? <p className="muted">{acquisition.providerLabel}</p> : null}
+      <p className="v6-acquisition-resource">{humanizeKey(acquisition.resourceLabel)}</p>
+      {acquisition.providerLabel ? <p className="muted">{humanizeKey(acquisition.providerLabel)}</p> : null}
       {acquisition.provenance ? (
         <span className="pill tone-neutral" data-acquisition-provenance={acquisition.provenance}>
           {provenanceLabel(acquisition.provenance)}

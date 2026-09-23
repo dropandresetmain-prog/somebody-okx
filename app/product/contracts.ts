@@ -353,9 +353,11 @@ export type StartCapabilitiesView = {
   };
 };
 
-// ── Commands (§40–44) — shapes reserved by the contract ─────────────────────
-// Only the read side is implemented in this milestone; these are declared so the
-// frontend and backend share one definition when the command adapters land.
+// ── Commands (§40–44) — shared command shapes ───────────────────────────────
+// Wired via convex/productCommands:
+//   - createObjectiveV1
+//   - submitAttentionActionV1 (spend approval / approve_spend ONLY)
+// Other command adapters remain reserved / unwired.
 
 export type CreateObjectiveCommand = {
   request: string;

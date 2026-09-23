@@ -117,6 +117,66 @@ export function internPresentation(state: InternState): { icon: IconName; label:
   return INTERN_POSE[state];
 }
 
+export function somebodyByline(state: SomebodyNowState): string {
+  switch (state) {
+    case "interpreting":
+      return "Somebody · latest update";
+    case "working":
+      return "Somebody · latest update";
+    case "waiting":
+      return "Somebody · waiting";
+    case "needs_you":
+      return "Somebody · waiting for you";
+    case "verifying":
+      return "Somebody · checking the outcome";
+    case "completed":
+      return "Somebody · objective verified";
+    case "blocked":
+      return "Somebody · stopped";
+  }
+}
+
+// Eyebrow over each Activity card: what KIND of moment this is, in founder
+// language. The card title says what happened.
+export function activityTypeLabel(type: ActivityType): string {
+  switch (type) {
+    case "objective_interpreted":
+      return "Outcome";
+    case "intern_assigned":
+      return "Delegated";
+    case "work_started":
+      return "Started";
+    case "work_resumed":
+      return "Resumed";
+    case "work_summary":
+      return "Report";
+    case "work_completed":
+      return "Accepted";
+    case "finding_added":
+      return "Finding";
+    case "evidence_gap_identified":
+      return "Missing input";
+    case "manager_decision":
+      return "Decision";
+    case "founder_action_required":
+      return "Needs you";
+    case "acquisition_started":
+    case "acquisition_submitted":
+    case "external_result_received":
+    case "external_result_verified":
+      return "Outside help";
+    case "artifact_changed":
+      return "Updated";
+    case "verification_started":
+    case "verification_completed":
+      return "Verification";
+    case "objective_completed":
+      return "Done";
+    case "objective_blocked":
+      return "Stopped";
+  }
+}
+
 export function deliverableTone(status: DeliverableStatus): Tone {
   switch (status) {
     case "draft":
@@ -192,5 +252,11 @@ export function activityIcon(type: ActivityType): IconName {
 }
 
 export function activityWeightClass(importance: ActivityImportance): string {
-  return `activity-item--${importance}`;
+  return `v6-activity-item--${importance}`;
+}
+
+export function activityEventClass(importance: ActivityImportance): string {
+  if (importance === "major") return "v6-event--major";
+  if (importance === "minor") return "v6-event--minor";
+  return "";
 }

@@ -378,7 +378,7 @@ test("capabilities: returns the fixed start capabilities in the found envelope",
   assert.equal(result.found, true);
   assert.equal(result.contractVersion, 1);
   assert.deepEqual(result.view, {
-    canCreateObjective: false,
+    canCreateObjective: true,
     supportsContextRefs: false,
     supportsAttachments: false,
     advanced: { spendLimit: false, deadline: false, externalEffectPolicy: false },

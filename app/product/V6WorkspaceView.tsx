@@ -1,16 +1,16 @@
-import type { ObjectiveListView, ObjectiveWorkspaceView } from "./contracts";
+"use client";
+
+import type { AcquisitionView, AttentionActionView, ObjectiveListView, ObjectiveWorkspaceView } from "./contracts";
 import { Sidebar } from "./components/Sidebar";
 import { ObjectiveHeader } from "./components/ObjectiveHeader";
 import { Checkpoints } from "./components/Checkpoints";
-import { CurrentWork } from "./components/CurrentWork";
 import { Activity } from "./components/Activity";
 import { Deliverables } from "./components/Deliverables";
 import { Acquisitions } from "./components/Acquisitions";
 import { Attention } from "./components/Attention";
 
-// Pure presentational V6 shell (task §8). Receives ONLY product-contract data
-// plus UI callbacks — no Convex, no raw engine imports, no state
-// recalculation. `ProductWorkspace.tsx` is the only caller.
+// Pure presentational V6 shell. Receives ONLY product-contract data plus UI
+// callbacks — no Convex, no raw engine imports, no state recalculation.
 export type MainPaneState =
   | { kind: "loading" }
   | { kind: "no_objectives" }
@@ -23,24 +23,53 @@ export function V6WorkspaceView({
   onSelect,
   onStartNew,
   main,
+  onAttentionAction,
+  pendingAttentionActionId,
+  attentionError,
+  attentionAcknowledgement,
 }: {
   list: ObjectiveListView;
   selectedId: string | null;
   onSelect: (id: string) => void;
   onStartNew: () => void;
   main: MainPaneState;
+  onAttentionAction?: (action: AttentionActionView) => void;
+  pendingAttentionActionId?: string | null;
+  attentionError?: string | null;
+  attentionAcknowledgement?: string | null;
 }) {
   return (
     <div className="v6-shell">
       <Sidebar list={list} selectedId={selectedId} onSelect={onSelect} onStartNew={onStartNew} />
       <main className="v6-main" data-main-pane={main.kind}>
-        <MainPane main={main} onStartNew={onStartNew} />
+        <MainPane
+          main={main}
+          onStartNew={onStartNew}
+          onAttentionAction={onAttentionAction}
+          pendingAttentionActionId={pendingAttentionActionId}
+          attentionError={attentionError}
+          attentionAcknowledgement={attentionAcknowledgement}
+        />
       </main>
     </div>
   );
 }
 
-function MainPane({ main, onStartNew }: { main: MainPaneState; onStartNew: () => void }) {
+function MainPane({
+  main,
+  onStartNew,
+  onAttentionAction,
+  pendingAttentionActionId,
+  attentionError,
+  attentionAcknowledgement,
+}: {
+  main: MainPaneState;
+  onStartNew: () => void;
+  onAttentionAction?: (action: AttentionActionView) => void;
+  pendingAttentionActionId?: string | null;
+  attentionError?: string | null;
+  attentionAcknowledgement?: string | null;
+}) {
   switch (main.kind) {
     case "loading":
       return (
@@ -53,8 +82,9 @@ function MainPane({ main, onStartNew }: { main: MainPaneState; onStartNew: () =>
         <div className="state-card v6-state-card" data-empty="true">
           <h1>Give Somebody an objective</h1>
           <p className="muted">Nothing has been started yet.</p>
-          <button type="button" className="button primary large" onClick={onStartNew}>
-            Start a new objective
+          <button type="button" className="v6-start-cta" onClick={onStartNew}>
+            <span>Start a new objective</span>
+            <span aria-hidden="true">＋</span>
           </button>
         </div>
       );
@@ -67,26 +97,58 @@ function MainPane({ main, onStartNew }: { main: MainPaneState; onStartNew: () =>
       );
     case "ready":
       return (
-        <div className="v6-workspace" data-stale={main.stale ? "true" : "false"}>
+        <div
+          className="v6-workspace"
+          data-stale={main.stale ? "true" : "false"}
+          // Soft cross-fade when the product-data source advances a frame
+          // (live or demo). Keyed by objective status + activity length only —
+          // no demo-specific branching.
+          key={`${main.view.objective.status}:${main.view.activity.length}:${main.view.deliverables.map((d) => d.version).join(",")}`}
+        >
           {main.stale ? (
             <p className="muted v6-reconnecting" role="status">
               Reconnecting… showing the last known state.
             </p>
           ) : null}
-          <ObjectiveHeader objective={main.view.objective} somebodyNow={main.view.somebodyNow} />
+          <ObjectiveHeader
+            objective={main.view.objective}
+            somebodyNow={main.view.somebodyNow}
+            currentWork={main.view.currentWork}
+            deliverables={main.view.deliverables}
+          />
           <div className="v6-columns">
             <div className="v6-column-primary">
-              <Attention attention={main.view.attention} />
-              <CurrentWork currentWork={main.view.currentWork} />
-              <Activity items={main.view.activity} />
+              <Activity items={main.view.activity} acquisitions={main.view.acquisitions} />
             </div>
             <div className="v6-column-rail">
-              <Checkpoints progress={main.view.progress} />
+              <Attention
+                attention={main.view.attention}
+                onAction={onAttentionAction}
+                pendingActionId={pendingAttentionActionId}
+                error={attentionError}
+                acknowledgement={attentionAcknowledgement}
+              />
               <Deliverables deliverables={main.view.deliverables} />
-              <Acquisitions acquisitions={main.view.acquisitions} />
+              <Checkpoints progress={main.view.progress} />
+              <OrphanAcquisitions activity={main.view.activity} acquisitions={main.view.acquisitions} />
             </div>
           </div>
         </div>
       );
   }
+}
+
+function OrphanAcquisitions({
+  activity,
+  acquisitions,
+}: {
+  activity: ObjectiveWorkspaceView["activity"];
+  acquisitions: AcquisitionView[];
+}) {
+  const related = new Set(
+    activity.flatMap((item) => (item.related?.acquisitionId ? [item.related.acquisitionId] : [])),
+  );
+  const orphans = acquisitions.filter((item) => !related.has(item.id));
+  if (orphans.length === 0) return null;
+  return <Acquisitions acquisitions={orphans} />;
 }

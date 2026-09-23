@@ -63,6 +63,10 @@ import {
   CANONICAL_OBJECTIVE_REQUEST,
 } from "../lib/objective/seedData";
 import { createArtifact, applyArtifactChange, MAX_CONTENT_CHARS as MAX_ARTIFACT_CONTENT_CHARS } from "../lib/objective/artifact";
+import {
+  createReceivedObjective,
+  normalizeObjectiveRequest,
+} from "./objectiveCreate";
 import type { ResourceClass } from "../lib/workforce/types";
 import type {
   ActivityEvent,
@@ -284,38 +288,18 @@ export const submitObjective = mutation({
   args: { request: vObjectiveRequest },
   returns: v.object({ key: v.string() }),
   handler: async (ctx, args) => {
-    const request = args.request.trim();
-    if (request.length < 8)
-      throw new Error("Describe the objective in at least 8 characters");
-    if (request.length > 2000)
-      throw new Error("Objective is not bounded (max 2000 characters)");
-    const now = Date.now();
-    const key = `obj_${now}_${Math.random().toString(36).slice(2, 8)}`;
-    const record: ObjectiveRecord = {
-      key,
-      request,
-      createdAt: now,
-      updatedAt: now,
-      state: "received",
-      activity: "Objective received.",
-      plan: null,
-      workItems: [],
-      run: null,
-      result: null,
-    };
-    await ctx.db.insert("objectives", { key, data: record });
-    await appendEvent(ctx.db, key, "system", "Objective received.", now);
+    // Same authoritative create path as productCommands.createObjectiveV1 —
+    // shared via createReceivedObjective so behavior cannot drift (launch
+    // artifact seed + interpretation schedule).
+    const normalized = normalizeObjectiveRequest(args.request);
+    if (!normalized.ok) throw new Error(normalized.message);
     // R3 A1 — a submitted objective enters the MANAGEMENT engine, not only the
     // M2 planner. Interpretation is the durable chain
     //   beginInterpretation (reserve) → proposeInterpretation (model, "use node")
     //   → applyInterpretation (persist contract + semantic requirements + wake).
     // It never changes `state`, so the accepted M2 planning path keeps working on
     // a "received" row; what it adds is the Outcome Contract the engine needs.
-    await ctx.scheduler.runAfter(0, internal.management.beginInterpretation, {
-      objectiveKey: key,
-      at: now,
-    });
-    return { key };
+    return createReceivedObjective(ctx, normalized.request);
   },
 });
 
