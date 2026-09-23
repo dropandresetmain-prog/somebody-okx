@@ -21,3 +21,7 @@ Thumbs.db
 *.pem
 npm-debug.log*
 .vercel
+
+# local integration dep overlay (Windows install workaround)
+.nm-overlay/
+
