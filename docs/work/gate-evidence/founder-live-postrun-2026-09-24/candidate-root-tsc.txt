@@ -1,0 +1,87 @@
+lib/management/jev/eval/abEval.ts(84,56): error TS2339: Property 'detail' does not exist on type '{ kind: "no_candidates"; } | { kind: "unavailable"; failureClass: ProviderFailureClass; detail: string; } | { kind: "invalid_response"; detail: string; }'.
+  Property 'detail' does not exist on type '{ kind: "no_candidates"; }'.
+lib/management/jev/eval/classify.ts(83,7): error TS2367: This comparison appears to be unintentional because the types '"selected"' and '"invalid_response"' have no overlap.
+lib/management/jev/eval/classify.ts(83,48): error TS2367: This comparison appears to be unintentional because the types '"selected"' and '"unavailable"' have no overlap.
+lib/management/jev/eval/corpusScenarios.ts(171,5): error TS2783: 'dependsOnRequirementKeys' is specified more than once, so this usage will be overwritten.
+lib/management/jev/eval/corpusScenarios.ts(172,5): error TS2783: 'requiredResourceClasses' is specified more than once, so this usage will be overwritten.
+lib/management/jev/eval/corpusScenarios.ts(173,5): error TS2783: 'expectedOutput' is specified more than once, so this usage will be overwritten.
+lib/management/jev/eval/runPipeline.ts(140,62): error TS2339: Property 'detail' does not exist on type '{ kind: "no_candidates"; } | { kind: "unavailable"; failureClass: ProviderFailureClass; detail: string; } | { kind: "invalid_response"; detail: string; } | { kind: "unavailable"; failureClass: "provider_unavailable"; detail: string; }'.
+  Property 'detail' does not exist on type '{ kind: "no_candidates"; }'.
+scripts/gate/preflight.ts(438,60): error TS2345: Argument of type '"by_key"' is not assignable to parameter of type 'keyof SystemIndexes'.
+scripts/gate/preflight.ts(438,82): error TS2345: Argument of type '"key"' is not assignable to parameter of type '"_creationTime" | "_id"'.
+scripts/gate/preflight.ts(444,63): error TS2345: Argument of type '"by_objectiveKey"' is not assignable to parameter of type 'keyof SystemIndexes'.
+scripts/gate/preflight.ts(444,94): error TS2345: Argument of type '"objectiveKey"' is not assignable to parameter of type '"_creationTime" | "_id"'.
+scripts/gate/preflight.ts(450,62): error TS2345: Argument of type '"by_objective"' is not assignable to parameter of type 'keyof SystemIndexes'.
+scripts/gate/preflight.ts(450,90): error TS2345: Argument of type '"objectiveKey"' is not assignable to parameter of type '"_creationTime" | "_id"'.
+scripts/gate/preflight.ts(462,66): error TS2345: Argument of type '"by_objectiveKey"' is not assignable to parameter of type 'keyof SystemIndexes'.
+scripts/gate/preflight.ts(462,97): error TS2345: Argument of type '"objectiveKey"' is not assignable to parameter of type '"_creationTime" | "_id"'.
+scripts/gate/preflight.ts(571,60): error TS2345: Argument of type '"by_key"' is not assignable to parameter of type 'keyof SystemIndexes'.
+scripts/gate/preflight.ts(571,82): error TS2345: Argument of type '"key"' is not assignable to parameter of type '"_creationTime" | "_id"'.
+tests/jevStage3ActionSeam.test.ts(123,18): error TS2345: Argument of type '"by_objectiveKey"' is not assignable to parameter of type 'keyof SystemIndexes'.
+tests/jevStage3ActionSeam.test.ts(123,49): error TS2345: Argument of type '"objectiveKey"' is not assignable to parameter of type '"_creationTime" | "_id"'.
+tests/m2StructuredRepair.test.ts(375,60): error TS2345: Argument of type '"by_key"' is not assignable to parameter of type 'keyof SystemIndexes'.
+tests/m2StructuredRepair.test.ts(375,82): error TS2345: Argument of type '"key"' is not assignable to parameter of type '"_creationTime" | "_id"'.
+tests/m2StructuredRepair.test.ts(384,18): error TS2345: Argument of type '"by_objectiveKey"' is not assignable to parameter of type 'keyof SystemIndexes'.
+tests/m2StructuredRepair.test.ts(384,49): error TS2345: Argument of type '"objectiveKey"' is not assignable to parameter of type '"_creationTime" | "_id"'.
+tests/m61ConsistencyRepair.test.ts(548,11): error TS2322: Type '() => Promise<{ usage: Usage; output: { type: "function_call"; callId: string; name: string; arguments: string; status: "completed"; }[]; } | { usage: Usage; output: string; }>' is not assignable to type '(request: ModelRequest) => Promise<ModelResponse>'.
+  Type 'Promise<{ usage: Usage; output: { type: "function_call"; callId: string; name: string; arguments: string; status: "completed"; }[]; } | { usage: Usage; output: string; }>' is not assignable to type 'Promise<ModelResponse>'.
+    Type '{ usage: Usage; output: { type: "function_call"; callId: string; name: string; arguments: string; status: "completed"; }[]; } | { usage: Usage; output: string; }' is not assignable to type 'ModelResponse'.
+      Type '{ usage: Usage; output: string; }' is not assignable to type 'ModelResponse'.
+        Types of property 'output' are incompatible.
+          Type 'string' is not assignable to type 'AgentOutputItem[]'.
+tests/m61DiagnosisToExternalIntent.test.ts(458,51): error TS2554: Expected 1 arguments, but got 2.
+tests/m61DiagnosisToExternalIntent.test.ts(607,51): error TS2554: Expected 1 arguments, but got 2.
+tests/m61FinalAssessmentRouting.test.ts(194,3): error TS2322: Type 'ObjectiveRecord' is not assignable to type 'ObjectiveRecord & { management: Record<string, unknown>; }'.
+  Property 'management' is missing in type 'ObjectiveRecord' but required in type '{ management: Record<string, unknown>; }'.
+tests/m61Pass2Closure.test.ts(184,18): error TS2345: Argument of type '"by_key"' is not assignable to parameter of type 'keyof SystemIndexes'.
+tests/m61Pass2Closure.test.ts(184,40): error TS2345: Argument of type '"key"' is not assignable to parameter of type '"_creationTime" | "_id"'.
+tests/m61Pass3Closure.test.ts(95,18): error TS2345: Argument of type '"by_key"' is not assignable to parameter of type 'keyof SystemIndexes'.
+tests/m61Pass3Closure.test.ts(95,40): error TS2345: Argument of type '"key"' is not assignable to parameter of type '"_creationTime" | "_id"'.
+tests/m61Pass3Closure.test.ts(106,18): error TS2345: Argument of type '"by_objectiveKey"' is not assignable to parameter of type 'keyof SystemIndexes'.
+tests/m61Pass3Closure.test.ts(106,49): error TS2345: Argument of type '"objectiveKey"' is not assignable to parameter of type '"_creationTime" | "_id"'.
+tests/m61Pass3Closure.test.ts(116,18): error TS2345: Argument of type '"by_objective"' is not assignable to parameter of type 'keyof SystemIndexes'.
+tests/m61Pass3Closure.test.ts(116,46): error TS2345: Argument of type '"objectiveKey"' is not assignable to parameter of type '"_creationTime" | "_id"'.
+tests/m61Pass3Closure.test.ts(126,18): error TS2345: Argument of type '"by_objective"' is not assignable to parameter of type 'keyof SystemIndexes'.
+tests/m61Pass3Closure.test.ts(126,46): error TS2345: Argument of type '"objectiveKey"' is not assignable to parameter of type '"_creationTime" | "_id"'.
+tests/m61Pass3Closure.test.ts(660,68): error TS2367: This comparison appears to be unintentional because the types '"failed" | "running"' and '"completed"' have no overlap.
+tests/m61Pass3Closure.test.ts(1422,7): error TS2367: This comparison appears to be unintentional because the types '"failed" | "running"' and '"completed"' have no overlap.
+tests/m61PostAcquisitionResume.test.ts(287,13): error TS2352: Conversion of type '{ key: string; request: string; createdAt: number; updatedAt: number; state: "waiting_for_resource"; activity: string; plan: null; workItems: never[]; run: null; result: null; companyArtifacts: { key: string; version: number; content: string; history: never[]; }[]; resourceNeeds: ResourceNeed[]; acquisitionResults: ...' to type 'ObjectiveRecord & { management: Record<string, unknown>; }' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type '{ key: string; request: string; createdAt: number; updatedAt: number; state: "waiting_for_resource"; activity: string; plan: null; workItems: never[]; run: null; result: null; companyArtifacts: { key: string; version: number; content: string; history: never[]; }[]; resourceNeeds: ResourceNeed[]; acquisitionResults: ...' is not comparable to type 'ObjectiveRecord'.
+    Types of property 'companyArtifacts' are incompatible.
+      Type '{ key: string; version: number; content: string; history: never[]; }[]' is not comparable to type 'CompanyArtifact[]'.
+        Type '{ key: string; version: number; content: string; history: never[]; }' is missing the following properties from type 'CompanyArtifact': objectiveKey, label, updatedAt, provenanceRunId
+tests/m61PostAcquisitionResume.test.ts(364,20): error TS2345: Argument of type '"by_objectiveKey"' is not assignable to parameter of type 'keyof SystemIndexes'.
+tests/m61PostAcquisitionResume.test.ts(364,51): error TS2345: Argument of type '"objectiveKey"' is not assignable to parameter of type '"_creationTime" | "_id"'.
+tests/m61ProductionWholeChain.test.ts(90,18): error TS2345: Argument of type '"by_key"' is not assignable to parameter of type 'keyof SystemIndexes'.
+tests/m61ProductionWholeChain.test.ts(90,40): error TS2345: Argument of type '"key"' is not assignable to parameter of type '"_creationTime" | "_id"'.
+tests/m61ProductionWholeChain.test.ts(100,18): error TS2345: Argument of type '"by_objectiveKey"' is not assignable to parameter of type 'keyof SystemIndexes'.
+tests/m61ProductionWholeChain.test.ts(100,49): error TS2345: Argument of type '"objectiveKey"' is not assignable to parameter of type '"_creationTime" | "_id"'.
+tests/m61ProductionWholeChain.test.ts(110,18): error TS2345: Argument of type '"by_objective"' is not assignable to parameter of type 'keyof SystemIndexes'.
+tests/m61ProductionWholeChain.test.ts(110,46): error TS2345: Argument of type '"objectiveKey"' is not assignable to parameter of type '"_creationTime" | "_id"'.
+tests/m61ProductionWholeChain.test.ts(120,18): error TS2345: Argument of type '"by_objective"' is not assignable to parameter of type 'keyof SystemIndexes'.
+tests/m61ProductionWholeChain.test.ts(120,46): error TS2345: Argument of type '"objectiveKey"' is not assignable to parameter of type '"_creationTime" | "_id"'.
+tests/m61ProductionWholeChain.test.ts(568,69): error TS2339: Property 'reasons' does not exist on type 'OptionEligibility'.
+  Property 'reasons' does not exist on type '{ eligible: true; checksPassed: string[]; }'.
+tests/m61ProductionWholeChain.test.ts(737,24): error TS2339: Property 'strategy' does not exist on type 'Assignment'.
+tests/m61ProductionWholeChain.test.ts(737,46): error TS2367: This comparison appears to be unintentional because the types '"internal_component_of_hybrid" | "internal_make"' and '"external_acquisition"' have no overlap.
+tests/m61SemanticGapWorkerSchema.test.ts(129,27): error TS2339: Property 'type' does not exist on type 'never'.
+tests/m61SemanticGapWorkerSchema.test.ts(130,18): error TS2339: Property 'type' does not exist on type 'never'.
+tests/m61SemanticGapWorkerSchema.test.ts(131,26): error TS2339: Property 'result' does not exist on type 'never'.
+tests/m61SemanticGapWorkerSchema.test.ts(144,27): error TS2339: Property 'result' does not exist on type 'never'.
+tests/m61SerialManagerLoop.test.ts(1090,7): error TS2322: Type 'ObjectiveRecord & { management: Record<string, unknown>; }' is not assignable to type '{ acceptedTerminal?: { acceptedAt: number; fingerprint: string; outcome: "accepted"; runId: string; terminal: "DELIVERED" | "EXECUTION_ERROR" | "NEEDS_INPUT"; } | null | undefined; acquisitionResults?: any[] | undefined; ... 20 more ...; workItems: { ...; }[]; }'.
+  Types of property 'management' are incompatible.
+    Property 'contractId' is missing in type 'Record<string, unknown>' but required in type '{ authorizedPurposePolicy?: { purposeKind: string; targetRequirementKind: "deliverable" | "input"; } | null | undefined; contractId: string | null; controlNotes?: any[] | undefined; ... 19 more ...; releasedAcquisitionIntentIds?: string[] | undefined; }'.
+tests/m61StopBRedecide.test.ts(480,18): error TS2345: Argument of type '"by_key"' is not assignable to parameter of type 'keyof SystemIndexes'.
+tests/m61StopBRedecide.test.ts(480,40): error TS2345: Argument of type '"key"' is not assignable to parameter of type '"_creationTime" | "_id"'.
+tests/m61StopBRedecide.test.ts(486,18): error TS2345: Argument of type '"by_objective"' is not assignable to parameter of type 'keyof SystemIndexes'.
+tests/m61StopBRedecide.test.ts(486,46): error TS2345: Argument of type '"objectiveKey"' is not assignable to parameter of type '"_creationTime" | "_id"'.
+tests/m61StopBRedecide.test.ts(490,18): error TS2345: Argument of type '"by_objective"' is not assignable to parameter of type 'keyof SystemIndexes'.
+tests/m61StopBRedecide.test.ts(490,46): error TS2345: Argument of type '"objectiveKey"' is not assignable to parameter of type '"_creationTime" | "_id"'.
+tests/terminalCompletionFence.test.ts(90,42): error TS2345: Argument of type '"by_key"' is not assignable to parameter of type 'keyof SystemIndexes'.
+tests/terminalCompletionFence.test.ts(90,64): error TS2345: Argument of type '"key"' is not assignable to parameter of type '"_creationTime" | "_id"'.
+tests/v7ReviewR4ScopeOrigin.test.ts(64,18): error TS2345: Argument of type '"by_key"' is not assignable to parameter of type 'keyof SystemIndexes'.
+tests/v7ReviewR4ScopeOrigin.test.ts(64,40): error TS2345: Argument of type '"key"' is not assignable to parameter of type '"_creationTime" | "_id"'.
+tests/v7ReviewR4ScopeOrigin.test.ts(74,18): error TS2345: Argument of type '"by_objectiveKey"' is not assignable to parameter of type 'keyof SystemIndexes'.
+tests/v7ReviewR4ScopeOrigin.test.ts(74,49): error TS2345: Argument of type '"objectiveKey"' is not assignable to parameter of type '"_creationTime" | "_id"'.
+tests/v7ReviewR4ScopeOrigin.test.ts(216,60): error TS2345: Argument of type '"by_key"' is not assignable to parameter of type 'keyof SystemIndexes'.
+tests/v7ReviewR4ScopeOrigin.test.ts(216,82): error TS2345: Argument of type '"key"' is not assignable to parameter of type '"_creationTime" | "_id"'.
