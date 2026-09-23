@@ -323,3 +323,57 @@ pre-existing typecheck debt, not a build regression. No signing/payment/merchant
 provider/model invocation.
 
 Status: READY FOR FINAL RE-REVIEW (not self-approved).
+
+## V7 final scope-ownership correction (application vs adapter authority)
+
+Independent review of `451e879` (branch `fix/reliability-v7-purpose-origin`) found
+R1–R3 PASS and R4 mechanics/reachability PASS, with one remaining blocker:
+application request policy (`CANONICAL_AUTHORIZED_PURPOSE_POLICY`) imported its
+purpose-kind identifier from the M3 adapter module, so authority direction was
+adapter → application even though the string values matched.
+
+**Fix (branch `fix/reliability-v7-scope-ownership`, code SHA `ac1c64e`).**
+Move the shared purpose-kind literal into the existing application-owned catalog
+vocabulary — the only `PURPOSE_SCOPES` table — as
+`FOUNDER_MESSAGING_QUALITATIVE_PURPOSE_KIND` in `lib/workforce/catalog.ts`.
+Then:
+
+- `CANONICAL_AUTHORIZED_PURPOSE_POLICY` (`lib/objective/seedData.ts`) imports that
+  catalog constant (no import from `m3FounderNarrativeProduct`);
+- `M3_SUPPORTED_PURPOSE_KIND` / `M3_PRODUCT_FULFILLMENT_SCOPE`
+  (`lib/payment/m3FounderNarrativeProduct.ts`) independently reference the same
+  catalog constant as a fulfillment declaration.
+
+No second taxonomy. No change to `bindAuthorizedPurposePolicy`,
+`Requirement.authorizedPurposeKinds`, `validateMissingInputProposal`, ResourceNeed
+requestedScope, grounding, ExecutionIntent, replay, payment/result verification,
+interpretation fencing, settlement, or financial authority.
+
+**Tests.** New `tests/v7ReviewR4ScopeOwnership.test.ts` (A/B/C ownership direction).
+Existing R4 purpose-scope / scope-origin / whole-chain suites re-run green (23/23
+focused).
+
+**Investigate Now (not fixed here):** `setupCanonicalDemoObjective` still accepts an
+optional arbitrary `request` override while attaching the canonical application
+policy. Operator-gated today; tighten before that setup becomes a general-purpose
+production entrypoint.
+
+### Gate
+
+Frozen code SHA `ac1c64e`. Same-machine methodology vs baseline `451e879`.
+Excluded exactly `tests/m3GateInterpretationCeilingEscalates.test.ts` on both
+(confirmed pre-existing hang on this machine; unrelated to ownership).
+
+| | files | tests | pass | fail |
+| --- | --- | --- | --- | --- |
+| baseline `451e879` | 105 | 1074 | 1064 | 10 |
+| candidate `ac1c64e` | 106 | 1077 | 1067 | 10 |
+
+The +3 tests are exactly the new ownership file; the 10 failing names are
+byte-identical (A6 ×4, CP4, F4, managementDecision ×2, managementFinishGate ×2).
+Root `tsc --noEmit`: 74 lines on both; normalized path+message sets identical.
+Convex `tsc -p convex/tsconfig.json --noEmit`: clean on both. `next build`:
+compiles successfully, then fails typecheck on the same inherited 74-error set.
+No signing/payment/merchant/provider/model invocation.
+
+Status: READY FOR FINAL RE-REVIEW (not self-approved).
