@@ -1,7 +1,7 @@
 ﻿# ACTIVE TASK — OKX Final Convergence (Primary Integrator)
 
 Updated: 23 September 2026 (Singapore)
-Status: **CP5 COMPLETE — Jev Stage-3 wired; CP6/CP7 next**
+Status: **CP7 COMPLETE — READY FOR FINAL PROMOTION REVIEW**
 
 ## Goal
 
@@ -78,3 +78,16 @@ runtime truth, without merge to main, deploy, or live payments/M3/Objectives.
 ## Next action
 
 CP6 cross-lane canonical demo with doubles → CP7 promotion gate → CP8 docs + push.
+
+
+## CP7 promotion gate (frozen candidate)
+
+- Candidate tip: see git rev-parse HEAD after this commit
+- Suite: **1158 pass / 10 fail** — fail names match docs/work/gate-evidence/ac1c64e/candidate-fail-names-clean.txt
+- Convex 	sc -p convex/tsconfig.json --noEmit: **clean**
+- Root 	sc --noEmit: inherited debt (63 errors observed; same class as V7 historical debt)
+- Next build: Turbopack rejects worktree 
+ode_modules junction (environment); V7 evidence recorded same class of symlink limitation
+- Cross-lane: business seed + founder language + Jev seams + whole-chain simulation **green**
+- Hang test m3GateInterpretationCeilingEscalates **absent** on this tip (not reproduced)
+
