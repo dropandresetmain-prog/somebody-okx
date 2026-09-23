@@ -60,6 +60,10 @@ function portsFor(
       assertKey(objectiveKey, "loadBudgetVerdict");
       return { ok: true };
     },
+    async loadObjectiveBudget(objectiveKey) {
+      assertKey(objectiveKey, "loadObjectiveBudget");
+      return null;
+    },
     async loadPendingApproval(objectiveKey) {
       assertKey(objectiveKey, "loadPendingApproval");
       return null;

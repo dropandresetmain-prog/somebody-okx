@@ -54,8 +54,22 @@ export type ReducerFacts = {
   // proposals. Omitted in pure unit fixtures defaults to no exhaustion.
   decisionRefusalAttempts?: Readonly<Record<string, number>>;
   beginDecisionCeiling?: number;
+  /** Per-requirement worker dispatch attempts (persisted objective budget). */
+  workerAttemptBudget?: {
+    attemptsByRequirement: Readonly<Record<string, number>>;
+    maxWorkerAttemptsPerRequirement: number;
+  } | null;
   at: number;
 };
+
+function requirementWorkerAttemptsExhausted(
+  requirementKey: string,
+  budget: ReducerFacts["workerAttemptBudget"],
+): boolean {
+  if (!budget) return false;
+  const used = budget.attemptsByRequirement[requirementKey] ?? 0;
+  return used >= budget.maxWorkerAttemptsPerRequirement;
+}
 
 export type ManagementAction =
   | { kind: "plan_contract" }
@@ -98,6 +112,7 @@ export function reduceManagementState(facts: ReducerFacts): ReducedState {
     completionProposal,
     decisionRefusalAttempts = {},
     beginDecisionCeiling = BEGIN_DECISION_CEILING,
+    workerAttemptBudget = null,
   } = facts;
 
   // 0. An ACCEPTED completion verdict is terminal and outranks every other
@@ -369,6 +384,7 @@ export function reduceManagementState(facts: ReducerFacts): ReducedState {
         prerequisitesMet(requirement) &&
         requirement.state === "active" &&
         DISPATCHABLE_STRATEGIES.has(requirement.strategy ?? "") &&
+        !requirementWorkerAttemptsExhausted(requirement.requirementKey, workerAttemptBudget) &&
         !strategyDelivery(requirement.strategy, {
           assignmentStates: assignments
             .filter(

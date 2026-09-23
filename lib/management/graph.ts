@@ -54,6 +54,7 @@ export type ManagementPorts = {
   loadAssignments(objectiveKey: string): Promise<import("./types").Assignment[]>;
   loadIntents(objectiveKey: string): Promise<import("./types").ExecutionIntent[]>;
   loadBudgetVerdict(objectiveKey: string, at: number): Promise<import("./types").BudgetVerdict>;
+  loadObjectiveBudget(objectiveKey: string): Promise<import("./types").ObjectiveBudget | null>;
   loadPendingApproval(objectiveKey: string): Promise<{ question: string } | null>;
   loadCompletionVerdict(objectiveKey: string): Promise<CompletionVerdict | null>;
   loadWakeEvents(objectiveKey: string): Promise<import("./types").WakeEvent[]>;
@@ -189,10 +190,12 @@ async function reduceNode(state: Ann, config: LangGraphRunnableConfig): Promise<
   const decisionRefusalAttempts = contract
     ? await ports.loadDecisionRefusalAttempts(state.objectiveKey)
     : {};
-  const [assignments, intents, budgetVerdict, pendingApproval, completionVerdict] = await Promise.all([
+  const [assignments, intents, budgetVerdict, objectiveBudget, pendingApproval, completionVerdict] =
+    await Promise.all([
     ports.loadAssignments(state.objectiveKey),
     ports.loadIntents(state.objectiveKey),
     ports.loadBudgetVerdict(state.objectiveKey, at),
+    ports.loadObjectiveBudget(state.objectiveKey),
     ports.loadPendingApproval(state.objectiveKey),
     ports.loadCompletionVerdict(state.objectiveKey),
   ]);
@@ -207,6 +210,12 @@ async function reduceNode(state: Ann, config: LangGraphRunnableConfig): Promise<
     pendingApproval,
     completionProposal: completionVerdict,
     decisionRefusalAttempts,
+    workerAttemptBudget: objectiveBudget
+      ? {
+          attemptsByRequirement: objectiveBudget.used.attemptsByRequirement,
+          maxWorkerAttemptsPerRequirement: objectiveBudget.limits.maxWorkerAttemptsPerRequirement,
+        }
+      : null,
     at,
   });
   if (!isCoherentHold(reduced))
@@ -348,17 +357,26 @@ async function settleNode(state: Ann, config: LangGraphRunnableConfig): Promise<
   const decisionRefusalAttempts = contract
     ? await deps.ports.loadDecisionRefusalAttempts(state.objectiveKey)
     : {};
-  const [assignments, intents, budgetVerdict, pendingApproval, completionVerdict] = await Promise.all([
+  const [assignments, intents, budgetVerdict, objectiveBudget, pendingApproval, completionVerdict] =
+    await Promise.all([
     deps.ports.loadAssignments(state.objectiveKey),
     deps.ports.loadIntents(state.objectiveKey),
     deps.ports.loadBudgetVerdict(state.objectiveKey, at),
+    deps.ports.loadObjectiveBudget(state.objectiveKey),
     deps.ports.loadPendingApproval(state.objectiveKey),
     deps.ports.loadCompletionVerdict(state.objectiveKey),
   ]);
   const reduced = reduceManagementState({
     contract, currentContractRevision, requirements,
     groundedByRequirement: grounded, assignments, intents, budgetVerdict,
-    pendingApproval, completionProposal: completionVerdict, decisionRefusalAttempts, at,
+    pendingApproval, completionProposal: completionVerdict, decisionRefusalAttempts,
+    workerAttemptBudget: objectiveBudget
+      ? {
+          attemptsByRequirement: objectiveBudget.used.attemptsByRequirement,
+          maxWorkerAttemptsPerRequirement: objectiveBudget.limits.maxWorkerAttemptsPerRequirement,
+        }
+      : null,
+    at,
   });
   // Persist the post-action control state (including gate-accepted `completed`).
   // reduceNode writes the pre-action state; settle owns the final pass verdict.

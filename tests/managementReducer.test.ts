@@ -113,6 +113,20 @@ test("budget ceiling wins over everything and maps to its typed state", () => {
   assert.ok(isCoherentHold(r));
 });
 
+test("worker attempt ceiling on an authorized MAKE routes to decide, not dispatch", () => {
+  const r = reduceManagementState(
+    base({
+      requirements: [requirement({ requirementKey: "page_live", strategy: "MAKE" })],
+      workerAttemptBudget: {
+        attemptsByRequirement: { page_live: 3 },
+        maxWorkerAttemptsPerRequirement: 3,
+      },
+    }),
+  );
+  assert.equal(r.action.kind, "decide_requirement");
+  assert.equal(r.action.requirementKey, "page_live");
+});
+
 test("material ambiguity outranks executable work → approval_required/ask_founder", () => {
   const r = reduceManagementState(
     base({

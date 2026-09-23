@@ -144,6 +144,9 @@ function makePorts(world: World): ManagementPorts {
     async loadBudgetVerdict() {
       return checkBudget(world.budget, world.now);
     },
+    async loadObjectiveBudget() {
+      return world.budget;
+    },
     async loadPendingApproval() {
       return world.pendingApproval;
     },

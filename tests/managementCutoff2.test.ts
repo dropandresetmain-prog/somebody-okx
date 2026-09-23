@@ -436,6 +436,9 @@ function graphWorld(options: { requirement?: Requirement; budgetExhausted?: bool
         ? checkBudget(createBudget("obj_x", at0, { maxManagementDecisions: 0 }), at0)
         : { ok: true };
     },
+    async loadObjectiveBudget() {
+      return null;
+    },
     async loadPendingApproval() { return null; },
     async loadCompletionVerdict() { return null; },
     async loadWakeEvents() { return world.wakes; },

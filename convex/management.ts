@@ -319,6 +319,12 @@ export function buildConvexManagementPorts(ctx: MutationCtx): ManagementPorts {
       return checkBudget(budget, at);
     },
 
+    async loadObjectiveBudget(objectiveKey: string): Promise<ObjectiveBudget | null> {
+      return (await ctx.runQuery(internal.internal.workforce.readBudget, {
+        objectiveKey,
+      })) as ObjectiveBudget | null;
+    },
+
     async loadPendingApproval(objectiveKey: string): Promise<{ question: string } | null> {
       const row = await ctx.db
         .query("objectives")
@@ -2493,6 +2499,36 @@ async function noteDispatchDeferred(
     objectiveKey,
     data: { at, kind: "decision", text: `Dispatch deferred for ${requirementKey}: ${reason}`.slice(0, 900) },
   });
+
+  // Attempt ceiling: do not spin dispatch/no-progress forever — clear the bound
+  // strategy so the reducer can schedule a fresh grounded decision (e.g. BUY).
+  if (reason.includes("attempt ceiling reached")) {
+    const objectiveRow = await ctx.db
+      .query("objectives")
+      .withIndex("by_key", (q) => q.eq("key", objectiveKey))
+      .unique();
+    const odata = objectiveRow ? ((objectiveRow as AnyRow).data as Record<string, unknown>) : null;
+    const contractRevision =
+      ((odata?.management as { currentContractRevision?: number } | undefined)?.currentContractRevision ??
+        1) as number;
+    const persisted = (await ctx.runQuery(internal.internal.workforce.latestAuthorizedDecision, {
+      objectiveKey,
+      requirementKey,
+      contractRevision,
+    })) as { decisionId: string } | null;
+    if (persisted?.decisionId) {
+      await clearStrategyAfterFailedDelivery(ctx, {
+        objectiveKey,
+        requirementKey,
+        decisionId: persisted.decisionId,
+        at,
+      });
+    }
+    await ctx.scheduler.runAfter(0, internal.management.runManagementPass, {
+      objectiveKey,
+      reason: "dispatch_attempt_ceiling",
+    });
+  }
   return null;
 }
 
