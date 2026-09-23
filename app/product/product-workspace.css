@@ -547,6 +547,12 @@
   position: relative;
 }
 
+/* Completed: Final Deliverable leads the column, so Activity carries the gap
+   that used to live on Final Deliverable itself. */
+.v6-final-deliverable + .v6-activity {
+  margin-top: 28px;
+}
+
 .v6-activity::before {
   content: "";
   position: absolute;
@@ -1396,7 +1402,6 @@
 }
 
 .v6-final-deliverable {
-  margin-top: 28px;
   border: 1px solid color-mix(in srgb, var(--verified) 38%, var(--line));
   background: linear-gradient(110deg, var(--verified-wash), #fffdf9 42%);
   border-radius: 14px;

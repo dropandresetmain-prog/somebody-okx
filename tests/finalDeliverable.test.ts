@@ -188,7 +188,7 @@ test("the completion summary and the deliverable content render as separate, dis
 
 // ── E. Integration — mounted in the main content flow, not the rail ─────────
 
-test("V6WorkspaceView mounts Final Deliverable in the primary column, after Activity, only when completed", () => {
+test("V6WorkspaceView mounts Final Deliverable in the primary column, before Activity, only when completed", () => {
   const notCompletedView = workspace({ deliverables: [deliverable({ status: "current", content: "Not final yet." })] });
   const notCompleted = renderToStaticMarkup(
     createElement(V6WorkspaceView, {
@@ -218,10 +218,12 @@ test("V6WorkspaceView mounts Final Deliverable in the primary column, after Acti
   assert.ok(completed.includes('aria-label="Final deliverable"'));
   assert.ok(completed.includes("The governed final artifact."));
 
+  const headerIdx = completed.indexOf('data-objective-status="completed"');
   const activityIdx = completed.indexOf('aria-label="Activity"');
   const finalIdx = completed.indexOf('aria-label="Final deliverable"');
   const railIdx = completed.indexOf('aria-label="Deliverables"');
-  assert.ok(activityIdx >= 0 && finalIdx > activityIdx, "Final Deliverable mounts after Activity in the primary column");
+  assert.ok(headerIdx >= 0 && finalIdx > headerIdx, "Objective Header precedes Final Deliverable");
+  assert.ok(finalIdx >= 0 && activityIdx > finalIdx, "Final Deliverable mounts before Activity in the primary column — what the founder got, before how Somebody got there");
   assert.ok(finalIdx < railIdx, "Final Deliverable is in the primary column, entirely before the rail column in markup order");
 });
 

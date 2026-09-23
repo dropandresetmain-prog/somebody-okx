@@ -135,12 +135,14 @@ function MainPane({
           />
           <div className="v6-columns">
             <div className="v6-column-primary">
-              <Activity items={view.activity} acquisitions={view.acquisitions} />
+              {/* Completed: the founder should see what they actually got before
+                  scrolling through how Somebody got there. */}
               <FinalDeliverable
                 objective={view.objective}
                 somebodyNow={view.somebodyNow}
                 deliverables={view.deliverables}
               />
+              <Activity items={view.activity} acquisitions={view.acquisitions} />
             </div>
             <div className="v6-column-rail">
               <Attention

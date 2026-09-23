@@ -1606,10 +1606,19 @@ export function projectActivity(source: ProductSource, facts: ObjectiveFacts, no
   // Stable de-duplication by id (identity is the source fact, never repeated).
   const unique = new Map<string, ActivityItem>();
   for (const item of items) if (!unique.has(item.id)) unique.set(item.id, item);
-  let sorted = [...unique.values()].sort(
+  // Causal (oldest-first) order first: this is what makes the retained window
+  // and the tie-break deterministic — TYPE_RANK breaks same-timestamp ties by
+  // WHICH fact causally precedes which (e.g. the outcome is interpreted before
+  // Somebody decides, which precedes the intern being assigned).
+  const causalOrder = [...unique.values()].sort(
     (a, b) => a.occurredAt - b.occurredAt || (TYPE_RANK[a.type] ?? 99) - (TYPE_RANK[b.type] ?? 99) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
   );
-  if (sorted.length > ACTIVITY_LIMIT) sorted = sorted.slice(sorted.length - ACTIVITY_LIMIT);
+  // The bound retains the newest ACTIVITY_LIMIT items — the tail of causal order.
+  const bounded = causalOrder.length > ACTIVITY_LIMIT ? causalOrder.slice(causalOrder.length - ACTIVITY_LIMIT) : causalOrder;
+  // Founder-facing product order is newest first (§ latest event at the top):
+  // reversing the bounded causal order keeps the same deterministic tie-break
+  // and the same retained window, just presented in the opposite direction.
+  const sorted = [...bounded].reverse();
   const kept = new Set(sorted.map((item) => item.id));
   return sorted.map((item) => {
     if (item.causedByActivityId && !kept.has(item.causedByActivityId)) {

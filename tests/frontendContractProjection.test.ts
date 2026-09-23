@@ -676,6 +676,70 @@ test("activity: completion, blocked, and verification events", () => {
   assert.equal(byType(projectActivity(stale, deriveObjectiveFacts(stale), NOW), "verification_completed").length, 0, "stale assessment is not projected as current");
 });
 
+test("activity: newest event first, oldest last", () => {
+  const s = acquisitionScenario();
+  const items = projectActivity(s, deriveObjectiveFacts(s), NOW);
+  assert.ok(items.length > 2, "fixture needs several events for this to be meaningful");
+  for (let i = 0; i < items.length - 1; i += 1) {
+    assert.ok(
+      items[i].occurredAt >= items[i + 1].occurredAt,
+      `item ${i} (${items[i].occurredAt}) should not occur before item ${i + 1} (${items[i + 1].occurredAt})`,
+    );
+  }
+  assert.equal(items[0].occurredAt, Math.max(...items.map((i) => i.occurredAt)), "the first rendered item is the most recent fact");
+  assert.equal(items[items.length - 1].type, "objective_interpreted", "the oldest fact in this fixture (defining the outcome) renders last, not first");
+});
+
+test("activity: same-timestamp ties are broken deterministically, stable across repeated calls", () => {
+  const s = source({
+    contracts: [{ contractId: "c1", revision: 1, intent: "Ship a working launch", createdAt: NOW - 90_000 }],
+    decisions: [decision("d1", "r1", { at: NOW - 1000 }), decision("d2", "r1", { at: NOW - 1000, decisionId: "d2" })],
+    assignments: [assignment("a1", "r1", { createdAt: NOW - 1000 })],
+  });
+  const facts = deriveObjectiveFacts(s);
+  const first = projectActivity(s, facts, NOW);
+  const second = projectActivity(s, facts, NOW);
+  assert.deepEqual(ids(first), ids(second), "identical input always yields identical order");
+  const tied = first.filter((item) => item.occurredAt === NOW - 1000);
+  assert.ok(tied.length >= 2, "fixture needs a genuine same-timestamp tie");
+});
+
+test("activity: more than ACTIVITY_LIMIT events retains the newest ones, newest first", () => {
+  const manyDecisions = Array.from({ length: 320 }, (_, i) =>
+    decision(`d${i}`, "r1", { at: NOW - 100_000 + i * 100, authorization: { kind: "authorized" } }),
+  );
+  const s = source({ decisions: manyDecisions });
+  const items = projectActivity(s, deriveObjectiveFacts(s), NOW);
+  assert.equal(items.length, 300, "the bound caps output at ACTIVITY_LIMIT");
+  const decisionItems = byType(items, "manager_decision");
+  // The newest-created decision (d319, highest `at`) must survive and lead.
+  assert.equal(decisionItems[0].id, "activity:manager_decision:d319");
+  assert.ok(!decisionItems.some((item) => item.id === "activity:manager_decision:d0"), "the oldest decisions were evicted, not the newest");
+  for (let i = 0; i < items.length - 1; i += 1) assert.ok(items[i].occurredAt >= items[i + 1].occurredAt);
+});
+
+test("activity: causal reference survives truncation when its cause is retained, and is dropped when the cause falls outside the bound", () => {
+  const s = acquisitionScenario();
+  const items = projectActivity(s, deriveObjectiveFacts(s), NOW);
+  const resumed = byType(items, "work_resumed")[0] as { causedByActivityId?: string };
+  assert.equal(resumed.causedByActivityId, "activity:external_result_verified:ev_acq", "cause is retained inside a small fixture, so the reference survives");
+
+  // The cause (external_result_verified) occurs at NOW-34_000; work_resumed
+  // (the effect) occurs at NOW-5_000. Fill the gap between them with enough
+  // newer-than-the-cause events that the bound evicts the cause but not the
+  // effect — this is the truncation edge the causal cleanup exists for.
+  const s2 = acquisitionScenario();
+  s2.decisions = Array.from({ length: 310 }, (_, i) =>
+    decision(`filler${i}`, "r1", { at: NOW - 33_000 + i, authorization: { kind: "authorized" } }),
+  );
+  const items2 = projectActivity(s2, deriveObjectiveFacts(s2), NOW);
+  assert.equal(items2.length, 300, "the bound still caps at ACTIVITY_LIMIT");
+  assert.equal(byType(items2, "external_result_verified").length, 0, "the cause fell outside the retained window");
+  const resumed2 = byType(items2, "work_resumed")[0] as { causedByActivityId?: string } | undefined;
+  assert.ok(resumed2, "the effect itself is recent enough to survive the bound");
+  assert.equal(resumed2!.causedByActivityId, undefined, "a dangling causal reference to an evicted event is dropped, not left pointing at nothing");
+});
+
 // ── Deliverables ─────────────────────────────────────────────────────────────
 
 function artifact(key: string, version: number, content = "content"): ProductArtifact {
