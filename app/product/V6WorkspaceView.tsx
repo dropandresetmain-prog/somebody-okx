@@ -5,6 +5,7 @@ import { Sidebar } from "./components/Sidebar";
 import { ObjectiveHeader } from "./components/ObjectiveHeader";
 import { Checkpoints } from "./components/Checkpoints";
 import { Activity } from "./components/Activity";
+import { FinalDeliverable } from "./components/FinalDeliverable";
 import { Deliverables } from "./components/Deliverables";
 import { Acquisitions } from "./components/Acquisitions";
 import { Attention } from "./components/Attention";
@@ -119,6 +120,11 @@ function MainPane({
           <div className="v6-columns">
             <div className="v6-column-primary">
               <Activity items={main.view.activity} acquisitions={main.view.acquisitions} />
+              <FinalDeliverable
+                objective={main.view.objective}
+                somebodyNow={main.view.somebodyNow}
+                deliverables={main.view.deliverables}
+              />
             </div>
             <div className="v6-column-rail">
               <Attention
