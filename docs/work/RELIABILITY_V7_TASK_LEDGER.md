@@ -84,7 +84,7 @@ Item commits (each pushed at the item boundary):
 - `tsc --noEmit` error set identical to HEAD; `tsc -p convex/tsconfig.json` clean.
 - No new lint script invented; no live model, payment, signing, or merchant call.
 
-## Milestone 2 — in progress
+## Milestone 2 — G/H/I/J complete (evidence: RELIABILITY_V7_EVIDENCE_MANIFEST.md)
 
 | Item | Commit | Content |
 | --- | --- | --- |
