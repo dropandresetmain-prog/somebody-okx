@@ -1,6 +1,6 @@
 ﻿# Gate evidence — integration/okx-final-convergence
 
-Frozen candidate tip at gate body: `a60690358d8cadaf17d880490f809b5db082178d` (plus api.d.ts/docs checkpoint following)
+Frozen candidate: `09beabb02d9cfdc253ccfdf35f8da50bfe221b29`
 Base start: `51bb7c605f220ae8b1b010e6ebabf594a70f3042`
 Exclusion: `tests/m3GateInterpretationCeilingEscalates.test.ts` (known hang; same as V7)
 
@@ -26,4 +26,5 @@ Added passing tests from FE / Business Seed V2 / Jev transplant + seam.
 
 - `convex/_generated/api.d.ts` manually registered `productCommands` (codegen requires CONVEX_DEPLOYMENT; runtime `api.js` already uses `anyApi`).
 - No live payments / M3 provider / live Objectives run.
+
 
