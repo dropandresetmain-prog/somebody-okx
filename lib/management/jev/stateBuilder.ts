@@ -46,3 +46,15 @@ export function buildOptionSelectionState(
     options: eligible.map(describeOptionForState),
   };
 }
+
+/**
+ * Pure serialization of the exact Jev eval input (requirement context +
+ * eligible GroundedOption[]). Read-only helper for offline eval tooling;
+ * does not touch runtime routing, Convex, or telemetry.
+ */
+export function serializeJevEvalInput(
+  requirement: JevRequirementContext,
+  eligible: readonly GroundedOption[],
+): Record<string, unknown> {
+  return buildOptionSelectionState(requirement, eligible);
+}

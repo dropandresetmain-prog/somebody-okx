@@ -5,9 +5,9 @@
  * ../decision.ts). It is a standalone, transplantable unit: given eligible
  * GroundedOptions and bounded requirement context, it returns a typed
  * selection or a typed failure — never a fallback, never a fabricated
- * ManagerialRecommendation. Translating a "selected" result into a production
- * ManagerialRecommendation (rationale, assumptions, change-my-mind evidence)
- * is explicitly out of scope for this milestone.
+ * ManagerialRecommendation. Translating a "selected" result into a
+ * ManagerialRecommendation is owned by buildJevManagerialRecommendation —
+ * still not wired into the live recommend seam.
  */
 import { classifyProviderFailure } from "../modelBoundary";
 import { callJevGateway, type JevGatewayCall } from "./client";
@@ -30,7 +30,7 @@ export async function selectEligibleOption(
 
   const eligibleOptionIds = new Set(eligible.map((option) => option.optionId));
   const state = buildOptionSelectionState(requirement, eligible);
-  const question = buildOptionChoiceQuestion(eligible);
+  const question = buildOptionChoiceQuestion(eligible, input.questionRubric ?? "baseline");
   const callGateway = deps.callGateway ?? callJevGateway;
 
   const controller = new AbortController();

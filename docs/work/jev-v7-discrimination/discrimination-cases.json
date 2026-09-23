@@ -1,0 +1,1553 @@
+[
+  {
+    "caseId": "disc_external_price_only_two_buy",
+    "corpusSource": "REAL_DERIVED_VARIANT",
+    "provenance": "managementDecision grounding — two verified offerings — external price dominance (BUY-only subset)",
+    "caseShape": "MULTI_CANDIDATE_CLEAR",
+    "reference": {
+      "kind": "DETERMINISTIC_DOMINANCE",
+      "expectedOptionId": "opt_b4d674e36e3e598ab93706f6",
+      "notes": "Isolated: two BUY options, price differs only."
+    },
+    "requirement": {
+      "requirementKey": "page_live",
+      "title": "Landing page is live",
+      "mustBeTrue": "the page is reachable",
+      "scope": "the page is reachable",
+      "expectedOutput": null,
+      "requiredResourceClasses": []
+    },
+    "contractRevision": 1,
+    "eligible": [
+      {
+        "optionId": "opt_b4d674e36e3e598ab93706f6",
+        "requirementKey": "page_live",
+        "contractRevision": 1,
+        "kind": "external",
+        "strategy": "BUY",
+        "internal": null,
+        "external": {
+          "offeringId": "off_provider_b",
+          "providerId": "prov_b",
+          "serviceId": "svc_research_sprint",
+          "resourceClass": "public_web",
+          "priceUsd": 1.2,
+          "priceSource": "provider_quote",
+          "registryVerified": true,
+          "compatibleResourceClass": true,
+          "executionPathConfigured": true,
+          "purposeScopeCompatible": true
+        },
+        "facts": {
+          "scope": null,
+          "expectedQuality": {
+            "value": "comparable",
+            "provenance": "provider_quote",
+            "sourceRef": "quote_1",
+            "observedAt": 1700000000000,
+            "confidence": "medium"
+          },
+          "setupMinutes": {
+            "value": 0,
+            "provenance": "provider_quote",
+            "sourceRef": "quote_1",
+            "observedAt": 1700000000000,
+            "confidence": "medium"
+          },
+          "queueMinutes": {
+            "value": 10,
+            "provenance": "provider_quote",
+            "sourceRef": "quote_1",
+            "observedAt": 1700000000000,
+            "confidence": "medium"
+          },
+          "executionMinutes": {
+            "value": 90,
+            "provenance": "provider_quote",
+            "sourceRef": "quote_1",
+            "observedAt": 1700000000000,
+            "confidence": "medium"
+          },
+          "verificationMinutes": null,
+          "internalCostUsd": null,
+          "externalPriceUsd": {
+            "value": 1.2,
+            "provenance": "provider_quote",
+            "sourceRef": "quote_1",
+            "observedAt": 1700000000000,
+            "confidence": "high"
+          },
+          "reliability": {
+            "value": "proven_once",
+            "provenance": "registry_data",
+            "sourceRef": "registry_1",
+            "observedAt": 1700000000000,
+            "confidence": "medium"
+          },
+          "availability": {
+            "value": "free",
+            "provenance": "provider_quote",
+            "sourceRef": "quote_1",
+            "observedAt": 1700000000000,
+            "confidence": "medium"
+          },
+          "reuseValue": null,
+          "externalAdvantage": {
+            "value": "speed",
+            "provenance": "provider_quote",
+            "sourceRef": "quote_1",
+            "observedAt": 1700000000000,
+            "confidence": "medium"
+          }
+        },
+        "eligibility": {
+          "eligible": true,
+          "checksPassed": [
+            "financial_bounds",
+            "proof_available",
+            "provider_identity_compatible"
+          ]
+        }
+      },
+      {
+        "optionId": "opt_a3e66fcb0d034479c9800b04",
+        "requirementKey": "page_live",
+        "contractRevision": 1,
+        "kind": "external",
+        "strategy": "BUY",
+        "internal": null,
+        "external": {
+          "offeringId": "off_provider_a",
+          "providerId": "prov_a",
+          "serviceId": "svc_research_sprint",
+          "resourceClass": "public_web",
+          "priceUsd": 4,
+          "priceSource": "provider_quote",
+          "registryVerified": true,
+          "compatibleResourceClass": true,
+          "executionPathConfigured": true,
+          "purposeScopeCompatible": true
+        },
+        "facts": {
+          "scope": null,
+          "expectedQuality": {
+            "value": "comparable",
+            "provenance": "provider_quote",
+            "sourceRef": "quote_1",
+            "observedAt": 1700000000000,
+            "confidence": "medium"
+          },
+          "setupMinutes": {
+            "value": 0,
+            "provenance": "provider_quote",
+            "sourceRef": "quote_1",
+            "observedAt": 1700000000000,
+            "confidence": "medium"
+          },
+          "queueMinutes": {
+            "value": 10,
+            "provenance": "provider_quote",
+            "sourceRef": "quote_1",
+            "observedAt": 1700000000000,
+            "confidence": "medium"
+          },
+          "executionMinutes": {
+            "value": 90,
+            "provenance": "provider_quote",
+            "sourceRef": "quote_1",
+            "observedAt": 1700000000000,
+            "confidence": "medium"
+          },
+          "verificationMinutes": null,
+          "internalCostUsd": null,
+          "externalPriceUsd": {
+            "value": 4,
+            "provenance": "provider_quote",
+            "sourceRef": "quote_1",
+            "observedAt": 1700000000000,
+            "confidence": "high"
+          },
+          "reliability": {
+            "value": "proven_once",
+            "provenance": "registry_data",
+            "sourceRef": "registry_1",
+            "observedAt": 1700000000000,
+            "confidence": "medium"
+          },
+          "availability": {
+            "value": "free",
+            "provenance": "provider_quote",
+            "sourceRef": "quote_1",
+            "observedAt": 1700000000000,
+            "confidence": "medium"
+          },
+          "reuseValue": null,
+          "externalAdvantage": {
+            "value": "speed",
+            "provenance": "provider_quote",
+            "sourceRef": "quote_1",
+            "observedAt": 1700000000000,
+            "confidence": "medium"
+          }
+        },
+        "eligibility": {
+          "eligible": true,
+          "checksPassed": [
+            "financial_bounds",
+            "proof_available",
+            "provider_identity_compatible"
+          ]
+        }
+      }
+    ],
+    "factsSummary": "opt_b4d674e3:BUY/external price=1.2; opt_a3e66fcb:BUY/external price=4"
+  },
+  {
+    "caseId": "disc_make_strictly_superior",
+    "corpusSource": "REAL_DERIVED_VARIANT",
+    "provenance": "tests/managementDecision.test.ts — internal does NOT auto-win — MAKE strictly superior",
+    "caseShape": "MULTI_CANDIDATE_CLEAR",
+    "reference": {
+      "kind": "DETERMINISTIC_DOMINANCE",
+      "expectedOptionId": "opt_3d1baaf29c53c6746c21f1df",
+      "notes": "MAKE cheaper and faster on known cost and total minutes."
+    },
+    "requirement": {
+      "requirementKey": "page_live",
+      "title": "Landing page is live",
+      "mustBeTrue": "the page is reachable",
+      "scope": "the page is reachable",
+      "expectedOutput": null,
+      "requiredResourceClasses": []
+    },
+    "contractRevision": 1,
+    "eligible": [
+      {
+        "optionId": "opt_3d1baaf29c53c6746c21f1df",
+        "requirementKey": "page_live",
+        "contractRevision": 1,
+        "kind": "internal",
+        "strategy": "MAKE",
+        "internal": {
+          "capabilityKeys": [
+            "growth_launch_operations"
+          ],
+          "responsibility": "eligible, available and already holds the needed context",
+          "workerKey": "worker_growth_launch_operations",
+          "staffingReason": "eligible, available and already holds the needed context",
+          "primitives": [
+            "read_company_record",
+            "read_public_web",
+            "record_finding",
+            "request_resource",
+            "update_company_artifact"
+          ]
+        },
+        "external": null,
+        "facts": {
+          "scope": null,
+          "expectedQuality": null,
+          "setupMinutes": null,
+          "queueMinutes": null,
+          "executionMinutes": {
+            "value": 20,
+            "provenance": "measured",
+            "sourceRef": "variant",
+            "observedAt": 1700000000000,
+            "confidence": "high"
+          },
+          "verificationMinutes": null,
+          "internalCostUsd": {
+            "value": 0.2,
+            "provenance": "measured",
+            "sourceRef": "variant",
+            "observedAt": 1700000000000,
+            "confidence": "high"
+          },
+          "externalPriceUsd": null,
+          "reliability": null,
+          "availability": {
+            "value": "free",
+            "provenance": "measured",
+            "sourceRef": "obs_internal",
+            "observedAt": 1700000000000,
+            "confidence": "high"
+          },
+          "reuseValue": null,
+          "externalAdvantage": null
+        },
+        "eligibility": {
+          "eligible": true,
+          "checksPassed": [
+            "inputs_owned",
+            "primitives_governed",
+            "proof_available",
+            "worker_available"
+          ]
+        }
+      },
+      {
+        "optionId": "opt_386010810fcf8af17c61d16f",
+        "requirementKey": "page_live",
+        "contractRevision": 1,
+        "kind": "external",
+        "strategy": "BUY",
+        "internal": null,
+        "external": {
+          "offeringId": "off_market_research_sprint",
+          "providerId": "prov_research_co",
+          "serviceId": "svc_research_sprint",
+          "resourceClass": "public_web",
+          "priceUsd": 5,
+          "priceSource": "provider_quote",
+          "registryVerified": true,
+          "compatibleResourceClass": true,
+          "executionPathConfigured": true,
+          "purposeScopeCompatible": true
+        },
+        "facts": {
+          "scope": null,
+          "expectedQuality": {
+            "value": "comparable",
+            "provenance": "provider_quote",
+            "sourceRef": "quote_1",
+            "observedAt": 1700000000000,
+            "confidence": "medium"
+          },
+          "setupMinutes": {
+            "value": 0,
+            "provenance": "provider_quote",
+            "sourceRef": "quote_1",
+            "observedAt": 1700000000000,
+            "confidence": "medium"
+          },
+          "queueMinutes": {
+            "value": 20,
+            "provenance": "provider_quote",
+            "sourceRef": "variant",
+            "observedAt": 1700000000000,
+            "confidence": "medium"
+          },
+          "executionMinutes": {
+            "value": 120,
+            "provenance": "provider_quote",
+            "sourceRef": "variant",
+            "observedAt": 1700000000000,
+            "confidence": "medium"
+          },
+          "verificationMinutes": null,
+          "internalCostUsd": null,
+          "externalPriceUsd": {
+            "value": 5,
+            "provenance": "provider_quote",
+            "sourceRef": "variant",
+            "observedAt": 1700000000000,
+            "confidence": "high"
+          },
+          "reliability": {
+            "value": "proven_once",
+            "provenance": "registry_data",
+            "sourceRef": "registry_1",
+            "observedAt": 1700000000000,
+            "confidence": "medium"
+          },
+          "availability": {
+            "value": "free",
+            "provenance": "provider_quote",
+            "sourceRef": "quote_1",
+            "observedAt": 1700000000000,
+            "confidence": "medium"
+          },
+          "reuseValue": null,
+          "externalAdvantage": {
+            "value": "speed",
+            "provenance": "provider_quote",
+            "sourceRef": "quote_1",
+            "observedAt": 1700000000000,
+            "confidence": "medium"
+          }
+        },
+        "eligibility": {
+          "eligible": true,
+          "checksPassed": [
+            "financial_bounds",
+            "proof_available",
+            "provider_identity_compatible"
+          ]
+        }
+      }
+    ],
+    "factsSummary": "opt_3d1baaf2:MAKE/internal price=0.2; opt_38601081:BUY/external price=5"
+  },
+  {
+    "caseId": "disc_make_strictly_inferior",
+    "corpusSource": "REAL_DERIVED_VARIANT",
+    "provenance": "tests/managementDecision.test.ts — internal does NOT auto-win — MAKE strictly inferior",
+    "caseShape": "MULTI_CANDIDATE_CLEAR",
+    "reference": {
+      "kind": "DETERMINISTIC_DOMINANCE",
+      "expectedOptionId": "opt_386010810fcf8af17c61d16f",
+      "notes": "BUY cheaper and faster on known facts."
+    },
+    "requirement": {
+      "requirementKey": "page_live",
+      "title": "Landing page is live",
+      "mustBeTrue": "the page is reachable",
+      "scope": "the page is reachable",
+      "expectedOutput": null,
+      "requiredResourceClasses": []
+    },
+    "contractRevision": 1,
+    "eligible": [
+      {
+        "optionId": "opt_3d1baaf29c53c6746c21f1df",
+        "requirementKey": "page_live",
+        "contractRevision": 1,
+        "kind": "internal",
+        "strategy": "MAKE",
+        "internal": {
+          "capabilityKeys": [
+            "growth_launch_operations"
+          ],
+          "responsibility": "eligible, available and already holds the needed context",
+          "workerKey": "worker_growth_launch_operations",
+          "staffingReason": "eligible, available and already holds the needed context",
+          "primitives": [
+            "read_company_record",
+            "read_public_web",
+            "record_finding",
+            "request_resource",
+            "update_company_artifact"
+          ]
+        },
+        "external": null,
+        "facts": {
+          "scope": null,
+          "expectedQuality": null,
+          "setupMinutes": null,
+          "queueMinutes": null,
+          "executionMinutes": {
+            "value": 200,
+            "provenance": "measured",
+            "sourceRef": "variant",
+            "observedAt": 1700000000000,
+            "confidence": "high"
+          },
+          "verificationMinutes": null,
+          "internalCostUsd": {
+            "value": 8,
+            "provenance": "measured",
+            "sourceRef": "variant",
+            "observedAt": 1700000000000,
+            "confidence": "high"
+          },
+          "externalPriceUsd": null,
+          "reliability": null,
+          "availability": {
+            "value": "free",
+            "provenance": "measured",
+            "sourceRef": "obs_internal",
+            "observedAt": 1700000000000,
+            "confidence": "high"
+          },
+          "reuseValue": null,
+          "externalAdvantage": null
+        },
+        "eligibility": {
+          "eligible": true,
+          "checksPassed": [
+            "inputs_owned",
+            "primitives_governed",
+            "proof_available",
+            "worker_available"
+          ]
+        }
+      },
+      {
+        "optionId": "opt_386010810fcf8af17c61d16f",
+        "requirementKey": "page_live",
+        "contractRevision": 1,
+        "kind": "external",
+        "strategy": "BUY",
+        "internal": null,
+        "external": {
+          "offeringId": "off_market_research_sprint",
+          "providerId": "prov_research_co",
+          "serviceId": "svc_research_sprint",
+          "resourceClass": "public_web",
+          "priceUsd": 1,
+          "priceSource": "provider_quote",
+          "registryVerified": true,
+          "compatibleResourceClass": true,
+          "executionPathConfigured": true,
+          "purposeScopeCompatible": true
+        },
+        "facts": {
+          "scope": null,
+          "expectedQuality": {
+            "value": "comparable",
+            "provenance": "provider_quote",
+            "sourceRef": "quote_1",
+            "observedAt": 1700000000000,
+            "confidence": "medium"
+          },
+          "setupMinutes": {
+            "value": 0,
+            "provenance": "provider_quote",
+            "sourceRef": "quote_1",
+            "observedAt": 1700000000000,
+            "confidence": "medium"
+          },
+          "queueMinutes": {
+            "value": 10,
+            "provenance": "provider_quote",
+            "sourceRef": "quote_1",
+            "observedAt": 1700000000000,
+            "confidence": "medium"
+          },
+          "executionMinutes": {
+            "value": 30,
+            "provenance": "provider_quote",
+            "sourceRef": "variant",
+            "observedAt": 1700000000000,
+            "confidence": "medium"
+          },
+          "verificationMinutes": null,
+          "internalCostUsd": null,
+          "externalPriceUsd": {
+            "value": 1,
+            "provenance": "provider_quote",
+            "sourceRef": "variant",
+            "observedAt": 1700000000000,
+            "confidence": "high"
+          },
+          "reliability": {
+            "value": "proven_once",
+            "provenance": "registry_data",
+            "sourceRef": "registry_1",
+            "observedAt": 1700000000000,
+            "confidence": "medium"
+          },
+          "availability": {
+            "value": "free",
+            "provenance": "provider_quote",
+            "sourceRef": "quote_1",
+            "observedAt": 1700000000000,
+            "confidence": "medium"
+          },
+          "reuseValue": null,
+          "externalAdvantage": {
+            "value": "speed",
+            "provenance": "provider_quote",
+            "sourceRef": "quote_1",
+            "observedAt": 1700000000000,
+            "confidence": "medium"
+          }
+        },
+        "eligibility": {
+          "eligible": true,
+          "checksPassed": [
+            "financial_bounds",
+            "proof_available",
+            "provider_identity_compatible"
+          ]
+        }
+      }
+    ],
+    "factsSummary": "opt_3d1baaf2:MAKE/internal price=8; opt_38601081:BUY/external price=1"
+  },
+  {
+    "caseId": "disc_cheaper_slower_tradeoff",
+    "corpusSource": "REAL_DERIVED_VARIANT",
+    "provenance": "tests/managementDecision.test.ts — internal does NOT auto-win — cost vs speed tradeoff",
+    "caseShape": "MULTI_CANDIDATE_AMBIGUOUS",
+    "reference": {
+      "kind": "HUMAN_REVIEW",
+      "expectedOptionId": null,
+      "notes": "MAKE cheaper; BUY faster — genuine tradeoff."
+    },
+    "requirement": {
+      "requirementKey": "page_live",
+      "title": "Landing page is live",
+      "mustBeTrue": "the page is reachable",
+      "scope": "the page is reachable",
+      "expectedOutput": null,
+      "requiredResourceClasses": []
+    },
+    "contractRevision": 1,
+    "eligible": [
+      {
+        "optionId": "opt_3d1baaf29c53c6746c21f1df",
+        "requirementKey": "page_live",
+        "contractRevision": 1,
+        "kind": "internal",
+        "strategy": "MAKE",
+        "internal": {
+          "capabilityKeys": [
+            "growth_launch_operations"
+          ],
+          "responsibility": "eligible, available and already holds the needed context",
+          "workerKey": "worker_growth_launch_operations",
+          "staffingReason": "eligible, available and already holds the needed context",
+          "primitives": [
+            "read_company_record",
+            "read_public_web",
+            "record_finding",
+            "request_resource",
+            "update_company_artifact"
+          ]
+        },
+        "external": null,
+        "facts": {
+          "scope": null,
+          "expectedQuality": null,
+          "setupMinutes": null,
+          "queueMinutes": null,
+          "executionMinutes": {
+            "value": 150,
+            "provenance": "measured",
+            "sourceRef": "variant",
+            "observedAt": 1700000000000,
+            "confidence": "high"
+          },
+          "verificationMinutes": null,
+          "internalCostUsd": {
+            "value": 0.3,
+            "provenance": "measured",
+            "sourceRef": "variant",
+            "observedAt": 1700000000000,
+            "confidence": "high"
+          },
+          "externalPriceUsd": null,
+          "reliability": null,
+          "availability": {
+            "value": "free",
+            "provenance": "measured",
+            "sourceRef": "obs_internal",
+            "observedAt": 1700000000000,
+            "confidence": "high"
+          },
+          "reuseValue": null,
+          "externalAdvantage": null
+        },
+        "eligibility": {
+          "eligible": true,
+          "checksPassed": [
+            "inputs_owned",
+            "primitives_governed",
+            "proof_available",
+            "worker_available"
+          ]
+        }
+      },
+      {
+        "optionId": "opt_386010810fcf8af17c61d16f",
+        "requirementKey": "page_live",
+        "contractRevision": 1,
+        "kind": "external",
+        "strategy": "BUY",
+        "internal": null,
+        "external": {
+          "offeringId": "off_market_research_sprint",
+          "providerId": "prov_research_co",
+          "serviceId": "svc_research_sprint",
+          "resourceClass": "public_web",
+          "priceUsd": 2.5,
+          "priceSource": "provider_quote",
+          "registryVerified": true,
+          "compatibleResourceClass": true,
+          "executionPathConfigured": true,
+          "purposeScopeCompatible": true
+        },
+        "facts": {
+          "scope": null,
+          "expectedQuality": {
+            "value": "comparable",
+            "provenance": "provider_quote",
+            "sourceRef": "quote_1",
+            "observedAt": 1700000000000,
+            "confidence": "medium"
+          },
+          "setupMinutes": {
+            "value": 0,
+            "provenance": "provider_quote",
+            "sourceRef": "quote_1",
+            "observedAt": 1700000000000,
+            "confidence": "medium"
+          },
+          "queueMinutes": {
+            "value": 10,
+            "provenance": "provider_quote",
+            "sourceRef": "quote_1",
+            "observedAt": 1700000000000,
+            "confidence": "medium"
+          },
+          "executionMinutes": {
+            "value": 40,
+            "provenance": "provider_quote",
+            "sourceRef": "variant",
+            "observedAt": 1700000000000,
+            "confidence": "medium"
+          },
+          "verificationMinutes": null,
+          "internalCostUsd": null,
+          "externalPriceUsd": {
+            "value": 2.5,
+            "provenance": "provider_quote",
+            "sourceRef": "variant",
+            "observedAt": 1700000000000,
+            "confidence": "high"
+          },
+          "reliability": {
+            "value": "proven_once",
+            "provenance": "registry_data",
+            "sourceRef": "registry_1",
+            "observedAt": 1700000000000,
+            "confidence": "medium"
+          },
+          "availability": {
+            "value": "free",
+            "provenance": "provider_quote",
+            "sourceRef": "quote_1",
+            "observedAt": 1700000000000,
+            "confidence": "medium"
+          },
+          "reuseValue": null,
+          "externalAdvantage": {
+            "value": "speed",
+            "provenance": "provider_quote",
+            "sourceRef": "quote_1",
+            "observedAt": 1700000000000,
+            "confidence": "medium"
+          }
+        },
+        "eligibility": {
+          "eligible": true,
+          "checksPassed": [
+            "financial_bounds",
+            "proof_available",
+            "provider_identity_compatible"
+          ]
+        }
+      }
+    ],
+    "factsSummary": "opt_3d1baaf2:MAKE/internal price=0.3; opt_38601081:BUY/external price=2.5"
+  },
+  {
+    "caseId": "disc_faster_cheaper_internal",
+    "corpusSource": "REAL_DERIVED_VARIANT",
+    "provenance": "tests/managementDecision.test.ts — internal does NOT auto-win — MAKE faster and cheaper",
+    "caseShape": "MULTI_CANDIDATE_CLEAR",
+    "reference": {
+      "kind": "DETERMINISTIC_DOMINANCE",
+      "expectedOptionId": "opt_3d1baaf29c53c6746c21f1df",
+      "notes": "MAKE faster and cheaper on known facts."
+    },
+    "requirement": {
+      "requirementKey": "page_live",
+      "title": "Landing page is live",
+      "mustBeTrue": "the page is reachable",
+      "scope": "the page is reachable",
+      "expectedOutput": null,
+      "requiredResourceClasses": []
+    },
+    "contractRevision": 1,
+    "eligible": [
+      {
+        "optionId": "opt_3d1baaf29c53c6746c21f1df",
+        "requirementKey": "page_live",
+        "contractRevision": 1,
+        "kind": "internal",
+        "strategy": "MAKE",
+        "internal": {
+          "capabilityKeys": [
+            "growth_launch_operations"
+          ],
+          "responsibility": "eligible, available and already holds the needed context",
+          "workerKey": "worker_growth_launch_operations",
+          "staffingReason": "eligible, available and already holds the needed context",
+          "primitives": [
+            "read_company_record",
+            "read_public_web",
+            "record_finding",
+            "request_resource",
+            "update_company_artifact"
+          ]
+        },
+        "external": null,
+        "facts": {
+          "scope": null,
+          "expectedQuality": null,
+          "setupMinutes": null,
+          "queueMinutes": null,
+          "executionMinutes": {
+            "value": 25,
+            "provenance": "measured",
+            "sourceRef": "variant",
+            "observedAt": 1700000000000,
+            "confidence": "high"
+          },
+          "verificationMinutes": null,
+          "internalCostUsd": {
+            "value": 0.5,
+            "provenance": "measured",
+            "sourceRef": "variant",
+            "observedAt": 1700000000000,
+            "confidence": "high"
+          },
+          "externalPriceUsd": null,
+          "reliability": null,
+          "availability": {
+            "value": "free",
+            "provenance": "measured",
+            "sourceRef": "obs_internal",
+            "observedAt": 1700000000000,
+            "confidence": "high"
+          },
+          "reuseValue": null,
+          "externalAdvantage": null
+        },
+        "eligibility": {
+          "eligible": true,
+          "checksPassed": [
+            "inputs_owned",
+            "primitives_governed",
+            "proof_available",
+            "worker_available"
+          ]
+        }
+      },
+      {
+        "optionId": "opt_386010810fcf8af17c61d16f",
+        "requirementKey": "page_live",
+        "contractRevision": 1,
+        "kind": "external",
+        "strategy": "BUY",
+        "internal": null,
+        "external": {
+          "offeringId": "off_market_research_sprint",
+          "providerId": "prov_research_co",
+          "serviceId": "svc_research_sprint",
+          "resourceClass": "public_web",
+          "priceUsd": 4,
+          "priceSource": "provider_quote",
+          "registryVerified": true,
+          "compatibleResourceClass": true,
+          "executionPathConfigured": true,
+          "purposeScopeCompatible": true
+        },
+        "facts": {
+          "scope": null,
+          "expectedQuality": {
+            "value": "comparable",
+            "provenance": "provider_quote",
+            "sourceRef": "quote_1",
+            "observedAt": 1700000000000,
+            "confidence": "medium"
+          },
+          "setupMinutes": {
+            "value": 0,
+            "provenance": "provider_quote",
+            "sourceRef": "quote_1",
+            "observedAt": 1700000000000,
+            "confidence": "medium"
+          },
+          "queueMinutes": {
+            "value": 10,
+            "provenance": "provider_quote",
+            "sourceRef": "quote_1",
+            "observedAt": 1700000000000,
+            "confidence": "medium"
+          },
+          "executionMinutes": {
+            "value": 120,
+            "provenance": "provider_quote",
+            "sourceRef": "variant",
+            "observedAt": 1700000000000,
+            "confidence": "medium"
+          },
+          "verificationMinutes": null,
+          "internalCostUsd": null,
+          "externalPriceUsd": {
+            "value": 4,
+            "provenance": "provider_quote",
+            "sourceRef": "variant",
+            "observedAt": 1700000000000,
+            "confidence": "high"
+          },
+          "reliability": {
+            "value": "proven_once",
+            "provenance": "registry_data",
+            "sourceRef": "registry_1",
+            "observedAt": 1700000000000,
+            "confidence": "medium"
+          },
+          "availability": {
+            "value": "free",
+            "provenance": "provider_quote",
+            "sourceRef": "quote_1",
+            "observedAt": 1700000000000,
+            "confidence": "medium"
+          },
+          "reuseValue": null,
+          "externalAdvantage": {
+            "value": "speed",
+            "provenance": "provider_quote",
+            "sourceRef": "quote_1",
+            "observedAt": 1700000000000,
+            "confidence": "medium"
+          }
+        },
+        "eligibility": {
+          "eligible": true,
+          "checksPassed": [
+            "financial_bounds",
+            "proof_available",
+            "provider_identity_compatible"
+          ]
+        }
+      }
+    ],
+    "factsSummary": "opt_3d1baaf2:MAKE/internal price=0.5; opt_38601081:BUY/external price=4"
+  },
+  {
+    "caseId": "disc_missing_quality_on_buy",
+    "corpusSource": "REAL_DERIVED_VARIANT",
+    "provenance": "tests/managementDecision.test.ts — internal does NOT auto-win — missing-fact quality",
+    "caseShape": "MULTI_CANDIDATE_AMBIGUOUS",
+    "reference": {
+      "kind": "HUMAN_REVIEW",
+      "expectedOptionId": null,
+      "notes": "BUY quality null — must not be treated as worse."
+    },
+    "requirement": {
+      "requirementKey": "page_live",
+      "title": "Landing page is live",
+      "mustBeTrue": "the page is reachable",
+      "scope": "the page is reachable",
+      "expectedOutput": null,
+      "requiredResourceClasses": []
+    },
+    "contractRevision": 1,
+    "eligible": [
+      {
+        "optionId": "opt_3d1baaf29c53c6746c21f1df",
+        "requirementKey": "page_live",
+        "contractRevision": 1,
+        "kind": "internal",
+        "strategy": "MAKE",
+        "internal": {
+          "capabilityKeys": [
+            "growth_launch_operations"
+          ],
+          "responsibility": "eligible, available and already holds the needed context",
+          "workerKey": "worker_growth_launch_operations",
+          "staffingReason": "eligible, available and already holds the needed context",
+          "primitives": [
+            "read_company_record",
+            "read_public_web",
+            "record_finding",
+            "request_resource",
+            "update_company_artifact"
+          ]
+        },
+        "external": null,
+        "facts": {
+          "scope": null,
+          "expectedQuality": {
+            "value": "comparable",
+            "provenance": "measured",
+            "sourceRef": "variant",
+            "observedAt": 1700000000000,
+            "confidence": "high"
+          },
+          "setupMinutes": null,
+          "queueMinutes": null,
+          "executionMinutes": {
+            "value": 30,
+            "provenance": "measured",
+            "sourceRef": "obs_internal",
+            "observedAt": 1700000000000,
+            "confidence": "high"
+          },
+          "verificationMinutes": null,
+          "internalCostUsd": {
+            "value": 0.4,
+            "provenance": "measured",
+            "sourceRef": "obs_internal",
+            "observedAt": 1700000000000,
+            "confidence": "high"
+          },
+          "externalPriceUsd": null,
+          "reliability": null,
+          "availability": {
+            "value": "free",
+            "provenance": "measured",
+            "sourceRef": "obs_internal",
+            "observedAt": 1700000000000,
+            "confidence": "high"
+          },
+          "reuseValue": null,
+          "externalAdvantage": null
+        },
+        "eligibility": {
+          "eligible": true,
+          "checksPassed": [
+            "inputs_owned",
+            "primitives_governed",
+            "proof_available",
+            "worker_available"
+          ]
+        }
+      },
+      {
+        "optionId": "opt_386010810fcf8af17c61d16f",
+        "requirementKey": "page_live",
+        "contractRevision": 1,
+        "kind": "external",
+        "strategy": "BUY",
+        "internal": null,
+        "external": {
+          "offeringId": "off_market_research_sprint",
+          "providerId": "prov_research_co",
+          "serviceId": "svc_research_sprint",
+          "resourceClass": "public_web",
+          "priceUsd": 1.5,
+          "priceSource": "provider_quote",
+          "registryVerified": true,
+          "compatibleResourceClass": true,
+          "executionPathConfigured": true,
+          "purposeScopeCompatible": true
+        },
+        "facts": {
+          "scope": null,
+          "expectedQuality": null,
+          "setupMinutes": {
+            "value": 0,
+            "provenance": "provider_quote",
+            "sourceRef": "quote_1",
+            "observedAt": 1700000000000,
+            "confidence": "medium"
+          },
+          "queueMinutes": {
+            "value": 10,
+            "provenance": "provider_quote",
+            "sourceRef": "quote_1",
+            "observedAt": 1700000000000,
+            "confidence": "medium"
+          },
+          "executionMinutes": {
+            "value": 90,
+            "provenance": "provider_quote",
+            "sourceRef": "quote_1",
+            "observedAt": 1700000000000,
+            "confidence": "medium"
+          },
+          "verificationMinutes": null,
+          "internalCostUsd": null,
+          "externalPriceUsd": {
+            "value": 1.5,
+            "provenance": "provider_quote",
+            "sourceRef": "quote_1",
+            "observedAt": 1700000000000,
+            "confidence": "high"
+          },
+          "reliability": {
+            "value": "proven_once",
+            "provenance": "registry_data",
+            "sourceRef": "registry_1",
+            "observedAt": 1700000000000,
+            "confidence": "medium"
+          },
+          "availability": {
+            "value": "free",
+            "provenance": "provider_quote",
+            "sourceRef": "quote_1",
+            "observedAt": 1700000000000,
+            "confidence": "medium"
+          },
+          "reuseValue": null,
+          "externalAdvantage": {
+            "value": "speed",
+            "provenance": "provider_quote",
+            "sourceRef": "quote_1",
+            "observedAt": 1700000000000,
+            "confidence": "medium"
+          }
+        },
+        "eligibility": {
+          "eligible": true,
+          "checksPassed": [
+            "financial_bounds",
+            "proof_available",
+            "provider_identity_compatible"
+          ]
+        }
+      }
+    ],
+    "factsSummary": "opt_3d1baaf2:MAKE/internal price=0.4; opt_38601081:BUY/external price=1.5"
+  },
+  {
+    "caseId": "disc_reliability_two_buy",
+    "corpusSource": "REAL_DERIVED_VARIANT",
+    "provenance": "tests/managementDecision.test.ts — internal does NOT auto-win — reliability dominance",
+    "caseShape": "MULTI_CANDIDATE_CLEAR",
+    "reference": {
+      "kind": "DETERMINISTIC_DOMINANCE",
+      "expectedOptionId": "opt_386010810fcf8af17c61d16f_rel_alt",
+      "notes": "Same price/time; higher reliability on B."
+    },
+    "requirement": {
+      "requirementKey": "page_live",
+      "title": "Landing page is live",
+      "mustBeTrue": "the page is reachable",
+      "scope": "the page is reachable",
+      "expectedOutput": null,
+      "requiredResourceClasses": []
+    },
+    "contractRevision": 1,
+    "eligible": [
+      {
+        "optionId": "opt_386010810fcf8af17c61d16f",
+        "requirementKey": "page_live",
+        "contractRevision": 1,
+        "kind": "external",
+        "strategy": "BUY",
+        "internal": null,
+        "external": {
+          "offeringId": "off_market_research_sprint",
+          "providerId": "prov_research_co",
+          "serviceId": "svc_research_sprint",
+          "resourceClass": "public_web",
+          "priceUsd": 2,
+          "priceSource": "provider_quote",
+          "registryVerified": true,
+          "compatibleResourceClass": true,
+          "executionPathConfigured": true,
+          "purposeScopeCompatible": true
+        },
+        "facts": {
+          "scope": null,
+          "expectedQuality": {
+            "value": "comparable",
+            "provenance": "provider_quote",
+            "sourceRef": "quote_1",
+            "observedAt": 1700000000000,
+            "confidence": "medium"
+          },
+          "setupMinutes": {
+            "value": 0,
+            "provenance": "provider_quote",
+            "sourceRef": "quote_1",
+            "observedAt": 1700000000000,
+            "confidence": "medium"
+          },
+          "queueMinutes": {
+            "value": 10,
+            "provenance": "provider_quote",
+            "sourceRef": "quote_1",
+            "observedAt": 1700000000000,
+            "confidence": "medium"
+          },
+          "executionMinutes": {
+            "value": 90,
+            "provenance": "provider_quote",
+            "sourceRef": "quote_1",
+            "observedAt": 1700000000000,
+            "confidence": "medium"
+          },
+          "verificationMinutes": null,
+          "internalCostUsd": null,
+          "externalPriceUsd": {
+            "value": 2,
+            "provenance": "provider_quote",
+            "sourceRef": "v",
+            "observedAt": 1700000000000,
+            "confidence": "high"
+          },
+          "reliability": {
+            "value": "proven_once",
+            "provenance": "registry_data",
+            "sourceRef": "v",
+            "observedAt": 1700000000000,
+            "confidence": "medium"
+          },
+          "availability": {
+            "value": "free",
+            "provenance": "provider_quote",
+            "sourceRef": "quote_1",
+            "observedAt": 1700000000000,
+            "confidence": "medium"
+          },
+          "reuseValue": null,
+          "externalAdvantage": {
+            "value": "speed",
+            "provenance": "provider_quote",
+            "sourceRef": "quote_1",
+            "observedAt": 1700000000000,
+            "confidence": "medium"
+          }
+        },
+        "eligibility": {
+          "eligible": true,
+          "checksPassed": [
+            "financial_bounds",
+            "proof_available",
+            "provider_identity_compatible"
+          ]
+        }
+      },
+      {
+        "optionId": "opt_386010810fcf8af17c61d16f_rel_alt",
+        "requirementKey": "page_live",
+        "contractRevision": 1,
+        "kind": "external",
+        "strategy": "BUY",
+        "internal": null,
+        "external": {
+          "offeringId": "off_market_research_sprint_alt",
+          "providerId": "prov_research_co",
+          "serviceId": "svc_research_sprint",
+          "resourceClass": "public_web",
+          "priceUsd": 2,
+          "priceSource": "provider_quote",
+          "registryVerified": true,
+          "compatibleResourceClass": true,
+          "executionPathConfigured": true,
+          "purposeScopeCompatible": true
+        },
+        "facts": {
+          "scope": null,
+          "expectedQuality": {
+            "value": "comparable",
+            "provenance": "provider_quote",
+            "sourceRef": "quote_1",
+            "observedAt": 1700000000000,
+            "confidence": "medium"
+          },
+          "setupMinutes": {
+            "value": 0,
+            "provenance": "provider_quote",
+            "sourceRef": "quote_1",
+            "observedAt": 1700000000000,
+            "confidence": "medium"
+          },
+          "queueMinutes": {
+            "value": 10,
+            "provenance": "provider_quote",
+            "sourceRef": "quote_1",
+            "observedAt": 1700000000000,
+            "confidence": "medium"
+          },
+          "executionMinutes": {
+            "value": 90,
+            "provenance": "provider_quote",
+            "sourceRef": "quote_1",
+            "observedAt": 1700000000000,
+            "confidence": "medium"
+          },
+          "verificationMinutes": null,
+          "internalCostUsd": null,
+          "externalPriceUsd": {
+            "value": 2,
+            "provenance": "provider_quote",
+            "sourceRef": "v",
+            "observedAt": 1700000000000,
+            "confidence": "high"
+          },
+          "reliability": {
+            "value": "proven_repeatedly",
+            "provenance": "registry_data",
+            "sourceRef": "v",
+            "observedAt": 1700000000000,
+            "confidence": "high"
+          },
+          "availability": {
+            "value": "free",
+            "provenance": "provider_quote",
+            "sourceRef": "quote_1",
+            "observedAt": 1700000000000,
+            "confidence": "medium"
+          },
+          "reuseValue": null,
+          "externalAdvantage": {
+            "value": "speed",
+            "provenance": "provider_quote",
+            "sourceRef": "quote_1",
+            "observedAt": 1700000000000,
+            "confidence": "medium"
+          }
+        },
+        "eligibility": {
+          "eligible": true,
+          "checksPassed": [
+            "financial_bounds",
+            "proof_available",
+            "provider_identity_compatible"
+          ]
+        }
+      }
+    ],
+    "factsSummary": "opt_38601081:BUY/external price=2; opt_38601081:BUY/external price=2"
+  },
+  {
+    "caseId": "disc_hybrid_present_observation",
+    "corpusSource": "REAL_DERIVED_VARIANT",
+    "provenance": "tests/managementDecision.test.ts — internal does NOT auto-win — HYBRID observation set",
+    "caseShape": "MULTI_CANDIDATE_AMBIGUOUS",
+    "reference": {
+      "kind": "HUMAN_REVIEW",
+      "expectedOptionId": null,
+      "notes": "HYBRID present; no target rate."
+    },
+    "requirement": {
+      "requirementKey": "page_live",
+      "title": "Landing page is live",
+      "mustBeTrue": "the page is reachable",
+      "scope": "the page is reachable",
+      "expectedOutput": null,
+      "requiredResourceClasses": []
+    },
+    "contractRevision": 1,
+    "eligible": [
+      {
+        "optionId": "opt_3d1baaf29c53c6746c21f1df",
+        "requirementKey": "page_live",
+        "contractRevision": 1,
+        "kind": "internal",
+        "strategy": "MAKE",
+        "internal": {
+          "capabilityKeys": [
+            "growth_launch_operations"
+          ],
+          "responsibility": "eligible, available and already holds the needed context",
+          "workerKey": "worker_growth_launch_operations",
+          "staffingReason": "eligible, available and already holds the needed context",
+          "primitives": [
+            "read_company_record",
+            "read_public_web",
+            "record_finding",
+            "request_resource",
+            "update_company_artifact"
+          ]
+        },
+        "external": null,
+        "facts": {
+          "scope": null,
+          "expectedQuality": null,
+          "setupMinutes": null,
+          "queueMinutes": null,
+          "executionMinutes": {
+            "value": 30,
+            "provenance": "measured",
+            "sourceRef": "obs_internal",
+            "observedAt": 1700000000000,
+            "confidence": "high"
+          },
+          "verificationMinutes": null,
+          "internalCostUsd": {
+            "value": 0.4,
+            "provenance": "measured",
+            "sourceRef": "obs_internal",
+            "observedAt": 1700000000000,
+            "confidence": "high"
+          },
+          "externalPriceUsd": null,
+          "reliability": null,
+          "availability": {
+            "value": "free",
+            "provenance": "measured",
+            "sourceRef": "obs_internal",
+            "observedAt": 1700000000000,
+            "confidence": "high"
+          },
+          "reuseValue": null,
+          "externalAdvantage": null
+        },
+        "eligibility": {
+          "eligible": true,
+          "checksPassed": [
+            "inputs_owned",
+            "primitives_governed",
+            "proof_available",
+            "worker_available"
+          ]
+        }
+      },
+      {
+        "optionId": "opt_386010810fcf8af17c61d16f",
+        "requirementKey": "page_live",
+        "contractRevision": 1,
+        "kind": "external",
+        "strategy": "BUY",
+        "internal": null,
+        "external": {
+          "offeringId": "off_market_research_sprint",
+          "providerId": "prov_research_co",
+          "serviceId": "svc_research_sprint",
+          "resourceClass": "public_web",
+          "priceUsd": 1.5,
+          "priceSource": "provider_quote",
+          "registryVerified": true,
+          "compatibleResourceClass": true,
+          "executionPathConfigured": true,
+          "purposeScopeCompatible": true
+        },
+        "facts": {
+          "scope": null,
+          "expectedQuality": {
+            "value": "comparable",
+            "provenance": "provider_quote",
+            "sourceRef": "quote_1",
+            "observedAt": 1700000000000,
+            "confidence": "medium"
+          },
+          "setupMinutes": {
+            "value": 0,
+            "provenance": "provider_quote",
+            "sourceRef": "quote_1",
+            "observedAt": 1700000000000,
+            "confidence": "medium"
+          },
+          "queueMinutes": {
+            "value": 10,
+            "provenance": "provider_quote",
+            "sourceRef": "quote_1",
+            "observedAt": 1700000000000,
+            "confidence": "medium"
+          },
+          "executionMinutes": {
+            "value": 90,
+            "provenance": "provider_quote",
+            "sourceRef": "quote_1",
+            "observedAt": 1700000000000,
+            "confidence": "medium"
+          },
+          "verificationMinutes": null,
+          "internalCostUsd": null,
+          "externalPriceUsd": {
+            "value": 1.5,
+            "provenance": "provider_quote",
+            "sourceRef": "quote_1",
+            "observedAt": 1700000000000,
+            "confidence": "high"
+          },
+          "reliability": {
+            "value": "proven_once",
+            "provenance": "registry_data",
+            "sourceRef": "registry_1",
+            "observedAt": 1700000000000,
+            "confidence": "medium"
+          },
+          "availability": {
+            "value": "free",
+            "provenance": "provider_quote",
+            "sourceRef": "quote_1",
+            "observedAt": 1700000000000,
+            "confidence": "medium"
+          },
+          "reuseValue": null,
+          "externalAdvantage": {
+            "value": "speed",
+            "provenance": "provider_quote",
+            "sourceRef": "quote_1",
+            "observedAt": 1700000000000,
+            "confidence": "medium"
+          }
+        },
+        "eligibility": {
+          "eligible": true,
+          "checksPassed": [
+            "financial_bounds",
+            "proof_available",
+            "provider_identity_compatible"
+          ]
+        }
+      },
+      {
+        "optionId": "opt_5b17f3c460269069fe58eec9",
+        "requirementKey": "page_live",
+        "contractRevision": 1,
+        "kind": "hybrid",
+        "strategy": "HYBRID",
+        "internal": {
+          "capabilityKeys": [
+            "growth_launch_operations"
+          ],
+          "responsibility": "eligible, available and already holds the needed context",
+          "workerKey": "worker_growth_launch_operations",
+          "staffingReason": "eligible, available and already holds the needed context",
+          "primitives": [
+            "read_company_record",
+            "read_public_web",
+            "record_finding",
+            "request_resource",
+            "update_company_artifact"
+          ]
+        },
+        "external": {
+          "offeringId": "off_market_research_sprint",
+          "providerId": "prov_research_co",
+          "serviceId": "svc_research_sprint",
+          "resourceClass": "public_web",
+          "priceUsd": 1.5,
+          "priceSource": "provider_quote",
+          "registryVerified": true,
+          "compatibleResourceClass": true,
+          "executionPathConfigured": true,
+          "purposeScopeCompatible": true
+        },
+        "facts": {
+          "scope": null,
+          "expectedQuality": null,
+          "setupMinutes": {
+            "value": 0,
+            "provenance": "provider_quote",
+            "sourceRef": "quote_1",
+            "observedAt": 1700000000000,
+            "confidence": "medium"
+          },
+          "queueMinutes": null,
+          "executionMinutes": {
+            "value": 120,
+            "provenance": "unknown",
+            "sourceRef": "obs_internal+quote_1",
+            "observedAt": 1700000000000,
+            "confidence": "low"
+          },
+          "verificationMinutes": null,
+          "internalCostUsd": {
+            "value": 0.4,
+            "provenance": "measured",
+            "sourceRef": "obs_internal",
+            "observedAt": 1700000000000,
+            "confidence": "high"
+          },
+          "externalPriceUsd": {
+            "value": 1.5,
+            "provenance": "provider_quote",
+            "sourceRef": "quote_1",
+            "observedAt": 1700000000000,
+            "confidence": "high"
+          },
+          "reliability": null,
+          "availability": null,
+          "reuseValue": null,
+          "externalAdvantage": null
+        },
+        "eligibility": {
+          "eligible": true,
+          "checksPassed": [
+            "financial_bounds",
+            "inputs_owned",
+            "primitives_governed",
+            "proof_available",
+            "provider_identity_compatible",
+            "worker_available"
+          ]
+        }
+      }
+    ],
+    "factsSummary": "opt_3d1baaf2:MAKE/internal price=0.4; opt_38601081:BUY/external price=1.5; opt_5b17f3c4:HYBRID/hybrid price=1.5"
+  }
+]

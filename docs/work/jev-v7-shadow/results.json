@@ -1,0 +1,556 @@
+{
+  "summary": {
+    "startingSha": "5ff9d2c5392a64cdbe60ebf8839ee2ab61b53891",
+    "branch": "eval/jev-v7-shadow",
+    "generatedAt": "2026-09-23T10:12:40.036Z",
+    "caseCounts": {
+      "total": 13,
+      "real": 12,
+      "realDerivedVariant": 1,
+      "oneCandidate": 7,
+      "multiClear": 2,
+      "multiAmbiguous": 4
+    },
+    "multiCandidateByReference": {
+      "HUMAN_REVIEW": {
+        "total": 3,
+        "jevMatchesReference": 0,
+        "confidentlyWrong": 0
+      },
+      "DETERMINISTIC_DOMINANCE": {
+        "total": 2,
+        "jevMatchesReference": 1,
+        "confidentlyWrong": 1
+      },
+      "AMBIGUOUS": {
+        "total": 1,
+        "jevMatchesReference": 0,
+        "confidentlyWrong": 0
+      }
+    },
+    "singleCandidateControl": {
+      "total": 7,
+      "validSelection": 7,
+      "bridgeOk": 7
+    },
+    "incumbentComparisons": {
+      "ambiguous_disagreement": 1,
+      "no_incumbent": 11,
+      "both_correct": 1
+    },
+    "latencyMs": {
+      "median": 556,
+      "p95": 784,
+      "max": 784
+    },
+    "tokens": {
+      "input": 19835,
+      "output": 1358,
+      "total": 21193
+    },
+    "marketCostUsd": 0,
+    "failuresByClass": {
+      "MODEL_LIMITATION": 1
+    },
+    "verdict": "MORE_EVIDENCE_REQUIRED",
+    "j4RoutingNote": "Shadow eval incomplete or inconclusive; keep Jev gate OFF and expand REAL multi-option corpus."
+  },
+  "results": [
+    {
+      "caseId": "v7_cp2_make_vs_buy_both_eligible",
+      "corpusSource": "REAL",
+      "caseShape": "MULTI_CANDIDATE_AMBIGUOUS",
+      "candidateCount": 3,
+      "candidateIds": [
+        "opt_3d1baaf29c53c6746c21f1df",
+        "opt_386010810fcf8af17c61d16f",
+        "opt_5b17f3c460269069fe58eec9"
+      ],
+      "factsSummary": "opt_3d1baaf2:MAKE/internal price=0.4; opt_38601081:BUY/external price=1.5; opt_5b17f3c4:HYBRID/hybrid price=1.5",
+      "referenceKind": "HUMAN_REVIEW",
+      "expectedOptionId": null,
+      "jevOptionId": "opt_3d1baaf29c53c6746c21f1df",
+      "jevKind": "selected",
+      "probabilities": {
+        "opt_5b17f3c460269069fe58eec9": 0,
+        "opt_386010810fcf8af17c61d16f": 0.08,
+        "opt_3d1baaf29c53c6746c21f1df": 0.92
+      },
+      "confidence": 0.92,
+      "topProbability": 0.92,
+      "runnerUpProbability": 0.08,
+      "margin": 0.8400000000000001,
+      "confidentlyWrong": false,
+      "matchesReference": null,
+      "bridgeOk": true,
+      "bridgeReason": null,
+      "incumbentOptionId": "opt_386010810fcf8af17c61d16f",
+      "incumbentComparison": "ambiguous_disagreement",
+      "failureClass": null,
+      "latencyMs": 784,
+      "usage": {
+        "inputTokens": 2238,
+        "outputTokens": 132,
+        "totalTokens": 2370
+      },
+      "marketCostUsd": null,
+      "detail": null
+    },
+    {
+      "caseId": "v7_cp2_internal_preferred_on_cost",
+      "corpusSource": "REAL",
+      "caseShape": "ONE_CANDIDATE",
+      "candidateCount": 1,
+      "candidateIds": [
+        "opt_3d1baaf29c53c6746c21f1df"
+      ],
+      "factsSummary": "opt_3d1baaf2:MAKE/internal price=0.4",
+      "referenceKind": "DETERMINISTIC_DOMINANCE",
+      "expectedOptionId": "opt_3d1baaf29c53c6746c21f1df",
+      "jevOptionId": "opt_3d1baaf29c53c6746c21f1df",
+      "jevKind": "selected",
+      "probabilities": {
+        "opt_3d1baaf29c53c6746c21f1df": 1
+      },
+      "confidence": 1,
+      "topProbability": 1,
+      "runnerUpProbability": null,
+      "margin": 1,
+      "confidentlyWrong": false,
+      "matchesReference": true,
+      "bridgeOk": true,
+      "bridgeReason": null,
+      "incumbentOptionId": null,
+      "incumbentComparison": "no_incumbent",
+      "failureClass": null,
+      "latencyMs": 643,
+      "usage": {
+        "inputTokens": 857,
+        "outputTokens": 72,
+        "totalTokens": 929
+      },
+      "marketCostUsd": null,
+      "detail": null
+    },
+    {
+      "caseId": "v7_cp2_wrapper_inside_budget_make_wins",
+      "corpusSource": "REAL",
+      "caseShape": "MULTI_CANDIDATE_CLEAR",
+      "candidateCount": 3,
+      "candidateIds": [
+        "opt_3d1baaf29c53c6746c21f1df",
+        "opt_ffaf58c917918c55b1ededda",
+        "opt_7cc4e19a61012564c0e670f1"
+      ],
+      "factsSummary": "opt_3d1baaf2:MAKE/internal price=0.4; opt_ffaf58c9:BUY/external price=3; opt_7cc4e19a:HYBRID/hybrid price=3",
+      "referenceKind": "DETERMINISTIC_DOMINANCE",
+      "expectedOptionId": "opt_3d1baaf29c53c6746c21f1df",
+      "jevOptionId": "opt_3d1baaf29c53c6746c21f1df",
+      "jevKind": "selected",
+      "probabilities": {
+        "opt_ffaf58c917918c55b1ededda": 0.11,
+        "opt_7cc4e19a61012564c0e670f1": 0.01,
+        "opt_3d1baaf29c53c6746c21f1df": 0.88
+      },
+      "confidence": 0.88,
+      "topProbability": 0.88,
+      "runnerUpProbability": 0.11,
+      "margin": 0.77,
+      "confidentlyWrong": false,
+      "matchesReference": true,
+      "bridgeOk": true,
+      "bridgeReason": null,
+      "incumbentOptionId": "opt_3d1baaf29c53c6746c21f1df",
+      "incumbentComparison": "both_correct",
+      "failureClass": null,
+      "latencyMs": 665,
+      "usage": {
+        "inputTokens": 2206,
+        "outputTokens": 128,
+        "totalTokens": 2334
+      },
+      "marketCostUsd": null,
+      "detail": null
+    },
+    {
+      "caseId": "v7_cp2_hybrid_eligible",
+      "corpusSource": "REAL",
+      "caseShape": "MULTI_CANDIDATE_AMBIGUOUS",
+      "candidateCount": 3,
+      "candidateIds": [
+        "opt_3d1baaf29c53c6746c21f1df",
+        "opt_386010810fcf8af17c61d16f",
+        "opt_5b17f3c460269069fe58eec9"
+      ],
+      "factsSummary": "opt_3d1baaf2:MAKE/internal price=0.4; opt_38601081:BUY/external price=1.5; opt_5b17f3c4:HYBRID/hybrid price=1.5",
+      "referenceKind": "HUMAN_REVIEW",
+      "expectedOptionId": null,
+      "jevOptionId": "opt_3d1baaf29c53c6746c21f1df",
+      "jevKind": "selected",
+      "probabilities": {
+        "opt_5b17f3c460269069fe58eec9": 0,
+        "opt_3d1baaf29c53c6746c21f1df": 0.91,
+        "opt_386010810fcf8af17c61d16f": 0.09
+      },
+      "confidence": 0.91,
+      "topProbability": 0.91,
+      "runnerUpProbability": 0.09,
+      "margin": 0.8200000000000001,
+      "confidentlyWrong": false,
+      "matchesReference": null,
+      "bridgeOk": true,
+      "bridgeReason": null,
+      "incumbentOptionId": null,
+      "incumbentComparison": "no_incumbent",
+      "failureClass": null,
+      "latencyMs": 648,
+      "usage": {
+        "inputTokens": 2238,
+        "outputTokens": 132,
+        "totalTokens": 2370
+      },
+      "marketCostUsd": null,
+      "detail": null
+    },
+    {
+      "caseId": "v7_cp2_two_external_providers_price_dominance",
+      "corpusSource": "REAL",
+      "caseShape": "MULTI_CANDIDATE_CLEAR",
+      "candidateCount": 4,
+      "candidateIds": [
+        "opt_3d1baaf29c53c6746c21f1df",
+        "opt_a3e66fcb0d034479c9800b04",
+        "opt_b4d674e36e3e598ab93706f6",
+        "opt_a307f14a1f5c9c0f13678305"
+      ],
+      "factsSummary": "opt_3d1baaf2:MAKE/internal price=0.4; opt_a3e66fcb:BUY/external price=4; opt_b4d674e3:BUY/external price=1.2; opt_a307f14a:HYBRID/hybrid price=1.2",
+      "referenceKind": "DETERMINISTIC_DOMINANCE",
+      "expectedOptionId": "opt_b4d674e36e3e598ab93706f6",
+      "jevOptionId": "opt_3d1baaf29c53c6746c21f1df",
+      "jevKind": "selected",
+      "probabilities": {
+        "opt_a307f14a1f5c9c0f13678305": 0.01,
+        "opt_b4d674e36e3e598ab93706f6": 0.08,
+        "opt_a3e66fcb0d034479c9800b04": 0.01,
+        "opt_3d1baaf29c53c6746c21f1df": 0.9
+      },
+      "confidence": 0.9,
+      "topProbability": 0.9,
+      "runnerUpProbability": 0.08,
+      "margin": 0.8200000000000001,
+      "confidentlyWrong": true,
+      "matchesReference": false,
+      "bridgeOk": true,
+      "bridgeReason": null,
+      "incumbentOptionId": null,
+      "incumbentComparison": "no_incumbent",
+      "failureClass": "MODEL_LIMITATION",
+      "latencyMs": 506,
+      "usage": {
+        "inputTokens": 2970,
+        "outputTokens": 163,
+        "totalTokens": 3133
+      },
+      "marketCostUsd": null,
+      "detail": null
+    },
+    {
+      "caseId": "v7_cp2_make_vs_buy_speed_tradeoff",
+      "corpusSource": "REAL",
+      "caseShape": "MULTI_CANDIDATE_AMBIGUOUS",
+      "candidateCount": 3,
+      "candidateIds": [
+        "opt_3d1baaf29c53c6746c21f1df",
+        "opt_386010810fcf8af17c61d16f",
+        "opt_5b17f3c460269069fe58eec9"
+      ],
+      "factsSummary": "opt_3d1baaf2:MAKE/internal price=0.4; opt_38601081:BUY/external price=1.5; opt_5b17f3c4:HYBRID/hybrid price=1.5",
+      "referenceKind": "HUMAN_REVIEW",
+      "expectedOptionId": null,
+      "jevOptionId": "opt_3d1baaf29c53c6746c21f1df",
+      "jevKind": "selected",
+      "probabilities": {
+        "opt_5b17f3c460269069fe58eec9": 0,
+        "opt_386010810fcf8af17c61d16f": 0.32,
+        "opt_3d1baaf29c53c6746c21f1df": 0.68
+      },
+      "confidence": 0.68,
+      "topProbability": 0.68,
+      "runnerUpProbability": 0.32,
+      "margin": 0.36000000000000004,
+      "confidentlyWrong": false,
+      "matchesReference": null,
+      "bridgeOk": true,
+      "bridgeReason": null,
+      "incumbentOptionId": null,
+      "incumbentComparison": "no_incumbent",
+      "failureClass": null,
+      "latencyMs": 502,
+      "usage": {
+        "inputTokens": 2239,
+        "outputTokens": 132,
+        "totalTokens": 2371
+      },
+      "marketCostUsd": null,
+      "detail": null
+    },
+    {
+      "caseId": "convex_dec_obj_1790157937616_xgtaj4_req_01_r1_a1",
+      "corpusSource": "REAL",
+      "caseShape": "ONE_CANDIDATE",
+      "candidateCount": 1,
+      "candidateIds": [
+        "opt_1fe87af9c5a5f6e0ad0ad419"
+      ],
+      "factsSummary": "opt_1fe87af9:MAKE/internal",
+      "referenceKind": "ACCEPTED_RUNTIME_OUTCOME",
+      "expectedOptionId": null,
+      "jevOptionId": "opt_1fe87af9c5a5f6e0ad0ad419",
+      "jevKind": "selected",
+      "probabilities": {
+        "opt_1fe87af9c5a5f6e0ad0ad419": 1
+      },
+      "confidence": 1,
+      "topProbability": 1,
+      "runnerUpProbability": null,
+      "margin": 1,
+      "confidentlyWrong": false,
+      "matchesReference": null,
+      "bridgeOk": true,
+      "bridgeReason": null,
+      "incumbentOptionId": null,
+      "incumbentComparison": "no_incumbent",
+      "failureClass": null,
+      "latencyMs": 540,
+      "usage": {
+        "inputTokens": 679,
+        "outputTokens": 70,
+        "totalTokens": 749
+      },
+      "marketCostUsd": null,
+      "detail": null
+    },
+    {
+      "caseId": "convex_dec_obj_1790157937616_xgtaj4_req_01_r1_a2",
+      "corpusSource": "REAL",
+      "caseShape": "ONE_CANDIDATE",
+      "candidateCount": 1,
+      "candidateIds": [
+        "opt_1b507a8b9793dd34e4d32908"
+      ],
+      "factsSummary": "opt_1b507a8b:MAKE/internal",
+      "referenceKind": "ACCEPTED_RUNTIME_OUTCOME",
+      "expectedOptionId": null,
+      "jevOptionId": "opt_1b507a8b9793dd34e4d32908",
+      "jevKind": "selected",
+      "probabilities": {
+        "opt_1b507a8b9793dd34e4d32908": 1
+      },
+      "confidence": 1,
+      "topProbability": 1,
+      "runnerUpProbability": null,
+      "margin": 1,
+      "confidentlyWrong": false,
+      "matchesReference": null,
+      "bridgeOk": true,
+      "bridgeReason": null,
+      "incumbentOptionId": null,
+      "incumbentComparison": "no_incumbent",
+      "failureClass": null,
+      "latencyMs": 556,
+      "usage": {
+        "inputTokens": 695,
+        "outputTokens": 76,
+        "totalTokens": 771
+      },
+      "marketCostUsd": null,
+      "detail": null
+    },
+    {
+      "caseId": "convex_dec_obj_1790157937616_xgtaj4_req_02_r1_a1",
+      "corpusSource": "REAL",
+      "caseShape": "ONE_CANDIDATE",
+      "candidateCount": 1,
+      "candidateIds": [
+        "opt_3fcdd88960888dc247f2c48e"
+      ],
+      "factsSummary": "opt_3fcdd889:MAKE/internal",
+      "referenceKind": "ACCEPTED_RUNTIME_OUTCOME",
+      "expectedOptionId": null,
+      "jevOptionId": "opt_3fcdd88960888dc247f2c48e",
+      "jevKind": "selected",
+      "probabilities": {
+        "opt_3fcdd88960888dc247f2c48e": 1
+      },
+      "confidence": 1,
+      "topProbability": 1,
+      "runnerUpProbability": null,
+      "margin": 1,
+      "confidentlyWrong": false,
+      "matchesReference": null,
+      "bridgeOk": true,
+      "bridgeReason": null,
+      "incumbentOptionId": null,
+      "incumbentComparison": "no_incumbent",
+      "failureClass": null,
+      "latencyMs": 523,
+      "usage": {
+        "inputTokens": 679,
+        "outputTokens": 72,
+        "totalTokens": 751
+      },
+      "marketCostUsd": null,
+      "detail": null
+    },
+    {
+      "caseId": "convex_dec_obj_1790157937616_xgtaj4_req_03_r1_a1",
+      "corpusSource": "REAL",
+      "caseShape": "ONE_CANDIDATE",
+      "candidateCount": 1,
+      "candidateIds": [
+        "opt_45c03cd5e15794c34263cb95"
+      ],
+      "factsSummary": "opt_45c03cd5:MAKE/internal",
+      "referenceKind": "ACCEPTED_RUNTIME_OUTCOME",
+      "expectedOptionId": null,
+      "jevOptionId": "opt_45c03cd5e15794c34263cb95",
+      "jevKind": "selected",
+      "probabilities": {
+        "opt_45c03cd5e15794c34263cb95": 1
+      },
+      "confidence": 1,
+      "topProbability": 1,
+      "runnerUpProbability": null,
+      "margin": 1,
+      "confidentlyWrong": false,
+      "matchesReference": null,
+      "bridgeOk": true,
+      "bridgeReason": null,
+      "incumbentOptionId": null,
+      "incumbentComparison": "no_incumbent",
+      "failureClass": null,
+      "latencyMs": 476,
+      "usage": {
+        "inputTokens": 691,
+        "outputTokens": 74,
+        "totalTokens": 765
+      },
+      "marketCostUsd": null,
+      "detail": null
+    },
+    {
+      "caseId": "convex_dec_obj_1790158107577_pjy2gq_req_01_r1_a3",
+      "corpusSource": "REAL",
+      "caseShape": "ONE_CANDIDATE",
+      "candidateCount": 1,
+      "candidateIds": [
+        "opt_214d63efb1a887f1ef0c8f58"
+      ],
+      "factsSummary": "opt_214d63ef:MAKE/internal",
+      "referenceKind": "ACCEPTED_RUNTIME_OUTCOME",
+      "expectedOptionId": null,
+      "jevOptionId": "opt_214d63efb1a887f1ef0c8f58",
+      "jevKind": "selected",
+      "probabilities": {
+        "opt_214d63efb1a887f1ef0c8f58": 1
+      },
+      "confidence": 1,
+      "topProbability": 1,
+      "runnerUpProbability": null,
+      "margin": 1,
+      "confidentlyWrong": false,
+      "matchesReference": null,
+      "bridgeOk": true,
+      "bridgeReason": null,
+      "incumbentOptionId": null,
+      "incumbentComparison": "no_incumbent",
+      "failureClass": null,
+      "latencyMs": 585,
+      "usage": {
+        "inputTokens": 690,
+        "outputTokens": 74,
+        "totalTokens": 764
+      },
+      "marketCostUsd": null,
+      "detail": null
+    },
+    {
+      "caseId": "convex_dec_obj_1790158107577_pjy2gq_req_01_r1_a4",
+      "corpusSource": "REAL",
+      "caseShape": "ONE_CANDIDATE",
+      "candidateCount": 1,
+      "candidateIds": [
+        "opt_27b9deae444338ccbf18a68c"
+      ],
+      "factsSummary": "opt_27b9deae:MAKE/internal",
+      "referenceKind": "ACCEPTED_RUNTIME_OUTCOME",
+      "expectedOptionId": null,
+      "jevOptionId": "opt_27b9deae444338ccbf18a68c",
+      "jevKind": "selected",
+      "probabilities": {
+        "opt_27b9deae444338ccbf18a68c": 1
+      },
+      "confidence": 1,
+      "topProbability": 1,
+      "runnerUpProbability": null,
+      "margin": 1,
+      "confidentlyWrong": false,
+      "matchesReference": null,
+      "bridgeOk": true,
+      "bridgeReason": null,
+      "incumbentOptionId": null,
+      "incumbentComparison": "no_incumbent",
+      "failureClass": null,
+      "latencyMs": 474,
+      "usage": {
+        "inputTokens": 678,
+        "outputTokens": 70,
+        "totalTokens": 748
+      },
+      "marketCostUsd": null,
+      "detail": null
+    },
+    {
+      "caseId": "v7_derived_price_swap_two_external",
+      "corpusSource": "REAL_DERIVED_VARIANT",
+      "caseShape": "MULTI_CANDIDATE_AMBIGUOUS",
+      "candidateCount": 4,
+      "candidateIds": [
+        "opt_3d1baaf29c53c6746c21f1df",
+        "opt_a3e66fcb0d034479c9800b04",
+        "opt_b4d674e36e3e598ab93706f6",
+        "opt_a307f14a1f5c9c0f13678305"
+      ],
+      "factsSummary": "opt_3d1baaf2:MAKE/internal price=0.4; opt_a3e66fcb:BUY/external price=1.2; opt_b4d674e3:BUY/external price=1.2; opt_a307f14a:HYBRID/hybrid price=1.2",
+      "referenceKind": "AMBIGUOUS",
+      "expectedOptionId": null,
+      "jevOptionId": "opt_3d1baaf29c53c6746c21f1df",
+      "jevKind": "selected",
+      "probabilities": {
+        "opt_a307f14a1f5c9c0f13678305": 0,
+        "opt_3d1baaf29c53c6746c21f1df": 0.93,
+        "opt_a3e66fcb0d034479c9800b04": 0.01,
+        "opt_b4d674e36e3e598ab93706f6": 0.06
+      },
+      "confidence": 0.93,
+      "topProbability": 0.93,
+      "runnerUpProbability": 0.06,
+      "margin": 0.8700000000000001,
+      "confidentlyWrong": false,
+      "matchesReference": null,
+      "bridgeOk": true,
+      "bridgeReason": null,
+      "incumbentOptionId": null,
+      "incumbentComparison": "no_incumbent",
+      "failureClass": null,
+      "latencyMs": 563,
+      "usage": {
+        "inputTokens": 2975,
+        "outputTokens": 163,
+        "totalTokens": 3138
+      },
+      "marketCostUsd": null,
+      "detail": null
+    }
+  ]
+}

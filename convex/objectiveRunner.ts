@@ -96,9 +96,8 @@ import { buildDecisionPassInput } from "../lib/management/decisionPass";
 import type { DecisionPassReads } from "../lib/management/decisionPass";
 import { runManagerialDecisionPass } from "../lib/management/decision";
 import {
-  assertRationaleHonorsLockedSelection,
+  composeBoundedStage3Recommendation,
   isJevOptionSelectionEnabled,
-  lockEligibleOptionSelection,
 } from "../lib/management/jevStage3";
 import { createOkxDiscovery } from "../lib/market/okxDiscovery";
 import { createLocalOnchainosRunner } from "../lib/market/okxCliBridge";
@@ -1633,13 +1632,24 @@ export const proposeDecision = internalAction({
             registryVerified: option.external?.registryVerified ?? null,
           });
 
-          // Stage 3 — optional Jev selection among already-eligible options.
-          // Gate OFF preserves the legacy unconstrained (among eligible) model
-          // recommendation. Gate ON: Jev/sole lock then rationale-only model.
+          // Stage 3 — optional Jev bounded selection among already-eligible
+          // options (J4). Gate OFF preserves the legacy unconstrained (among
+          // eligible) incumbent recommendation below, unchanged. Gate ON: a
+          // successful sole-eligible or Jev selection is composed straight
+          // into a ManagerialRecommendation through the J2 bridge — no
+          // second/rationale model call ever runs after a valid selection.
+          // The incumbent recommender is invoked AT MOST ONCE, and only for a
+          // pre-selection technical/provider failure (never for an
+          // application/policy outcome — those fail closed with no fallback).
+          const envelope = {
+            requirementKey: args.requirementKey,
+            contractRevision: args.contractRevision,
+          };
           let optionsForRationale = eligible.map(mapOption);
-          let lockedOptionId: string | null = null;
           if (isJevOptionSelectionEnabled()) {
-            const lock = await lockEligibleOptionSelection({
+            const compose = await composeBoundedStage3Recommendation({
+              requirementKey: args.requirementKey,
+              contractRevision: args.contractRevision,
               requirement: {
                 requirementKey: args.requirementKey,
                 title: reads.requirement.title,
@@ -1650,39 +1660,38 @@ export const proposeDecision = internalAction({
               },
               eligible,
             });
-            if (lock.kind === "no_candidates") {
+
+            if (compose.kind === "no_candidates") {
+              // Unreachable here (eligible.length === 0 already returned
+              // above), but preserve the deterministic no-option guard.
               rawRecommendation = null;
               return null;
             }
-            if (lock.kind === "failure") {
-              const envelope = {
-                requirementKey: args.requirementKey,
-                contractRevision: args.contractRevision,
-              };
+
+            if (compose.kind === "recommendation") {
+              // Sole-eligible or valid Jev selection: the J2 bridge IS the
+              // rationale/receipt source. No incumbent call, no second model.
+              raw = compose.recommendation;
+              rawRecommendation = raw;
+              return raw;
+            }
+
+            if (compose.kind === "bridge_failure") {
+              // Application-truth failure (identity/revision/duplicate-id).
+              // Fail closed WITHOUT incumbent fallback — never model-shop
+              // around an application-owned outcome.
               raw = {
                 ...envelope,
-                error: `jev option selection failed${lock.failureClass ? ` (${lock.failureClass})` : ""}: ${lock.detail}`.slice(0, 300),
+                error: `jev bridge rejected selection (${compose.reason}): ${compose.detail}`.slice(0, 300),
               };
               rawRecommendation = raw;
               return raw;
             }
-            lockedOptionId = lock.selectedOptionId;
-            const locked = eligible.find((option) => option.optionId === lockedOptionId);
-            if (!locked) {
-              // Should be unreachable: lockEligibleOptionSelection only returns
-              // IDs from the eligible set. Fail closed anyway.
-              const envelope = {
-                requirementKey: args.requirementKey,
-                contractRevision: args.contractRevision,
-              };
-              raw = {
-                ...envelope,
-                error: `jev locked unknown option id: ${lockedOptionId}`.slice(0, 300),
-              };
-              rawRecommendation = raw;
-              return raw;
-            }
-            optionsForRationale = [mapOption(locked)];
+
+            // compose.kind === "technical_failure": PRE-SELECTION provider
+            // failure only (unavailable/timeout/malformed/unknown id). Falls
+            // through to exactly ONE incumbent fallback call below, over the
+            // FULL eligible set (never locked to a single option).
           }
 
           const recommendationOutcome = await recommendWithModel({
@@ -1696,25 +1705,7 @@ export const proposeDecision = internalAction({
           await recordModelCalls(ctx, args.objectiveKey, recommendationOutcome);
           // Identity is APPLICATION-owned: stamped from this call's own binding,
           // never echoed by the model. applyDecision compares it to fresh truth.
-          const envelope = {
-            requirementKey: args.requirementKey,
-            contractRevision: args.contractRevision,
-          };
           if (recommendationOutcome.ok) {
-            if (lockedOptionId !== null) {
-              const honor = assertRationaleHonorsLockedSelection(
-                lockedOptionId,
-                recommendationOutcome.value.selectedOptionId,
-              );
-              if (!honor.ok) {
-                raw = {
-                  ...envelope,
-                  error: honor.detail.slice(0, 300),
-                };
-                rawRecommendation = raw;
-                return raw;
-              }
-            }
             raw = { ...recommendationOutcome.value, ...envelope };
           } else if (recommendationOutcome.failure === "structural_rejection") {
             // Invalid after the one bounded repair: forward what the model said
