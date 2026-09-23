@@ -8,21 +8,27 @@
  * eligibility, authorization, budget, spend, proof legality, or
  * stale-contract validity — those stay deterministic, upstream of this call.
  *
- * This module does NOT wire into the live `recommend` seam (../decision.ts)
- * and does NOT produce a `ManagerialRecommendation`. See selectEligibleOption
- * for the exact scope boundary.
+ * Selection → ManagerialRecommendation bridging is application-owned
+ * (`buildJevManagerialRecommendation`). This package still does NOT wire
+ * into the live `recommend` seam (../decision.ts); production routing is
+ * a later milestone.
  *
  * USAGE:
  * 1. Compute eligible GroundedOption[] the normal way (../options.ts).
  * 2. Call selectEligibleOption({ requirement, eligible }).
- * 3. Handle the typed result — never invent a fallback here; the caller owns
- *    fallback policy.
+ * 3. On kind "selected", call buildJevManagerialRecommendation(...).
+ * 4. Pass the proposal through parseManagerialRecommendation + authorization.
+ * 5. Never invent a fallback selection here; the caller owns fallback policy.
  */
 export { selectEligibleOption } from "./selectEligibleOption";
 export { callJevGateway, JEV_MODEL_ID } from "./client";
-export { buildOptionSelectionState } from "./stateBuilder";
+export { buildOptionSelectionState, serializeJevEvalInput } from "./stateBuilder";
 export { buildOptionChoiceQuestion, SELECTION_QUESTION_ID } from "./questionBuilder";
 export { validateJevSelection } from "./validate";
+export {
+  buildJevManagerialRecommendation,
+  deriveStrongestAlternativeId,
+} from "./buildManagerialRecommendation";
 
 export type { JevGatewayCall, JevGatewayQuestion, JevGatewayResult } from "./client";
 export type {
@@ -30,3 +36,9 @@ export type {
   JevOptionSelectionResult,
   JevRequirementContext,
 } from "./types";
+export type {
+  JevRecommendationBridgeFailureReason,
+  JevRecommendationBridgeInput,
+  JevRecommendationBridgeResult,
+  JevValidatedSelection,
+} from "./buildManagerialRecommendation";
