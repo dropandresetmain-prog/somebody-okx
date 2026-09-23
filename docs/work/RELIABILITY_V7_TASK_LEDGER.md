@@ -158,3 +158,90 @@ the real modules.
 | Manager-initiated BUY (no validated need) can no longer buy the purpose-scoped product | Accept (intended R4 behavior) | No | Reviewer to confirm. |
 | Pre-existing authorized intents without `requestedPurposeKind` are refused before signing | Accept (fail-closed, no fictitious migration) | No | — |
 | Inherited root typecheck/test debt | Ignore / Accept Risk | No | Regression-compared, not repaired. |
+
+---
+
+## Final-R4 correction — branch `fix/reliability-v7-r4-authority-correction`
+
+Independent re-review of `ff2394d`/`841780a` found R1–R3 PASS, **R4 FAIL**: a
+worker/model-selected `purposeKind` became authoritative
+(`ResourceNeed.requestedScope.authority: "application"`) once it passed
+governed-vocabulary + resource-class checks, WITHOUT the governing
+Requirement ever authorizing that specific purpose scope — an unrelated
+Requirement (e.g. "translate developer docs to Japanese") could make
+`founder_narrative_pulse` BUY-eligible by having the worker simply propose
+`founder_messaging_qualitative`.
+
+### Fix
+
+Added `Requirement.authorizedPurposeKinds?: readonly string[]` — an
+APPLICATION-OWNED field, absent/empty by default, never populated from
+interpretation/model output, Requirement prose, or the worker's own
+proposal (`lib/management/types.ts`, `convex/managementValidators.ts`).
+`validateMissingInputProposal` (`lib/objective/inputDiagnosis.ts`) gates a
+proposed `purposeKind` on this field as a THIRD check, after the existing
+governed-vocabulary and class-applicability checks, refusing with the new
+typed code `purpose_scope_not_authorized` when the Requirement does not
+authorize it. `convex/objectives.ts` (`reportMissingInput`) threads the
+current Requirement's field into the validation context. Because an
+authorized decision pass rebuilds the Requirement row via `buildRequirement`
+(`lib/management/contract.ts`) from a flattened proposal, not a full
+Requirement, the field is additionally threaded through
+`RequirementBuildInput` → `DecisionPassInput` → `buildDecisionPassInput`
+(`lib/management/decisionPass.ts`, `lib/management/decision.ts`) so an
+already-authorized scope survives MAKE/BUY re-decisions instead of being
+silently dropped on the first decision pass.
+
+Worker proposal, application request authority, and adapter fulfillment
+authority stay three distinct concepts: a worker may still only *propose* a
+governed kind; only a Requirement's own `authorizedPurposeKinds` can make
+that proposal authoritative; the M3 adapter's declared fulfillment scope is
+unchanged and independently gates BUY eligibility on top of the validated
+request.
+
+### Regression tests
+
+`tests/v7ReviewR4PurposeScope.test.ts` — added R4-A (the blocker: unrelated
+Requirement + worker-selected governed label is refused,
+`purpose_scope_not_authorized`, no ResourceNeed), R4-C (on-topic-but-
+unauthorized prose is still refused — a valid governed kind is never its
+own oracle), R4-D (an authorized Requirement never invents a scope the
+worker didn't propose), R4-E (prose stays non-authoritative in both
+directions: keyword-heavy unauthorized prose refuses, keyword-free
+authorized prose succeeds). Existing R4 cases (B/paraphrase/conflict/prose-
+refusal) updated to seed `authorizedPurposeKinds` the same way the harness
+already seeds other application-owned facts (spend grant, budget) — never
+derived from the Requirement's own prose. All 12 cases pass.
+`tests/m61ProductionWholeChain.test.ts` (test F) patched to assert the
+demo's one genuinely-authorized Requirement explicitly, via `putRequirement`
+after interpretation — application-owned, not interpretation-derived —
+proving the full production path (authorized Requirement scope → validated
+ResourceNeed → grounding → authorized BUY decision →
+`ExecutionIntent.requestedPurposeKind`) end to end; both whole-chain tests
+still pass.
+
+### Gate
+
+Frozen candidate `a9e98bd` (9 files, +151/−21, docs-only tip `841780a` is
+the parent). `tests/m3GateInterpretationCeilingEscalates.test.ts` hangs the
+full `tests/*.test.ts` glob on this machine regardless of branch (confirmed:
+same file, same hang point, on baseline `841780a` too — unrelated to R4);
+gate run with that one file excluded (104/105 files), same methodology on
+both SHAs:
+
+| | tests | pass | fail |
+| --- | --- | --- | --- |
+| baseline `841780a` | 1064 | 1054 | 10 |
+| candidate `a9e98bd` | 1068 | 1058 | 10 |
+
+The 10 failing test names are byte-identical between the two runs (diffed);
+the +4 candidate tests are exactly the new R4-A/C/D/E cases, all passing.
+Root `tsc --noEmit`: same 61-line error output on both SHAs (only two line
+numbers shift, by the exact line count I added to
+`m61ProductionWholeChain.test.ts`) — zero new/removed errors. Convex
+`tsc -p convex/tsconfig.json --noEmit`: clean on both. `next build`: fails
+identically on both SHAs with a pre-existing Turbopack/environment error
+("Symlink [project]/node_modules is invalid, it points out of the
+filesystem root") unrelated to any TypeScript/source change.
+
+Status: READY FOR FINAL RE-REVIEW (not self-approved).
