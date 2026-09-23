@@ -1,97 +1,71 @@
-# ACTIVE TASK — M6.1 manager–execution mini-refactor
+﻿# ACTIVE TASK — OKX Final Convergence (Primary Integrator)
 
-Updated: 21 September 2026 (Singapore)
-Status: **GATE 1 CANDIDATE DEPLOYED / PHYSICAL GATE 1 NOT RUN**
+Updated: 23 September 2026 (Singapore)
+Status: **CP4 IN PROGRESS — Jev adapter transplant**
 
 ## Goal
 
-Somebody chooses one bounded MAKE or BUY action, receives its actual result,
-reassesses, and continues until it delivers a persisted, evidence-backed
-relaunch recommendation.
+Integrate four completed lanes into ONE verified final candidate.
+No merge to main. No deploy. No live payments / signing / merchants / M3 / live Objectives.
 
-## Branch / base
+## Integration branch
 
-- Branch: `refactor/m6-1-manager-execution-loop`
-- Astra-approved Gate 1 candidate SHA: `a0ee4fe18febda01cd049513e08f9bd7e196b50d`
-- Implementation closure SHA (code under candidate): `0feefcd`
-- Preserved: `stash@{0}`; untracked `scripts/_tmp-*`
+- Branch: `integration/okx-final-convergence`
+- Worktree: `C:/Dev/somebody-okx-okx-final-convergence`
+- Base SHA (exact start): `51bb7c605f220ae8b1b010e6ebabf594a70f3042`
+- Frozen Reliability code: `ac1c64e381fec2d1874fc3ab0229f4b8d56de043`
 
-## Deployment checkpoint (Gate 1 preflight)
+## Source lane SHAs
 
-- **Deployed SHA:** `a0ee4fe18febda01cd049513e08f9bd7e196b50d`
-- **Environment:** Convex development `clean-tapir-151` (`dropandreset-main` /
-  `somebody-okx`, dev deployment `somebody-okx-m1`)
-- **URL host:** `clean-tapir-151.convex.cloud` (from local `NEXT_PUBLIC_CONVEX_URL`)
-- **Command:** `npx convex dev --once` (21 Sep 2026 ~19:43 +08)
-- **Result:** success — Convex functions ready (~14.7s)
-- **Convex CLI / package:** `1.45.0`
-- **Gate 1 physical run:** **NOT RUN** (no fresh canonical Objective created in
-  this pass)
-- **Next action:** fresh execution chat for **physical Gate 1 Run #1** on this
-  deployment and pinned runtime configuration
-
-### Sanitized runtime configuration (deployment env)
-
-| Variable | Present | Notes |
+| Lane | Branch | Head |
 | --- | --- | --- |
-| `AI_PROVIDER` | yes | `openrouter` |
-| `AI_MODEL` | yes | `deepseek/deepseek-v4.1-flash` (founder-approved paid pin) |
-| `LIVE_AI_ENABLED` | yes | `true` |
-| `SOMEBODY_DEMO_OPERATOR_TOKEN` | yes | operator gate configured |
-| `OPENROUTER_API_KEY` | yes | not logged |
-| `M4_M3_EXECUTION_ENABLED` | **absent** | live M3/payment execution disabled |
+| Reliability V7 | `fix/reliability-v7-scope-ownership` | `51bb7c6` / code `ac1c64e` |
+| Final frontend | `design/ui-v7-product-language` | `6bde197e4a04732e4d884e903315da0d2de4f214` |
+| Business Seed V2 | `chore/business-seed-v2` | `27cd2758fcecee703df4cf2878b4822dda673981` |
+| Jev selector | `build/jev-option-selector` | `4d9c704c86a9f4902637d26f2b2de35897ca8188` |
 
-Local `.env.local` still lists a free-tier `AI_MODEL` for probes; **server-side**
-model selection for Gate 1 follows Convex deployment env above.
+## Checkpoints
 
-### Post-deploy smoke (minimal)
+- [x] **CP1** — branch from `51bb7c6` + lane inventory
+- [x] **CP2** — `46cc3eb` frontend transplant (presentation from `6bde197`; keep V7 `productWorkspace` list window; create/spend commands; `submitObjective` → `createReceivedObjective`)
+- [x] **CP3** — `5f2fe4c` Business Seed V2 semantic merge (PROFILE/BRIEF/artifact/research + `CANONICAL_AUTHORIZED_PURPOSE_POLICY`)
+- [ ] **CP3b** — Needs You `optionId` surfacing on approval_required (decision.ts) — pending commit
+- [ ] **CP4** — Jev adapter transplant + isolated tests
+- [ ] **CP5** — Jev Stage-3 seam + gate + focused seam tests
+- [ ] **CP6** — cross-lane canonical demo (doubles)
+- [ ] **CP7** — promotion gate once
+- [ ] **CP8** — docs + push (no main merge)
 
-- `scripts/_tmp-m61-conn-preflight.mjs`: 8/8 `listObjectives` reads OK; operator
-  path OK; IPv4 TCP/TLS OK
-- `objectives.listObjectives` reachable; `m3Driver.simulationCandidate` operator
-  gate refuses bad token; read path OK on historical objective
-- No fresh Objective created; no physical loop attempted
+## Integration methods used
 
-### Prior accepted evidence (not re-run this pass)
+| Lane | Method |
+| --- | --- |
+| Frontend | File-level transplant from `6bde197` + surgical create/spend adapters; **kept** V7 `convex/productWorkspace.ts` (OBJECTIVE_LIST_WINDOW); **kept** V7 management/runtime |
+| Business Seed | Manual semantic merge of `27cd275` 3-file delta into V7 seed/policy |
+| Jev | Transplant module from `4d9c704` + reconcile `ai@7.0.111` (in progress) |
 
-- Pass-3 fixer finalization / focused closure tests and clean `typecheck:convex`
-  recorded at `0feefcd` / `a0ee4fe` docs checkpoint
+## Focused evidence
 
-## Checkpoint (finalization pass — complete)
+### CP2
+- `tests/founderLanguage.test.ts` — 16 pass
+- Combined FE suite (founderLanguage, v6ProductWorkspace, frontendContract*, create, spend, demo*) — 149 pass (earlier run)
+- `tests/founderSpendApproval.test.ts` — 12 pass (re-verified after seed)
+- Note: createObjective convex-test can emit scheduled-interpretation noise; timer mock added in CP2 commit
 
-- Starting SHA: `7d49913990ff3ea8dd8251b62c0b65ecea235e42`
-- Final pushed SHA: `0feefcd`
+### CP3
+- `tests/businessSeed.test.ts` — 5 pass
+- `tests/v7ReviewR4ScopeOwnership|Origin|PurposeScope` — 21 pass
+- `tests/m61ProductionWholeChain.test.ts` — 2 pass
 
-## This pass (finalization-and-evidence)
+## Carried findings
 
-### Completed implementation
+- **Investigate Now (inherited V7):** `setupCanonicalDemoObjective` accepts optional custom request while attaching canonical purpose policy.
+- **Park for Later:** Windows `node_modules` install flakiness in this worktree; currently junctioned to purpose-origin modules for test execution until Jev `ai` dep forces a real local install.
+- **Act Now (CP3b):** decision.ts must surface `recommendation.selectedOptionId` when authorization is `approval_required` (FE Needs You); R4 `authorizedPurposeKinds` must remain.
 
-- [x] Serial result-contract alignment: `allowEmptyRisksUnknowns` on serial
-      WorkContracts; `evaluateCompletion` accepts empty risks/unknowns arrays
-      when permitted; missing/malformed arrays still fail; legacy nonempty kept
-- [x] Correction test uses production `executeWorker` + worker-model double;
-      no workItems/run replacement after dispatch; no force-delivery bookkeeping
-- [x] `executeWorker` seam asserts `completed===true`, empty `unmet`, durable
-      run/WI state, matching `worker_result` wake; Objective stays separate
-- [x] Convex tsc: assessment return typing + observation provenance narrowing
+## Ownership reminders
 
-### Tested seams (behavioral regressions; not physical Gate 1)
-
-- [x] Serial empty risks/unknowns finalize via production WorkContract + finishRun
-- [x] Negative → corrective new run → real artifact revision → WI finalize →
-      assessment #2 → completed (no post-rejection state repair)
-- [x] Old assignment cannot satisfy corrective action
-- [x] Second negative → explicit `blocked` stop
-- [x] `executeWorker` seam completed + wake evidence
-- [x] F/G production whole-chain regressions still pass
-
-### Remaining physical acceptance
-
-- [ ] Physical Gate 1 Run #1 (live models on deployed candidate; acquisition
-      boundary simulated only)
-- [ ] Gate 2
-
-## Do not
-
-Resume historical failed Objectives / live payment / Gate 2 / M6.2 / merge to
-main / touch `stash@{0}` without explicit instruction
+- Reliability V7: runtime/authority
+- Frontend: presentation
+- Business Seed: business wording only
+- Jev: Stage-3 eligible ID selection only; Stage-4 `applyDecision` unchanged
