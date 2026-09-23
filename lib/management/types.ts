@@ -587,6 +587,13 @@ export type ExecutionIntent = {
    * controlled merchant product request; never secrets or full Objective state.
    */
   purpose?: string | null;
+  /**
+   * V7 review R4 — the bound ResourceNeed's APPLICATION-VALIDATED requested
+   * scope kind (ResourceNeed.requestedScope), copied at authorization. The
+   * merchant request and result verification use this, never a stamped
+   * default. Null/absent = no validated scope → a scoped product refuses.
+   */
+  requestedPurposeKind?: string | null;
 };
 
 // ── Wake events (Convex-owned, idempotent) ───────────────────────────────────

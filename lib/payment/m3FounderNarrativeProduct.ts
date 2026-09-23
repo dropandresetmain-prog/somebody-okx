@@ -8,7 +8,8 @@
 
 import type { ExternalResourceEvidence, ExternalResourceResult } from "../providers/types";
 import type { MarketOffering } from "../market/discovery";
-import type { ResourceNeed } from "../objective/resourceNeed";
+import { validatedRequestedPurposeKind, type ResourceNeed } from "../objective/resourceNeed";
+import type { ExecutionIntent } from "../management/types";
 
 export const M3_PRODUCT_ID = "founder_narrative_pulse" as const;
 export const M3_PRODUCT_RESOURCE_CLASS = "proprietary_data" as const;
@@ -38,9 +39,20 @@ export const M3_PRODUCT_FULFILLMENT_SCOPE = {
 } as const;
 
 /**
- * Deterministic, NEGATION-AWARE out-of-scope claim detection for the
- * prose-fallback mode only (no structured purposeKind supplied — e.g.
- * pre-grounding over a ResourceNeed's descriptive purpose). A forbidden
+ * V7 review R2/R4 — the ONE purpose normalization for this product. The
+ * request that is actually sent (merchant header), the merchant's echoed
+ * `purpose`, and the verifier's expectation all use this exact function, so
+ * no two independently invented formats are ever compared.
+ * Header transport already trims; the bound is the header/product bound.
+ */
+export const M3_PURPOSE_MAX_LENGTH = 500;
+export function normalizeM3Purpose(purpose: string | null | undefined): string {
+  return (purpose ?? "").trim().slice(0, M3_PURPOSE_MAX_LENGTH).trim();
+}
+
+/**
+ * Deterministic, NEGATION-AWARE out-of-scope claim detection. It can only
+ * REFUSE: prose never grants scope (V7 review R4). A forbidden
  * phrase that sits under a negation in its own clause ("do not infer causal
  * uplift", "no live twitter data", "…; not causal attribution") is a
  * disclaimer, not a claim, and must not reject an otherwise valid qualitative
@@ -241,7 +253,8 @@ export function buildM3MerchantRequestHeaders(input: {
   }
   if (input.serviceId) headers[HEADER_SERVICE_ID] = input.serviceId;
   if (input.offeringId) headers[HEADER_OFFERING_ID] = input.offeringId;
-  if (input.purpose) headers[HEADER_PURPOSE] = input.purpose.slice(0, 500);
+  const purpose = normalizeM3Purpose(input.purpose);
+  if (purpose) headers[HEADER_PURPOSE] = purpose;
   if (input.purposeKind) headers[HEADER_PURPOSE_KIND] = input.purposeKind;
   if (input.requestId) headers[HEADER_REQUEST_ID] = input.requestId;
   return headers;
@@ -250,21 +263,18 @@ export function buildM3MerchantRequestHeaders(input: {
 /**
  * Deterministic purpose compatibility for this product.
  *
- * Authority is the typed purpose kind + product/resource identity — not a
- * broad keyword scrape. Free-text purpose is required for traceability. It is
- * never ACCEPTING authority by itself in structured mode, and in descriptive
- * fallback mode (no purposeKind — e.g. grounding over a ResourceNeed's
- * free-text purpose) it is checked only with a fail-closed, NEGATION-AWARE
- * out-of-scope gate plus the product's declared research-domain signals. A
- * disclaimer ("do not infer causal uplift") never false-rejects a valid
- * qualitative request.
+ * V7 review R4: authority is the STRUCTURED purpose kind only. A request with
+ * no typed kind is incomplete — free text is descriptive context and is never
+ * scraped for "in-scope" keywords. Prose can only REFUSE: an affirmative claim
+ * of delivery the product does not sell is out of scope even under a correct
+ * kind; negated phrasing ("do not infer causal uplift") is a disclaimer.
  */
 export function resolveSupportedPurposeKind(
   request: M3MerchantProductRequest,
 ):
   | { ok: true; purposeKind: M3SupportedPurposeKind; purpose: string }
   | { ok: false; error: M3ProtectedErrorCode; detail: string } {
-  const purpose = request.purpose?.trim() ?? "";
+  const purpose = normalizeM3Purpose(request.purpose);
   if (!purpose) {
     return {
       ok: false,
@@ -279,13 +289,10 @@ export function resolveSupportedPurposeKind(
     return {
       ok: false,
       error: "unsupported_product_scope",
-      detail: `purposeKind ${explicitKind} is outside founder_messaging_qualitative scope`,
+      detail: `purposeKind ${explicitKind.slice(0, 120)} is outside founder_messaging_qualitative scope`,
     };
   }
 
-  // Fail-closed even under a correct typed kind: an AFFIRMATIVE claim of
-  // delivery the product does not sell is out of scope. Negated phrasing
-  // ("do not infer causal uplift") is a disclaimer, not a claim.
   const claim = affirmativelyClaimsOutOfScopePhrase(purpose.toLowerCase());
   if (claim) {
     return {
@@ -295,42 +302,17 @@ export function resolveSupportedPurposeKind(
     };
   }
 
-  // Structured authority: typed kind present and matching → accept without
-  // any further prose analysis. Free text never overrides the typed kind.
-  if (explicitKind === M3_SUPPORTED_PURPOSE_KIND) {
-    return { ok: true, purposeKind: M3_SUPPORTED_PURPOSE_KIND, purpose: purpose.slice(0, 500) };
-  }
-
-  // Descriptive fallback (no structured kind): the product's declared
-  // research-domain signals keep an unrelated request from matching by luck
-  // of the disclaimer gate alone.
-  const lowered = purpose.toLowerCase();
-  const inScopeSignals = [
-    "founder",
-    "one-person",
-    "one person",
-    "solo",
-    "messaging",
-    "message",
-    "launch",
-    "positioning",
-    "workflow",
-    "somebody",
-    "language",
-    "perception",
-    "clarity",
-  ];
-  const inScope = inScopeSignals.some((signal) => lowered.includes(signal));
-  if (!inScope) {
+  // No structured kind: incomplete. Prose is never scraped for acceptance.
+  if (!explicitKind) {
     return {
       ok: false,
-      error: "unsupported_product_scope",
+      error: "incomplete_product_request",
       detail:
-        "purpose is not inside founder_narrative_pulse qualitative founder-messaging research scope",
+        "founder_narrative_pulse requires a structured purposeKind; free-text purpose is descriptive context, not scope authority",
     };
   }
 
-  return { ok: true, purposeKind: M3_SUPPORTED_PURPOSE_KIND, purpose: purpose.slice(0, 500) };
+  return { ok: true, purposeKind: M3_SUPPORTED_PURPOSE_KIND, purpose };
 }
 
 export function evaluateM3ProductFulfillment(
@@ -433,23 +415,157 @@ export function buildM3ProtectedSuccess(input: {
   };
 }
 
-export function verifyM3ProtectedResult(value: unknown): value is M3ProtectedSuccessResult {
+const PROTECTED_SUCCESS_KEYS = [
+  "ok", "productId", "resourceClass", "provenance", "limitation", "purposeKind",
+  "purpose", "requestId", "offeringId", "serviceId", "providerId", "evidence",
+  "payload", "content",
+] as const;
+const MAX_ID_LENGTH = 256;
+const MAX_CONTENT_LENGTH = 20_000;
+const MAX_ITEM_TEXT_LENGTH = 2_000;
+const MAX_ITEMS = 32;
+
+function boundedString(value: unknown, max: number): value is string {
+  return typeof value === "string" && value.length <= max && value.trim().length > 0;
+}
+function boundedStringArray(value: unknown, min: number): value is string[] {
+  return Array.isArray(value) && value.length >= min && value.length <= MAX_ITEMS &&
+    value.every((item) => boundedString(item, MAX_ITEM_TEXT_LENGTH));
+}
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
-  const result = value as Record<string, unknown>;
-  if (result.ok !== true) return false;
-  if (result.productId !== M3_PRODUCT_ID) return false;
-  if (result.resourceClass !== M3_PRODUCT_RESOURCE_CLASS) return false;
-  if (result.provenance !== M3_PRODUCT_PROVENANCE) return false;
-  if (result.purposeKind !== M3_SUPPORTED_PURPOSE_KIND) return false;
-  if (typeof result.purpose !== "string" || result.purpose.trim().length === 0) return false;
-  if (typeof result.content !== "string" || result.content.trim().length === 0) return false;
-  if (typeof result.limitation !== "string" || !result.limitation.includes("NOT live")) return false;
-  if (!Array.isArray(result.evidence) || result.evidence.length === 0) return false;
-  const payload = result.payload as { findings?: unknown } | undefined;
-  if (!payload || !Array.isArray(payload.findings) || payload.findings.length === 0) return false;
-  // Reject silent legacy ping shape if somehow mixed in.
-  if (result.resource === "m3-paid-ping") return false;
-  return true;
+  const proto = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
+}
+
+/**
+ * V7 review R2 — STRICT runtime parse of a protected success result.
+ * Returns a canonical projection containing exactly the declared fields (no
+ * arbitrary spread), or null. Every field relied on downstream — identity
+ * (provider/service/offering/request/resource/purpose), evidence, findings,
+ * content, provenance and the exact limitation — is shape- and bound-checked.
+ * Unknown keys (including the legacy ping shape) are refused.
+ */
+export function parseM3ProtectedSuccess(value: unknown): M3ProtectedSuccessResult | null {
+  if (!isPlainRecord(value)) return null;
+  const keys = Object.keys(value);
+  if (keys.length !== PROTECTED_SUCCESS_KEYS.length) return null;
+  if (!keys.every((key) => (PROTECTED_SUCCESS_KEYS as readonly string[]).includes(key))) return null;
+  const r = value;
+  if (r.ok !== true) return null;
+  if (r.productId !== M3_PRODUCT_ID) return null;
+  if (r.resourceClass !== M3_PRODUCT_RESOURCE_CLASS) return null;
+  if (r.provenance !== M3_PRODUCT_PROVENANCE) return null;
+  if (r.limitation !== M3_PRODUCT_LIMITATION) return null;
+  if (r.purposeKind !== M3_SUPPORTED_PURPOSE_KIND) return null;
+  if (r.serviceId !== M3_PRODUCT_SERVICE_ID) return null;
+  if (r.providerId !== M3_PRODUCT_PROVIDER_ID) return null;
+  if (!boundedString(r.purpose, M3_PURPOSE_MAX_LENGTH)) return null;
+  if (r.requestId !== null && !boundedString(r.requestId, MAX_ID_LENGTH)) return null;
+  if (r.offeringId !== null && !boundedString(r.offeringId, MAX_ID_LENGTH)) return null;
+  if (!boundedString(r.content, MAX_CONTENT_LENGTH)) return null;
+  if (!Array.isArray(r.evidence) || r.evidence.length === 0 || r.evidence.length > MAX_ITEMS) return null;
+  const evidence: M3ProtectedSuccessResult["evidence"] = [];
+  for (const item of r.evidence) {
+    if (!isPlainRecord(item) || Object.keys(item).length !== 3) return null;
+    if (!boundedString(item.label, MAX_ID_LENGTH) || !boundedString(item.text, MAX_ITEM_TEXT_LENGTH)) return null;
+    if (typeof item.observedAt !== "number" || !Number.isFinite(item.observedAt)) return null;
+    evidence.push({ label: item.label, text: item.text, observedAt: item.observedAt });
+  }
+  const payload = r.payload;
+  if (!isPlainRecord(payload) || Object.keys(payload).length !== 2) return null;
+  if (!boundedStringArray(payload.findings, 1)) return null;
+  if (!boundedStringArray(payload.messagingImplications, 0)) return null;
+  return {
+    ok: true,
+    productId: M3_PRODUCT_ID,
+    resourceClass: M3_PRODUCT_RESOURCE_CLASS,
+    provenance: M3_PRODUCT_PROVENANCE,
+    limitation: M3_PRODUCT_LIMITATION,
+    purposeKind: M3_SUPPORTED_PURPOSE_KIND,
+    purpose: r.purpose,
+    requestId: r.requestId as string | null,
+    offeringId: r.offeringId as string | null,
+    serviceId: M3_PRODUCT_SERVICE_ID,
+    providerId: M3_PRODUCT_PROVIDER_ID,
+    evidence,
+    payload: {
+      findings: [...payload.findings],
+      messagingImplications: [...payload.messagingImplications],
+    },
+    content: r.content,
+  };
+}
+
+export function verifyM3ProtectedResult(value: unknown): value is M3ProtectedSuccessResult {
+  return parseM3ProtectedSuccess(value) !== null;
+}
+
+/**
+ * V7 review R2/R4 — the exact normalized request an AUTHORIZED intent may send
+ * to this product, derived from the intent alone. Used both to BUILD the
+ * merchant request (before any signing) and to VERIFY the result, so the two
+ * never compare independently invented formats. Missing or inconsistent
+ * authority refuses; nothing falls back to the canonical demo product.
+ */
+export type M3AuthorizedRequest = {
+  requestId: string;
+  providerId: string;
+  serviceId: string;
+  offeringId: string;
+  resourceClass: string;
+  purposeKind: M3SupportedPurposeKind;
+  purpose: string;
+};
+
+export function m3AuthorizedRequestFromIntent(
+  intent: ExecutionIntent,
+): { ok: true; request: M3AuthorizedRequest } | { ok: false; reason: string } {
+  const problems: string[] = [];
+  const text = (value: unknown): string => (typeof value === "string" ? value.trim() : "");
+  if (intent.kind !== "external_acquisition")
+    problems.push(`intent kind ${String(intent.kind)} is not an external acquisition`);
+  const requestId = text(intent.intentId);
+  if (!requestId) problems.push("intent has no identity");
+  const target: Partial<ExecutionIntent["target"]> = intent.target ?? {};
+  const providerId = text(target.providerId);
+  const serviceId = text(target.serviceId);
+  const offeringId = text(target.offeringId);
+  const resourceClass = text(target.resourceClass);
+  if (!providerId) problems.push("authorized target has no providerId");
+  else if (providerId !== M3_PRODUCT_PROVIDER_ID)
+    problems.push(`authorized provider ${providerId} is not ${M3_PRODUCT_PROVIDER_ID}`);
+  if (!serviceId) problems.push("authorized target has no serviceId");
+  else if (serviceId !== M3_PRODUCT_FULFILLMENT_SCOPE.serviceId)
+    problems.push(`authorized service ${serviceId} is not ${M3_PRODUCT_FULFILLMENT_SCOPE.serviceId}`);
+  if (!offeringId) problems.push("authorized target has no offeringId");
+  if (!resourceClass) problems.push("authorized target has no resourceClass");
+  else if (!(M3_PRODUCT_FULFILLMENT_SCOPE.resourceClasses as readonly string[]).includes(resourceClass))
+    problems.push(`authorized resource class ${resourceClass} is not declared by the adapter`);
+  const purposeKind = text(intent.requestedPurposeKind);
+  if (!purposeKind)
+    problems.push("intent carries no application-validated requested scope (requestedPurposeKind)");
+  else if (!(M3_PRODUCT_FULFILLMENT_SCOPE.purposeKinds as readonly string[]).includes(purposeKind))
+    problems.push(`requested scope ${purposeKind.slice(0, 120)} is not declared by the adapter`);
+  const purpose = normalizeM3Purpose(intent.purpose);
+  if (!purpose) problems.push("intent carries no bounded purpose");
+  else {
+    const claim = affirmativelyClaimsOutOfScopePhrase(purpose.toLowerCase());
+    if (claim) problems.push(`requested purpose affirmatively requires ${claim}`);
+  }
+  if (problems.length > 0) return { ok: false, reason: problems.join("; ") };
+  return {
+    ok: true,
+    request: {
+      requestId,
+      providerId,
+      serviceId,
+      offeringId,
+      resourceClass,
+      purposeKind: M3_SUPPORTED_PURPOSE_KIND,
+      purpose,
+    },
+  };
 }
 
 /**
@@ -495,7 +611,12 @@ export function normalizeM3FounderNarrativeResult(
   };
 }
 
-/** Provider-adapter request shape — purpose reaches the merchant here. */
+/**
+ * Provider-adapter request shape — purpose reaches the merchant here.
+ * V7 review R4: the purpose kind is the need's APPLICATION-VALIDATED requested
+ * scope; a need without one (or with a kind this adapter does not declare)
+ * cannot be shaped into a request. Nothing is stamped by default.
+ */
 export function buildM3FounderNarrativeRequest(input: {
   offering: MarketOffering;
   need: ResourceNeed;
@@ -508,11 +629,22 @@ export function buildM3FounderNarrativeRequest(input: {
   serviceId: string;
   requestId: string;
 } {
+  const kind = validatedRequestedPurposeKind(input.need);
+  if (kind !== M3_SUPPORTED_PURPOSE_KIND) {
+    throw new Error(
+      `founder_narrative_pulse: need ${input.need.id} has no application-validated requested scope this adapter declares`,
+    );
+  }
+  if (input.need.resourceClass !== M3_PRODUCT_RESOURCE_CLASS) {
+    throw new Error(
+      `founder_narrative_pulse: need class ${input.need.resourceClass} is not declared by the adapter`,
+    );
+  }
   return {
     productId: M3_PRODUCT_ID,
     resourceClass: M3_PRODUCT_RESOURCE_CLASS,
-    purposeKind: M3_SUPPORTED_PURPOSE_KIND,
-    purpose: input.need.purpose.slice(0, 500),
+    purposeKind: kind,
+    purpose: normalizeM3Purpose(input.need.purpose),
     offeringId: input.offering.offeringId,
     serviceId: input.offering.serviceId,
     requestId: input.need.id,

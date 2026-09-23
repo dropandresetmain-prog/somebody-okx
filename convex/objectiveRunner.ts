@@ -745,6 +745,7 @@ async function actCommand(
                   ...(gap.semanticAdequacyGap
                     ? { semanticAdequacyGap: gap.semanticAdequacyGap }
                     : {}),
+                  ...(gap.purposeKind ? { purposeKind: gap.purposeKind } : {}),
                 },
               },
             );

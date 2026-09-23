@@ -857,6 +857,8 @@ export const submitResult = internalMutation({
             reasonOwnedInsufficient: v.optional(v.string()),
             supportingEvidenceIds: v.optional(v.array(v.string())),
             semanticGap: v.optional(v.boolean()),
+            // V7 R4: proposed requested scope; validated in reportMissingInput.
+            purposeKind: v.optional(v.string()),
           }),
         ),
       ),
@@ -1944,6 +1946,9 @@ export const reportMissingInput = internalMutation({
       semanticAdequacyGap: v.optional(
         v.union(v.boolean(), v.literal("derive")),
       ),
+      // V7 review R4: PROPOSED requested scope. Validated by
+      // validateMissingInputProposal; never authority by itself.
+      purposeKind: v.optional(v.string()),
     }),
   },
   returns: v.object({
@@ -2040,6 +2045,9 @@ export const reportMissingInput = internalMutation({
       ...(args.proposal.semanticAdequacyGap === true ||
       args.proposal.semanticAdequacyGap === "derive"
         ? { semanticAdequacyGap: args.proposal.semanticAdequacyGap }
+        : {}),
+      ...(args.proposal.purposeKind !== undefined
+        ? { purposeKind: args.proposal.purposeKind }
         : {}),
     };
 

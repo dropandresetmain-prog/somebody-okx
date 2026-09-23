@@ -548,12 +548,25 @@ test("B: NewsLiquid-style offering is not BUY-eligible without execution path", 
 });
 
 test("B: controlled merchant is BUY-eligible when purpose scope matches", () => {
+  // V7 review R4: compatibility comes from the validated requested scope ∩
+  // the adapter declaration; the same prose without a validated kind is NOT
+  // compatible (fail closed, no keyword luck).
   assert.equal(
     externalOfferingAcceptsPurpose({
       serviceId: "founder_narrative_pulse",
       purpose: CANONICAL_SOCIAL_INTELLIGENCE_NEED.purpose,
+      purposeKind: M3_SUPPORTED_PURPOSE_KIND,
+      resourceClass: "proprietary_data",
     }),
     true,
+  );
+  assert.equal(
+    externalOfferingAcceptsPurpose({
+      serviceId: "founder_narrative_pulse",
+      purpose: CANONICAL_SOCIAL_INTELLIGENCE_NEED.purpose,
+      resourceClass: "proprietary_data",
+    }),
+    false,
   );
   const option = buildExternalOption({
     requirementKey: "req_b",
@@ -616,6 +629,8 @@ test("B: negated out-of-scope wording does not false-reject a valid qualitative 
       serviceId: "founder_narrative_pulse",
       purpose:
         "Qualitative founder-messaging research for the relaunch; do not infer causal uplift or measured conversion",
+      purposeKind: M3_SUPPORTED_PURPOSE_KIND,
+      resourceClass: "proprietary_data",
     }),
     true,
   );
@@ -628,6 +643,7 @@ test("B: negated out-of-scope wording does not false-reject a valid qualitative 
     at,
     purpose:
       "Qualitative founder-messaging research for the relaunch; do not infer causal uplift or measured conversion",
+    purposeKind: M3_SUPPORTED_PURPOSE_KIND,
   });
   assert.equal(offerings[0]!.purposeScopeCompatible, true);
 });

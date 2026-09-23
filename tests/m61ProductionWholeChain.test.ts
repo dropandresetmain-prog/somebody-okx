@@ -298,6 +298,8 @@ function makeConvexBackedPort(
                 supportingEvidenceIds:
                   proposal.observedEvidenceIds ??
                   proposal.supportingEvidenceIds,
+                // V7 review R4: forwarded as a PROPOSAL; reportMissingInput validates it.
+                ...(proposal.purposeKind ? { purposeKind: proposal.purposeKind } : {}),
                 ...(proposal.semanticGap === true
                   ? { semanticAdequacyGap: true }
                   : {}),
@@ -455,6 +457,9 @@ test("F production whole-chain: founder → MAKE → gap → BUY sim → MAKE ar
                       "Company record lacks proprietary audience-language evidence",
                     howAdditionalWouldChange:
                       "Verified proprietary social intelligence would ground relaunch wording",
+                    // V7 review R4: the worker proposes the governed requested
+                    // scope; eligibility no longer comes from prose substrings.
+                    purposeKind: "founder_messaging_qualitative",
                   },
                 ],
               },
@@ -595,6 +600,10 @@ test("F production whole-chain: founder → MAKE → gap → BUY sim → MAKE ar
       `unexpected intent state ${String(intents[0]!.state)}`,
     );
     assert.ok(intents[0]!.needDedupeKey, "BUY intent must carry need identity");
+    // V7 review R4: the authorized intent carries the bound need's
+    // application-validated requested scope (what the merchant request and
+    // result verification bind to) — never a stamped default.
+    assert.equal(intents[0]!.requestedPurposeKind, "founder_messaging_qualitative");
     const intentId = String(intents[0]!.intentId);
 
     // Operator-gated SIMULATION only after matching authorized intent exists.

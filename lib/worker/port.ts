@@ -43,6 +43,8 @@ export type WorkerCommand =
       inputCheckId?: string;
       /** Application observation ids supporting the gap claim. */
       supportingEvidenceIds?: string[];
+      /** V7 R4: optional governed requested-scope proposal (validated by the application). */
+      purposeKind?: string;
     }
   | {
       type: "update_company_artifact";
@@ -77,6 +79,8 @@ export type MissingInputFindingInput = {
   supportingEvidenceIds?: string[];
   /** Legacy explicit flag; the canonical shape derives literal vs semantic. */
   semanticGap?: boolean;
+  /** V7 R4: optional governed requested-scope proposal (validated by the application). */
+  purposeKind?: string;
 };
 
 /** Tagged terminal handoff for the serial manager–execution path. */

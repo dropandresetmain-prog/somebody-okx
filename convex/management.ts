@@ -50,7 +50,7 @@ import {
   verifiedAcquisitionCoversNeed,
 } from "../lib/objective/inputDiagnosis";
 import type { ResourceNeed } from "../lib/objective/resourceNeed";
-import { transitionNeedStatus } from "../lib/objective/resourceNeed";
+import { transitionNeedStatus, validatedRequestedPurposeKind } from "../lib/objective/resourceNeed";
 import type { ExternalAcquisitionResult } from "../lib/objective/types";
 import {
   advanceAssignment,
@@ -1748,16 +1748,38 @@ export const applyInterpretation = internalMutation({
 
     const data = (row as AnyRow).data as Record<string, unknown>;
     const mgmt = (data.management ?? {}) as Record<string, unknown>;
-    // Idempotent replay: an interpretation already applied for this objective is
-    // not applied twice. The wake/scheduler can redeliver; the contract cannot
-    // be silently re-interpreted underneath a running engine.
-    if (typeof mgmt.contractId === "string" && mgmt.contractId) {
+    // V7 review R3 — reservation fence. The pending reservation IS the
+    // identity: only the CURRENT pending requestId may apply. A late callback
+    // from an expired/superseded reservation, a foreign requestId, or a
+    // redelivery after the reservation was resolved is rejected here, before
+    // any contract, reservation, attempt counter or continuation is touched.
+    const hasContract = typeof mgmt.contractId === "string" && mgmt.contractId.length > 0;
+    const isCurrentPending =
+      mgmt.interpretationStatus === "pending" && mgmt.interpretationRequestId === args.requestId;
+    if (!isCurrentPending) {
+      // Deliberate idempotency ONLY for the exact already-accepted application:
+      // the existence of some contract is not proof THIS requestId was accepted.
+      if (
+        hasContract &&
+        mgmt.interpretationStatus === "done" &&
+        mgmt.interpretationRequestId === args.requestId
+      ) {
+        return {
+          ok: true as const,
+          contractId: mgmt.contractId as string,
+          requirementKeys: [],
+          notes: ["interpretation already applied for this exact request"],
+        };
+      }
       return {
-        ok: true as const,
-        contractId: mgmt.contractId,
-        requirementKeys: [],
-        notes: ["interpretation already applied for this objective"],
+        ok: false as const,
+        errors: ["no matching pending interpretation reservation (stale, expired, superseded or foreign request)"],
       };
+    }
+    if (hasContract) {
+      // A pending reservation beside an installed contract is inconsistent
+      // truth; never re-interpret underneath a running engine.
+      return { ok: false as const, errors: ["interpretation already applied for this objective"] };
     }
 
     const grant = (await ctx.runQuery(internal.internal.workforce.activeSpendGrant, {
@@ -1792,7 +1814,9 @@ export const applyInterpretation = internalMutation({
             contractId: null,
             interpretationStatus: "refused",
             interpretationRequestId: args.requestId,
-            interpretationAttempts: ((mgmt.interpretationAttempts as number | undefined) ?? 0) + 1,
+            // V7 review R3: beginInterpretation already counted this attempt
+            // when it reserved it; a refusal must not count it twice.
+            interpretationAttempts: (mgmt.interpretationAttempts as number | undefined) ?? 0,
             interpretationDetail: detail,
             controlNotes: boundNotes(mgmt.controlNotes, {
               type: "interpretation_refused",
@@ -1978,6 +2002,9 @@ export const beginInterpretation = internalMutation({
           interpretationStatus: "pending",
           interpretationRequestId: requestId,
           interpretationAttempts: attempts + 1,
+          // V7 review R3: the reservation carries its own deadline; the
+          // watchdog never acts before it.
+          interpretationExpiresAt: args.at + INTERPRETATION_RESERVATION_TTL_MS,
         },
       },
     } as never);
@@ -2887,6 +2914,9 @@ async function dispatchExternal(
         needDedupeKey: matchingNeed.dedupeKey,
         resourceNeedId: matchingNeed.id,
         purpose: matchingNeed.purpose.slice(0, 500),
+        // V7 review R4: the bound need's validated scope, re-checked from the
+        // stored row. Absent → null (the scoped product then refuses).
+        requestedPurposeKind: validatedRequestedPurposeKind(matchingNeed),
       }
     : created.intent;
 
@@ -3503,6 +3533,18 @@ export const expireInterpretationReservation = internalMutation({
       mgmt.interpretationRequestId !== args.requestId
     )
       return null; // applied, replaced, or terminal — leave truth alone
+    // V7 review R3: never expire a reservation before its own deadline. An
+    // early firing re-arms ONE watchdog for the remaining time (bounded, not a
+    // poll) so the reservation can still never strand.
+    const expiresAt = mgmt.interpretationExpiresAt;
+    if (typeof expiresAt === "number" && Date.now() < expiresAt) {
+      await ctx.scheduler.runAfter(
+        expiresAt - Date.now(),
+        internal.management.expireInterpretationReservation,
+        { objectiveKey: args.objectiveKey, requestId: args.requestId },
+      );
+      return null;
+    }
     const detail = `interpretation reservation ${args.requestId} expired without an apply (action chain lost)`.slice(0, 600);
     await ctx.db.patch(row._id, {
       data: {
@@ -3526,12 +3568,15 @@ export const expireInterpretationReservation = internalMutation({
       objectiveKey: args.objectiveKey,
       data: { at: Date.now(), kind: "system", text: detail },
     });
-    // Hand the refusal back to whatever drives re-interpretation: the begin
-    // step's ceiling check now sees a real attempt count and either re-begins
-    // (via a founder/management wake) or escalates explicitly.
-    await ctx.scheduler.runAfter(0, internal.management.runManagementPass, {
+    // V7 review R3: the expiry OWNS its continuation. The management pass
+    // does not drive interpretation (a contract-less Objective has nothing
+    // for the graph to reduce), so hand back to beginInterpretation itself:
+    // its ceiling check sees the attempt begin already counted and either
+    // reserves the next bounded attempt or transitions to the explicit
+    // `escalated` state. No manual rescue, no polling.
+    await ctx.scheduler.runAfter(0, internal.management.beginInterpretation, {
       objectiveKey: args.objectiveKey,
-      reason: "recovery_event",
+      at: Date.now(),
     });
     return null;
   },

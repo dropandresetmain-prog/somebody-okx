@@ -10,6 +10,7 @@ import path from "node:path";
 
 import {
   ACQUISITION_RECORD_ENV,
+  ACQUISITION_RECORD_KEY_ENV,
   recordVerifiedAcquisition,
   replayVerifiedAcquisition,
   resolveAcquisitionRecordDirectory,
@@ -32,6 +33,7 @@ const intent: ExecutionIntent = {
   state: "handed_off", attempts: 1, lastEventId: null, resultEvidenceId: null, verificationEvidenceId: null,
   boundaryNote: "record/replay plumbing test", createdAt: at, updatedAt: at,
   purpose: "Qualitative read on founder messaging resonance.",
+  requestedPurposeKind: "founder_messaging_qualitative",
 };
 
 const purchase: PurchaseRecord = {
@@ -47,8 +49,10 @@ const boundResult = buildM3ProtectedSuccess({
   requestId: intent.intentId, offeringId: intent.target.offeringId,
 });
 
+// TEST-ONLY record-authentication key (never a real secret).
+const TEST_RECORD_KEY = "test-only-record-key-0123456789abcdef-v7";
 function enabledEnv(dir: string): Record<string, string | undefined> {
-  return { [ACQUISITION_RECORD_ENV]: dir };
+  return { [ACQUISITION_RECORD_ENV]: dir, [ACQUISITION_RECORD_KEY_ENV]: TEST_RECORD_KEY };
 }
 
 // ── The gate: disabled by default, loud when required ────────────────────────
@@ -74,20 +78,21 @@ test("I2: an opt-in record captures only a result that verifies for THIS exact r
     const env = enabledEnv(dir);
     const recorded = recordVerifiedAcquisition({ intent, purchase, result: boundResult, recordedAt: at, env });
     assert.ok(recorded);
-    assert.equal(recorded!.requestId, intent.intentId);
-    assert.equal(recorded!.purchaseId, purchase.id);
-    assert.equal(recorded!.contentHash, sha256Hex(boundResult.content.trim()));
-    assert.equal(recorded!.resourceClass, "proprietary_data");
+    assert.equal(recorded!.binding.request.requestId, intent.intentId);
+    assert.equal(recorded!.binding.purchase.id, purchase.id);
+    assert.equal(recorded!.binding.contentHash, sha256Hex(boundResult.content));
+    assert.equal(recorded!.binding.request.resourceClass, "proprietary_data");
     assert.ok(fs.existsSync(path.join(dir, `verified-acquisition-${intent.intentId}.json`)));
 
     const replay = replayVerifiedAcquisition({ intent, purchase, env });
     assert.equal(replay.provenance, "recorded_replay", "a replay is a replay — never live, never simulation");
-    assert.equal(replay.record.contentHash, recorded!.contentHash);
-    assert.equal(replay.record.content, boundResult.content.trim());
+    assert.equal(replay.contentHash, recorded!.binding.contentHash);
+    assert.equal(replay.content, boundResult.content);
+    assert.equal(replay.sourceProvenance, "synthetic_test_provider", "original source limitation is preserved");
 
     // Re-record of the identical verified result is idempotent, not a second row.
     const again = recordVerifiedAcquisition({ intent, purchase, result: boundResult, recordedAt: at + 5, env });
-    assert.equal(again!.contentHash, recorded!.contentHash);
+    assert.equal(again!.binding.contentHash, recorded!.binding.contentHash);
     assert.equal(again!.recordedAt, recorded!.recordedAt, "the immutable first record survives a re-record");
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
@@ -106,7 +111,7 @@ test("I3: unverified results can never be recorded and absent records can never 
     assert.throws(() => recordVerifiedAcquisition({ intent, purchase, result: foreign, recordedAt: at, env }), /refusing to record an unverified acquisition result/);
     // Malformed junk → refused too.
     assert.throws(() => recordVerifiedAcquisition({ intent, purchase, result: { ok: true }, recordedAt: at, env }), /refusing to record an unverified acquisition result/);
-    assert.equal(fs.readdirSync(dir).length, 0, "a refused record leaves no file");
+    assert.equal(fs.readdirSync(dir).length, 0, "a refused record leaves no file (no stray temp either)");
     // Replay with no record: fail closed, never fabricate.
     assert.throws(() => replayVerifiedAcquisition({ intent, purchase, env }), /fail-closed and will not fabricate/);
   } finally {
@@ -128,10 +133,11 @@ test("I4: a record cannot cross-request replay and tampered content is refused",
 
     // Tamper with the stored content → hash check refuses before any reuse.
     const file = path.join(dir, `verified-acquisition-${intent.intentId}.json`);
-    const tampered = JSON.parse(fs.readFileSync(file, "utf8")) as { content: string };
-    tampered.content = "SYNTHETIC not live — tampered text";
+    const tampered = JSON.parse(fs.readFileSync(file, "utf8")) as { binding: { result: { content: string }; contentHash: string } };
+    tampered.binding.result.content = "SYNTHETIC not live — tampered text";
+    tampered.binding.contentHash = sha256Hex(tampered.binding.result.content); // recomputed plain hash
     fs.writeFileSync(file, JSON.stringify(tampered), "utf8");
-    assert.throws(() => replayVerifiedAcquisition({ intent, purchase, env }), /content-hash check/);
+    assert.throws(() => replayVerifiedAcquisition({ intent, purchase, env }), /failed authentication/);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

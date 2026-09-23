@@ -268,6 +268,9 @@ export const objectiveRecord = v.object({
       interpretationRequestId: v.optional(v.union(v.string(), v.null())),
       interpretationAttempts: v.optional(v.number()),
       interpretationDetail: v.optional(v.union(v.string(), v.null())),
+      // V7 review R3 — the pending interpretation reservation's own deadline;
+      // its watchdog never expires it earlier.
+      interpretationExpiresAt: v.optional(v.number()),
       // R3 CP-4 (I2/A7/I3) — the durable DECISION cursor. The decision pass is
       // split begin → propose(action) → apply(mutation) exactly like
       // interpretation, because a mutation cannot make the production model call.

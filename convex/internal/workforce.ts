@@ -35,7 +35,7 @@ import type { WorkerRecord, ObjectiveBudget, WakeEvent } from "../../lib/managem
 import { projectWorkerOutput } from "../../lib/management/decisionPass";
 import { verifiedAcquisitionCoversNeed } from "../../lib/objective/inputDiagnosis";
 import { scopedCoveredResourceClasses } from "../../lib/objective/inputAvailability";
-import type { ResourceNeed } from "../../lib/objective/resourceNeed";
+import { validatedRequestedPurposeKind, type ResourceNeed } from "../../lib/objective/resourceNeed";
 import type { ExternalAcquisitionResult } from "../../lib/objective/types";
 
 // Row shapes for the storage layer. `FounderSpendGrant` is the persisted
@@ -889,6 +889,9 @@ export const readDecisionContext = internalQuery({
             typeof raw.contractRevision === "number" ? raw.contractRevision : null,
           dedupeKey:
             typeof need.dedupeKey === "string" ? need.dedupeKey : null,
+          // V7 review R4: only an application-validated requested scope
+          // travels to grounding; anything else is "no scope" (fail closed).
+          requestedPurposeKind: validatedRequestedPurposeKind(need),
         };
       })
       .filter((need) => need.needId && need.resourceClass);

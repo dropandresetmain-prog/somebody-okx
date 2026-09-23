@@ -13,7 +13,7 @@
 
 import { Agent, Runner, OpenAIProvider, tool, type Model } from "@openai/agents";
 import { z } from "zod";
-import { GOVERNED_RESOURCE_CLASSES, RESOURCE_CLASSES } from "../workforce/catalog";
+import { GOVERNED_PURPOSE_KINDS, GOVERNED_RESOURCE_CLASSES, RESOURCE_CLASSES } from "../workforce/catalog";
 import type { WorkContract } from "../objective/types";
 import type {
   ModelNoteInput,
@@ -48,6 +48,14 @@ const canonicalGapShape = {
   observedEvidenceIds: z.array(z.string().min(1).max(160)).max(16),
   whyInsufficient: z.string().min(1).max(500),
   howAdditionalWouldChange: z.string().min(1).max(500).optional(),
+  // V7 review R4: optional structured requested scope, from the ONE governed
+  // vocabulary (catalog PURPOSE_SCOPES). Same schema for every model.
+  purposeKind: z
+    .enum(GOVERNED_PURPOSE_KINDS as [string, ...string[]])
+    .optional()
+    .describe(
+      "Optional governed requested-scope kind for this question (enumerated options). A request label the application validates, not authority: it never chooses a provider, authorizes spend, or makes an offering eligible. Omit when no listed scope fits.",
+    ),
 };
 const GOVERNED_CLASS_LIST = RESOURCE_CLASSES.map(
   (resource) => [resource.class, resource.ownership] as const,
@@ -69,6 +77,7 @@ const legacyGapShape = {
   observedEvidenceIds: z.array(z.string().min(1).max(160)).max(16).optional(),
   whyInsufficient: z.string().min(1).max(500).optional(),
   howAdditionalWouldChange: z.string().min(1).max(500).optional(),
+  purposeKind: z.string().min(1).max(120).optional(),
 };
 /** Identical failing tool actions allowed before no-progress termination. */
 export const MAX_DUPLICATE_FAILURES = 2;
@@ -791,6 +800,7 @@ export async function runWorker(
                 .array(z.string().min(1).max(160))
                 .max(16)
                 .optional(),
+              purposeKind: z.string().min(1).max(120).optional(),
             }),
         // Canonical (serial) and legacy shapes both pass through unchanged; the
         // application maps them (normalizeGapSubmission) and validates.

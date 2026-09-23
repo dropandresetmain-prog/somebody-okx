@@ -18,9 +18,7 @@ import type { ExecutionIntent } from "../management/types";
 import {
   buildM3MerchantRequestHeaders,
   M3_PRODUCT_ID,
-  M3_PRODUCT_OFFERING_ID,
-  M3_PRODUCT_SERVICE_ID,
-  M3_SUPPORTED_PURPOSE_KIND,
+  m3AuthorizedRequestFromIntent,
 } from "./m3FounderNarrativeProduct";
 
 export type ConfirmationLedger = {
@@ -82,17 +80,28 @@ export function persistFounderConfirmation(input: {
   return input.confirmations.put(confirmApprovedPurchaseTerms({ purchase: input.purchase, preview, confirmationId: input.confirmationId, merchantEndpoint: input.merchantEndpoint, confirmedAt: input.confirmedAt }));
 }
 
-function merchantHeadersForIntent(intent: ExecutionIntent): Record<string, string> {
-  // The loopback TESTNET merchant sells only founder_narrative_pulse. Purpose and
-  // resource class still come from the authorized intent so out-of-scope BUYs fail closed.
+/**
+ * V7 review R2/R4 — the merchant request is the intent's AUTHORIZED normalized
+ * request (m3AuthorizedRequestFromIntent), the same derivation the result
+ * verifier binds against. Missing/inconsistent authority or an absent
+ * validated scope refuses HERE — before any quote is fetched or anything is
+ * signed (the merchant settles before it evaluates scope). No field falls
+ * back to the canonical demo product and no purpose kind is stamped.
+ */
+export function merchantHeadersForIntent(intent: ExecutionIntent): Record<string, string> {
+  const authorized = m3AuthorizedRequestFromIntent(intent);
+  if (!authorized.ok) {
+    throw new Error(`refusing to build a paid merchant request before signing: ${authorized.reason}`);
+  }
+  const request = authorized.request;
   return buildM3MerchantRequestHeaders({
-    resourceClass: intent.target.resourceClass,
+    resourceClass: request.resourceClass,
     productId: M3_PRODUCT_ID,
-    serviceId: M3_PRODUCT_SERVICE_ID,
-    offeringId: intent.target.offeringId ?? M3_PRODUCT_OFFERING_ID,
-    purpose: intent.purpose,
-    purposeKind: intent.purpose ? M3_SUPPORTED_PURPOSE_KIND : null,
-    requestId: intent.intentId,
+    serviceId: request.serviceId,
+    offeringId: request.offeringId,
+    purpose: request.purpose,
+    purposeKind: request.purposeKind,
+    requestId: request.requestId,
   });
 }
 

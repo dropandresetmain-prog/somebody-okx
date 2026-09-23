@@ -47,6 +47,12 @@ export type GroundRegistryOfferingsInput = {
    * open only when their contract accepts an empty purpose.
    */
   purpose?: string | null;
+  /**
+   * V7 review R4 — the driving ResourceNeed's APPLICATION-VALIDATED requested
+   * scope kind (never a model label, never inferred from prose). Absent/null
+   * means no validated scope: purpose-scoped offerings are incompatible.
+   */
+  purposeKind?: string | null;
 };
 
 export type GroundRegistryOfferingsResult = {
@@ -59,7 +65,7 @@ export type GroundRegistryOfferingsResult = {
 export function groundRegistryOfferings(
   input: GroundRegistryOfferingsInput,
 ): GroundRegistryOfferingsResult {
-  const { registry, discovered, requiredResourceClass, at, purpose } = input;
+  const { registry, discovered, requiredResourceClass, at, purpose, purposeKind } = input;
 
   const offerings: RegistryOffering[] = [];
   // Pre-compute facts keyed by offeringId so factsForOffering is O(1).
@@ -82,12 +88,13 @@ export function groundRegistryOfferings(
       providerId: offering.providerId,
       serviceId: offering.serviceId,
     });
+    // Authority = validated requested scope ∩ the adapter's declared
+    // fulfillment scope. Prose can only REFUSE (affirmative out-of-scope
+    // claims); it can never make an offering compatible.
     const purposeScopeCompatible = externalOfferingAcceptsPurpose({
       serviceId: offering.serviceId,
       purpose,
-      // The need's required class stays descriptive context here — the
-      // product's structured scope declaration can refuse a class it does
-      // not sell regardless of registry membership or prose.
+      purposeKind: purposeKind ?? null,
       resourceClass: requiredResourceClass,
     });
 

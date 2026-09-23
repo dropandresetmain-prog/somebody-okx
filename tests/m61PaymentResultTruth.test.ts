@@ -39,6 +39,8 @@ const intent: ExecutionIntent = {
   state: "handed_off", attempts: 1, lastEventId: null, resultEvidenceId: null, verificationEvidenceId: null,
   boundaryNote: "submitted; awaiting settlement observation", createdAt: at, updatedAt: at,
   purpose: "Qualitative read on founder messaging resonance for the one-person-company narrative.",
+  // V7 review R4: the bound need's application-validated requested scope.
+  requestedPurposeKind: "founder_messaging_qualitative",
 };
 
 const submittedPurchase: PurchaseRecord = {
@@ -187,14 +189,14 @@ test("H3b: the same well-formed result issued for a DIFFERENT request refuses ve
   assert.ok(rejected.verificationProof.includes("int_some_other_purchase"), "the proof names the mismatching requestId");
 });
 
-test("H3c: null identity and offering drift refuse verification; the merchant-echoed offering fallback binds a bare intent", () => {
+test("H3c: null identity and offering drift refuse verification; a bare intent is never bound through the demo-offering fallback", () => {
   const nullIdentity = buildM3ProtectedSuccess({
     purpose: intent.purpose ?? "", purposeKind: "founder_messaging_qualitative", requestId: null, offeringId: null,
   });
   const nullRejected = verifyProductionM3Result({ intent, purchase: submittedPurchase, result: nullIdentity });
   assert.equal(nullRejected.verified, false);
-  assert.match(nullRejected.verificationProof, /requestId null is not this purchase int_h_truth/);
-  assert.match(nullRejected.verificationProof, /offeringId null is not the bound offering/);
+  assert.match(nullRejected.verificationProof, /requestId null is not the authorized int_h_truth/);
+  assert.match(nullRejected.verificationProof, /offeringId null is not the authorized/);
 
   const offeringDrift = buildM3ProtectedSuccess({
     purpose: intent.purpose ?? "", purposeKind: "founder_messaging_qualitative",
@@ -202,24 +204,26 @@ test("H3c: null identity and offering drift refuse verification; the merchant-ec
   });
   const driftRejected = verifyProductionM3Result({ intent, purchase: submittedPurchase, result: offeringDrift });
   assert.equal(driftRejected.verified, false);
-  assert.match(driftRejected.verificationProof, /offeringId someone_elses:offering is not the bound offering/);
+  assert.match(driftRejected.verificationProof, /offeringId someone_elses:offering is not the authorized/);
 
-  // Intent with no concrete offering: merchantHeadersForIntent sends the
-  // product offering fallback (M3_PRODUCT_OFFERING_ID), so a result echoing
-  // THAT exact string is the correctly bound result for this normalized
-  // request. A null echo means no offering header ever reached the merchant —
-  // that is unattributable and must NOT verify.
+  // V7 review R2: an intent with no concrete offering carries INCOMPLETE
+  // authority. It is never completed by substituting the canonical demo
+  // offering — neither a null echo nor a demo-offering echo verifies, and
+  // (see R2 tests) no merchant request is even built for it.
   const bareIntent: ExecutionIntent = { ...intent, target: { ...intent.target, offeringId: null } };
+  const barePurchase: PurchaseRecord = { ...submittedPurchase, offeringId: bareIntent.intentId };
   const unattributed = buildM3ProtectedSuccess({
     purpose: intent.purpose ?? "", purposeKind: "founder_messaging_qualitative",
     requestId: intent.intentId, offeringId: null,
   });
-  assert.equal(verifyProductionM3Result({ intent: bareIntent, purchase: submittedPurchase, result: unattributed }).verified, false);
+  assert.equal(verifyProductionM3Result({ intent: bareIntent, purchase: barePurchase, result: unattributed }).verified, false);
   const fallbackBound = buildM3ProtectedSuccess({
     purpose: intent.purpose ?? "", purposeKind: "founder_messaging_qualitative",
     requestId: intent.intentId, offeringId: "somebody_controlled_test:founder_narrative_pulse",
   });
-  assert.equal(verifyProductionM3Result({ intent: bareIntent, purchase: submittedPurchase, result: fallbackBound }).verified, true);
+  const fallbackRejected = verifyProductionM3Result({ intent: bareIntent, purchase: barePurchase, result: fallbackBound });
+  assert.equal(fallbackRejected.verified, false);
+  assert.match(fallbackRejected.verificationProof, /m3-intent-authority-rejected: .*no offeringId/);
 });
 
 test("H3d: a malformed or foreign result still fails the shape gate before any binding is claimed", () => {

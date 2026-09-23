@@ -8,7 +8,9 @@
 import { sha256Hex } from "../management/sha256";
 import {
   RESOURCE_CLASSES,
+  isGovernedPurposeKind,
   isOwnedResourceClass,
+  purposeKindAppliesToClass,
 } from "../workforce/catalog";
 import type { ResourceClass } from "../workforce/types";
 import {
@@ -62,6 +64,13 @@ export type MissingInputProposal = {
    * An explicit boolean (legacy callers) is honored exactly.
    */
   semanticAdequacyGap?: boolean | "derive";
+  /**
+   * V7 review R4 — OPTIONAL proposed requested scope (governed vocabulary
+   * PURPOSE_SCOPES). A proposal only: the application validates membership and
+   * class applicability before it becomes the need's requestedScope. It never
+   * grants fulfillment or payment authority by itself.
+   */
+  purposeKind?: string;
 };
 
 /**
@@ -75,6 +84,8 @@ export type CanonicalGapSubmission = {
   observedEvidenceIds: readonly string[];
   whyInsufficient: string;
   howAdditionalWouldChange?: string;
+  /** Optional governed requested-scope proposal (see MissingInputProposal). */
+  purposeKind?: string;
 };
 
 /** Loose input: canonical fields and/or historical aliases (adapter only). */
@@ -102,6 +113,7 @@ export function normalizeGapSubmission(input: GapSubmissionInput): {
   reasonOwnedInsufficient: string;
   supportingEvidenceIds: string[];
   semanticAdequacyGap?: boolean | "derive";
+  purposeKind?: string;
 } {
   const canonical =
     input.unansweredQuestion !== undefined ||
@@ -123,6 +135,10 @@ export function normalizeGapSubmission(input: GapSubmissionInput): {
     purpose: String(input.unansweredQuestion ?? input.purpose ?? ""),
     reasonOwnedInsufficient: reason,
     supportingEvidenceIds: ids.map(String).slice(0, 16),
+    // Passed through verbatim (bounded); validation happens in the application.
+    ...(typeof input.purposeKind === "string" && input.purposeKind.trim()
+      ? { purposeKind: input.purposeKind.trim().slice(0, 120) }
+      : {}),
     ...(input.semanticGap === true
       ? { semanticAdequacyGap: true as const }
       : canonical && input.semanticGap === undefined
@@ -369,6 +385,25 @@ export function validateMissingInputProposal(
 
   const resourceClass = proposal.resourceClass;
 
+  // V7 review R4 — a proposed requested scope is validated HERE, by the
+  // application, before it can bind anything: it must be a governed kind and
+  // applicable to the proposed class. An unknown or inapplicable kind is a
+  // typed refusal (never coerced to a supported kind); an absent kind yields a
+  // need with NO requestedScope, which purpose-scoped offerings treat as
+  // incompatible downstream (fail closed).
+  const proposedKind =
+    typeof proposal.purposeKind === "string" ? proposal.purposeKind.trim() : "";
+  if (proposedKind && !isGovernedPurposeKind(proposedKind))
+    return refuse(
+      "unknown_purpose_scope",
+      `purposeKind ${String(proposal.purposeKind).trim().slice(0, 120)} is not a governed requested scope`,
+    );
+  if (proposedKind && !purposeKindAppliesToClass(proposedKind, resourceClass))
+    return refuse(
+      "purpose_scope_class_mismatch",
+      `purposeKind ${proposedKind} cannot be requested for resource class ${resourceClass}`,
+    );
+
   // Company already controls this class → no acquisition-relevant gap.
   if (ctx.controlledResourceClasses.includes(resourceClass))
     return refuse(
@@ -599,6 +634,9 @@ export function validateMissingInputProposal(
     inputCheckId: obligation.inputCheckId,
     supportingEvidenceIds: supportingIds,
     validationAuthority: "application",
+    requestedScope: proposedKind
+      ? { purposeKind: proposedKind, authority: "application" }
+      : null,
   });
 
   const { need: deduped, created } = dedupeResourceNeeds(ctx.existingNeeds, proposed);
@@ -937,7 +975,9 @@ export function decisionFingerprintFacts(input: {
     .filter((need) => need.requirementKey === requirement.requirementKey)
     .map(
       (need) =>
-        `${need.id}:${need.status}:${need.validationAuthority === "application" ? "v" : "-"}`,
+        `${need.id}:${need.status}:${need.validationAuthority === "application" ? "v" : "-"}` +
+        // V7 review R4: validated requested scope is material to eligibility.
+        (need.requestedScope?.purposeKind ? `:scope=${need.requestedScope.purposeKind}` : ""),
     )
     .sort();
   const acquisitionIdentity = acquisitions

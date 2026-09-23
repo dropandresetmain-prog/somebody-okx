@@ -208,6 +208,44 @@ export function isOwnedResourceClass(resource: string): boolean {
  */
 export const GOVERNED_RESOURCE_CLASSES: readonly ResourceClass[] =
   RESOURCE_CLASSES.map((resource) => resource.class);
+
+/**
+ * V7 review R4 — the ONE governed requested-purpose-scope vocabulary.
+ *
+ * A REQUEST vocabulary owned by the application, never fulfillment authority:
+ * a worker may propose one of these kinds for a missing-input gap, the
+ * application validates it (membership + class applicability) before it
+ * becomes a ResourceNeed's requestedScope, and an adapter/offering separately
+ * DECLARES which of these kinds it can fulfill. Compatibility is the exact
+ * intersection of the validated request and the declaration — never prose.
+ * Adapter declarations must name kinds from this list (asserted in tests), so
+ * there is no second scope taxonomy.
+ */
+export type PurposeScopeDefinition = {
+  kind: string;
+  /** Resource classes this scope can be requested for. */
+  resourceClasses: readonly ResourceClass[];
+  description: string;
+};
+export const PURPOSE_SCOPES: readonly PurposeScopeDefinition[] = [
+  {
+    kind: "founder_messaging_qualitative",
+    resourceClasses: ["proprietary_data"],
+    description:
+      "Qualitative research on how founders/audiences perceive and describe a product's messaging. Not causal attribution, conversion measurement, or live platform data.",
+  },
+];
+export const GOVERNED_PURPOSE_KINDS: readonly string[] = PURPOSE_SCOPES.map(
+  (scope) => scope.kind,
+);
+export function isGovernedPurposeKind(value: unknown): value is string {
+  return typeof value === "string" && GOVERNED_PURPOSE_KINDS.includes(value);
+}
+/** True when `kind` is governed AND may be requested for `resourceClass`. */
+export function purposeKindAppliesToClass(kind: string, resourceClass: string): boolean {
+  const scope = PURPOSE_SCOPES.find((entry) => entry.kind === kind);
+  return !!scope && scope.resourceClasses.includes(resourceClass as ResourceClass);
+}
 // Models may propose capability keys; only controlled keys survive.
 export function validateCapabilityKeys(proposed: readonly string[]): {
   accepted: CapabilityKey[];

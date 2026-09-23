@@ -1,11 +1,8 @@
 /** Concrete, Node-only local composition. Construction performs no payment I/O. */
 import { decodePaymentRequiredHeader } from "./challenge";
 import { FilePaymentExecutionAuthority, resolvePaymentExecutionLedgerPath } from "./executionAuthority";
-import {
-  M3_PRODUCT_OFFERING_ID,
-  M3_PRODUCT_SERVICE_ID,
-  verifyM3ProtectedResult,
-} from "./m3FounderNarrativeProduct";
+import { m3AuthorizedRequestFromIntent, parseM3ProtectedSuccess } from "./m3FounderNarrativeProduct";
+import { purchaseIdentityFromIntent } from "../management/m3BuyerRail";
 import { FileFounderConfirmationLedger, resolveFounderConfirmationLedgerPath, createSupervisedSubmit } from "./supervisedDriverAdapter";
 import { createXLayerJsonRpcTransport, readAndVerifyXLayerSettlement, XLAYER_TESTNET_NETWORK } from "./xlayerSettlement";
 import { withAcquisitionRecording } from "./acquisitionRecordReplay";
@@ -34,11 +31,18 @@ export function mapXLayerVerificationToObservation(
 }
 
 /**
- * PURE production verification: protected-result shape truth AND binding to
- * THIS intent's exact normalized request identity (requestId = the derived
- * purchase/intent id, offeringId/serviceId = what the merchant request headers
- * for THIS intent carried). A well-formed result issued for a different
- * request never verifies. Purpose text is descriptive context, not authority.
+ * PURE production verification (V7 review R2). A result verifies only when:
+ * 1. the purchase IS this intent's purchase — every field of the
+ *    authoritative purchaseIdentityFromIntent mapping matches (id,
+ *    objectiveKey, resourceNeedId [= intent.requirementKey by that mapping's
+ *    convention], offeringId, idempotencyKey);
+ * 2. the intent carries complete, adapter-declared authority
+ *    (m3AuthorizedRequestFromIntent — the same derivation that built the
+ *    merchant request; nothing falls back to the canonical demo product);
+ * 3. the result passes the strict protected-result shape; and
+ * 4. the result's provider/service/offering/resource class/request id/purpose
+ *    kind/normalized purpose equal that authorized request exactly.
+ * Purpose text is compared only in the exact normalized form that was sent.
  */
 export function verifyProductionM3Result(input: {
   intent: ExecutionIntent;
@@ -46,18 +50,38 @@ export function verifyProductionM3Result(input: {
   result: unknown;
 }): { verified: boolean; verificationProof: string } {
   const { intent, purchase, result } = input;
-  if (!verifyM3ProtectedResult(result)) {
+  const expected = purchaseIdentityFromIntent(intent);
+  const identity: string[] = [];
+  for (const field of ["id", "objectiveKey", "resourceNeedId", "offeringId", "idempotencyKey"] as const) {
+    if (purchase[field] !== expected[field]) identity.push(`purchase.${field} is not this intent's ${field}`);
+  }
+  if (identity.length > 0) {
+    return { verified: false, verificationProof: `m3-purchase-intent-binding-rejected: ${identity.join("; ")}` };
+  }
+  const authorized = m3AuthorizedRequestFromIntent(intent);
+  if (!authorized.ok) {
+    return { verified: false, verificationProof: `m3-intent-authority-rejected: ${authorized.reason}` };
+  }
+  const parsed = parseM3ProtectedSuccess(result);
+  if (!parsed) {
     return { verified: false, verificationProof: "m3-protected-result-rejected" };
   }
-  const expectedOfferingId = intent.target.offeringId ?? M3_PRODUCT_OFFERING_ID;
+  const request = authorized.request;
   const bindings: string[] = [];
-  if (result.requestId !== purchase.id) bindings.push(`requestId ${result.requestId ?? "null"} is not this purchase ${purchase.id}`);
-  if (result.offeringId !== expectedOfferingId) bindings.push(`offeringId ${result.offeringId ?? "null"} is not the bound offering ${expectedOfferingId}`);
-  if (result.serviceId !== M3_PRODUCT_SERVICE_ID) bindings.push(`serviceId ${result.serviceId} is not ${M3_PRODUCT_SERVICE_ID}`);
+  const bind = (field: string, actual: unknown, wanted: string) => {
+    if (actual !== wanted) bindings.push(`${field} ${String(actual ?? "null").slice(0, 120)} is not the authorized ${wanted.slice(0, 120)}`);
+  };
+  bind("requestId", parsed.requestId, request.requestId);
+  bind("providerId", parsed.providerId, request.providerId);
+  bind("serviceId", parsed.serviceId, request.serviceId);
+  bind("offeringId", parsed.offeringId, request.offeringId);
+  bind("resourceClass", parsed.resourceClass, request.resourceClass);
+  bind("purposeKind", parsed.purposeKind, request.purposeKind);
+  if (parsed.purpose !== request.purpose) bindings.push("purpose is not the authorized normalized purpose");
   if (bindings.length > 0) {
     return { verified: false, verificationProof: `m3-result-binding-rejected: ${bindings.join("; ")}` };
   }
-  return { verified: true, verificationProof: `m3-protected-result:${purchase.id}+request-bound:${result.requestId}` };
+  return { verified: true, verificationProof: `m3-protected-result:${purchase.id}+request-bound:${request.requestId}` };
 }
 
 function required(name: string): string {

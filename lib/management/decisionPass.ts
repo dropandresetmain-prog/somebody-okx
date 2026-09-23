@@ -281,6 +281,11 @@ export type OpenResourceNeedFact = {
   contractRevision?: number | null;
   /** Purpose-scoped ResourceNeed identity when present. */
   dedupeKey?: string | null;
+  /**
+   * V7 review R4 — the need's APPLICATION-VALIDATED requested scope kind
+   * (ResourceNeed.requestedScope). Null = no validated scope.
+   */
+  requestedPurposeKind?: string | null;
 };
 
 export type PrerequisiteResultFact = {
@@ -382,6 +387,11 @@ export async function buildDecisionPassInput(
   const discoveryPurpose =
     drivingNeed?.purpose ??
     `${requirement.title} ${requirement.mustBeTrue}`;
+  // V7 review R4: the ONLY structured scope grounding may use is the driving
+  // need's application-validated requested scope. The prose above (including
+  // the requirement-title fallback) stays descriptive discovery context and
+  // can never make a purpose-scoped offering compatible.
+  const requestedPurposeKind = drivingNeed?.requestedPurposeKind ?? null;
   const boundNeedDedupeKey = drivingNeed?.dedupeKey ?? null;
   const boundResourceNeedId = drivingNeed?.needId ?? null;
 
@@ -399,6 +409,7 @@ export async function buildDecisionPassInput(
         requiredResourceClass: externalClass,
         at: reads.at,
         purpose: discoveryPurpose,
+        purposeKind: requestedPurposeKind,
         // No live internal-cost measurement exists; UNKNOWN facts are honest and
         // the kernel/eligibility treat null as unknown, never as zero.
         internalFacts: EMPTY_FACTS as EconomicFacts,

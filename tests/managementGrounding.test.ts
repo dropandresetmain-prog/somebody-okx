@@ -349,7 +349,19 @@ test("real VERIFIED_SERVICE_REGISTRY + SNAPSHOT_OFFERINGS grounding", () => {
   assert.equal(controlled.registryVerified, true);
   assert.equal(controlled.compatibleResourceClass, true);
   assert.equal(controlled.executionPathConfigured, true);
-  assert.equal(controlled.purposeScopeCompatible, true);
+  // V7 review R4: no application-validated requested scope was supplied, so
+  // the purpose-scoped product is NOT compatible (fail closed) …
+  assert.equal(controlled.purposeScopeCompatible, false);
+  // … and the same grounding with a validated scope is.
+  const scoped = groundRegistryOfferings({
+    registry: VERIFIED_SERVICE_REGISTRY,
+    discovered: SNAPSHOT_OFFERINGS,
+    requiredResourceClass: "proprietary_data",
+    at: 1726617600000,
+    purpose: "How do solo founders describe the problem?",
+    purposeKind: "founder_messaging_qualitative",
+  }).offerings.find((o) => o.serviceId === "founder_narrative_pulse");
+  assert.equal(scoped?.purposeScopeCompatible, true);
 
   // flybeacon_project_growth_analysis: verified, but [llm_reasoning, public_web, company_records] → NOT compatible with proprietary_data
   const flybeaconAnalysis = result.offerings.find((o) => o.serviceId === "flybeacon_project_growth_analysis");

@@ -1,5 +1,6 @@
 import { sha256Hex } from "../management/sha256";
 import type { ResourceClass } from "../workforce/types";
+import { isGovernedPurposeKind, purposeKindAppliesToClass } from "../workforce/catalog";
 import type {
   SourcingDecision,
   SourcingReasonCode,
@@ -39,7 +40,40 @@ export type ResourceNeed = {
   supportingEvidenceIds?: string[];
   /** Set to "application" only after validateMissingInputProposal accepts. */
   validationAuthority?: "application" | "unconfirmed" | null;
+  /**
+   * V7 review R4 — APPLICATION-VALIDATED structured requested scope. Set only
+   * by validateMissingInputProposal after the proposed kind passed governed-
+   * vocabulary membership and class applicability. Null/absent = no validated
+   * scope: purpose-scoped offerings are then NOT compatible (fail closed).
+   * The free-text `purpose` stays descriptive context and never substitutes.
+   */
+  requestedScope?: ResourceNeedRequestedScope | null;
 };
+
+export type ResourceNeedRequestedScope = {
+  purposeKind: string;
+  authority: "application";
+};
+
+/**
+ * The requested scope kind a stored need may contribute to grounding and
+ * intent binding, or null. Re-checks the stored row (persisted data is not
+ * trusted by type assertion): application-validated need, application-owned
+ * scope, governed kind, applicable to the need's class.
+ */
+export function validatedRequestedPurposeKind(need: {
+  resourceClass?: unknown;
+  validationAuthority?: unknown;
+  requestedScope?: unknown;
+}): string | null {
+  if (need.validationAuthority !== "application") return null;
+  const scope = need.requestedScope as { purposeKind?: unknown; authority?: unknown } | null | undefined;
+  if (!scope || scope.authority !== "application") return null;
+  const kind = scope.purposeKind;
+  if (!isGovernedPurposeKind(kind)) return null;
+  if (typeof need.resourceClass !== "string" || !purposeKindAppliesToClass(kind, need.resourceClass)) return null;
+  return kind;
+}
 
 // ─── Dedupe key ───────────────────────────────────────────────────────────────
 
@@ -52,6 +86,8 @@ export function computeNeedDedupeKey(input: {
   resourceClass: string;
   purpose: string;
   requirementKey?: string | null;
+  /** Validated requested scope kind; a different scope is a different need. */
+  purposeKind?: string | null;
 }): string {
   const payload =
     normalize(input.objectiveKey) +
@@ -60,7 +96,9 @@ export function computeNeedDedupeKey(input: {
     "\u0000" +
     normalize(input.purpose) +
     "\u0000" +
-    normalize(input.requirementKey ?? "");
+    normalize(input.requirementKey ?? "") +
+    // Appended only when present so legacy (scope-less) keys are unchanged.
+    (input.purposeKind ? "\u0000scope:" + normalize(input.purposeKind) : "");
   return sha256Hex(payload);
 }
 
@@ -81,6 +119,7 @@ export type CreateResourceNeedInput = {
   inputCheckId?: string | null;
   supportingEvidenceIds?: readonly string[];
   validationAuthority?: "application" | "unconfirmed" | null;
+  requestedScope?: ResourceNeedRequestedScope | null;
 };
 
 export function createResourceNeed(input: CreateResourceNeedInput): ResourceNeed {
@@ -89,6 +128,7 @@ export function createResourceNeed(input: CreateResourceNeedInput): ResourceNeed
     resourceClass: input.resourceClass,
     purpose: input.purpose,
     requirementKey: input.requirementKey ?? null,
+    purposeKind: input.requestedScope?.purposeKind ?? null,
   });
   return {
     id: input.id,
@@ -109,6 +149,14 @@ export function createResourceNeed(input: CreateResourceNeedInput): ResourceNeed
       ? [...input.supportingEvidenceIds]
       : [],
     validationAuthority: input.validationAuthority ?? null,
+    ...(input.requestedScope
+      ? {
+          requestedScope: {
+            purposeKind: input.requestedScope.purposeKind,
+            authority: "application" as const,
+          },
+        }
+      : {}),
   };
 }
 

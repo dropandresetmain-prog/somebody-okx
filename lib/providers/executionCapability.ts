@@ -13,7 +13,6 @@ import { getAdapter } from "./registry";
 import {
   M3_PRODUCT_PROVIDER_ID,
   M3_PRODUCT_SERVICE_ID,
-  M3_PRODUCT_RESOURCE_CLASS,
   M3_PRODUCT_FULFILLMENT_SCOPE,
   resolveSupportedPurposeKind,
 } from "../payment/m3FounderNarrativeProduct";
@@ -52,20 +51,20 @@ export function hasConfiguredExternalExecutionPath(input: {
 
 /**
  * Product-owned purpose gate for composed services that declare one.
- * Returns true when the offering has no product-scope contract, or when the
- * purpose is accepted. Does not invent scope for other providers.
- *
- * Authority is the adapter-owned structured fulfillment scope: a caller that
- * already carries a typed purposeKind (a supervised driver request) is judged
- * against the product's declared kind/class, with free-text purpose staying
- * descriptive. When only free text is available (pre-purchase grounding over a
- * ResourceNeed purpose), the gate runs in descriptive mode — fail-closed and
- * negation-aware, never keyword-luck acceptance from an empty disclaimer.
+ * Returns true when the offering has no product-scope contract (this does not
+ * invent scope for other providers), otherwise requires ALL of:
+ * - an APPLICATION-VALIDATED requested scope kind (V7 review R4) — absent or
+ *   unknown scope is incompatible (fail closed), never coerced to the
+ *   product's only supported kind;
+ * - that kind and the required resource class are inside the adapter's
+ *   declared fulfillment scope;
+ * - the descriptive purpose does not AFFIRMATIVELY claim something the
+ *   product does not sell (prose can only refuse, never grant).
  */
 export function externalOfferingAcceptsPurpose(input: {
   serviceId: string;
   purpose: string | null | undefined;
-  /** Structured fulfillment scope carried by the request, when known. */
+  /** The need's application-validated requested scope kind. */
   purposeKind?: string | null;
   resourceClass?: string | null;
 }): boolean {
@@ -74,28 +73,20 @@ export function externalOfferingAcceptsPurpose(input: {
     typeof input.purposeKind === "string" && input.purposeKind.trim()
       ? input.purposeKind.trim()
       : null;
-  // Structured scope that names a class/kind this adapter's product does not
-  // declare is out of scope regardless of any prose.
+  if (purposeKind === null) return false;
   if (
-    (input.resourceClass &&
-      !M3_PRODUCT_FULFILLMENT_SCOPE.resourceClasses.includes(
-        input.resourceClass as (typeof M3_PRODUCT_FULFILLMENT_SCOPE.resourceClasses)[number],
-      )) ||
-    (purposeKind !== null &&
-      !M3_PRODUCT_FULFILLMENT_SCOPE.purposeKinds.includes(
-        purposeKind as (typeof M3_PRODUCT_FULFILLMENT_SCOPE.purposeKinds)[number],
-      ))
+    !(M3_PRODUCT_FULFILLMENT_SCOPE.purposeKinds as readonly string[]).includes(purposeKind) ||
+    !input.resourceClass ||
+    !(M3_PRODUCT_FULFILLMENT_SCOPE.resourceClasses as readonly string[]).includes(input.resourceClass)
   ) {
     return false;
   }
-  const purpose = input.purpose?.trim() ?? "";
-  if (!purpose) return true;
   const resolved = resolveSupportedPurposeKind({
-    resourceClass: input.resourceClass ?? M3_PRODUCT_RESOURCE_CLASS,
+    resourceClass: input.resourceClass,
     productId: M3_PRODUCT_SERVICE_ID,
     serviceId: M3_PRODUCT_SERVICE_ID,
     offeringId: null,
-    purpose,
+    purpose: input.purpose ?? null,
     purposeKind,
     requestId: null,
   });
