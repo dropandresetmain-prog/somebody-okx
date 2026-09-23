@@ -76,16 +76,39 @@ async function loadStatusSource(ctx: QueryCtx, objectiveRow: unknown): Promise<S
 // Objective document — with its full management state — just to summarize it.
 const OBJECTIVE_LIST_WINDOW = 20;
 
+// getObjectiveListV1 must show only real founder Objectives, never
+// internal/gate/eval/demo rows created via the raw submitObjective mutation
+// or setupCanonicalDemoObjective. Visibility is an explicit, application-owned
+// field (productVisibility) set once at creation — never inferred from
+// request text, title, ID or timestamps. Rows missing the field (legacy, from
+// before this field existed) are treated as NOT visible: hidden by default is
+// the safe choice; there is no heuristic reclassification of old rows.
+//
+// Because internal rows can be more recently updated than real product rows,
+// filtering AFTER a small `take(OBJECTIVE_LIST_WINDOW)` could starve the
+// display of real rows even though enough exist further back in the index.
+// So the raw fetch window is widened (still via the existing by_updatedAt
+// index — no new index/migration), filtered, then capped at the existing
+// display window. This table is not expected to be huge, so a bounded
+// multiplier is enough without unbounded scanning.
+const OBJECTIVE_LIST_RAW_FETCH_WINDOW = OBJECTIVE_LIST_WINDOW * 10;
+
+function isProductVisible(row: unknown): boolean {
+  const data = dataOf(row);
+  return data.productVisibility === "visible";
+}
+
 export const getObjectiveListV1 = query({
   args: {},
   returns: v.any(),
   handler: async (ctx): Promise<ProductReadEnvelope<ObjectiveListView>> => {
     const now = Date.now();
-    const objectiveRows = (await ctx.db
+    const rawRows = (await ctx.db
       .query("objectives")
       .withIndex("by_updatedAt")
       .order("desc")
-      .take(OBJECTIVE_LIST_WINDOW)) as AnyRow[];
+      .take(OBJECTIVE_LIST_RAW_FETCH_WINDOW)) as AnyRow[];
+    const objectiveRows = rawRows.filter(isProductVisible).slice(0, OBJECTIVE_LIST_WINDOW);
     // Lightweight: only the rows the status derivation needs; no evidence,
     // workers, deliverable content, activity or full workspace composition.
     const sources = await Promise.all(objectiveRows.map((row) => loadStatusSource(ctx, row)));

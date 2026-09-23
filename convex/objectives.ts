@@ -299,7 +299,9 @@ export const submitObjective = mutation({
     //   → applyInterpretation (persist contract + semantic requirements + wake).
     // It never changes `state`, so the accepted M2 planning path keeps working on
     // a "received" row; what it adds is the Outcome Contract the engine needs.
-    return createReceivedObjective(ctx, normalized.request);
+    // This raw mutation is used by internal scripts/gate/eval harnesses, never
+    // the `/start` product UI, so it must never surface in the product sidebar.
+    return createReceivedObjective(ctx, normalized.request, "internal");
   },
 });
 
@@ -2983,6 +2985,9 @@ export const setupCanonicalDemoObjective = mutation({
       updatedAt: now,
       state: "received",
       activity: "Canonical demo objective received.",
+      // Operator-token-gated canonical demo — never a real founder Objective,
+      // so it must never surface in the product sidebar.
+      productVisibility: "internal",
       plan: null,
       workItems: [],
       run: null,

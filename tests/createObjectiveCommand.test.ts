@@ -126,7 +126,7 @@ test("createReceivedObjective: persists received row, event, schedules interpret
     },
   };
 
-  const { key } = await createReceivedObjective(ctx as unknown as MutationCtx, VALID_REQUEST);
+  const { key } = await createReceivedObjective(ctx as unknown as MutationCtx, VALID_REQUEST, "visible");
   assert.match(key, /^obj_\d+_[a-z0-9]+$/);
   assert.equal(inserts.length, 2);
   assert.equal(inserts[0].table, "objectives");

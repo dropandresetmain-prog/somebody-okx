@@ -171,6 +171,11 @@ export const objectiveRecord = v.object({
   workItems: v.array(workItem),
   run: v.union(workerRun, v.null()),
   result: v.union(activityResult, v.null()),
+  // Application-owned, explicit product-sidebar visibility (never inferred
+  // from request text/title/ID/timestamps). Mirrors productVisibility in
+  // lib/objective/types.ts — see there for the full contract. Optional so
+  // legacy rows keep loading; absent = not visible in getObjectiveListV1.
+  productVisibility: v.optional(v.union(v.literal("visible"), v.literal("internal"))),
   // M2 mission fields — optional so accepted M1 rows keep loading.
   resourceNeeds: v.optional(v.array(v.any())),
   sourcingDecisions: v.optional(v.array(v.any())),
