@@ -57,4 +57,28 @@ export const VERIFIED_SERVICE_REGISTRY: readonly RegistryEntry[] = [
     notes:
       "Controlled X Layer TESTNET merchant product — qualitative synthetic founder-messaging research only (not live Twitter/NewsLiquid/conversion data).",
   },
+  {
+    serviceId: "social_media_guru",
+    providerId: "somebody_testnet_social",
+    resourceClasses: ["proprietary_data"],
+    verified: true,
+    notes:
+      "Controlled X Layer TESTNET Social Media Guru — synthetic multi-platform social-intelligence dataset (NOT live TikTok/Instagram/Facebook/X).",
+  },
+  {
+    serviceId: "token_market_intelligence",
+    providerId: "somebody_testnet_token_intel",
+    resourceClasses: ["proprietary_data"],
+    verified: true,
+    notes:
+      "Controlled TESTNET token/market research offering — unrelated to social-media intelligence; marketplace distractor for Testnet demo.",
+  },
+  {
+    serviceId: "wallet_onchain_risk_intelligence",
+    providerId: "somebody_testnet_onchain_risk",
+    resourceClasses: ["proprietary_data"],
+    verified: true,
+    notes:
+      "Controlled TESTNET wallet/onchain risk offering — unrelated to social-media intelligence; marketplace distractor for Testnet demo.",
+  },
 ];

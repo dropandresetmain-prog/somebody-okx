@@ -21,7 +21,7 @@ export type MarketOffering = {
   description: string;
   price: OfferingPrice | null;
   source: {
-    kind: "okx_cli" | "okx_api" | "snapshot";
+    kind: "okx_cli" | "okx_api" | "snapshot" | "controlled_testnet";
     retrievedAt: number;
     raw?: unknown;
   };

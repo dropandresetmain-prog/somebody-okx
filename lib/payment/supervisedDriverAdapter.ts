@@ -18,8 +18,20 @@ import type { ExecutionIntent } from "../management/types";
 import {
   buildM3MerchantRequestHeaders,
   M3_PRODUCT_ID,
+  M3_PRODUCT_SERVICE_ID,
   m3AuthorizedRequestFromIntent,
 } from "./m3FounderNarrativeProduct";
+import {
+  SOCIAL_MEDIA_GURU_PRODUCT_ID,
+  SOCIAL_MEDIA_GURU_SERVICE_ID,
+  socialMediaGuruAuthorizedRequestFromIntent,
+} from "./socialMediaGuruProduct";
+import {
+  M3_SELLER_DEFAULT_HOST,
+  M3_SELLER_PATH,
+  M3_SELLER_PORT,
+  M3_SOCIAL_MEDIA_GURU_PATH,
+} from "./m3Seller";
 
 export type ConfirmationLedger = {
   get(purchaseId: string): FounderPaymentConfirmation | null;
@@ -29,6 +41,21 @@ export type ConfirmationLedger = {
 export function resolveFounderConfirmationLedgerPath(root: string): string {
   if (!path.isAbsolute(root)) throw new Error("confirmation ledger root must be absolute");
   return path.join(path.normalize(root), ".m3-founder-confirmations.json");
+}
+
+/** Resolve the controlled Testnet merchant URL for a composed service. */
+export function controlledMerchantEndpointForService(
+  serviceId: string,
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  const override = env.M3_MERCHANT_URL?.trim();
+  if (override) return override;
+  const host = (env.M3_SELLER_HOST ?? M3_SELLER_DEFAULT_HOST).trim();
+  const base = `http://${host}:${M3_SELLER_PORT}`;
+  if (serviceId === SOCIAL_MEDIA_GURU_SERVICE_ID) {
+    return `${base}${M3_SOCIAL_MEDIA_GURU_PATH}`;
+  }
+  return `${base}${M3_SELLER_PATH}`;
 }
 
 /** Confirmation fields are safe authority metadata, never a signature or wallet secret. */
@@ -82,13 +109,28 @@ export function persistFounderConfirmation(input: {
 
 /**
  * V7 review R2/R4 — the merchant request is the intent's AUTHORIZED normalized
- * request (m3AuthorizedRequestFromIntent), the same derivation the result
- * verifier binds against. Missing/inconsistent authority or an absent
- * validated scope refuses HERE — before any quote is fetched or anything is
- * signed (the merchant settles before it evaluates scope). No field falls
- * back to the canonical demo product and no purpose kind is stamped.
+ * request, the same derivation the result verifier binds against. Supports the
+ * controlled Testnet products (founder_narrative_pulse and social_media_guru).
+ * Missing/inconsistent authority refuses HERE — before any quote is fetched.
  */
 export function merchantHeadersForIntent(intent: ExecutionIntent): Record<string, string> {
+  const serviceId = intent.target?.serviceId?.trim() ?? "";
+  if (serviceId === SOCIAL_MEDIA_GURU_SERVICE_ID) {
+    const authorized = socialMediaGuruAuthorizedRequestFromIntent(intent);
+    if (!authorized.ok) {
+      throw new Error(`refusing to build a paid merchant request before signing: ${authorized.reason}`);
+    }
+    const request = authorized.request;
+    return buildM3MerchantRequestHeaders({
+      resourceClass: request.resourceClass,
+      productId: SOCIAL_MEDIA_GURU_PRODUCT_ID,
+      serviceId: request.serviceId,
+      offeringId: request.offeringId,
+      purpose: request.purpose,
+      purposeKind: request.purposeKind,
+      requestId: request.requestId,
+    });
+  }
   const authorized = m3AuthorizedRequestFromIntent(intent);
   if (!authorized.ok) {
     throw new Error(`refusing to build a paid merchant request before signing: ${authorized.reason}`);
@@ -96,7 +138,7 @@ export function merchantHeadersForIntent(intent: ExecutionIntent): Record<string
   const request = authorized.request;
   return buildM3MerchantRequestHeaders({
     resourceClass: request.resourceClass,
-    productId: M3_PRODUCT_ID,
+    productId: serviceId === M3_PRODUCT_SERVICE_ID ? M3_PRODUCT_ID : M3_PRODUCT_ID,
     serviceId: request.serviceId,
     offeringId: request.offeringId,
     purpose: request.purpose,
@@ -144,9 +186,30 @@ export function createSupervisedSubmit(config: {
   return async (input) => {
     const confirmation = config.confirmations.get(input.purchase.id);
     if (!confirmation || !input.purchase.approval || confirmation.purchaseId !== input.purchase.id || confirmation.approvalId !== input.purchase.approval.approvalId) throw new Error("missing or mismatched durable founder confirmation");
+    const serviceId = input.intent.target?.serviceId?.trim() ?? "";
+    // Prefer service-bound endpoint unless an explicit M3_MERCHANT_URL override
+    // was supplied into composition (config.merchantEndpoint already reflects it).
+    const merchantEndpoint = process.env.M3_MERCHANT_URL?.trim()
+      ? config.merchantEndpoint
+      : controlledMerchantEndpointForService(serviceId);
+    const fetchChallenge =
+      merchantEndpoint === config.merchantEndpoint
+        ? config.fetchChallenge
+        : async () => {
+            const response = await fetch(merchantEndpoint, {
+              redirect: "manual",
+              signal: AbortSignal.timeout(20_000),
+            });
+            if (response.status !== 402) {
+              throw new Error(`expected HTTP 402 challenge, got ${response.status}`);
+            }
+            const encoded = response.headers.get("PAYMENT-REQUIRED");
+            const { decodePaymentRequiredHeader } = await import("./challenge");
+            return encoded ? decodePaymentRequiredHeader(encoded) : response.json();
+          };
     const rail: M3BuyerRailDeps = {
       mode: "m3_available_bounded", railConfig: config.railConfig, now,
-      fetchLiveChallenge: async () => config.fetchChallenge(),
+      fetchLiveChallenge: async () => fetchChallenge(),
       buildApproval: ({ intent, liveTerms, approvalId }) => {
         if (!input.purchase.approval || !input.purchase.boundTerms || intent.intentId !== input.intent.intentId || approvalId !== input.purchase.approval.approvalId) return null;
         const candidate = { ...input.purchase.boundTerms, ...liveTerms };
@@ -155,8 +218,8 @@ export function createSupervisedSubmit(config: {
       executor: new FreshQuoteExecutor(
         input.purchase,
         confirmation,
-        config.merchantEndpoint,
-        config.fetchChallenge,
+        merchantEndpoint,
+        fetchChallenge,
         config.executionAuthority,
         now,
         merchantHeadersForIntent(input.intent),

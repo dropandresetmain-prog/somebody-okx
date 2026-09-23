@@ -17,9 +17,9 @@
 //     hardcoded ["growth_launch_operations"] literal is gone);
 //   - resource classes are DERIVED from those capabilities and from the factual
 //     controlled inventory (I3 — the hardcoded eligibility arrays are gone);
-//   - external grounding comes from createSnapshotDiscovery() over the static
-//     VERIFIED_SERVICE_REGISTRY + SNAPSHOT_OFFERINGS (I3 — `discovered: []` made
-//     a genuine BUY unreachable; this is snapshot data, NOT the onchainos binary).
+//   - external grounding comes from createDecisionMarketDiscovery() — under
+//     testnet_demo the controlled 3-offering Testnet marketplace; otherwise
+//     SNAPSHOT_OFFERINGS + VERIFIED_SERVICE_REGISTRY (never the onchainos binary).
 //
 // It grants NO authority and writes NO truth: authority is stage-4
 // reauthorization inside runManagerialDecisionPass, which the mutation runs
@@ -36,6 +36,9 @@ import {
 } from "./grounding";
 import { EMPTY_FACTS } from "./options";
 import { createSnapshotDiscovery } from "../market/snapshotDiscovery";
+import { createTestnetDemoDiscovery } from "../market/testnetDemoMarket";
+import { readSomebodyExecutionMode } from "../execution/executionMode";
+import type { MarketDiscovery } from "../market/discovery";
 import { VERIFIED_SERVICE_REGISTRY } from "../market/registryData";
 import { CURRENT_RESOURCE_INVENTORY } from "../objective/policy";
 import { RESOURCE_CLASSES } from "../workforce/catalog";
@@ -48,6 +51,13 @@ import type {
   Requirement,
   WorkerRecord,
 } from "./types";
+
+/** Deterministic discovery for decision recomputation — never live CLI I/O. */
+export function createDecisionMarketDiscovery(): MarketDiscovery {
+  const mode = readSomebodyExecutionMode();
+  if (mode === "testnet_demo") return createTestnetDemoDiscovery();
+  return createSnapshotDiscovery();
+}
 
 // The founder spend grant, read structurally so this lib module never imports
 // from convex/. `null` means NO authority (fails closed in the kernel, R3 A4).
@@ -395,14 +405,14 @@ export async function buildDecisionPassInput(
   const boundNeedDedupeKey = drivingNeed?.dedupeKey ?? null;
   const boundResourceNeedId = drivingNeed?.needId ?? null;
 
-  // ── I3: grounding from the static snapshot registry — zero network ──────────
-  // createSnapshotDiscovery() reads SNAPSHOT_OFFERINGS + VERIFIED_SERVICE_REGISTRY
-  // (application-owned DATA). It never spawns the onchainos binary; that is
-  // createOkxDiscovery()'s default runner, deliberately avoided here.
+  // ── I3: grounding from the deterministic decision discovery — zero network ─
+  // testnet_demo → controlled 3-offering Testnet marketplace
+  // otherwise → SNAPSHOT_OFFERINGS + VERIFIED_SERVICE_REGISTRY
+  // Never spawns the onchainos binary; that is createOkxDiscovery()'s path.
   const grounding = externalClass
     ? buildGroundingContext({
         registry: VERIFIED_SERVICE_REGISTRY,
-        discovered: await createSnapshotDiscovery().discover({
+        discovered: await createDecisionMarketDiscovery().discover({
           resourceClass: externalClass,
           taskDescription: discoveryPurpose.slice(0, 400),
         }),
