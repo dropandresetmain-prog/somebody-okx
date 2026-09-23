@@ -28,6 +28,7 @@ import { buildDecisionPassInput, type DecisionPassReads } from "../lib/managemen
 import { runManagerialDecisionPass } from "../lib/management/decision";
 import { CANONICAL_AUTHORIZED_PURPOSE_POLICY } from "../lib/objective/seedData";
 import { M3_PRODUCT_FULFILLMENT_SCOPE } from "../lib/payment/m3FounderNarrativeProduct";
+import { FOUNDER_MESSAGING_QUALITATIVE_PURPOSE_KIND } from "../lib/workforce/catalog";
 import type { GroundedOption, Requirement } from "../lib/management/types";
 import type { ObjectiveRecord, WorkContract } from "../lib/objective/types";
 import type { ResourceNeed } from "../lib/objective/resourceNeed";
@@ -51,7 +52,7 @@ afterAll(() => mock.timers.reset());
 
 const now = 1_995_000_000_000;
 const OPERATOR_TOKEN = "v7-scope-origin-operator-token";
-const SUPPORTED = "founder_messaging_qualitative";
+const SUPPORTED = FOUNDER_MESSAGING_QUALITATIVE_PURPOSE_KIND;
 
 type Backend = ReturnType<typeof convexTest>;
 type Handler = { _handler: (c: unknown, a: Record<string, unknown>) => Promise<unknown> };
@@ -334,7 +335,7 @@ async function ground(t: Backend, key: string, requirementKey: string) {
 const productOption = (options: GroundedOption[]) =>
   options.find((o) => o.external?.serviceId === "founder_narrative_pulse");
 
-test("R4 adapter/taxonomy sanity: the demo policy's kind is exactly what the adapter declares", () => {
+test("R4 adapter/taxonomy sanity: demo policy and adapter both reference the catalog kind (compatibility, not inheritance)", () => {
   assert.deepEqual([...M3_PRODUCT_FULFILLMENT_SCOPE.purposeKinds], [SUPPORTED]);
   assert.equal(CANONICAL_AUTHORIZED_PURPOSE_POLICY.purposeKind, SUPPORTED);
   assert.equal(CANONICAL_AUTHORIZED_PURPOSE_POLICY.targetRequirementKind, "deliverable");

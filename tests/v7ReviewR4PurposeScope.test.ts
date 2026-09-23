@@ -15,7 +15,7 @@ import { putContract, putRequirement, initBudget, readDecisionContext } from "..
 import { buildOutcomeContract } from "../lib/management/contract";
 import { buildDecisionPassInput, type DecisionPassReads } from "../lib/management/decisionPass";
 import { runManagerialDecisionPass } from "../lib/management/decision";
-import { GOVERNED_PURPOSE_KINDS } from "../lib/workforce/catalog";
+import { FOUNDER_MESSAGING_QUALITATIVE_PURPOSE_KIND, GOVERNED_PURPOSE_KINDS } from "../lib/workforce/catalog";
 import { M3_PRODUCT_FULFILLMENT_SCOPE } from "../lib/payment/m3FounderNarrativeProduct";
 import type { OutcomeContract, Requirement, GroundedOption } from "../lib/management/types";
 import type { ObjectiveRecord, WorkContract } from "../lib/objective/types";
@@ -40,7 +40,7 @@ afterAll(() => mock.timers.reset());
 
 const now = 1_990_000_000_000;
 const REQ = "req_scope";
-const SUPPORTED = "founder_messaging_qualitative";
+const SUPPORTED = FOUNDER_MESSAGING_QUALITATIVE_PURPOSE_KIND;
 /** Untyped harness handle (the helper Backend type does not carry the schema). */
 type ObjectivesDb = {
   query(table: "objectives"): {

@@ -227,9 +227,17 @@ export type PurposeScopeDefinition = {
   resourceClasses: readonly ResourceClass[];
   description: string;
 };
+/**
+ * Application-owned governed purpose-kind identifier. This is vocabulary —
+ * not request authority and not adapter fulfillment authority. Application
+ * request policy and adapter fulfillment declarations may both reference it;
+ * neither invents a second taxonomy.
+ */
+export const FOUNDER_MESSAGING_QUALITATIVE_PURPOSE_KIND =
+  "founder_messaging_qualitative" as const;
 export const PURPOSE_SCOPES: readonly PurposeScopeDefinition[] = [
   {
-    kind: "founder_messaging_qualitative",
+    kind: FOUNDER_MESSAGING_QUALITATIVE_PURPOSE_KIND,
     resourceClasses: ["proprietary_data"],
     description:
       "Qualitative research on how founders/audiences perceive and describe a product's messaging. Not causal attribution, conversion measurement, or live platform data.",

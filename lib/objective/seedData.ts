@@ -10,7 +10,7 @@
 
 import type { ResourceClass } from "../workforce/types";
 import type { AuthorizedPurposePolicy } from "../management/types";
-import { M3_SUPPORTED_PURPOSE_KIND } from "../payment/m3FounderNarrativeProduct";
+import { FOUNDER_MESSAGING_QUALITATIVE_PURPOSE_KIND } from "../workforce/catalog";
 
 // The canonical failing-launch objective request. This is seed text, not logic.
 // It asks for a better relaunch, permits bounded spend when justified, and
@@ -86,12 +86,15 @@ Recommended messaging implication: lead with the founder outcome and accountabil
 // V7 review R4 final scope-origin correction — the canonical demo's
 // APPLICATION-OWNED purpose-scope policy. This is the one Requirement kind
 // (the founder-facing relaunch deliverable) the canonical demo deliberately
-// authorizes to request founder_narrative_pulse's single supported purpose
-// kind. Setup code (setupCanonicalDemoObjective) writes this onto the
-// Objective BEFORE interpretation runs; interpretation/the model never sees
-// or chooses it. General Objectives get no such policy and stay fail-closed.
+// authorizes to request the application-catalog purpose kind
+// FOUNDER_MESSAGING_QUALITATIVE_PURPOSE_KIND. Setup code
+// (setupCanonicalDemoObjective) writes this onto the Objective BEFORE
+// interpretation runs; interpretation/the model never sees or chooses it.
+// General Objectives get no such policy and stay fail-closed. The M3 adapter
+// may independently declare the same catalog kind as fulfillable — that is
+// compatibility, not the source of this request authority.
 export const CANONICAL_AUTHORIZED_PURPOSE_POLICY: AuthorizedPurposePolicy = {
-  purposeKind: M3_SUPPORTED_PURPOSE_KIND,
+  purposeKind: FOUNDER_MESSAGING_QUALITATIVE_PURPOSE_KIND,
   targetRequirementKind: "deliverable",
 };
 

@@ -10,6 +10,7 @@ import type { ExternalResourceEvidence, ExternalResourceResult } from "../provid
 import type { MarketOffering } from "../market/discovery";
 import { validatedRequestedPurposeKind, type ResourceNeed } from "../objective/resourceNeed";
 import type { ExecutionIntent } from "../management/types";
+import { FOUNDER_MESSAGING_QUALITATIVE_PURPOSE_KIND } from "../workforce/catalog";
 
 export const M3_PRODUCT_ID = "founder_narrative_pulse" as const;
 export const M3_PRODUCT_RESOURCE_CLASS = "proprietary_data" as const;
@@ -19,9 +20,13 @@ export const M3_PRODUCT_SERVICE_ID = "founder_narrative_pulse" as const;
 export const M3_PRODUCT_OFFERING_ID =
   "somebody_controlled_test:founder_narrative_pulse" as const;
 
-/** Single typed purpose scope this product is authorized to fulfill. */
+/**
+ * Adapter fulfillment declaration for this product's single purpose kind.
+ * References the application-owned catalog vocabulary; does not own that
+ * vocabulary and does not grant application request authority.
+ */
 export const M3_SUPPORTED_PURPOSE_KIND =
-  "founder_messaging_qualitative" as const;
+  FOUNDER_MESSAGING_QUALITATIVE_PURPOSE_KIND;
 
 export type M3SupportedPurposeKind = typeof M3_SUPPORTED_PURPOSE_KIND;
 
