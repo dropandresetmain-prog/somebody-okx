@@ -177,9 +177,55 @@ test("executeApprovedPayment refuses Mainnet under testnet_demo before invoking 
 
     await assert.rejects(
       () => executeApprovedPayment(prepared, executor),
-      /testnet_demo refuses non-Testnet|eip155:196/,
+      /refuses Mainnet|eip155:196/,
     );
     assert.equal(executorCalled, false, "executor must not run for Mainnet under testnet_demo");
+  } finally {
+    if (prev === undefined) delete process.env.SOMEBODY_EXECUTION_MODE;
+    else process.env.SOMEBODY_EXECUTION_MODE = prev;
+  }
+});
+
+test("executeApprovedPayment also refuses Mainnet when mode is disabled", async () => {
+  const prev = process.env.SOMEBODY_EXECUTION_MODE;
+  delete process.env.SOMEBODY_EXECUTION_MODE;
+  try {
+    let executorCalled = false;
+    const executor: PaymentExecutor = {
+      kind: "official_onchainos",
+      async executeApprovedPayment() {
+        executorCalled = true;
+        return {
+          transactionHash: "0xdead",
+          submittedAt: Date.now(),
+          paymentId: "p",
+        };
+      },
+    };
+    const prepared = {
+      state: "ready_to_sign",
+      purchaseId: "purchase_1",
+      idempotencyKey: "idem_1",
+      terms: {
+        scheme: "exact",
+        network: XLAYER_MAINNET_CAIP2,
+        asset: "0xabc",
+        maxAmountRequired: "10000",
+        payTo: "0x1111111111111111111111111111111111111111",
+        resource: "https://example.invalid/newsliquid",
+        eip712: { name: "USDT", version: "1" },
+        maxTimeoutSeconds: 60,
+      },
+      intent: {
+        intentId: "intent_1",
+        approval: { approvalId: "appr_1" },
+      },
+    } as unknown as PreparedPayment;
+    await assert.rejects(
+      () => executeApprovedPayment(prepared, executor),
+      /refuses Mainnet|eip155:196/,
+    );
+    assert.equal(executorCalled, false);
   } finally {
     if (prev === undefined) delete process.env.SOMEBODY_EXECUTION_MODE;
     else process.env.SOMEBODY_EXECUTION_MODE = prev;

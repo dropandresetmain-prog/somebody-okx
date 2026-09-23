@@ -472,10 +472,19 @@ test("B: execution capability is independent of registry membership", () => {
   );
   assert.equal(
     hasConfiguredExternalExecutionPath({
+      providerId: "somebody_testnet_social",
+      serviceId: "social_media_guru",
+    }),
+    true,
+    "Social Media Guru is a composed Testnet execution path",
+  );
+  assert.equal(
+    hasConfiguredExternalExecutionPath({
       providerId: "2135",
       serviceId: "newsliquid_twitter_search",
     }),
-    false,
+    true,
+    "NewsLiquid remains composed as Mainnet boundary (signing gated by execution mode)",
   );
   assert.equal(
     hasConfiguredExternalExecutionPath({
@@ -499,10 +508,16 @@ test("B: grounding marks only composed offerings as executionPathConfigured", ()
   const proprietary = offerings.filter((o) => o.compatibleResourceClass);
   assert.ok(proprietary.length >= 2, "registry still surfaces multiple proprietary_data offerings");
   const executable = proprietary.filter((o) => o.executionPathConfigured);
-  assert.equal(executable.length, 1);
-  assert.equal(executable[0]!.serviceId, "founder_narrative_pulse");
+  const executableIds = executable.map((o) => o.serviceId).sort();
+  assert.deepEqual(executableIds, [
+    "founder_narrative_pulse",
+    "newsliquid_twitter_search",
+  ]);
   for (const offering of proprietary) {
-    if (offering.serviceId !== "founder_narrative_pulse") {
+    if (
+      offering.serviceId !== "founder_narrative_pulse" &&
+      offering.serviceId !== "newsliquid_twitter_search"
+    ) {
       assert.equal(offering.executionPathConfigured, false);
     }
   }
