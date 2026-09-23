@@ -246,7 +246,7 @@
 }
 
 .v6-workspace {
-  max-width: 1240px;
+  max-width: 1310px;
 }
 
 .v6-objective-header {
@@ -272,7 +272,7 @@
 
 .v6-objective-title {
   font-family: var(--font-display-stack);
-  font-size: 34px;
+  font-size: 35px;
   font-weight: 750;
   line-height: 1.12;
   letter-spacing: -0.035em;
@@ -283,7 +283,8 @@
   color: var(--ink-2);
   max-width: 760px;
   margin: 9px 0 0;
-  font-size: 12px;
+  font-size: 14px;
+  line-height: 1.55;
   font-style: normal;
   padding: 0;
   border: 0;
@@ -301,6 +302,12 @@
   animation: v6-manager-enter 0.42s cubic-bezier(0.2, 0.7, 0.2, 1) both;
 }
 
+.v6-somebody-card[data-objective-status="completed"] {
+  border-color: color-mix(in srgb, var(--verified) 38%, var(--line));
+  background: linear-gradient(110deg, var(--verified-wash), #fffdf9 42%);
+  box-shadow: 0 3px 12px rgba(28, 110, 69, 0.06);
+}
+
 .v6-somebody-card-copy {
   padding: 24px 26px;
 }
@@ -315,9 +322,13 @@
   margin: 0 0 10px;
 }
 
+.v6-somebody-card[data-objective-status="completed"] .v6-manager-byline {
+  color: var(--verified-ink);
+}
+
 .v6-somebody-headline {
   font-family: var(--font-display-stack);
-  font-size: 24px;
+  font-size: 25.5px;
   letter-spacing: -0.035em;
   line-height: 1.2;
   font-weight: 750;
@@ -326,8 +337,8 @@
 
 .v6-somebody-detail {
   color: var(--ink-2);
-  font-size: 11.5px;
-  line-height: 1.7;
+  font-size: 13.5px;
+  line-height: 1.55;
   max-width: 720px;
   margin: 8px 0 0;
 }
@@ -350,6 +361,10 @@
   min-height: 158px;
 }
 
+.v6-somebody-card[data-objective-status="completed"] .v6-manager-visual {
+  background: color-mix(in srgb, var(--verified-wash) 72%, #fffdf9);
+}
+
 .v6-manager-visual::before {
   content: "";
   position: absolute;
@@ -361,6 +376,11 @@
   bottom: 15px;
 }
 
+.v6-somebody-card[data-objective-status="completed"] .v6-manager-visual::before {
+  background: var(--verified-wash);
+  opacity: 0.85;
+}
+
 .v6-manager-visual .mascot {
   position: relative;
   width: 162px;
@@ -370,8 +390,8 @@
 
 .v6-columns {
   display: grid;
-  grid-template-columns: minmax(0, 1.55fr) minmax(290px, 0.76fr);
-  gap: 30px;
+  grid-template-columns: minmax(0, 1.58fr) minmax(300px, 0.74fr);
+  gap: 32px;
   align-items: start;
 }
 
@@ -396,7 +416,7 @@
 
 .v6-section-head h2 {
   font-family: var(--font-display-stack);
-  font-size: 21px;
+  font-size: 23px;
   margin: 0;
   letter-spacing: -0.035em;
 }
@@ -433,7 +453,7 @@
   grid-template-columns: 45px 1fr;
   gap: 24px;
   position: relative;
-  margin: 0 0 13px;
+  margin: 0 0 15px;
   padding: 0;
   background: none;
   border: 0;
@@ -493,13 +513,13 @@
   border: 1px solid var(--line);
   border-radius: 12px;
   background: var(--surface);
-  padding: 14px 15px;
+  padding: 17px 18px;
   position: relative;
   box-shadow: 0 1px 0 rgba(29, 27, 24, 0.025);
 }
 
 .v6-event-type {
-  font-size: 8px;
+  font-size: 8.5px;
   text-transform: uppercase;
   letter-spacing: 0.12em;
   color: var(--ink-3);
@@ -510,8 +530,9 @@
 .v6-event-title,
 .v6-activity-title {
   font-weight: 850;
-  margin: 4px 0 0;
-  font-size: 13px;
+  margin: 5px 0 0;
+  font-size: 14.5px;
+  line-height: 1.35;
 }
 
 .v6-activity-actor {
@@ -522,8 +543,8 @@
 .v6-event-desc,
 .v6-activity-detail {
   color: var(--ink-2);
-  font-size: 10px;
-  margin: 5px 0 0;
+  font-size: 12.25px;
+  margin: 6px 0 0;
   line-height: 1.55;
 }
 
@@ -687,7 +708,7 @@
 }
 
 .v6-assignment {
-  padding: 14px 15px;
+  padding: 16px 17px;
   border-left: 1px solid var(--line);
   display: flex;
   flex-direction: column;
@@ -696,20 +717,20 @@
 }
 
 .v6-assignment h4 {
-  font-size: 14px;
+  font-size: 14.5px;
   margin: 4px 0;
   line-height: 1.25;
 }
 
 .v6-assignment p {
-  font-size: 10px;
+  font-size: 11.75px;
   color: var(--ink-2);
   margin: 0;
   line-height: 1.55;
 }
 
 .v6-assignment small {
-  font-size: 8px;
+  font-size: 8.5px;
   color: var(--ink-3);
   margin-top: 8px;
   line-height: 1.45;
@@ -717,6 +738,7 @@
 
 .v6-finding {
   border-left: 3px solid var(--line-strong);
+  padding: 18px;
 }
 
 .v6-intern-moment {
@@ -728,8 +750,8 @@
 
 .v6-finding-quote {
   font-family: var(--font-display-stack);
-  font-size: 15px;
-  line-height: 1.35;
+  font-size: 16.5px;
+  line-height: 1.4;
   margin: 11px 0 7px;
   max-width: 720px;
   animation: v6-finding-highlight 0.7s ease-out 0.42s both;
@@ -804,10 +826,11 @@
 .v6-gap {
   border-left: 3px solid var(--line-strong);
   background: linear-gradient(120deg, #fffdf9, var(--v6-surface2));
+  padding: 18px;
 }
 
 .v6-decision {
-  padding: 17px;
+  padding: 18px;
 }
 
 .v6-decision-grid {
@@ -841,8 +864,9 @@
 
 .v6-option strong {
   display: block;
-  font-size: 13px;
+  font-size: 13.5px;
   margin-top: 4px;
+  line-height: 1.35;
 }
 
 .v6-selected-ribbon {
@@ -860,11 +884,41 @@
   animation: v6-ribbon-in 0.45s cubic-bezier(0.16, 0.84, 0.35, 1.08) 0.45s both;
 }
 
-.v6-decision-reason {
+.v6-decision-reason,
+.v6-decision-why {
   border-top: 1px solid var(--line);
   margin: 11px 0 0;
   padding-top: 10px;
-  font-size: 9px;
+  font-size: 12px;
+  color: var(--ink-2);
+  line-height: 1.55;
+}
+
+.v6-decision-why summary {
+  cursor: pointer;
+  font-weight: 800;
+  font-size: 11px;
+  color: var(--ink-3);
+  list-style: none;
+}
+
+.v6-decision-why summary::-webkit-details-marker {
+  display: none;
+}
+
+.v6-decision-why summary::before {
+  content: "▸ ";
+  color: var(--ink-3);
+}
+
+.v6-decision-why[open] summary::before {
+  content: "▾ ";
+}
+
+.v6-decision-why p {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.55;
   color: var(--ink-2);
 }
 
@@ -907,6 +961,7 @@
 
 .v6-receipt {
   border-left: 3px solid var(--line-strong);
+  padding: 18px;
 }
 
 .v6-receipt-top {
@@ -943,7 +998,8 @@
 .v6-receipt-cell {
   padding: 6px 0;
   border-bottom: 1px solid var(--line);
-  font-size: 9px;
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .v6-receipt-cell:last-child {
@@ -953,7 +1009,7 @@
 .v6-receipt-cell span {
   display: block;
   color: var(--ink-3);
-  font-size: 7px;
+  font-size: 8px;
   text-transform: uppercase;
   letter-spacing: 0.1em;
   margin-bottom: 3px;
@@ -968,6 +1024,7 @@
 
 .v6-diff {
   border-left: 4px solid var(--somebody);
+  padding: 18px;
 }
 
 .v6-diff-grid,
@@ -1059,6 +1116,7 @@
   border: 1px solid #b7d6c3;
   background: linear-gradient(110deg, var(--verified-wash), #fffdf9 40%);
   overflow: hidden;
+  padding: 18px;
 }
 
 .v6-verify-wrap {
@@ -1218,7 +1276,7 @@
 }
 
 .v6-deliverable-title {
-  font-size: 12px;
+  font-size: 12.75px;
   font-weight: 850;
   margin: 4px 0 5px;
   line-height: 1.35;
@@ -1227,14 +1285,44 @@
 .v6-deliverable-summary,
 .v6-deliverable-next {
   margin: 0 0 4px;
-  font-size: 9px;
+  font-size: 10.75px;
   line-height: 1.5;
 }
 
 .v6-deliverable-unknowns {
   margin: 6px 0 0;
   padding-left: 18px;
-  font-size: 9px;
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.v6-deliverable-unknowns-disclosure,
+.v6-verification-unknowns-disclosure {
+  margin-top: 8px;
+  font-size: 10.5px;
+  color: var(--ink-3);
+}
+
+.v6-deliverable-unknowns-disclosure summary,
+.v6-verification-unknowns-disclosure summary {
+  cursor: pointer;
+  font-weight: 750;
+  list-style: none;
+}
+
+.v6-deliverable-unknowns-disclosure summary::-webkit-details-marker,
+.v6-verification-unknowns-disclosure summary::-webkit-details-marker {
+  display: none;
+}
+
+.v6-deliverable-unknowns-disclosure summary::before,
+.v6-verification-unknowns-disclosure summary::before {
+  content: "▸ ";
+}
+
+.v6-deliverable-unknowns-disclosure[open] summary::before,
+.v6-verification-unknowns-disclosure[open] summary::before {
+  content: "▾ ";
 }
 
 .v6-checkpoints-phase {
@@ -1297,19 +1385,43 @@
 
 .v6-checkpoint-label {
   margin: 0;
-  font-size: 10.5px;
+  font-size: 11.75px;
   font-weight: 800;
   line-height: 1.4;
 }
 
 .v6-checkpoint-detail {
   margin: 3px 0 0;
-  font-size: 8.5px;
-  line-height: 1.45;
+  font-size: 10.25px;
+  line-height: 1.5;
+}
+
+.v6-checkpoint-detail-disclosure {
+  margin-top: 3px;
+  font-size: 10px;
+  color: var(--ink-3);
+}
+
+.v6-checkpoint-detail-disclosure summary {
+  cursor: pointer;
+  font-weight: 700;
+  list-style: none;
+}
+
+.v6-checkpoint-detail-disclosure summary::-webkit-details-marker {
+  display: none;
+}
+
+.v6-checkpoint-detail-disclosure summary::before {
+  content: "▸ ";
+}
+
+.v6-checkpoint-detail-disclosure[open] summary::before {
+  content: "▾ ";
 }
 
 .v6-checkpoint-state {
-  font-size: 8px;
+  font-size: 8.5px;
   flex-shrink: 0;
   padding-top: 2px;
 }

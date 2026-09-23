@@ -216,6 +216,141 @@ test("Activity degrades gracefully when an optional payload is absent", () => {
   assert.ok(html.includes("Somebody chose to make: landing copy"));
 });
 
+test("Activity MAKE/BUY decisions use founder-facing headlines while preserving selected truth", () => {
+  const make: ActivityItem = {
+    id: "act_make",
+    type: "manager_decision",
+    occurredAt: NOW,
+    actor: { kind: "somebody", label: "Somebody" },
+    title: "Somebody chose to make: landing copy",
+    importance: "major",
+    payload: {
+      selected: { approach: "MAKE", label: "Use the Intern" },
+      alternative: { approach: "BUY", label: "Buy a writer" },
+      reason: "Internal capacity is enough.",
+    },
+  };
+  const buy: ActivityItem = {
+    id: "act_buy",
+    type: "manager_decision",
+    occurredAt: NOW,
+    actor: { kind: "somebody", label: "Somebody" },
+    title: "Somebody chose to buy audience evidence",
+    importance: "major",
+    payload: {
+      selected: { approach: "BUY", label: "Acquire audience-language evidence" },
+      alternative: { approach: "MAKE", label: "Continue with owned research" },
+      reason: "The gap is current audience language.",
+    },
+  };
+  const makeHtml = renderToStaticMarkup(createElement(Activity, { items: [make] }));
+  assert.ok(makeHtml.includes("Keep this in-house"));
+  assert.ok(makeHtml.includes("Use the Intern"));
+  assert.ok(makeHtml.includes("v6-option is-selected"));
+  assert.ok(makeHtml.includes("<summary>Why</summary>"));
+  assert.ok(makeHtml.includes("Internal capacity is enough."));
+
+  const buyHtml = renderToStaticMarkup(createElement(Activity, { items: [buy] }));
+  assert.ok(buyHtml.includes("Bring in outside help"));
+  assert.ok(buyHtml.includes("Acquire audience-language evidence"));
+  assert.ok(buyHtml.includes("Continue with owned research"));
+});
+
+test("ObjectiveHeader completed state uses verified treatment; working/blocked stay non-green", () => {
+  const completed = renderToStaticMarkup(
+    createElement(ObjectiveHeader, {
+      objective: { ...workspace().objective, status: "completed" },
+      somebodyNow: { state: "completed", headline: "The required outcome is verified.", detail: "Saved.", updatedAt: NOW },
+    }),
+  );
+  assert.ok(completed.includes('data-objective-status="completed"'));
+  assert.ok(completed.includes("Somebody · objective verified"));
+  assert.ok(completed.includes("tone-verified"));
+
+  const working = renderToStaticMarkup(
+    createElement(ObjectiveHeader, {
+      objective: workspace().objective,
+      somebodyNow: workspace().somebodyNow,
+    }),
+  );
+  assert.ok(working.includes('data-objective-status="working"'));
+  assert.ok(!working.includes("Somebody · objective verified"));
+  assert.match(working, /v6-somebody-card[^>]*data-objective-status="working"/);
+
+  const blocked = renderToStaticMarkup(
+    createElement(ObjectiveHeader, {
+      objective: { ...workspace().objective, status: "blocked" },
+      somebodyNow: { state: "blocked", headline: "Stopped", detail: "Missing authority.", updatedAt: NOW },
+    }),
+  );
+  assert.ok(blocked.includes('data-objective-status="blocked"'));
+  assert.ok(!blocked.includes("Somebody · objective verified"));
+
+  const needsYou = renderToStaticMarkup(
+    createElement(ObjectiveHeader, {
+      objective: { ...workspace().objective, status: "needs_you" },
+      somebodyNow: { state: "needs_you", headline: "Needs you", detail: "Approve spend.", updatedAt: NOW },
+    }),
+  );
+  assert.ok(needsYou.includes('data-objective-status="needs_you"'));
+  assert.ok(!needsYou.includes("Somebody · objective verified"));
+});
+
+test("Deliverables unknowns stay available behind a disclosure without inventing counts", () => {
+  const withUnknowns = renderToStaticMarkup(
+    createElement(Deliverables, {
+      deliverables: [
+        {
+          id: "d1",
+          title: "Relaunch recommendation",
+          type: "document",
+          version: 2,
+          status: "verified",
+          summary: "Revised messaging.",
+          recommendedNextMove: "Publish when ready",
+          unknowns: ["Audience size still approximate", "Channel mix untested"],
+          updatedAt: NOW,
+        },
+      ],
+    }),
+  );
+  assert.ok(withUnknowns.includes("2 remaining unknowns"));
+  assert.ok(withUnknowns.includes("Audience size still approximate"));
+  assert.ok(withUnknowns.includes("Channel mix untested"));
+
+  const none = renderToStaticMarkup(
+    createElement(Deliverables, {
+      deliverables: [
+        {
+          id: "d2",
+          title: "Brief",
+          type: "document",
+          version: 1,
+          status: "current",
+          updatedAt: NOW,
+        },
+      ],
+    }),
+  );
+  assert.ok(!none.includes("remaining unknown"));
+});
+
+test("Activity objective completion avoids duplicating the deliverable summary", () => {
+  const item: ActivityItem = {
+    id: "act_done",
+    type: "objective_completed",
+    occurredAt: NOW,
+    actor: { kind: "somebody", label: "Somebody" },
+    title: "Objective complete",
+    detail: "A very long deliverable summary that belongs on the Deliverables card.",
+    importance: "major",
+  };
+  const html = renderToStaticMarkup(createElement(Activity, { items: [item] }));
+  assert.ok(html.includes("Objective complete"));
+  assert.ok(html.includes("The required outcome is verified. Review the final deliverable and any remaining unknowns."));
+  assert.ok(!html.includes("A very long deliverable summary that belongs on the Deliverables card."));
+});
+
 test("Activity renders type-specific treatments for major event types", () => {
   const items: ActivityItem[] = [
     {
@@ -242,6 +377,8 @@ test("Activity renders type-specific treatments for major event types", () => {
   assert.ok(html.includes("Screenshot"));
   assert.ok(html.includes("Old copy"));
   assert.ok(html.includes("New copy"));
+  assert.ok(html.includes("Landing copy updated"));
+  assert.ok(!html.includes("Rewrote the hero"), "diff owns the change; skip redundant summary prose");
 });
 
 // ── G. Deliverables ───────────────────────────────────────────────────────────

@@ -1,4 +1,4 @@
-import type { ProgressView } from "../contracts";
+import type { CheckpointState, ProgressView } from "../contracts";
 import { CHECKPOINT_LABEL } from "../presentation";
 
 // Right-rail Checkpoints (DESIGN.md §4, contract §12–13). Renders exactly the
@@ -36,7 +36,7 @@ export function Checkpoints({ progress }: { progress: ProgressView }) {
               </div>
               <div className="v6-checkpoint-copy">
                 <p className="v6-checkpoint-label">{checkpoint.label}</p>
-                {checkpoint.detail ? <p className="v6-checkpoint-detail muted">{checkpoint.detail}</p> : null}
+                <CheckpointDetail state={checkpoint.state} detail={checkpoint.detail} />
               </div>
               <span className="v6-checkpoint-state muted">{CHECKPOINT_LABEL[checkpoint.state]}</span>
             </li>
@@ -44,5 +44,20 @@ export function Checkpoints({ progress }: { progress: ProgressView }) {
         </ol>
       )}
     </section>
+  );
+}
+
+function CheckpointDetail({ state, detail }: { state: CheckpointState; detail?: string }) {
+  if (!detail) return null;
+  // Active blockers and founder-required states stay visible by default.
+  const keepOpen = state === "blocked" || state === "active";
+  if (keepOpen || detail.length < 72) {
+    return <p className="v6-checkpoint-detail muted">{detail}</p>;
+  }
+  return (
+    <details className="v6-checkpoint-detail-disclosure">
+      <summary>Details</summary>
+      <p className="v6-checkpoint-detail muted">{detail}</p>
+    </details>
   );
 }

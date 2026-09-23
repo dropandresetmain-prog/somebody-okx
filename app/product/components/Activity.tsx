@@ -10,6 +10,7 @@ import type {
   VerificationPayload,
   WorkSummaryPayload,
 } from "../contracts";
+import { presentActivity } from "../humanize";
 import {
   ACQUISITION_STATUS_LABEL,
   activityEventClass,
@@ -126,13 +127,16 @@ function EventBody({ item, acquisitions }: { item: ActivityItem; acquisitions: A
 }
 
 function SomebodyEvent({ item }: { item: ActivityItem }) {
+  const display = presentActivity(item);
   return (
     <div className="v6-event-card">
       <p className="v6-event-type">{activityTypeLabel(item.type)}</p>
       <p className="v6-event-title v6-activity-title">
-        <span className="v6-activity-actor muted">{item.actor.label}</span> {item.title}
+        {display.showActor ? <span className="v6-activity-actor muted">{item.actor.label}</span> : null}
+        {display.showActor ? " " : null}
+        {display.title}
       </p>
-      {item.detail ? <p className="v6-event-desc v6-activity-detail">{item.detail}</p> : null}
+      {display.detail ? <p className="v6-event-desc v6-activity-detail">{display.detail}</p> : null}
       <div className="v6-event-footer">
         <span className="v6-tag v6-tag--orange">Managerial interpretation</span>
         {item.provenance ? <ProvenanceTag provenance={item.provenance} /> : null}
@@ -179,17 +183,24 @@ function DelegationEvent({ item }: { item: ActivityItem }) {
 
 function FindingEvent({ item }: { item: ActivityItem }) {
   const payload = isFinding(item.payload) ? item.payload : null;
+  const display = presentActivity(item);
   const quote = payload?.finding ?? item.detail ?? item.title;
+  const titleRepeatsQuote = display.title.replace(/^["“]|["”]$/g, "").trim() === quote.trim();
   return (
     <div className="v6-event-card v6-finding">
       <div className="v6-intern-moment">
         <div>
           <p className="v6-event-type">Finding</p>
           <p className="v6-finding-quote">“{quote}”</p>
-          {item.detail && payload ? <p className="v6-event-desc v6-activity-detail">{item.detail}</p> : null}
-          <p className="v6-activity-title">
-            <span className="v6-activity-actor muted">{item.actor.label}</span> {item.title}
-          </p>
+          {!titleRepeatsQuote ? (
+            <p className="v6-activity-title">
+              <span className="v6-activity-actor muted">{item.actor.label}</span> {display.title}
+            </p>
+          ) : (
+            <p className="v6-activity-title">
+              <span className="v6-activity-actor muted">{item.actor.label}</span>
+            </p>
+          )}
           {payload?.evidenceRefs && payload.evidenceRefs.length > 0 ? (
             <ul className="v6-evidence-chips v6-evidence-row">
               {payload.evidenceRefs.map((ref) => (
@@ -209,15 +220,14 @@ function FindingEvent({ item }: { item: ActivityItem }) {
 }
 
 function WorkNowEvent({ item }: { item: ActivityItem }) {
+  const display = presentActivity(item);
   return (
     <div className="v6-event-card">
       <div className="v6-now-intern">
         <div>
           <p className="v6-event-type">{activityTypeLabel(item.type)}</p>
-          <p className="v6-event-title v6-activity-title">
-            <span className="v6-activity-actor muted">{item.actor.label}</span> {item.title}
-          </p>
-          {item.detail ? <p className="v6-event-desc v6-activity-detail">{item.detail}</p> : null}
+          <p className="v6-event-title v6-activity-title">{display.title}</p>
+          {display.detail ? <p className="v6-event-desc v6-activity-detail">{display.detail}</p> : null}
           <div className="v6-event-footer">
             <span className="v6-tag v6-tag--orange">Intern working</span>
             {item.provenance ? <ProvenanceTag provenance={item.provenance} /> : null}
@@ -249,15 +259,14 @@ function CompressedWorkEvent({ item }: { item: ActivityItem }) {
 }
 
 function EvidenceGapEvent({ item }: { item: ActivityItem }) {
+  const display = presentActivity(item);
   return (
     <div className="v6-event-card v6-gap">
       <p className="v6-event-type">Evidence gap</p>
-      <p className="v6-event-title v6-activity-title">
-        <span className="v6-activity-actor muted">{item.actor.label}</span> {item.title}
-      </p>
-      {item.detail ? <p className="v6-event-desc v6-activity-detail">{item.detail}</p> : null}
+      <p className="v6-event-title v6-activity-title">{display.title}</p>
+      {display.detail ? <p className="v6-event-desc v6-activity-detail">{display.detail}</p> : null}
       <div className="v6-event-footer">
-        <span className="v6-tag">Somebody identified missing proof</span>
+        <span className="v6-tag">Missing proof</span>
       </div>
     </div>
   );
@@ -265,13 +274,12 @@ function EvidenceGapEvent({ item }: { item: ActivityItem }) {
 
 function DecisionEvent({ item }: { item: ActivityItem }) {
   const payload = isDecision(item.payload) ? item.payload : null;
+  const display = presentActivity(item);
   return (
     <div className="v6-event-card v6-decision">
       <p className="v6-event-type">Managerial decision</p>
-      <p className="v6-event-title v6-activity-title">
-        <span className="v6-activity-actor muted">{item.actor.label}</span> {item.title}
-      </p>
-      {item.detail && !payload ? <p className="v6-event-desc v6-activity-detail">{item.detail}</p> : null}
+      <p className="v6-event-title v6-activity-title">{display.title}</p>
+      {display.detail ? <p className="v6-event-desc v6-activity-detail">{display.detail}</p> : null}
       {payload ? (
         <>
           <div className="v6-decision-grid">
@@ -288,9 +296,10 @@ function DecisionEvent({ item }: { item: ActivityItem }) {
             </div>
           </div>
           {payload.reason ? (
-            <p className="v6-decision-reason">
-              <strong>Why:</strong> {payload.reason}
-            </p>
+            <details className="v6-decision-why">
+              <summary>Why</summary>
+              <p>{payload.reason}</p>
+            </details>
           ) : null}
         </>
       ) : null}
@@ -323,15 +332,14 @@ function ReceiptEvent({ item, acquisitions }: { item: ActivityItem; acquisitions
   const acquisition = item.related?.acquisitionId
     ? acquisitions.find((entry) => entry.id === item.related?.acquisitionId)
     : undefined;
+  const display = presentActivity(item);
   return (
     <div className="v6-event-card v6-receipt">
       <div className="v6-receipt-top">
         <div>
           <p className="v6-event-type">External capability</p>
-          <p className="v6-event-title v6-activity-title">
-            <span className="v6-activity-actor muted">{item.actor.label}</span> {item.title}
-          </p>
-          {item.detail ? <p className="v6-event-desc v6-activity-detail">{item.detail}</p> : null}
+          <p className="v6-event-title v6-activity-title">{display.title}</p>
+          {!acquisition && display.detail ? <p className="v6-event-desc v6-activity-detail">{display.detail}</p> : null}
         </div>
         {acquisition?.amount ? (
           <div className="v6-receipt-amount">
@@ -377,13 +385,12 @@ function ReceiptEvent({ item, acquisitions }: { item: ActivityItem; acquisitions
 
 function DiffEvent({ item }: { item: ActivityItem }) {
   const payload = isArtifactChanged(item.payload) ? item.payload : null;
+  const display = presentActivity(item);
   return (
     <div className="v6-event-card v6-diff" data-deliverable-id={payload?.deliverableId}>
       <p className="v6-event-type">Artifact changed</p>
-      <p className="v6-event-title v6-activity-title">
-        <span className="v6-activity-actor muted">{item.actor.label}</span> {item.title}
-      </p>
-      {payload?.changeSummary ? <p className="v6-event-desc">{payload.changeSummary}</p> : item.detail ? <p className="v6-event-desc v6-activity-detail">{item.detail}</p> : null}
+      <p className="v6-event-title v6-activity-title">{display.title}</p>
+      {display.detail ? <p className="v6-event-desc v6-activity-detail">{display.detail}</p> : null}
       {payload && (payload.before !== undefined || payload.after !== undefined) ? (
         <div className="v6-diff-grid v6-artifact-diff">
           <div className="v6-diff-side v6-artifact-diff-before">
@@ -414,7 +421,9 @@ function DiffEvent({ item }: { item: ActivityItem }) {
 
 function VerificationEvent({ item }: { item: ActivityItem }) {
   const payload = isVerification(item.payload) ? item.payload : null;
+  const display = presentActivity(item);
   const completed = item.type === "verification_completed" || item.type === "objective_completed";
+  const eventType = item.type === "objective_completed" ? "Objective complete" : "Verification";
   return (
     <div className="v6-event-card v6-verification">
       <div className="v6-verify-wrap">
@@ -430,11 +439,9 @@ function VerificationEvent({ item }: { item: ActivityItem }) {
           <div className="v6-stamp v6-stamp--pending">Checking</div>
         )}
         <div>
-          <p className="v6-event-type">Verification</p>
-          <p className="v6-event-title v6-activity-title">
-            <span className="v6-activity-actor muted">{item.actor.label}</span> {item.title}
-          </p>
-          {item.detail ? <p className="v6-event-desc v6-activity-detail">{item.detail}</p> : null}
+          <p className="v6-event-type">{eventType}</p>
+          <p className="v6-event-title v6-activity-title">{display.title}</p>
+          {display.detail ? <p className="v6-event-desc v6-activity-detail">{display.detail}</p> : null}
           {payload ? (
             <ul className="v6-verify-list v6-verification-checks">
               {payload.checks.map((check) => (
@@ -445,11 +452,17 @@ function VerificationEvent({ item }: { item: ActivityItem }) {
             </ul>
           ) : null}
           {payload?.remainingUnknowns && payload.remainingUnknowns.length > 0 ? (
-            <ul className="v6-verification-unknowns muted">
-              {payload.remainingUnknowns.map((unknown) => (
-                <li key={unknown}>{unknown}</li>
-              ))}
-            </ul>
+            <details className="v6-verification-unknowns-disclosure">
+              <summary>
+                {payload.remainingUnknowns.length} remaining unknown
+                {payload.remainingUnknowns.length === 1 ? "" : "s"}
+              </summary>
+              <ul className="v6-verification-unknowns muted">
+                {payload.remainingUnknowns.map((unknown) => (
+                  <li key={unknown}>{unknown}</li>
+                ))}
+              </ul>
+            </details>
           ) : null}
         </div>
         <InternArt className="v6-verify-intern" alt="Intern after the assignment" />

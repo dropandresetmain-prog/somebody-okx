@@ -130,7 +130,7 @@ export function somebodyByline(state: SomebodyNowState): string {
     case "verifying":
       return "Somebody · checking the outcome";
     case "completed":
-      return "Somebody · final check complete";
+      return "Somebody · objective verified";
     case "blocked":
       return "Somebody · stopped";
   }

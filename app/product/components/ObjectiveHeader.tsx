@@ -27,10 +27,17 @@ export function ObjectiveHeader({
         </span>
       </div>
 
-      <section className="v6-somebody-card" data-somebody-state={somebodyNow.state}>
+      <section
+        className="v6-somebody-card"
+        data-somebody-state={somebodyNow.state}
+        data-objective-status={objective.status}
+      >
         <div className="v6-somebody-card-copy">
           <p className="v6-manager-byline">
-            <i className="dot tone-somebody" aria-hidden="true" />
+            <i
+              className={`dot tone-${objective.status === "completed" ? "verified" : "somebody"}`}
+              aria-hidden="true"
+            />
             {somebodyByline(somebodyNow.state)}
           </p>
           <h2 className="v6-somebody-headline">{somebodyNow.headline}</h2>
