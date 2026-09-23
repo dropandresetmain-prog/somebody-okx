@@ -45,7 +45,11 @@ function activityContext(items: ActivityItem[]): ActivityContext {
   const lastByAcquisition = new Map<string, string>();
   const seenFindings = new Set<string>();
   const repeatedFindingIds = new Set<string>();
-  for (const item of items) {
+  // `items` is supplied newest-first for display; chronological semantics
+  // ("last encountered" = latest, "seen before" = earlier) require walking
+  // oldest→newest, so derive context from a reversed copy — the array used
+  // for rendering is never touched.
+  for (const item of [...items].reverse()) {
     if (item.related?.acquisitionId) lastByAcquisition.set(item.related.acquisitionId, item.id);
     if (item.type === "finding_added" && isFinding(item.payload)) {
       const text = item.payload.finding.trim();

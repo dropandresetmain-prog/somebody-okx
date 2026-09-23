@@ -10,6 +10,7 @@ import { join } from "node:path";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type {
+  AcquisitionView,
   ActivityItem,
   AttentionState,
   ObjectiveListView,
@@ -182,6 +183,113 @@ test("Activity uses item.id as identity and preserves supplied order", () => {
   const i1 = html.indexOf('data-activity-id="act_1"');
   const i2 = html.indexOf('data-activity-id="act_2"');
   assert.ok(i1 >= 0 && i2 >= 0 && i1 < i2, "activity must render in supplied order using stable ids");
+});
+
+test("Activity attaches the full receipt to the chronologically latest acquisition event, not the last one in newest-first render order", () => {
+  // Supplied newest-first (per projectActivity contract): items[0] is the
+  // chronologically LATEST event for acq1, items[1] is an earlier one.
+  const items: ActivityItem[] = [
+    {
+      id: "act_later",
+      type: "external_result_verified",
+      occurredAt: NOW - 1000,
+      actor: { kind: "somebody", label: "Somebody" },
+      title: "Verified the result for market data",
+      importance: "major",
+      related: { acquisitionId: "acq1" },
+    },
+    {
+      id: "act_earlier",
+      type: "acquisition_started",
+      occurredAt: NOW - 5000,
+      actor: { kind: "somebody", label: "Somebody" },
+      title: "Somebody authorized acquiring market data",
+      importance: "standard",
+      related: { acquisitionId: "acq1" },
+    },
+  ];
+  const acquisitions: AcquisitionView[] = [
+    { id: "acq1", resourceLabel: "market data", status: "verified", resultSummary: "Got it.", updatedAt: NOW - 1000 },
+  ];
+  const html = renderToStaticMarkup(createElement(Activity, { items, acquisitions }));
+  // The full receipt card renders "Resource"/"Status" grid cells; the
+  // step-only card does not.
+  const laterIdx = html.indexOf('data-activity-id="act_later"');
+  const earlierIdx = html.indexOf('data-activity-id="act_earlier"');
+  const laterCard = html.slice(laterIdx, earlierIdx);
+  const earlierCard = html.slice(earlierIdx);
+  assert.ok(laterCard.includes("v6-receipt-grid"), "the chronologically latest event carries the full receipt");
+  assert.ok(!laterCard.includes("v6-receipt--step"), "the latest event is not rendered as a step-only card");
+  assert.ok(earlierCard.includes("v6-receipt--step"), "the chronologically earlier event stays a step card, not a second full receipt");
+});
+
+test("Activity marks the chronologically LATER duplicate finding as repeated, never the original", () => {
+  // Supplied newest-first: items[0] is the later, repeated occurrence;
+  // items[1] is the original finding it repeats.
+  const items: ActivityItem[] = [
+    {
+      id: "act_repeat",
+      type: "finding_added",
+      occurredAt: NOW - 1000,
+      actor: { kind: "intern", id: "w1", label: "Rae" },
+      title: "Pricing page is broken",
+      importance: "minor",
+      payload: { finding: "The pricing page 404s." },
+    },
+    {
+      id: "act_original",
+      type: "finding_added",
+      occurredAt: NOW - 9000,
+      actor: { kind: "intern", id: "w1", label: "Rae" },
+      title: "Pricing page is broken",
+      importance: "minor",
+      payload: { finding: "The pricing page 404s." },
+    },
+  ];
+  const html = renderToStaticMarkup(createElement(Activity, { items }));
+  const repeatIdx = html.indexOf('data-activity-id="act_repeat"');
+  const originalIdx = html.indexOf('data-activity-id="act_original"');
+  const repeatCard = html.slice(repeatIdx, originalIdx);
+  const originalCard = html.slice(originalIdx);
+  assert.ok(repeatCard.includes("Same finding as earlier"), "the later occurrence is marked as the repeat");
+  assert.ok(!originalCard.includes("Same finding as earlier"), "the original finding is never marked as its own repeat");
+});
+
+test("Activity context derivation never changes the visible newest-first render order", () => {
+  const items: ActivityItem[] = [
+    {
+      id: "act_newest",
+      type: "external_result_verified",
+      occurredAt: NOW - 1000,
+      actor: { kind: "somebody", label: "Somebody" },
+      title: "Verified the result",
+      importance: "major",
+      related: { acquisitionId: "acq1" },
+    },
+    {
+      id: "act_middle",
+      type: "finding_added",
+      occurredAt: NOW - 5000,
+      actor: { kind: "intern", id: "w1", label: "Rae" },
+      title: "Finding",
+      importance: "minor",
+      payload: { finding: "Same text" },
+    },
+    {
+      id: "act_oldest",
+      type: "finding_added",
+      occurredAt: NOW - 9000,
+      actor: { kind: "intern", id: "w1", label: "Rae" },
+      title: "Finding",
+      importance: "minor",
+      payload: { finding: "Same text" },
+    },
+  ];
+  const acquisitions: AcquisitionView[] = [{ id: "acq1", resourceLabel: "market data", status: "verified", updatedAt: NOW - 1000 }];
+  const html = renderToStaticMarkup(createElement(Activity, { items, acquisitions }));
+  const indices = ["act_newest", "act_middle", "act_oldest"].map((id) => html.indexOf(`data-activity-id="${id}"`));
+  assert.ok(indices.every((i) => i >= 0));
+  assert.ok(indices[0] < indices[1] && indices[1] < indices[2], "render order stays exactly the supplied newest-first order");
 });
 
 test("Activity renders no causal connector when causedByActivityId is absent, and renders one when supplied", () => {
