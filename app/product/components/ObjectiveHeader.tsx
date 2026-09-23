@@ -10,7 +10,13 @@ import type {
   SomebodyNowView,
 } from "../contracts";
 import { presentSomebodyNow } from "../humanize";
-import { OBJECTIVE_STATUS_LABEL, objectiveStatusTone, somebodyByline, somebodyNowPose } from "../presentation";
+import {
+  livenessPhaseLabel,
+  OBJECTIVE_STATUS_LABEL,
+  objectiveStatusTone,
+  somebodyByline,
+  somebodyNowPose,
+} from "../presentation";
 
 // Top of main (DESIGN.md §3): Objective title + founder request, then ONE
 // Somebody update card. Current work is supporting meta inside that card —
@@ -73,6 +79,19 @@ export function ObjectiveHeader({
           </p>
           <h2 className="v6-somebody-headline">{display.headline}</h2>
           {display.detail ? <p className="v6-somebody-detail">{display.detail}</p> : null}
+          {liveness.active ? (
+            <p className="v6-liveness-working" role="status">
+              <span className="v6-liveness-working-badge">
+                Somebody
+                <span className="v6-liveness-working-dots" aria-hidden="true">
+                  <i />
+                  <i />
+                  <i />
+                </span>
+              </span>
+              <span className="v6-liveness-working-phase">{livenessPhaseLabel(liveness.phase)}</span>
+            </p>
+          ) : null}
           <p className="v6-liveness-age" role="status">{ageLine}</p>
           {liveness.detail ? <p className="v6-liveness-detail muted">{liveness.detail}</p> : null}
           {showWorkingNow || ball ? (
