@@ -6,18 +6,21 @@
 // but never derives it — derivation stays here so it is unit-testable.
 //
 // Priority is deliberate and fixed (first match wins):
+//   0. accepted completion verdict → completed   (gate decides, not this file;
+//      terminal and outranks every guard below it, including budget — an
+//      accepted completion must be monotonic and cannot be regressed by a
+//      later no-progress cycle, stale timer, or any other budget ceiling)
 //   1. budget verdict (recovery_required / escalated / waiting)
 //   2. no contract yet            → planning
 //   3. unresolved material ambiguity → approval_required
 //   4. pending founder approval (waiver / spend bound) → approval_required
-//   5. accepted completion verdict → completed   (gate decides, not this file)
-//   6. rejected completion verdict → its routed state (executing/blocked/
+//   5. rejected completion verdict → its routed state (executing/blocked/
 //      recovery_required) — stale revision proposals land recovery_required
-//   7. all required resolved, none proposed yet → propose_completion
-//   8. every open requirement has no eligible path → blocked
-//   9. work in flight (running assignments / nonterminal intents) → executing
-//  10. waiting on schedule/external facts only → waiting
-//  11. open requirements with executable paths → executing (decide next pass)
+//   6. all required resolved, none proposed yet → propose_completion
+//   7. every open requirement has no eligible path → blocked
+//   8. work in flight (running assignments / nonterminal intents) → executing
+//   9. waiting on schedule/external facts only → waiting
+//  10. open requirements with executable paths → executing (decide next pass)
 
 import { BEGIN_DECISION_CEILING } from "./decision";
 import { openRequired } from "./requirements";
@@ -97,7 +100,21 @@ export function reduceManagementState(facts: ReducerFacts): ReducedState {
     beginDecisionCeiling = BEGIN_DECISION_CEILING,
   } = facts;
 
-  // 1. Budget ceilings are the outermost guard: nothing proceeds past them.
+  // 0. An ACCEPTED completion verdict is terminal and outranks every other
+  //    guard, including budget ceilings. This does not weaken the gate: the
+  //    verdict itself is still decided elsewhere and still required the
+  //    existing accepted semantic/deterministic proof. This only prevents a
+  //    later pass — a stale timeout wake, a no-progress budget increment, a
+  //    duplicate result — from regressing an already-accepted completion.
+  if (completionProposal?.accepted)
+    return {
+      state: "completed",
+      action: { kind: "hold", state: "completed", reason: "completion accepted by gate" },
+      detail: `gate accepted completion; disclosed ${completionProposal.disclosedPendingSupporting.length} pending supporting item(s)`,
+    };
+
+  // 1. Budget ceilings are the outermost guard for everything else: nothing
+  //    proceeds past them.
   if (!budgetVerdict.ok)
     return {
       state: budgetVerdict.state,
@@ -143,15 +160,10 @@ export function reduceManagementState(facts: ReducerFacts): ReducedState {
       detail: `waiting on founder: ${pendingApproval.question}`,
     };
 
-  // 5–6. A completion proposal is decided by the GATE, and this reducer just
-  //      honours its verdict — accepted completes, rejected routes onward.
-  if (completionProposal) {
-    if (completionProposal.accepted)
-      return {
-        state: "completed",
-        action: { kind: "hold", state: "completed", reason: "completion accepted by gate" },
-        detail: `gate accepted completion; disclosed ${completionProposal.disclosedPendingSupporting.length} pending supporting item(s)`,
-      };
+  // 5. A rejected completion proposal is decided by the GATE, and this
+  //    reducer just routes its verdict onward (the accepted case is handled
+  //    at priority 0, above every other guard).
+  if (completionProposal && !completionProposal.accepted) {
     if (completionProposal.objectiveState === "recovery_required")
       return {
         state: "recovery_required",
@@ -173,7 +185,7 @@ export function reduceManagementState(facts: ReducerFacts): ReducedState {
 
   const open = openRequired(current);
 
-  // 7a. The gate rejected completion even though every required row reads
+  // 5a. The gate rejected completion even though every required row reads
   //     "satisfied": proof went stale against the current revision. A
   //     satisfied row cannot be silently re-satisfied (requirements.ts owns
   //     that), so this needs a deliberate re-decision — an honest
@@ -189,7 +201,7 @@ export function reduceManagementState(facts: ReducerFacts): ReducedState {
       detail: completionProposal.unmet.join("; "),
     };
 
-  // 7. Everything required is resolved — Somebody may only PROPOSE; the gate
+  // 6. Everything required is resolved — Somebody may only PROPOSE; the gate
   //    (CP1) accepts. Until a verdict exists, propose exactly once per revision.
   if (open.length === 0 && !completionProposal)
     return {
@@ -198,7 +210,7 @@ export function reduceManagementState(facts: ReducerFacts): ReducedState {
       detail: "all required requirements resolved; completion must pass the independent gate",
     };
 
-  // 8. No executable path anywhere. Typed distinction (not prose):
+  // 7. No executable path anywhere. Typed distinction (not prose):
   //    A. No candidate options computed (absent OR empty options[]) — model /
   //       proposal failure before a usable grounded set. That is decision work
   //       while refusal attempts remain below the shared begin ceiling.
@@ -292,7 +304,7 @@ export function reduceManagementState(facts: ReducerFacts): ReducedState {
     };
   }
 
-  // 8b. R3 A2 — VERIFICATION TIME.
+  // 7a. R3 A2 — VERIFICATION TIME.
   //
   // A submitted worker result or a recorded provider result is DATA, not
   // satisfaction (requirements.ts refuses `assignment_run_finished`; only an
@@ -333,7 +345,7 @@ export function reduceManagementState(facts: ReducerFacts): ReducedState {
       detail: `${needsVerification.requirementKey} has an unverified result; verifying against current proof`,
     };
 
-  // 9. R3 A2 — AUTHORIZED BUT NOT DELIVERED.
+  // 8. R3 A2 — AUTHORIZED BUT NOT DELIVERED.
   //
   // A decision pass that authorizes a strategy BINDS it onto the requirement
   // (decision.ts does that; nothing else may). Until CP8 nothing read that fact
@@ -385,7 +397,7 @@ export function reduceManagementState(facts: ReducerFacts): ReducedState {
       detail: `authorized ${undelivered.strategy} for ${undelivered.requirementKey} is not fully delivered; dispatching`,
     };
 
-  // 10. Work in flight — wake carries it forward, no new model invocations.
+  // 9. Work in flight — wake carries it forward, no new model invocations.
   const activeWork =
     assignments.some((assignment) => ACTIVE_ASSIGNMENT_STATES.has(assignment.state)) ||
     intents.some((intent) => OPEN_INTENT_STATES.has(intent.state));
@@ -398,8 +410,8 @@ export function reduceManagementState(facts: ReducerFacts): ReducedState {
       detail: "assignment or intent in flight; awaiting its event",
     };
 
-  // 10–11. Decision time for the first open, solvable requirement (stable
-  //        order: contract priority then key — never insertion order).
+  // 10. Decision time for the first open, solvable requirement (stable
+  //      order: contract priority then key — never insertion order).
   const next = [...solvable].sort(
     (a, b) =>
       (a.priority === b.priority ? 0 : a.priority === "required" ? -1 : 1) ||

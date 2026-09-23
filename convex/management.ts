@@ -1013,6 +1013,15 @@ export function buildConvexManagementPorts(ctx: MutationCtx): ManagementPorts {
       if (!row) return;
       const data = (row as AnyRow).data as Record<string, unknown>;
       const mgmt = (data.management ?? {}) as Record<string, unknown>;
+      // Terminal-completion fence (Boundary B). Accepted completion is
+      // monotonic: once durable state reads "completed", refuse to overwrite
+      // it with anything else. There is no generic reopen authority today.
+      // completed → completed is an idempotent no-op write (still records the
+      // control note) rather than an error, since a duplicate pass reaching
+      // here is expected, not exceptional.
+      if ((data as { state?: string }).state === "completed" && state !== "completed") {
+        return;
+      }
       await ctx.db.patch(row._id, {
         data: {
           ...data,
@@ -1665,6 +1674,24 @@ export const runManagementPass = internalMutation({
         acted: false,
         nextWakeExpected: null,
         summary: "objective row missing",
+      };
+    }
+
+    // Terminal-completion fence (Boundary A). Accepted completion for the
+    // current contract revision is monotonic: once durable state reads
+    // "completed", a late timeout wake, recovery watchdog, duplicate
+    // worker/verification wake, or stale scheduled pass must become a
+    // harmless no-op. It may READ the completed state but must never spend
+    // budget, start a model call, dispatch work, create an intent, or
+    // schedule new work. There is no reopen authority today, so this check
+    // never needs to distinguish "why" the objective is completed.
+    if ((row as AnyRow).data && ((row as AnyRow).data as { state?: string }).state === "completed") {
+      await markManagementPassCompleted(ctx, args.objectiveKey, Date.now());
+      return {
+        objectiveState: "completed" as ManagementState,
+        acted: false,
+        nextWakeExpected: null,
+        summary: "objective already completed; management pass is a no-op",
       };
     }
 
@@ -3024,6 +3051,21 @@ export const recoverStalledManagementPass = internalMutation({
       .unique();
     if (!row) return null;
     const data = (row as AnyRow).data as Record<string, unknown>;
+    // Terminal-completion fence. A watch marker left over from a race with
+    // the settle write (or any other stale reason) must not resurrect a
+    // completed Objective: clear it and stop, never schedule a pass.
+    if (data.state === "completed") {
+      const mgmtCompleted = (data.management ?? {}) as Record<string, unknown>;
+      if (mgmtCompleted.managementPassWatch != null) {
+        await ctx.db.patch(row._id, {
+          data: {
+            ...data,
+            management: { ...mgmtCompleted, managementPassWatch: null },
+          },
+        } as never);
+      }
+      return null;
+    }
     const mgmt = (data.management ?? {}) as Record<string, unknown>;
     const watch = mgmt.managementPassWatch as
       | { watchToken: string; contractId: string; contractRevision: number; armedAt: number }
