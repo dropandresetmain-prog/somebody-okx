@@ -16,6 +16,7 @@ Read current truth in this order:
 4. [DECISIONS_LOG.md](DECISIONS_LOG.md) — settled decisions and supersessions.
 5. [BUILD_DELTA.md](BUILD_DELTA.md) — implementation/provenance evidence.
 6. [docs/work/ACTIVE_TASK.md](docs/work/ACTIVE_TASK.md) — current demo-convergence working ledger.
+7. [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) — local-Convex-first development workflow.
 
 Current code/runtime/schema and newer accepted decisions outrank stale plans.
 
@@ -133,7 +134,15 @@ Unrelated objectives may be mediocre, unsupported, blocked or escalated, but mus
 - **M0–M2:** accepted historical foundations.
 - **M3 + M4:** integrated; application/payment boundary accepted by R3. Do not reopen without new material evidence.
 - **M5:** accepted frontend wired to the authoritative normalized read model. Integration code baseline: `a9a0b3d31a7125e83fe0771a783ee62cbd96914a`.
-- **M6.1 — NEXT:** achieve the first complete product E2E with a deterministic simulated external boundary.
+- **M6.1 — IN PROGRESS (implementation complete, physical run founder-gated):** all
+  deterministic external-acquisition seams are implemented and tested on
+  `feat/m6-1-first-product-e2e` (`005b68c`): simulation boundary in the real
+  intent kernel (operator-gated, fail-closed, provenance `simulation`), worker
+  access to verified results, evidence-ref artifact causality, verified-intent
+  verification routing, truthful M5 rendering, and demo setup. Level 1+2 tests
+  prove the simulation wake drives the real management pass to gate acceptance;
+  the live-model physical run needs a founder-configured deployment (runbook in
+  `docs/work/ACTIVE_TASK.md` CP3).
 - **M6.2:** record one genuine useful external acquisition.
 - **M6.3:** replay that acquisition through the canonical M5 demo and record Backup Demo #1 immediately.
 - **M6.4:** harden reset/repeatability, freeze the release and fix only demonstrated defects.

@@ -13,6 +13,10 @@ import type {
   WorkContract,
   WorkerSpec,
 } from "./types";
+import {
+  isInvalidRequestObservation,
+  isNotAvailableObservation,
+} from "./inputAvailability";
 
 // Normalize a public URL to a stable identity: lowercase scheme+host, strip
 // www. prefix, drop fragment, strip trailing slash, keep query. Returns "" for
@@ -66,6 +70,10 @@ export function createWorkContract(input: {
   worker: WorkerSpec;
   sourceProofs: SourceProof[];
   resultRequirements?: Partial<WorkContract["resultRequirements"]>;
+  /** Serial: exact verified acquisition evidence IDs this action may consume. */
+  inputEvidenceIds?: string[];
+  /** Serial: exact artifact key this writing action may mutate. */
+  targetArtifactKey?: string | null;
 }): WorkContract {
   const assignment = input.assignment.trim();
   if (!assignment)
@@ -91,7 +99,14 @@ export function createWorkContract(input: {
     (sum, proof) => sum + proof.minDistinctSources,
     0
   );
-  
+
+  // Serial contracts persist inputEvidenceIds and/or targetArtifactKey. Align
+  // resultRequirements with the serial submit_result schema: empty risks /
+  // unknowns arrays are valid when warranted; missing arrays are not.
+  const serialEnvelope =
+    input.inputEvidenceIds !== undefined ||
+    input.targetArtifactKey !== undefined;
+
   return {
     assignment,
     idempotencyScope: input.idempotencyScope,
@@ -109,8 +124,15 @@ export function createWorkContract(input: {
       risks: true,
       unknowns: true,
       recommendedNextAction: true,
+      ...(serialEnvelope ? { allowEmptyRisksUnknowns: true } : {}),
       ...input.resultRequirements,
     },
+    ...(input.inputEvidenceIds !== undefined
+      ? { inputEvidenceIds: [...input.inputEvidenceIds] }
+      : {}),
+    ...(input.targetArtifactKey !== undefined
+      ? { targetArtifactKey: input.targetArtifactKey }
+      : {}),
   };
 }
 
@@ -131,13 +153,28 @@ export function evaluateCompletion(input: {
   evidence: EvidenceRecord[];
   result: ActivityResult | null;
   verifiedEffects?: { key: string; status: string }[];
+  /** When set, only a structured result submitted by THIS run counts. A prior
+   * run's result may remain on the objective as context but cannot complete. */
+  currentRunId?: string;
 }): CompletionCheck {
   const unmet: string[] = [];
-  const { contract, evidence, result } = input;
+  const { contract, evidence } = input;
 
-  // Filter to application observations only (Blocker A)
+  // Bind active results to run identity: an unbound or foreign runId is not
+  // this run's submission, even if the objective still holds the old payload.
+  const result =
+    input.currentRunId &&
+    (!input.result || input.result.runId !== input.currentRunId)
+      ? null
+      : input.result;
+
+  // Filter to application observations only (Blocker A). Coverage/absence
+  // diagnostics are application facts but never satisfy source proofs.
   const applicationObservations = evidence.filter(
-    (item) => item.origin === "application_observation"
+    (item) =>
+      item.origin === "application_observation" &&
+      !isNotAvailableObservation(item) &&
+      !isInvalidRequestObservation(item),
   );
 
   // Check each source proof requirement (Blocker B)
@@ -160,16 +197,26 @@ export function evaluateCompletion(input: {
     unmet.push("Structured result missing a summary");
   if (contract.resultRequirements.fit && !result?.fit?.trim())
     unmet.push("Structured result missing the fit assessment");
-  if (
-    contract.resultRequirements.risks &&
-    !(result?.risks?.length)
-  )
-    unmet.push("Structured result missing risks");
-  if (
-    contract.resultRequirements.unknowns &&
-    !(result?.unknowns?.length)
-  )
-    unmet.push("Structured result missing unknowns");
+  if (contract.resultRequirements.risks) {
+    if (!Array.isArray(result?.risks)) {
+      unmet.push("Structured result missing risks");
+    } else if (
+      result.risks.length === 0 &&
+      !contract.resultRequirements.allowEmptyRisksUnknowns
+    ) {
+      unmet.push("Structured result missing risks");
+    }
+  }
+  if (contract.resultRequirements.unknowns) {
+    if (!Array.isArray(result?.unknowns)) {
+      unmet.push("Structured result missing unknowns");
+    } else if (
+      result.unknowns.length === 0 &&
+      !contract.resultRequirements.allowEmptyRisksUnknowns
+    ) {
+      unmet.push("Structured result missing unknowns");
+    }
+  }
   if (
     contract.resultRequirements.recommendedNextAction &&
     !result?.recommendedNextAction?.trim()

@@ -22,6 +22,7 @@ import {
 import {
   buildConvexManagementPorts,
   applyInterpretation,
+  beginInterpretation,
   applyDecision,
   runManagementPass,
   BEGIN_DECISION_CEILING,
@@ -29,6 +30,7 @@ import {
 import { buildOutcomeContract, buildRequirement, buildSemanticRequirement } from "../lib/management/contract";
 import { optionIdFor } from "../lib/management/options";
 import type { OutcomeContract, Requirement, Assignment } from "../lib/management/types";
+import { cp2ParsedRequirement } from "./helpers/cp2Requirement";
 
 const modules = {
   "../convex/schema.ts": () => import("../convex/schema"),
@@ -120,13 +122,13 @@ function makeRequirement(objectiveKey: string, reqKey: string, strategy: "MAKE" 
     {
       objectiveKey,
       contract: contractFor(objectiveKey),
-      proposed: {
+      proposed: cp2ParsedRequirement({
         requirementKey: reqKey,
         priority: "required",
         title,
         mustBeTrue,
         scope: "one governed decision",
-      },
+      }),
       artifactKeyForInternalProof: null,
       at: now,
     },
@@ -157,7 +159,14 @@ async function seedObjective(t: Backend, key: string, extra: Record<string, unkn
   });
 }
 
-async function seedContractRequirementBudget(t: Backend, key: string, requirement: Requirement, revision = 1, decisionAttempts: Record<string, number> = {}) {
+async function seedContractRequirementBudget(
+  t: Backend,
+  key: string,
+  requirement: Requirement,
+  revision = 1,
+  decisionAttempts: Record<string, number> = {},
+  decisionRefusalAttempts: Record<string, number> = {},
+) {
   await t.mutation(async (ctx) =>
     (putContract as unknown as Handler)._handler(ctx, {
       objectiveKey: key,
@@ -194,6 +203,7 @@ async function seedContractRequirementBudget(t: Backend, key: string, requiremen
           controlNotes: [],
           pendingDecision: null,
           decisionAttempts,
+          decisionRefusalAttempts,
         },
       },
     } as never);
@@ -274,10 +284,19 @@ test("production loop: interpret → decide → dispatch → verify → propose 
   const t = convexTest(schema, modules);
   const key = "obj_loop";
   const reqKey = "req_loop";
-  const requestId = "interpret_obj_loop_a1";
 
   // Phase 1: Seed objective + applyInterpretation
   await seedObjective(t, key);
+  // V7 review R3 fence: applyInterpretation now only applies against a
+  // matching PENDING reservation, so beginInterpretation must reserve the
+  // requestId first (the same two-step seam production uses) before we can
+  // hand-build the interpretation and apply it. The requestId is no longer
+  // a hardcoded literal -- it is whatever beginInterpretation reserves.
+  const begin = await t.mutation(async (ctx) =>
+    (beginInterpretation as unknown as Handler)._handler(ctx, { objectiveKey: key, at: now }),
+  ) as { proceed: boolean; requestId?: string; reason?: string };
+  assert.equal(begin.proceed, true, `beginInterpretation failed: ${begin.reason}`);
+  const requestId = begin.requestId!;
   const interpretResult = await invokeApplyInterpretation(t, {
     objectiveKey: key,
     requestId,
@@ -440,6 +459,55 @@ test("production loop: interpret → decide → dispatch → verify → propose 
 
   const assignments3 = await readAssignments(t, key);
   assert.equal(assignments3[0].state, "verified", "assignment verified");
+
+  // Serial protocol (set at interpretation): final semantic assessment required.
+  const { beginFinalSemanticAssessment, applyFinalSemanticAssessment } =
+    await import("../convex/management");
+  // Ensure a sole governed artifact exists for unambiguous assessment target.
+  await t.mutation(async (ctx) => {
+    const row = await looseDb(ctx)
+      .query("objectives")
+      .withIndex("by_key", (q) => q.eq("key", key))
+      .unique();
+    if (!row) throw new Error("objective missing");
+    const data = (row as { data: Record<string, unknown> }).data;
+    await ctx.db.patch((row as { _id: string })._id as never, {
+      data: {
+        ...data,
+        companyArtifacts: [
+          {
+            key: "loop/deliverable",
+            version: 1,
+            content: "loop deliverable content",
+            history: [],
+          },
+        ],
+      } as never,
+    });
+  });
+  const began = (await t.mutation(async (ctx) =>
+    (beginFinalSemanticAssessment as unknown as Handler)._handler(ctx, {
+      objectiveKey: key,
+      at: now,
+    }),
+  )) as { proceed: boolean; requestId?: string; reason?: string };
+  assert.equal(began.proceed, true, began.reason);
+  const assessed = (await t.mutation(async (ctx) =>
+    (applyFinalSemanticAssessment as unknown as Handler)._handler(ctx, {
+      objectiveKey: key,
+      requestId: began.requestId!,
+      meetsMinimumBar: true,
+      rationale: "loop deliverable meets minimum bar",
+      artifactKey: "loop/deliverable",
+      artifactVersion: 1,
+      evidenceRefs: ["ev_loop_1"],
+      assumptionsUnknowns: [],
+      recommendedNextAction: "complete",
+      contractRevision: 1,
+      at: now,
+    }),
+  )) as { ok: boolean; reason?: string };
+  assert.equal(assessed.ok, true, assessed.reason);
 
   // Phase 6: runManagementPass → propose → completed (may already be done via continue cycles)
   const outcome5 = await invokeRunManagementPass(t, {
@@ -655,10 +723,16 @@ test("N5 garbage interpretation: applyInterpretation with rawContract null retur
   const t = convexTest(schema, modules);
   const key = "obj_n5_garbage";
   await seedObjective(t, key);
+  // V7 review R3: garbage is delivered against a REAL reservation (the fence
+  // refuses any apply without one, before touching state).
+  const begin = await t.mutation(async (ctx) =>
+    (beginInterpretation as unknown as Handler)._handler(ctx, { objectiveKey: key, at: now }),
+  ) as { proceed: boolean; requestId?: string; reason?: string };
+  assert.equal(begin.proceed, true, begin.reason);
 
   const result = await invokeApplyInterpretation(t, {
     objectiveKey: key,
-    requestId: "interpret_n5_a1",
+    requestId: begin.requestId!,
     rawContract: null,
     rawRequirements: rawRequirements("req_n5"),
     founderResolvedQuestions: [],
@@ -673,7 +747,8 @@ test("N5 garbage interpretation: applyInterpretation with rawContract null retur
 
   const obj = await readObjective(t, key);
   assert.equal(obj.management.interpretationStatus, "refused", "interpretationStatus is refused");
-  assert.equal(obj.management.interpretationAttempts, 1, "interpretationAttempts incremented");
+  // beginInterpretation counted this attempt; the refusal must not count it again (V7 R3).
+  assert.equal(obj.management.interpretationAttempts, 1, "exactly one attempt counted");
 });
 
 test("N6 result without proof: completed run with NO evidence does NOT satisfy requirement", async () => {
@@ -819,24 +894,31 @@ test("N8 ungoverned capability proposal: MAKE with only ungoverned capabilities 
   assert.equal(intents.length, 0, "no intent row created");
 });
 
-test("N9 decision ceiling: decisionAttempts at ceiling prevents new reservation", async () => {
+test("N9 decision ceiling: decisionRefusalAttempts at ceiling prevents new reservation", async () => {
   const t = convexTest(schema, modules);
   const key = "obj_n9_ceiling";
   const reqKey = "req_n9";
   const requirement = makeRequirement(key, reqKey);
   await seedObjective(t, key);
-  await seedContractRequirementBudget(t, key, requirement, 1, { [reqKey]: BEGIN_DECISION_CEILING });
+  await seedContractRequirementBudget(
+    t,
+    key,
+    requirement,
+    1,
+    {},
+    { [reqKey]: BEGIN_DECISION_CEILING },
+  );
 
   await invokeRunManagementPass(t, { objectiveKey: key, reason: "objective_submitted" });
 
   const obj = await readObjective(t, key);
   assert.equal(obj.management.pendingDecision, null, "pendingDecision NOT created at ceiling");
 
-  const attempts = obj.management.decisionAttempts as Record<string, number>;
-  assert.equal(attempts[reqKey], BEGIN_DECISION_CEILING, "decisionAttempts unchanged");
+  const refusals = obj.management.decisionRefusalAttempts as Record<string, number>;
+  assert.equal(refusals[reqKey], BEGIN_DECISION_CEILING, "decisionRefusalAttempts unchanged");
 });
 
-test("N10 decision retry after refusal: after BUY refusal with eligible options, reducer routes to decide_requirement and allows retry", async () => {
+test("N10 decision retry after refusal: after MAKE refusal with eligible options still present, reducer routes to decide_requirement and allows retry", async () => {
   const t = convexTest(schema, modules);
   const key = "obj_n10_retry";
   const reqKey = "req_n10";
@@ -846,13 +928,13 @@ test("N10 decision retry after refusal: after BUY refusal with eligible options,
   const semanticReq = buildSemanticRequirement({
     objectiveKey: key,
     contract,
-    proposed: {
+    proposed: cp2ParsedRequirement({
       requirementKey: reqKey,
       priority: "required",
-      title: "Research X narrative trends",
-      mustBeTrue: "twitter data supports the claim",
-      scope: "external data",
-    },
+      title: "A governed observation is recorded",
+      mustBeTrue: "an application observation supports the statement",
+      scope: "company artifact + observation",
+    }),
     at: now,
   });
   if ("errors" in semanticReq) throw new Error(semanticReq.errors.join("; "));
@@ -860,7 +942,9 @@ test("N10 decision retry after refusal: after BUY refusal with eligible options,
   await seedObjective(t, key);
   await seedContractRequirementBudget(t, key, semanticReq.requirement);
 
-  // BEGIN + APPLY with BUY strategy, select non-existent option → refusal
+  // BEGIN + APPLY with MAKE strategy, select non-existent option → refusal
+  // while eligible grounded candidates remain on the decision row (Case A:
+  // recommendation unusable, not genuine no-eligible-path).
   await beginDecision(t, key, reqKey);
   const obj1 = await readObjective(t, key);
   const pending1 = obj1.management.pendingDecision as { requestId: string };
@@ -869,16 +953,16 @@ test("N10 decision retry after refusal: after BUY refusal with eligible options,
     objectiveKey: key,
     requestId: pending1.requestId,
     rawStrategyProposal: {
-      strategy: "BUY",
-      desiredCapabilities: [],
-      needsExternalResourceClass: "proprietary_data",
+      strategy: "MAKE",
+      desiredCapabilities: ["public_information_research"],
+      needsExternalResourceClass: null,
       notes: null,
     },
     rawRecommendation: {
       requirementKey: reqKey,
       contractRevision: 1,
       selectedOptionId: "opt_fake",
-      rationale: "test BUY with wrong option",
+      rationale: "test MAKE with wrong option",
       materialAssumptions: [],
       changeMyMindEvidence: [],
     },
@@ -909,21 +993,24 @@ test("N10 decision retry after refusal: after BUY refusal with eligible options,
   const decisions = await readDecisions(t, key);
   const decision = decisions[0] as any;
   const parsed = JSON.parse(decision.coarsePlanSummary);
-  const eligibleOptionId = parsed.extra.options[0].optionId;
+  const eligibleOption = (parsed.extra.options as Array<{ optionId: string; eligibility: { eligible: boolean } }>).find(
+    (option) => option.eligibility.eligible,
+  );
+  assert.ok(eligibleOption, "persisted decision must retain an eligible grounded option");
 
   const applyResult2 = await invokeApplyDecision(t, {
     objectiveKey: key,
     requestId: pending2.requestId,
     rawStrategyProposal: {
-      strategy: "BUY",
-      desiredCapabilities: [],
-      needsExternalResourceClass: "proprietary_data",
+      strategy: "MAKE",
+      desiredCapabilities: ["public_information_research"],
+      needsExternalResourceClass: null,
       notes: null,
     },
     rawRecommendation: {
       requirementKey: reqKey,
       contractRevision: 1,
-      selectedOptionId: eligibleOptionId,
+      selectedOptionId: eligibleOption.optionId,
       rationale: "retry with correct option",
       materialAssumptions: [],
       changeMyMindEvidence: [],
@@ -931,8 +1018,6 @@ test("N10 decision retry after refusal: after BUY refusal with eligible options,
     at: now,
   }) as { ok: boolean; authorized?: boolean };
 
-  // Note: This will still fail authorization because BUY requires a founder grant,
-  // but the point is that the retry mechanism works
   assert.equal(applyResult2.ok, true, "retry applyDecision succeeded");
-  assert.equal(applyResult2.authorized, false, "still not authorized (no grant)");
+  assert.equal(applyResult2.authorized, true, "retry with eligible option authorizes MAKE");
 });

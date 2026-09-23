@@ -24,7 +24,10 @@
 
 import { createWorkContract } from "../objective/contract";
 import { createWorkerSpec } from "../workforce/workers";
-import { toolPermissionsForCapabilities } from "../workforce/permissions";
+import {
+  isMaterializableToolPermission,
+  toolPermissionsForCapabilities,
+} from "../workforce/permissions";
 import { isControlledCapabilityKey } from "../workforce/catalog";
 import { identityMaterial, hash24 } from "./sha256";
 import type { CapabilityKey } from "../workforce/types";
@@ -138,6 +141,51 @@ export function proofSourceClassesFor(
   return classes;
 }
 
+// Can this capability envelope physically produce the requirement's governed
+// proofs? Checked BEFORE authorization — do not silently widen permissions to
+// make an ineligible MAKE look executable at dispatch time.
+export type ContractExecutability =
+  | { ok: true }
+  | { ok: false; reasons: string[] };
+
+export function assessInternalContractExecutability(input: {
+  requirement: Requirement;
+  capabilityKeys: readonly string[];
+}): ContractExecutability {
+  const reasons: string[] = [];
+  const keys = input.capabilityKeys.filter(isControlledCapabilityKey) as CapabilityKey[];
+  const granted = toolPermissionsForCapabilities(keys);
+  const grantedSet = new Set<string>(granted);
+
+  // Zombie grants (e.g. historical draft_document) cannot silently dispatch.
+  const unrealizable = granted.filter((id) => !isMaterializableToolPermission(id));
+  if (unrealizable.length) {
+    reasons.push(
+      `capability envelope grants non-materializable tool permission(s): ${unrealizable.join(", ")}`,
+    );
+  }
+
+  const needsObservation = input.requirement.proofs.some(
+    (proof) => proof.proofKind === "application_observation",
+  );
+  if (needsObservation && proofSourceClassesFor(keys).length === 0) {
+    reasons.push(
+      "observation proof required but capability envelope has no executable observe path",
+    );
+  }
+
+  const needsArtifact = input.requirement.proofs.some(
+    (proof) => proof.proofKind === "company_artifact_version",
+  );
+  if (needsArtifact && !grantedSet.has("update_company_artifact")) {
+    reasons.push(
+      "artifact proof required but capability envelope cannot mutate company artifacts",
+    );
+  }
+
+  return reasons.length ? { ok: false, reasons } : { ok: true };
+}
+
 // The observation proofs a requirement demands, as far as they are executable.
 // A requirement with a concrete `sourceId`/`evidenceId` bound asks for THAT
 // source; a requirement that merely demands an observation asks for one distinct
@@ -173,6 +221,19 @@ export function buildAssignmentContract(input: {
   // worker. The contract may only carry permissions that envelope grants.
   worker?: WorkerRecord | null;
   at: number;
+  /**
+   * Serial: verified acquisition evidence IDs this MAKE may consume.
+   * Must already be validated by the caller (same Objective, compatible
+   * requirement/dependency scope, verified).
+   */
+  inputEvidenceIds?: string[];
+  /**
+   * Serial: exact artifact key this writing assignment may mutate.
+   * Null = analysis-only; omit for legacy contracts.
+   */
+  targetArtifactKey?: string | null;
+  /** When true, always persist inputEvidenceIds/targetArtifactKey fields. */
+  serialManagerProtocol?: boolean;
 }): AssignmentContractBuild {
   const errors: string[] = [];
   const internal = input.option.internal;
@@ -207,6 +268,7 @@ export function buildAssignmentContract(input: {
   ].join("\n");
 
   try {
+    const serial = input.serialManagerProtocol === true;
     const built = createWorkContract({
       assignment,
       idempotencyScope: deriveIdempotencyScope({
@@ -217,6 +279,12 @@ export function buildAssignmentContract(input: {
       }),
       worker: spec,
       sourceProofs,
+      ...(serial || input.inputEvidenceIds !== undefined
+        ? { inputEvidenceIds: [...(input.inputEvidenceIds ?? [])] }
+        : {}),
+      ...(serial || input.targetArtifactKey !== undefined
+        ? { targetArtifactKey: input.targetArtifactKey ?? null }
+        : {}),
     });
     // The AUTHORIZED option's capability envelope owns the permissions; the
     // worker KEY says who runs it. They are separate on purpose: a REUSE target
@@ -297,8 +365,11 @@ export function dispatchTargets(
 //
 // The reducer's "authorized but undelivered" rule needs to know what DELIVERED
 // means for each strategy, and it must not be a scenario-specific guess: MAKE
-// needs an assignment, BUY needs an intent, HYBRID needs BOTH. Anything less and
-// a half-dispatched hybrid would read as "work in flight" forever.
+// needs an assignment, BUY needs an intent. HYBRID is deliberately two-phase
+// when it contains an external acquisition: an OPEN external intent counts as
+// delivered work-in-flight so the reducer waits on it; only after that intent is
+// VERIFIED does the missing internal assignment become dispatchable. This keeps
+// the internal worker downstream of the acquired evidence instead of racing it.
 //
 // A FAILED or SUPERSEDED row does not count: it is history, not delivery. That is
 // what makes a bounded retry possible at all — and the retry itself is capped by
@@ -341,7 +412,10 @@ export function strategyDelivery(
     return hasIntent ? { delivered: true } : { delivered: false, missing: "intent" };
   if (strategy === "HYBRID") {
     if (hasAssignment && hasIntent) return { delivered: true };
-    return { delivered: false, missing: hasAssignment ? "intent" : hasIntent ? "assignment" : "both" };
+    return {
+      delivered: false,
+      missing: hasAssignment ? "intent" : "both",
+    };
   }
   // WAIT / ASK_FOUNDER / BLOCK commit no execution; null is an undecided row.
   return { delivered: true };

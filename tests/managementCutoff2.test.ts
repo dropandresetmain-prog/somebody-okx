@@ -15,6 +15,7 @@ import {
 } from "../lib/management/options";
 import { runManagerialDecisionPass, type DecisionPassInput } from "../lib/management/decision";
 import { reduceManagementState, isCoherentHold, type ReducerFacts } from "../lib/management/reducer";
+import { CP2_DECISION_PASS_FIELDS, CP2_REQUIREMENT_FIELDS } from "./helpers/cp2Requirement";
 import {
   createBudget,
   checkBudget,
@@ -70,6 +71,7 @@ function req(overrides: Partial<Requirement> = {}): Requirement {
     title: "x",
     mustBeTrue: "x holds",
     scope: "x",
+    ...CP2_REQUIREMENT_FIELDS,
     proofs: [{ proofKey: "p1", description: "d", proofKind: "application_observation", params: { sourceId: "ev-1" } }],
     state: "active",
     strategy: null,
@@ -205,6 +207,8 @@ function externalOption(offeringId: string, opts: { registryVerified: boolean; p
     priceProvenance: "provider_quote",
     registryVerified: opts.registryVerified,
     compatibleResourceClass: true,
+    executionPathConfigured: true,
+    purposeScopeCompatible: true,
     facts: emptyFacts(),
   });
 }
@@ -251,6 +255,8 @@ test("provider text demanding spend/authority is grounded verbatim as data and d
     priceProvenance: "llm_estimate",
     registryVerified: false,
     compatibleResourceClass: true,
+    executionPathConfigured: true,
+    purposeScopeCompatible: true,
     facts: emptyFacts(),
   });
   // smuggle the hostile prose into the display fields (adapter-faithful shape)
@@ -304,9 +310,9 @@ test("every budget limit is finite; each exhaustion is a typed verdict, never an
   assert.equal(trySpendModelCall(m).ok, false);
   assert.equal(m.used.managementDecisions, 0, "model calls are not decisions — independent ceilings");
 
-  // …and decisions spend exactly one model call each (40 of 60), leaving
-  // non-decision turns their own remaining budget
-  assert.equal(b.used.modelCalls, b.limits.maxManagementDecisions);
+  // …and decisions no longer spend a model call by themselves (M2 / F10): the
+  // actions report actual logical calls via recordModelCalls.
+  assert.equal(b.used.modelCalls, 0);
   const extra = trySpendModelCall(b);
   assert.equal(extra.ok, true, "the decision ceiling exhausted ≠ the model-call ceiling exhausted");
 
@@ -354,6 +360,7 @@ test("replaying the identical decision envelope ten times yields ONE stable work
     requirementTitle: "x",
     mustBeTrue: "x holds",
     priority: "required",
+    ...CP2_DECISION_PASS_FIELDS,
     artifactKeyForInternalProof: "art_x",
     staffing: {
       objectiveKey: "obj_x",
@@ -421,6 +428,7 @@ function graphWorld(options: { requirement?: Requirement; budgetExhausted?: bool
     async loadContract() { return { contract, currentContractRevision: 1 }; },
     async loadRequirements() { return [structuredClone(world.requirement)]; },
     async loadGrounded() { return new Map(); },
+    async loadDecisionRefusalAttempts() { return {}; },
     async loadAssignments() { return []; },
     async loadIntents() { return []; },
     async loadBudgetVerdict() {
@@ -468,7 +476,11 @@ test("a nonsense wake on an over-budget objective terminates recovery_required: 
   const { outcome } = await graph.invoke(nonsenseState());
   assert.equal(outcome.objectiveState, "recovery_required");
   assert.equal(wake.consumedAt, at0, "the wake was consumed exactly once");
-  assert.deepEqual(world.states, ["recovery_required"], "reduce wrote the control state once; the garbage summary changed nothing");
+  assert.deepEqual(
+    world.states,
+    ["recovery_required", "recovery_required"],
+    "reduce then settle each persist the same recovery_required control state",
+  );
   assert.equal(world.decisionCalls, 0, "budget-exhausted engine never consults the model");
 });
 

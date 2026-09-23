@@ -28,9 +28,15 @@ import {
   tryIntentRetry,
   tryCommitSpend,
   trySpendModelCall,
+  recordModelCalls,
   recordProgress,
 } from "../../lib/management/budget";
 import type { WorkerRecord, ObjectiveBudget, WakeEvent } from "../../lib/management/types";
+import { projectWorkerOutput } from "../../lib/management/decisionPass";
+import { verifiedAcquisitionCoversNeed } from "../../lib/objective/inputDiagnosis";
+import { scopedCoveredResourceClasses } from "../../lib/objective/inputAvailability";
+import { validatedRequestedPurposeKind, type ResourceNeed } from "../../lib/objective/resourceNeed";
+import type { ExternalAcquisitionResult } from "../../lib/objective/types";
 
 // Row shapes for the storage layer. `FounderSpendGrant` is the persisted
 // founder authority record (R3 A4); it lives here because nothing in
@@ -450,6 +456,37 @@ export const initBudget = internalMutation({
   },
 });
 
+// M2 / F10 — record model invocations our application boundary ACTUALLY made
+// (strategy, recommendation, interpretation, final assessment, structural repair).
+// Usage is a fact: recorded even past the ceiling; the ceiling gates new work.
+// Creates the budget row if the call happened before management initialized it.
+export const recordManagementModelCalls = internalMutation({
+  args: {
+    objectiveKey: v.string(),
+    count: v.number(),
+    at: v.number(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    if (!Number.isFinite(args.count) || args.count <= 0) return null;
+    const row = await ctx.db
+      .query("objectiveBudgets")
+      .withIndex("by_objectiveKey", (q) => q.eq("objectiveKey", args.objectiveKey))
+      .unique();
+    if (!row) {
+      await ctx.db.insert("objectiveBudgets", {
+        objectiveKey: args.objectiveKey,
+        data: recordModelCalls(createBudget(args.objectiveKey, args.at), args.count),
+      });
+      return null;
+    }
+    await ctx.db.patch(row._id, {
+      data: recordModelCalls((row as BudgetRow).data, args.count),
+    });
+    return null;
+  },
+});
+
 // Read a budget.
 export const readBudget = internalQuery({
   args: { objectiveKey: v.string() },
@@ -623,6 +660,19 @@ export const findAssignment = internalQuery({
   },
 });
 
+/** Thin list of assignment payloads for assessment grounding / action scope. */
+export const listAssignmentsForObjective = internalQuery({
+  args: { objectiveKey: v.string() },
+  returns: v.array(v.any()),
+  handler: async (ctx, args): Promise<unknown[]> => {
+    const rows = await ctx.db
+      .query("assignments")
+      .withIndex("by_objective", (q) => q.eq("objectiveKey", args.objectiveKey))
+      .collect();
+    return rows.map((row) => (row as AssignmentRow).data);
+  },
+});
+
 export const findIntent = internalQuery({
   args: { objectiveKey: v.string(), intentId: v.string() },
   returns: v.any(),
@@ -722,15 +772,333 @@ export const readDecisionContext = internalQuery({
     const grant = (await ctx.runQuery(internal.internal.workforce.activeSpendGrant, {
       objectiveKey: args.objectiveKey,
     })) as FounderSpendGrant | null;
+    // M6.1: the objective's actual controlled artifact (if any), so the decision
+    // pass can bind internal proof to real owned state instead of nothing.
+    const objectiveRow = await ctx.db
+      .query("objectives")
+      .withIndex("by_key", (q) => q.eq("key", args.objectiveKey))
+      .unique();
+    const objectiveData = objectiveRow?.data as
+      | {
+          companyArtifacts?: Array<{ key?: string; version?: number; content?: string }>;
+          resourceNeeds?: ResourceNeed[];
+          acquisitionResults?: ExternalAcquisitionResult[];
+          management?: {
+            executionProtocol?: string | null;
+            lastFinalAssessmentCritique?: string;
+          };
+          result?: {
+            summary?: string;
+            fit?: string;
+            recommendedNextAction?: string;
+            unknowns?: string[];
+            runId?: string;
+          } | null;
+          finalSemanticAssessment?: {
+            rationale?: string;
+            meetsMinimumBar?: boolean;
+          } | null;
+          acceptedTerminal?: import("../../lib/objective/types").ObjectiveRecord["acceptedTerminal"];
+          lastUnconfirmedTerminal?: import("../../lib/objective/types").ObjectiveRecord["lastUnconfirmedTerminal"];
+        }
+      | undefined;
+
+    const requirementData = requirement as unknown as {
+      dependsOnRequirementKeys?: string[];
+      requiredResourceClasses?: string[];
+      expectedOutput?: string | null;
+      requirementKey: string;
+      requirementKind?: "deliverable" | "input" | null;
+      proofs?: Array<{ proofKind?: string; params?: { artifactKey?: string } }>;
+    };
+    // Exact governed artifact from the semantic deliverable proof — never
+    // silently the first companyArtifacts entry when a different target is named.
+    const proofArtifactKey =
+      (requirementData.proofs ?? [])
+        .map((p) =>
+          p.proofKind === "company_artifact_version"
+            ? String(p.params?.artifactKey ?? "").trim()
+            : "",
+        )
+        .find((k) => k.length > 0) ?? null;
+    const artifacts = objectiveData?.companyArtifacts ?? [];
+    const artifactKeyForInternalProof =
+      (proofArtifactKey &&
+      artifacts.some((a) => a.key === proofArtifactKey)
+        ? proofArtifactKey
+        : null) ??
+      artifacts.find(
+        (artifact) => typeof artifact.key === "string" && artifact.key.length > 0,
+      )?.key ??
+      null;
+    const dependsOn = Array.isArray(requirementData.dependsOnRequirementKeys)
+      ? requirementData.dependsOnRequirementKeys
+      : [];
+
+    const openStatuses = new Set(["proposed", "active", "sourcing", "buy_pending"]);
+    const acquisitions = objectiveData?.acquisitionResults ?? [];
+    const openResourceNeeds = (objectiveData?.resourceNeeds ?? [])
+      .filter(
+        (need) =>
+          need &&
+          openStatuses.has(String(need.status ?? "")) &&
+          (need.requirementKey === args.requirementKey ||
+            // Legacy needs without requirementKey still surface objective-wide
+            // until scoped; prefer exact match when present.
+            (need.requirementKey == null && typeof need.resourceClass === "string")),
+      )
+      .filter((need) =>
+        need.requirementKey === args.requirementKey || need.requirementKey == null,
+      )
+      // Scoped verified acquisition = coverage, not an open gap.
+      .filter(
+        (need) =>
+          !acquisitions.some((acquisition) =>
+            verifiedAcquisitionCoversNeed(need, acquisition),
+          ),
+      )
+      .slice(0, 8)
+      .map((need) => {
+        const status = String(need.status ?? "proposed");
+        const scoped = need.requirementKey === args.requirementKey;
+        const raw = need as {
+          validationAuthority?: string | null;
+          inputCheckId?: string | null;
+          contractRevision?: number | null;
+        };
+        const authority = raw.validationAuthority;
+        // Authoritative eligibility binding: application-validated + active+ +
+        // requirement-scoped. Proposed / unconfirmed / unscoped never bind.
+        const validated =
+          scoped &&
+          (status === "active" || status === "sourcing" || status === "buy_pending") &&
+          (authority === "application" ||
+            // Legacy active+ rows written before validationAuthority existed.
+            authority == null ||
+            authority === undefined);
+        return {
+          needId: String(need.id ?? ""),
+          resourceClass: String(need.resourceClass ?? ""),
+          purpose: String(need.purpose ?? "").slice(0, 400),
+          reasonOwnedInsufficient: String(need.reasonOwnedInsufficient ?? "").slice(0, 400),
+          status,
+          validated: Boolean(validated),
+          inputCheckId:
+            typeof raw.inputCheckId === "string" ? raw.inputCheckId : null,
+          contractRevision:
+            typeof raw.contractRevision === "number" ? raw.contractRevision : null,
+          dedupeKey:
+            typeof need.dedupeKey === "string" ? need.dedupeKey : null,
+          // V7 review R4: only an application-validated requested scope
+          // travels to grounding; anything else is "no scope" (fail closed).
+          requestedPurposeKind: validatedRequestedPurposeKind(need),
+        };
+      })
+      .filter((need) => need.needId && need.resourceClass);
+
+    // Class-level coverage only when every open need of that class is
+    // purpose-covered (needDedupeKey). Same class ≠ same answered question.
+    const openNeedsForReq = (objectiveData?.resourceNeeds ?? []).filter(
+      (need) =>
+        need &&
+        need.requirementKey === args.requirementKey &&
+        openStatuses.has(String(need.status ?? "")),
+    );
+    const acquisitionsWithNeed = acquisitions.map((a) => ({
+      requirementKey: a.requirementKey,
+      contractRevision: a.contractRevision,
+      resourceClass: a.resourceClass ?? "unknown",
+      verifiedAt: a.verifiedAt,
+      needDedupeKey: a.needDedupeKey ?? null,
+    }));
+    const classCoveredRaw = scopedCoveredResourceClasses({
+      requirementKey: args.requirementKey,
+      contractRevision: currentContractRevision,
+      acquisitions: acquisitionsWithNeed,
+    });
+    const scopedCovered = classCoveredRaw.filter((resourceClass) => {
+      const openSameClass = openNeedsForReq.filter(
+        (need) => need.resourceClass === resourceClass,
+      );
+      if (openSameClass.length === 0) return true;
+      return openSameClass.every((need) =>
+        acquisitionsWithNeed.some((acquisition) =>
+          verifiedAcquisitionCoversNeed(need, acquisition),
+        ),
+      );
+    });
+
+    // Accepted prerequisite results: satisfied/waived dependsOn keys with
+    // bounded proof refs + any current objective result unknowns (DATA).
+    const prerequisiteResults: Array<{
+      requirementKey: string;
+      state: string;
+      proofRefs: string[];
+      findings: string[];
+      unknowns: string[];
+    }> = [];
+    if (dependsOn.length) {
+      const allReqRows = await ctx.db
+        .query("requirements")
+        .withIndex("by_objectiveKey", (q) => q.eq("objectiveKey", args.objectiveKey))
+        .collect();
+      for (const depKey of dependsOn.slice(0, 8)) {
+        const dep =
+          allReqRows
+            .map((row) => (row as { data: Record<string, unknown> }).data)
+            .find(
+              (data) =>
+                data.requirementKey === depKey &&
+                data.contractRevision === currentContractRevision,
+            ) ?? null;
+        if (!dep) continue;
+        const state = String(dep.state ?? "");
+        if (state !== "satisfied" && state !== "waived") continue;
+        const resolution = dep.resolution as { proofRefs?: string[] } | null;
+        prerequisiteResults.push({
+          requirementKey: depKey,
+          state,
+          proofRefs: Array.isArray(resolution?.proofRefs)
+            ? resolution!.proofRefs!.slice(0, 8).map(String)
+            : [],
+          findings: [],
+          unknowns: Array.isArray(objectiveData?.result?.unknowns)
+            ? objectiveData!.result!.unknowns!.slice(0, 6).map(String)
+            : [],
+        });
+      }
+    }
+
+    const TEXT_CAP = 1500;
+    const truncate = (s: string) =>
+      s.length <= TEXT_CAP
+        ? { text: s, truncated: false as const }
+        : { text: s.slice(0, TEXT_CAP), truncated: true as const };
+
+    // Acceptance comes from the application's durable terminal record, not from
+    // the presence (or prose) of a stored result. Refused/failed output stays
+    // visible only as an explicit non-authoritative diagnostic.
+    const { latestAcceptedWorkerOutput, latestWorkerDiagnostic } =
+      projectWorkerOutput({
+        serialProtocol:
+          objectiveData?.management?.executionProtocol === "m61_serial_v1",
+        result: (objectiveData?.result ?? null) as never,
+        acceptedTerminal: objectiveData?.acceptedTerminal ?? null,
+        lastUnconfirmedTerminal: objectiveData?.lastUnconfirmedTerminal ?? null,
+        summaryCap: TEXT_CAP,
+      });
+
+    // M2/F9: the manager must see the same verified acquisitions a MAKE worker
+    // will be linked to — this requirement's own AND its declared prerequisites'
+    // (resolveSerialMakeActionScope uses the same dependency set). Own first; each
+    // row carries its origin requirementKey so scope stays explicit. Nothing
+    // outside that dependency set is ever surfaced.
+    const acquisitionScopeKeys = new Set<string>([args.requirementKey, ...dependsOn]);
+    const scopedVerifiedAcquisitions = acquisitions
+      .filter(
+        (a) =>
+          a.verifiedAt != null &&
+          acquisitionScopeKeys.has(a.requirementKey) &&
+          a.contractRevision === currentContractRevision,
+      )
+      .sort(
+        (a, b) =>
+          Number(b.requirementKey === args.requirementKey) -
+          Number(a.requirementKey === args.requirementKey),
+      )
+      .slice(0, 4)
+      .map((a) => {
+        const body = truncate(String(a.content ?? ""));
+        return {
+          resultEvidenceId: a.resultEvidenceId,
+          requirementKey: a.requirementKey,
+          resourceClass: a.resourceClass ?? "unknown",
+          content: body.text,
+          needDedupeKey: a.needDedupeKey ?? null,
+          truncated: body.truncated,
+        };
+      });
+
+    const controlledArt = artifactKeyForInternalProof
+      ? (objectiveData?.companyArtifacts ?? []).find(
+          (a) => a.key === artifactKeyForInternalProof,
+        )
+      : null;
+    const artBody = controlledArt
+      ? truncate(String((controlledArt as { content?: string }).content ?? ""))
+      : null;
+
+    const openGap = openResourceNeeds.find((n) => n.validated === true) ?? null;
+    const critique =
+      typeof (objectiveData as { management?: { lastFinalAssessmentCritique?: string } })
+        ?.management?.lastFinalAssessmentCritique === "string"
+        ? String(
+            (objectiveData as { management: { lastFinalAssessmentCritique: string } })
+              .management.lastFinalAssessmentCritique,
+          ).slice(0, 800)
+        : null;
+
+    const managerResultPackage = {
+      latestAcceptedWorkerOutput,
+      latestWorkerDiagnostic,
+      scopedVerifiedAcquisitions,
+      currentControlledArtifact: controlledArt
+        ? {
+            key: String(controlledArt.key),
+            version: Number((controlledArt as { version?: number }).version ?? 0),
+            content: artBody!.text,
+            truncated: artBody!.truncated,
+          }
+        : null,
+      priorActionResult: latestAcceptedWorkerOutput
+        ? {
+            runId: latestAcceptedWorkerOutput.runId,
+            summary: latestAcceptedWorkerOutput.summary,
+          }
+        : null,
+      semanticEvidenceGap: openGap
+        ? {
+            needId: openGap.needId,
+            dedupeKey: openGap.dedupeKey ?? null,
+            purpose: openGap.purpose,
+            resourceClass: openGap.resourceClass,
+            status: openGap.status,
+          }
+        : null,
+      finalReviewCritique: critique,
+      provenanceEvidenceIds: [
+        ...scopedVerifiedAcquisitions.map((a) => a.resultEvidenceId),
+      ].slice(0, 12),
+    };
 
     return {
       contract,
       currentContractRevision,
-      requirement,
+      requirement: {
+        ...requirement,
+        dependsOnRequirementKeys: dependsOn,
+        requiredResourceClasses: Array.isArray(requirementData.requiredResourceClasses)
+          ? requirementData.requiredResourceClasses
+          : [],
+        expectedOutput:
+          typeof requirementData.expectedOutput === "string"
+            ? requirementData.expectedOutput
+            : null,
+        ...(requirementData.requirementKind
+          ? { requirementKind: requirementData.requirementKind }
+          : {}),
+      },
       inventory,
       creationAllowed,
       budget,
       grant: grant ? { limitUsd: grant.limitUsd, approvalId: grant.approvalId } : null,
+      artifactKeyForInternalProof,
+      openResourceNeeds,
+      prerequisiteResults,
+      scopedCoveredResourceClasses: scopedCovered,
+      serialManagerProtocol:
+        objectiveData?.management?.executionProtocol === "m61_serial_v1",
+      managerResultPackage,
     };
   },
 });

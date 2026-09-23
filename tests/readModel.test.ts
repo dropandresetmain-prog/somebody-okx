@@ -26,6 +26,7 @@ function need(over: Partial<ResourceNeed>): ResourceNeed {
     id: "need-1",
     objectiveKey: "obj-1",
     workItemId: null,
+    requirementKey: null,
     resourceClass: "proprietary_data",
     purpose: "p",
     reasonOwnedInsufficient: "r",

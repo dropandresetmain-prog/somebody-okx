@@ -101,6 +101,14 @@ async function main() {
         evidenceId: eventKind === "provider_result" ? next.resultEvidenceId ?? null : eventKind.startsWith("verification") ? next.verificationEvidenceId ?? null : null,
         note: next.boundaryNote,
         at: change.at,
+        acquisitionContentHash:
+          eventKind === "verification_passed"
+            ? change.acquisitionContentHash ?? null
+            : null,
+        acquisitionDeclaredResourceClass:
+          eventKind === "verification_passed"
+            ? change.acquisitionDeclaredResourceClass ?? null
+            : null,
       };
       const attestationKey = process.env.M4_M3_FACT_ATTESTATION_KEY;
       if (!attestationKey) throw new Error("M4_M3_FACT_ATTESTATION_KEY is required to attest a financial M3 fact for Convex writeback");
@@ -109,6 +117,11 @@ async function main() {
       await bridge.mutation("m3Driver:apply", {
         ...fact,
         evidenceId: fact.evidenceId ?? undefined,
+        acquisitionContentHash: fact.acquisitionContentHash,
+        acquisitionContent:
+          eventKind === "verification_passed"
+            ? change.acquisitionContent ?? undefined
+            : undefined,
         attestation,
         driverToken,
       });

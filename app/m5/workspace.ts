@@ -76,7 +76,7 @@ export type EvidenceView = {
   evidenceId: string;
   label: string;
   summary: string;
-  origin: "application_observation" | "provider_result" | "founder_confirmation";
+  origin: "application_observation" | "provider_result" | "founder_confirmation" | "model_note";
   state: "received" | "verified" | "rejected";
   requirementKey: string;
   providerId: string | null;

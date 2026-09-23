@@ -59,6 +59,8 @@ function eligibleBuyOption(): GroundedOption {
     priceProvenance: "provider_quote",
     registryVerified: true,
     compatibleResourceClass: true,
+    executionPathConfigured: true,
+    purposeScopeCompatible: true,
     facts: EMPTY_FACTS,
   });
   return withEligibility([option], (o) => eligibilityInputFor(o, facts))[0];

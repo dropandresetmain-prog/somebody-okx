@@ -19,6 +19,7 @@
 //  10. waiting on schedule/external facts only → waiting
 //  11. open requirements with executable paths → executing (decide next pass)
 
+import { BEGIN_DECISION_CEILING } from "./decision";
 import { openRequired } from "./requirements";
 import { strategyDelivery } from "./dispatch";
 import type {
@@ -38,13 +39,18 @@ export type ReducerFacts = {
   currentContractRevision: number;
   requirements: readonly Requirement[];
   // Eligibility verdicts from the LAST grounding pass (fresh Convex reload,
-  // keyed by requirement). Absent = never grounded this revision.
+  // keyed by requirement). Absent OR empty = no candidate set was computed
+  // this revision (retryable proposal failure), not a genuine no-eligible path.
   groundedByRequirement: ReadonlyMap<string, readonly GroundedOption[]>;
   assignments: readonly Assignment[];
   intents: readonly ExecutionIntent[];
   budgetVerdict: BudgetVerdict;
   pendingApproval: { question: string } | null;
   completionProposal: CompletionVerdict | null; // latest gate verdict, if proposed
+  // Refused decision attempts per requirement — bounds retry of empty/unusable
+  // proposals. Omitted in pure unit fixtures defaults to no exhaustion.
+  decisionRefusalAttempts?: Readonly<Record<string, number>>;
+  beginDecisionCeiling?: number;
   at: number;
 };
 
@@ -87,6 +93,8 @@ export function reduceManagementState(facts: ReducerFacts): ReducedState {
     budgetVerdict,
     pendingApproval,
     completionProposal,
+    decisionRefusalAttempts = {},
+    beginDecisionCeiling = BEGIN_DECISION_CEILING,
   } = facts;
 
   // 1. Budget ceilings are the outermost guard: nothing proceeds past them.
@@ -150,6 +158,16 @@ export function reduceManagementState(facts: ReducerFacts): ReducedState {
         action: { kind: "hold", state: "recovery_required", reason: "gate demanded recovery" },
         detail: completionProposal.unmet.join("; "),
       };
+    if (completionProposal.objectiveState === "blocked")
+      return {
+        state: "blocked",
+        action: {
+          kind: "hold",
+          state: "blocked",
+          reason: "final assessment recovery budget exhausted",
+        },
+        detail: completionProposal.unmet.join("; "),
+      };
     // fall through with the gate's rejection informing the state below
   }
 
@@ -180,19 +198,88 @@ export function reduceManagementState(facts: ReducerFacts): ReducedState {
       detail: "all required requirements resolved; completion must pass the independent gate",
     };
 
-  // 8. No executable path anywhere. IMPORTANT distinction: a requirement with
-  //    NO grounding entry has simply never been decided for this revision —
-  //    that is decision work, not a dead end. Only requirements that HAVE been
-  //    grounded and produced no eligible option count toward "no path".
-  const groundedKnown = (requirement: Requirement) =>
-    groundedByRequirement.has(requirement.requirementKey);
+  // 8. No executable path anywhere. Typed distinction (not prose):
+  //    A. No candidate options computed (absent OR empty options[]) — model /
+  //       proposal failure before a usable grounded set. That is decision work
+  //       while refusal attempts remain below the shared begin ceiling.
+  //    B. Candidates were computed (options.length > 0) but none are eligible —
+  //       genuine application-grounded no-eligible path. Waiting/escalation is
+  //       correct; re-asking the model cannot flip hard eligibility facts.
+  //    Explicit dependsOn edges block decide/dispatch until those keys resolve
+  //    (satisfied/waived) — lexical req_01 ordering is not enough alone.
+  const byKey = new Map(current.map((requirement) => [requirement.requirementKey, requirement]));
+  const prerequisitesMet = (requirement: Requirement): boolean => {
+    const deps = requirement.dependsOnRequirementKeys ?? [];
+    if (!deps.length) return true;
+    return deps.every((dep) => {
+      const row = byKey.get(dep);
+      return !!row && (row.state === "satisfied" || row.state === "waived");
+    });
+  };
+  const groundedCandidates = (requirement: Requirement): readonly GroundedOption[] | null => {
+    const grounded = groundedByRequirement.get(requirement.requirementKey);
+    if (grounded === undefined || grounded.length === 0) return null;
+    return grounded;
+  };
+  const refusalAttemptsFor = (requirement: Requirement): number =>
+    decisionRefusalAttempts[requirement.requirementKey] ?? 0;
   const solvable = open.filter((requirement) => {
-    if (!groundedKnown(requirement)) return true; // undecided ⇒ work to do
-    const grounded = groundedByRequirement.get(requirement.requirementKey) ?? [];
-    return grounded.some((option) => option.eligibility.eligible);
+    if (!prerequisitesMet(requirement)) return false;
+    // Decision work is only schedulable while the refusal ceiling has room: the
+    // begin step declines at the ceiling, so a requirement at the ceiling with an
+    // eligible candidate persisted by a REFUSED decision must not read as solvable
+    // (it would wedge in `executing` forever, deciding nothing).
+    if (refusalAttemptsFor(requirement) >= beginDecisionCeiling) return false;
+    const candidates = groundedCandidates(requirement);
+    if (candidates === null) {
+      // Case A: still decision work until the refusal ceiling is exhausted.
+      return true;
+    }
+    return candidates.some((option) => option.eligibility.eligible);
   });
+  const waitingOnDeps = open.filter((requirement) => !prerequisitesMet(requirement));
   const stuck = open.filter((requirement) => requirement.state === "blocked");
   if (solvable.length === 0 && open.length > 0) {
+    if (waitingOnDeps.length === open.length) {
+      return {
+        state: "waiting",
+        action: { kind: "await_wake", reason: "timeout" },
+        detail: `open requirements wait on unresolved prerequisites: ${waitingOnDeps
+          .map((r) => r.requirementKey)
+          .join(", ")}`,
+      };
+    }
+    // Case A exhausted: unusable proposals burned the refusal ceiling with no
+    // candidate set ever computed. Park in recovery_required (same family as
+    // budget ceilings) — do not pretend the world has a grounded no-path.
+    const exhaustedProposalFailures = open.filter(
+      (requirement) =>
+        prerequisitesMet(requirement) &&
+        refusalAttemptsFor(requirement) >= beginDecisionCeiling &&
+        // Ceiling reached with no candidate set, OR with eligible candidates that a
+        // refused decision persisted but can no longer be decided on. Ineligible-only
+        // candidates remain a genuine no-path (below).
+        (groundedCandidates(requirement)?.some((option) => option.eligibility.eligible) ?? true),
+    );
+    const genuineNoEligible = open.some(
+      (requirement) =>
+        prerequisitesMet(requirement) &&
+        groundedCandidates(requirement) !== null &&
+        !(groundedCandidates(requirement) ?? []).some((option) => option.eligibility.eligible),
+    );
+    if (exhaustedProposalFailures.length > 0 && !genuineNoEligible) {
+      return {
+        state: "recovery_required",
+        action: {
+          kind: "hold",
+          state: "recovery_required",
+          reason: "decision refusal ceiling exhausted",
+        },
+        detail: `decision refusal ceiling exhausted (${beginDecisionCeiling}) for ${exhaustedProposalFailures
+          .map((r) => r.requirementKey)
+          .join(", ")}`,
+      };
+    }
     return {
       state: stuck.length ? "blocked" : "waiting",
       action: {
@@ -214,12 +301,30 @@ export function reduceManagementState(facts: ReducerFacts): ReducedState {
   // state — which is exactly what the graph's dead `verify` node needed.
   const needsVerification = current.find((requirement) => {
     if (requirement.state === "satisfied" || requirement.state === "superseded") return false;
+    // Historical superseded/failed rows are evidence, not current delivery.
     const assignmentIn = assignments.filter(
-      (assignment) => assignment.requirementKey === requirement.requirementKey,
+      (assignment) =>
+        assignment.requirementKey === requirement.requirementKey &&
+        assignment.state !== "superseded" &&
+        assignment.state !== "failed",
     );
     if (assignmentIn.some((assignment) => assignment.state === "result_submitted")) return true;
     const intentsIn = intents.filter((intent) => intent.requirementKey === requirement.requirementKey);
-    return intentsIn.some((intent) => intent.state === "result_recorded");
+    // Provider result recorded but not yet independently verified — always verify.
+    if (intentsIn.some((intent) => intent.state === "result_recorded")) return true;
+    // `verified` must reach satisfaction (BUY can complete on external proof alone).
+    // It must NOT trap HYBRID/MAKE redecision: after INPUT_BLOCKED the bound
+    // strategy is cleared, or HYBRID's internal half is still missing — those
+    // passes must fall through to decide/dispatch, not re-verify forever.
+    if (!intentsIn.some((intent) => intent.state === "verified")) return false;
+    if (requirement.strategy === null) return false;
+    if (assignmentIn.some((assignment) => ACTIVE_ASSIGNMENT_STATES.has(assignment.state)))
+      return false;
+    const delivery = strategyDelivery(requirement.strategy, {
+      assignmentStates: assignmentIn.map((assignment) => assignment.state),
+      intentStates: intentsIn.map((intent) => intent.state),
+    });
+    return delivery.delivered;
   });
   if (needsVerification)
     return {
@@ -249,11 +354,17 @@ export function reduceManagementState(facts: ReducerFacts): ReducedState {
   const undelivered = [...current]
     .filter(
       (requirement) =>
+        prerequisitesMet(requirement) &&
         requirement.state === "active" &&
         DISPATCHABLE_STRATEGIES.has(requirement.strategy ?? "") &&
         !strategyDelivery(requirement.strategy, {
           assignmentStates: assignments
-            .filter((assignment) => assignment.requirementKey === requirement.requirementKey)
+            .filter(
+              (assignment) =>
+                assignment.requirementKey === requirement.requirementKey &&
+                assignment.state !== "superseded" &&
+                assignment.state !== "failed",
+            )
             .map((assignment) => assignment.state),
           intentStates: intents
             .filter((intent) => intent.requirementKey === requirement.requirementKey)
@@ -303,7 +414,14 @@ export function reduceManagementState(facts: ReducerFacts): ReducedState {
 
 // Invariant the graph asserts on every transition (and Cutoff-2 tests hammer):
 // a quiescent state NEVER carries a model-invoking or effect-making action.
+// `ask_founder` is the coherent park for unresolved material ambiguity — it
+// invokes no model and mints no effect; omitting it made every material
+// ambiguity crash the management pass instead of waiting for the founder.
 export function isCoherentHold(reduced: ReducedState): boolean {
   if (!isQuiescent(reduced.state)) return true;
-  return reduced.action.kind === "await_wake" || reduced.action.kind === "hold";
+  return (
+    reduced.action.kind === "await_wake" ||
+    reduced.action.kind === "hold" ||
+    reduced.action.kind === "ask_founder"
+  );
 }

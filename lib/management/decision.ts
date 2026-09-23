@@ -22,6 +22,7 @@ import { buildRequirement, unresolvedMaterialAmbiguity } from "./contract";
 import { decideStaffing } from "./staffing";
 import { parseManagerialRecommendation } from "./proposals";
 import { reauthorizeRecommendation } from "./authorization";
+import { assessInternalContractExecutability } from "./dispatch";
 import {
   buildExternalOption,
   buildHybridOption,
@@ -36,6 +37,7 @@ import type { StaffingRequest } from "./staffing";
 import type {
   AuthorizationResult,
   EconomicFacts,
+  FactProvenance,
   FactValue,
   GroundedOption,
   IneligibilityReason,
@@ -50,6 +52,12 @@ import type {
 import type { EligibilityFacts } from "./options";
 import type { ExternalAuthorityMode, RecheckContext } from "./authorization";
 
+// Per-requirement ceiling on REFUSED decision attempts. A proposal that yields
+// zero grounded candidates (model/proposal failure) must be retriable until
+// this bound; the begin step and the control reducer share this constant so a
+// refuse/re-ask storm cannot outlive it.
+export const BEGIN_DECISION_CEILING = 3;
+
 // ── Inputs ───────────────────────────────────────────────────────────────────
 
 export type RegistryOffering = {
@@ -58,8 +66,14 @@ export type RegistryOffering = {
   serviceId: string;
   resourceClass: string;
   priceUsd: number | null;
+  /** Honest price provenance — snapshot registry data is NOT a live provider quote. */
+  priceProvenance: FactProvenance;
   registryVerified: boolean;
   compatibleResourceClass: boolean;
+  /** Adapter + composed physical boundary exist for this offering right now. */
+  executionPathConfigured: boolean;
+  /** Product purpose scope accepts the current need (or no product gate). */
+  purposeScopeCompatible: boolean;
 };
 
 export type GroundingContext = {
@@ -81,6 +95,17 @@ export type DecisionPassInput = {
   requirementTitle: string;
   mustBeTrue: string;
   priority: RequirementPriority;
+  dependsOnRequirementKeys: string[];
+  requiredResourceClasses: string[];
+  expectedOutput: string | null;
+  /** Persisted semantic kind; omitted on legacy rows. */
+  requirementKind?: "deliverable" | "input";
+  /**
+   * V7 review R4 final correction — APPLICATION-OWNED authorized purpose
+   * scope kinds, carried forward from the persisted Requirement row (never
+   * from a worker/model proposal). Absent/empty = none authorized.
+   */
+  authorizedPurposeKinds?: readonly string[];
   artifactKeyForInternalProof: string | null;
   staffing: StaffingRequest & { inventory: readonly WorkerRecord[]; creationAllowed: boolean };
   grounding: GroundingContext;
@@ -100,6 +125,14 @@ export type DecisionPassInput = {
   spendApprovalId: string | null;
   externalAuthority: ExternalAuthorityMode;
   waiverRequested: boolean;
+  /**
+   * When true, do not ground/offer compound HYBRID. Serial MAKE then BUY (or
+   * reverse) with reassessment between. Historical HYBRID rows remain readable.
+   */
+  serialManagerProtocol?: boolean;
+  /** Validated ResourceNeed this BUY answers, when discovery was gap-driven. */
+  boundNeedDedupeKey?: string | null;
+  boundResourceNeedId?: string | null;
 };
 
 export type DecisionPassResult = {
@@ -111,6 +144,9 @@ export type DecisionPassResult = {
   options: GroundedOption[]; // all grounded options incl. ineligible, with typed verdicts
   recommendation: ManagerialRecommendation | null;
   authorization: AuthorizationResult;
+  /** Purpose identity bound before dispatch when a validated need drove BUY. */
+  boundNeedDedupeKey?: string | null;
+  boundResourceNeedId?: string | null;
 };
 
 // ── The pass ─────────────────────────────────────────────────────────────────
@@ -158,9 +194,11 @@ export async function runManagerialDecisionPass(
         serviceId: offering.serviceId,
         resourceClass: offering.resourceClass,
         priceUsd: offering.priceUsd,
-        priceProvenance: "provider_quote",
+        priceProvenance: offering.priceProvenance,
         registryVerified: offering.registryVerified,
         compatibleResourceClass: offering.compatibleResourceClass,
+        executionPathConfigured: offering.executionPathConfigured,
+        purposeScopeCompatible: offering.purposeScopeCompatible,
         facts: grounding.factsForOffering(offering),
       },
       "BUY",
@@ -172,7 +210,13 @@ export async function runManagerialDecisionPass(
   // HYBRID: internal half + the single best-priced eligible-shaped external
   // half. Formed deterministically (cheapest quoted offering, tie by id), so a
   // replay rebuilds the same optionId; the model never assembles hybrids.
-  if (internalOption && externalOptions.length) {
+  // Serial manager protocol parks compound HYBRID for new objectives — a mixed
+  // plan is separately authorized MAKE and BUY with reassessment between them.
+  if (
+    !input.serialManagerProtocol &&
+    internalOption &&
+    externalOptions.length
+  ) {
     const best = [...externalOptions].sort(
       (a, b) =>
         (a.external?.priceUsd ?? Number.MAX_SAFE_INTEGER) -
@@ -315,8 +359,15 @@ export async function runManagerialDecisionPass(
           title: input.requirementTitle,
           mustBeTrue: input.mustBeTrue,
           scope: input.mustBeTrue,
+          dependsOnRequirementKeys: [...input.dependsOnRequirementKeys],
+          requiredResourceClasses: [...input.requiredResourceClasses],
+          expectedOutput: input.expectedOutput,
+          ...(input.requirementKind
+            ? { requirementKind: input.requirementKind }
+            : {}),
         },
         artifactKeyForInternalProof: input.artifactKeyForInternalProof,
+        authorizedPurposeKinds: input.authorizedPurposeKinds,
         at: input.at,
       },
       authorization.strategy,
@@ -339,6 +390,36 @@ export async function runManagerialDecisionPass(
         notes,
       );
     }
+    // Executability before authorization sticks: a MAKE/HYBRID whose envelope
+    // cannot physically produce its newly attached proofs is refused here —
+    // never authorized and later "fixed" by silently widening dispatch tools.
+    if (authorization.strategy === "MAKE" || authorization.strategy === "HYBRID") {
+      const optionsById = new Map(grounded.map((option) => [option.optionId, option]));
+      const option = optionsById.get(authorization.optionId);
+      const internal = option?.internal;
+      if (internal) {
+        const executable = assessInternalContractExecutability({
+          requirement: built.requirement,
+          capabilityKeys: internal.capabilityKeys,
+        });
+        if (!executable.ok) {
+          return finish(
+            input,
+            null,
+            grounded,
+            recommendation,
+            {
+              kind: "refused",
+              requirementKey: input.requirementKey,
+              contractRevision: input.currentContractRevision,
+              reasons: ["proof_unavailable"],
+              detail: `authorized ${authorization.strategy} is not executable: ${executable.reasons.join("; ")}`,
+            },
+            notes,
+          );
+        }
+      }
+    }
     bound = built.requirement;
   }
 
@@ -360,7 +441,12 @@ function finish(
     requirementKey: input.requirementKey,
     kind: "satisfaction_strategy",
     strategy: authorization.kind === "authorized" ? authorization.strategy : null,
-    optionId: authorization.kind === "authorized" ? authorization.optionId : null,
+    // Keep the selected option identity even when authorization is parked for
+    // founder spend approval — product Needs You derives the bound from it.
+    optionId:
+      authorization.kind === "authorized"
+        ? authorization.optionId
+        : (recommendation?.selectedOptionId ?? null),
     recommendation,
     authorization,
     coarsePlanSummary:
@@ -368,7 +454,7 @@ function finish(
     consideredOptionIds: options.map((option) => option.optionId),
     at: input.at,
   };
-  return { decision, boundRequirement: requirement, options, recommendation, authorization };
+  return { decision, boundRequirement: requirement, options, recommendation, authorization, boundNeedDedupeKey: input.boundNeedDedupeKey ?? null, boundResourceNeedId: input.boundResourceNeedId ?? null };
 }
 
 // The recommendation callback may reject (model outage). An outage is a typed
@@ -411,6 +497,8 @@ function proofIsAvailable(option: GroundedOption): boolean {
   return (
     option.external !== null &&
     option.external.registryVerified &&
+    option.external.executionPathConfigured &&
+    option.external.purposeScopeCompatible &&
     option.external.priceUsd !== null
   );
 }

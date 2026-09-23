@@ -1,5 +1,6 @@
-import { createHash } from "node:crypto";
+import { sha256Hex } from "../management/sha256";
 import type { ResourceClass } from "../workforce/types";
+import { isGovernedPurposeKind, purposeKindAppliesToClass } from "../workforce/catalog";
 import type {
   SourcingDecision,
   SourcingReasonCode,
@@ -21,6 +22,8 @@ export type ResourceNeed = {
   id: string;
   objectiveKey: string;
   workItemId: string | null;
+  /** M4: scoped to the Requirement the worker was serving; null for legacy M2. */
+  requirementKey: string | null;
   resourceClass: ResourceClass;
   purpose: string;
   reasonOwnedInsufficient: string;
@@ -29,7 +32,48 @@ export type ResourceNeed = {
   createdAt: number;
   updatedAt: number;
   dedupeKey: string;
+  /** Contract revision when the application validated this gap (optional for legacy). */
+  contractRevision?: number | null;
+  /** Obligation identity the gap was validated against. */
+  inputCheckId?: string | null;
+  /** Application observation ids that support the gap claim. */
+  supportingEvidenceIds?: string[];
+  /** Set to "application" only after validateMissingInputProposal accepts. */
+  validationAuthority?: "application" | "unconfirmed" | null;
+  /**
+   * V7 review R4 — APPLICATION-VALIDATED structured requested scope. Set only
+   * by validateMissingInputProposal after the proposed kind passed governed-
+   * vocabulary membership and class applicability. Null/absent = no validated
+   * scope: purpose-scoped offerings are then NOT compatible (fail closed).
+   * The free-text `purpose` stays descriptive context and never substitutes.
+   */
+  requestedScope?: ResourceNeedRequestedScope | null;
 };
+
+export type ResourceNeedRequestedScope = {
+  purposeKind: string;
+  authority: "application";
+};
+
+/**
+ * The requested scope kind a stored need may contribute to grounding and
+ * intent binding, or null. Re-checks the stored row (persisted data is not
+ * trusted by type assertion): application-validated need, application-owned
+ * scope, governed kind, applicable to the need's class.
+ */
+export function validatedRequestedPurposeKind(need: {
+  resourceClass?: unknown;
+  validationAuthority?: unknown;
+  requestedScope?: unknown;
+}): string | null {
+  if (need.validationAuthority !== "application") return null;
+  const scope = need.requestedScope as { purposeKind?: unknown; authority?: unknown } | null | undefined;
+  if (!scope || scope.authority !== "application") return null;
+  const kind = scope.purposeKind;
+  if (!isGovernedPurposeKind(kind)) return null;
+  if (typeof need.resourceClass !== "string" || !purposeKindAppliesToClass(kind, need.resourceClass)) return null;
+  return kind;
+}
 
 // ─── Dedupe key ───────────────────────────────────────────────────────────────
 
@@ -41,14 +85,21 @@ export function computeNeedDedupeKey(input: {
   objectiveKey: string;
   resourceClass: string;
   purpose: string;
+  requirementKey?: string | null;
+  /** Validated requested scope kind; a different scope is a different need. */
+  purposeKind?: string | null;
 }): string {
   const payload =
     normalize(input.objectiveKey) +
     "\u0000" +
     normalize(input.resourceClass) +
     "\u0000" +
-    normalize(input.purpose);
-  return createHash("sha256").update(payload).digest("hex");
+    normalize(input.purpose) +
+    "\u0000" +
+    normalize(input.requirementKey ?? "") +
+    // Appended only when present so legacy (scope-less) keys are unchanged.
+    (input.purposeKind ? "\u0000scope:" + normalize(input.purposeKind) : "");
+  return sha256Hex(payload);
 }
 
 // ─── Factory ──────────────────────────────────────────────────────────────────
@@ -57,11 +108,18 @@ export type CreateResourceNeedInput = {
   id: string;
   objectiveKey: string;
   workItemId?: string | null;
+  requirementKey?: string | null;
   resourceClass: ResourceClass;
   purpose: string;
   reasonOwnedInsufficient: string;
   proposedByRunId?: string | null;
   at: number;
+  status?: ResourceNeedStatus;
+  contractRevision?: number | null;
+  inputCheckId?: string | null;
+  supportingEvidenceIds?: readonly string[];
+  validationAuthority?: "application" | "unconfirmed" | null;
+  requestedScope?: ResourceNeedRequestedScope | null;
 };
 
 export function createResourceNeed(input: CreateResourceNeedInput): ResourceNeed {
@@ -69,19 +127,36 @@ export function createResourceNeed(input: CreateResourceNeedInput): ResourceNeed
     objectiveKey: input.objectiveKey,
     resourceClass: input.resourceClass,
     purpose: input.purpose,
+    requirementKey: input.requirementKey ?? null,
+    purposeKind: input.requestedScope?.purposeKind ?? null,
   });
   return {
     id: input.id,
     objectiveKey: input.objectiveKey,
     workItemId: input.workItemId ?? null,
+    requirementKey: input.requirementKey ?? null,
     resourceClass: input.resourceClass,
     purpose: input.purpose,
     reasonOwnedInsufficient: input.reasonOwnedInsufficient,
-    status: "proposed",
+    status: input.status ?? "proposed",
     proposedByRunId: input.proposedByRunId ?? null,
     createdAt: input.at,
     updatedAt: input.at,
     dedupeKey,
+    contractRevision: input.contractRevision ?? null,
+    inputCheckId: input.inputCheckId ?? null,
+    supportingEvidenceIds: input.supportingEvidenceIds
+      ? [...input.supportingEvidenceIds]
+      : [],
+    validationAuthority: input.validationAuthority ?? null,
+    ...(input.requestedScope
+      ? {
+          requestedScope: {
+            purposeKind: input.requestedScope.purposeKind,
+            authority: "application" as const,
+          },
+        }
+      : {}),
   };
 }
 
@@ -93,7 +168,9 @@ export function dedupeResourceNeeds(
 ): { need: ResourceNeed; created: boolean } {
   for (const e of existing) {
     if (e.dedupeKey === proposed.dedupeKey) {
-      if (e.status !== "rejected" && e.status !== "fulfilled") {
+      // Fulfilled needs still match: do not mint a second need for the same
+      // obligation identity. Callers must refuse reacquisition separately.
+      if (e.status !== "rejected") {
         return { need: e, created: false };
       }
     }
@@ -105,8 +182,10 @@ export function dedupeResourceNeeds(
 
 const LEGAL_TRANSITIONS: Record<ResourceNeedStatus, readonly ResourceNeedStatus[]> = {
   proposed: ["active", "rejected"],
-  active: ["sourcing", "rejected"],
-  sourcing: ["buy_pending", "rejected"],
+  // A verified acquisition may fulfill a validated gap without the buy_pending
+  // hop (HYBRID/BUY already authorized the external half separately).
+  active: ["sourcing", "fulfilled", "rejected"],
+  sourcing: ["buy_pending", "fulfilled", "rejected"],
   buy_pending: ["fulfilled"],
   fulfilled: [],
   rejected: [],

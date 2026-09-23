@@ -19,7 +19,9 @@ export {
 } from "./catalog";
 export {
   enforcePermissionEnvelope,
+  isMaterializableToolPermission,
   isPermissionAllowedForCapability,
+  MATERIALIZABLE_TOOL_PERMISSIONS,
   toolPermissionsForCapabilities,
 } from "./permissions";
 export { createWorkerSpec, resolveWorker } from "./workers";

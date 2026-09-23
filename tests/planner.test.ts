@@ -36,7 +36,8 @@ describe("Blocker D: role-capability satisfiability", () => {
         requiredResourceClasses: [],
       });
       const granted = plan.capabilityKeys.flatMap((key) => {
-        if (key === "document_drafting") return ["draft_document", "record_finding"];
+        if (key === "document_drafting")
+          return ["update_company_artifact", "record_finding"];
         return [];
       });
       const result = assertRoleRequirementsSatisfied({

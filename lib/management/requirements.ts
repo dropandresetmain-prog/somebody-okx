@@ -84,6 +84,38 @@ export const NO_PROOF_FACTS: ProofFacts = {
   founderConfirmationRefs: [],
 };
 
+/**
+ * artifactKey → highest version THIS requirement's own runs produced. Reads the
+ * artifact's version history (`changedByRunId`) instead of only the current
+ * `provenanceRunId`: a later requirement's legitimate update to the shared
+ * artifact must not retroactively un-prove an earlier requirement's own delivery.
+ * Still scoped — a version another requirement authored never counts.
+ */
+export function artifactVersionsAuthoredByRuns(
+  artifacts: ReadonlyArray<{
+    key?: unknown;
+    version?: unknown;
+    provenanceRunId?: unknown;
+    history?: ReadonlyArray<{ version?: unknown; changedByRunId?: unknown }>;
+  }>,
+  runIds: ReadonlySet<string>,
+): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const artifact of artifacts) {
+    const key = String(artifact.key ?? "");
+    if (!key) continue;
+    const versions: number[] = [];
+    if (runIds.has(String(artifact.provenanceRunId ?? "")) && typeof artifact.version === "number")
+      versions.push(artifact.version);
+    for (const entry of artifact.history ?? []) {
+      if (runIds.has(String(entry.changedByRunId ?? "")) && typeof entry.version === "number")
+        versions.push(entry.version);
+    }
+    if (versions.length) out[key] = Math.max(...versions);
+  }
+  return out;
+}
+
 export function missingProofs(
   proofs: readonly ProofSpec[],
   facts: ProofFacts,
@@ -189,6 +221,17 @@ export function attemptRequirementSatisfaction(input: {
       satisfied: false,
       requirement,
       reason: `requirement ${requirement.requirementKey} is ${requirement.state}; a resolved requirement is not re-satisfied`,
+    };
+
+  // Empty obligation lists must never "pass". A semantic (pre-strategy) row
+  // and a failure path that wiped proofs both look like proofs:[] — neither
+  // may become satisfied. The completion gate already refuses vacuous claims;
+  // this closes the satisfaction kernel itself.
+  if (requirement.proofs.length === 0)
+    return {
+      satisfied: false,
+      requirement,
+      reason: `requirement ${requirement.requirementKey} declares no governed proof; cannot satisfy`,
     };
 
   const missing = missingProofs(requirement.proofs, input.facts, {

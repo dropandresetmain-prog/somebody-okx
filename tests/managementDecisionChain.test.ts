@@ -20,6 +20,7 @@ import { buildConvexManagementPorts, applyDecision, BEGIN_DECISION_CEILING } fro
 import { buildOutcomeContract, buildRequirement } from "../lib/management/contract";
 import { optionIdFor } from "../lib/management/options";
 import type { OutcomeContract, Requirement, GraphState } from "../lib/management/types";
+import { cp2ParsedRequirement } from "./helpers/cp2Requirement";
 
 const modules = {
   "../convex/schema.ts": () => import("../convex/schema"),
@@ -86,13 +87,13 @@ function makeRequirement(
     {
       objectiveKey,
       contract: contractFor(objectiveKey),
-      proposed: {
+      proposed: cp2ParsedRequirement({
         requirementKey,
         priority: "required",
         title: "A decision test requirement",
         mustBeTrue: "the decision chain authorizes correctly",
         scope: "one governed decision",
-      },
+      }),
       artifactKeyForInternalProof,
       at: now,
     },
@@ -108,6 +109,7 @@ async function seed(
   requirement: Requirement,
   decisionAttempts: Record<string, number> = {},
   revision = 1,
+  decisionRefusalAttempts: Record<string, number> = {},
 ) {
   await t.mutation(async (ctx) => {
     await ctx.db.insert("objectives", {
@@ -129,6 +131,7 @@ async function seed(
           controlNotes: [],
           pendingDecision: null,
           decisionAttempts,
+          decisionRefusalAttempts,
         },
       } as never,
     });
@@ -311,12 +314,12 @@ test("2. BEGIN idempotent: second call returns null and does not change pendingD
 
 // ── Test 3: BEGIN ceiling ────────────────────────────────────────────────────
 
-test("3. BEGIN ceiling: runDecisionPass refuses to schedule when decisionAttempts >= ceiling", async () => {
+test("3. BEGIN ceiling: runDecisionPass refuses to schedule when decisionRefusalAttempts >= ceiling", async () => {
   const t = convexTest(schema, modules);
   const key = "obj_begin_ceiling";
   const reqKey = "req_ceiling";
   const requirement = makeRequirement(key, reqKey, "MAKE", "launch_page");
-  await seed(t, key, requirement, { [reqKey]: BEGIN_DECISION_CEILING });
+  await seed(t, key, requirement, {}, 1, { [reqKey]: BEGIN_DECISION_CEILING });
 
   const state: GraphState = {
     objectiveKey: key,
@@ -336,15 +339,15 @@ test("3. BEGIN ceiling: runDecisionPass refuses to schedule when decisionAttempt
     return ports.runDecisionPass(state, ports, now);
   });
 
-  assert.equal(result, null, "BEGIN returns null at ceiling");
+  assert.equal(result, null, "BEGIN returns null at refusal ceiling");
 
   const objData = await readObjective(t, key);
   const mgmt = objData!.management as Record<string, unknown>;
   const pending = mgmt.pendingDecision;
   assert.equal(pending, null, "pendingDecision NOT created at ceiling");
 
-  const attempts = mgmt.decisionAttempts as Record<string, number>;
-  assert.equal(attempts[reqKey], BEGIN_DECISION_CEILING, "decisionAttempts unchanged");
+  const refusals = mgmt.decisionRefusalAttempts as Record<string, number>;
+  assert.equal(refusals[reqKey], BEGIN_DECISION_CEILING, "decisionRefusalAttempts unchanged");
 });
 
 // ── Test 4: APPLY happy path MAKE ────────────────────────────────────────────
@@ -439,7 +442,7 @@ test("4. APPLY happy path MAKE: begin + applyDecision authorizes and persists de
   assert.equal(mgmt2.pendingDecision, null, "pendingDecision cleared");
 
   const attempts2 = mgmt2.decisionAttempts as Record<string, number>;
-  assert.equal(attempts2[reqKey], undefined, "decisionAttempts cleared for req on authorization");
+  assert.equal(attempts2[reqKey], 1, "decisionAttempts retained after authorization");
 
   const wakes = await readWakeEvents(t, key);
   const decisionWake = wakes.find((w) => w.dedupeKey === `decision:${key}:${expectedDecisionId}`);

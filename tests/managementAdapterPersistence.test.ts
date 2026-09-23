@@ -23,11 +23,12 @@ import {
   initBudget,
   readBudget,
 } from "../convex/internal/workforce";
-import { buildConvexManagementPorts, runManagementPass } from "../convex/management";
+import { buildConvexManagementPorts, runManagementPass, CONTROL_NOTE_LIMIT } from "../convex/management";
 import { buildOutcomeContract } from "../lib/management/contract";
 import { buildInternalOption, EMPTY_FACTS, withEligibility, eligibilityInputFor } from "../lib/management/options";
 import type { DecisionPassResult } from "../lib/management/decision";
 import type { GroundedOption, Requirement, ManagerialDecision } from "../lib/management/types";
+import { CP2_REQUIREMENT_FIELDS } from "./helpers/cp2Requirement";
 
 const modules = {
   "../convex/schema.ts": () => import("../convex/schema"),
@@ -177,6 +178,54 @@ test("persistDecision writes decision + options, and loadGrounded reconstructs t
   assert.equal(loadedOptions[0].optionId, options[0].optionId);
 });
 
+test("loadGrounded omits empty options[] so a refused empty proposal is not stable grounding", async () => {
+  const t = convexTest(schema, modules);
+
+  const decision: ManagerialDecision = {
+    decisionId: "dec_empty_opts",
+    objectiveKey: "obj_empty_opts",
+    contractRevision: 1,
+    requirementKey: "req_empty",
+    kind: "satisfaction_strategy",
+    strategy: null,
+    optionId: null,
+    recommendation: null,
+    authorization: {
+      kind: "refused",
+      requirementKey: "req_empty",
+      contractRevision: 1,
+      reasons: ["unknown"],
+      detail: "no grounded option is currently eligible",
+    },
+    coarsePlanSummary: "empty proposal",
+    consideredOptionIds: [],
+    at: now,
+  };
+
+  const result: DecisionPassResult = {
+    decision,
+    boundRequirement: null,
+    options: [],
+    recommendation: null,
+    authorization: decision.authorization,
+  };
+
+  await t.mutation(async (ctx) => {
+    const ports = buildConvexManagementPorts(ctx as any);
+    await ports.persistDecision(result, now);
+  });
+
+  const groundedResult = await t.mutation(async (ctx) => {
+    const ports = buildConvexManagementPorts(ctx as any);
+    const grounded = await ports.loadGrounded("obj_empty_opts", 1);
+    const obj: Record<string, number> = {};
+    for (const [key, value] of grounded.entries()) obj[key] = value.length;
+    return obj;
+  });
+
+  assert.deepEqual(groundedResult, {}, "empty options must not appear in grounded map");
+});
+
 // ── Test 3: spendDecisionCall increments budget ─────────────────────────────
 
 test("spendDecisionCall increments used.managementDecisions through the shipped budget kernel; a second init does not reset it", async () => {
@@ -265,6 +314,7 @@ test("recordSatisfactionAttempt REFUSES an assignment_run_finished event (requir
     revision: 1,
     createdAt: now,
     updatedAt: now,
+    ...CP2_REQUIREMENT_FIELDS,
   };
 
   await t.mutation(async (ctx) =>
@@ -381,4 +431,185 @@ test("runManagementPass over an objective with no contract returns a typed outco
   assert.equal(outcome.objectiveState, "planning");
   assert.equal(outcome.acted, false);
   assert.ok(typeof outcome.summary === "string");
+});
+
+// ── Test 7: writeObjectiveState control-note bounding ───────────────────────
+
+test("writeObjectiveState repeated equivalent control_state notes replace in place instead of growing unbounded", async () => {
+  const t = convexTest(schema, modules);
+
+  await t.mutation(async (ctx) => {
+    await ctx.db.insert("objectives", {
+      key: "obj_test_7",
+      data: {
+        key: "obj_test_7",
+        request: "test",
+        createdAt: now,
+        updatedAt: now,
+        state: "planning",
+        activity: "test",
+        plan: null,
+        workItems: [],
+        run: null,
+        result: null,
+      },
+    });
+  });
+
+  // 100 passes, same "executing" state each time (the observed Luna/production
+  // pattern: a repeated no-op control_state on every pass).
+  for (let i = 0; i < 100; i += 1) {
+    await t.mutation(async (ctx) => {
+      const ports = buildConvexManagementPorts(ctx as any);
+      await ports.writeObjectiveState(
+        "obj_test_7",
+        "executing" as any,
+        `pass ${i}`,
+        now + i,
+      );
+    });
+  }
+
+  const row = await t.query(async (ctx) =>
+    (ctx.db as any)
+      .query("objectives")
+      .withIndex("by_key", (q: any) => q.eq("key", "obj_test_7"))
+      .unique(),
+  );
+  const notes = (row as any).data.management.controlNotes as Array<Record<string, unknown>>;
+  const controlStateNotes = notes.filter((n) => n.type === "control_state");
+  assert.equal(controlStateNotes.length, 1, "repeated identical state must replace, not append");
+  assert.equal(controlStateNotes[0].summary, "pass 99", "the replaced note carries the latest summary");
+  assert.ok(notes.length <= CONTROL_NOTE_LIMIT);
+});
+
+test("writeObjectiveState with distinct states caps controlNotes at CONTROL_NOTE_LIMIT and keeps the most recent", async () => {
+  const t = convexTest(schema, modules);
+
+  await t.mutation(async (ctx) => {
+    await ctx.db.insert("objectives", {
+      key: "obj_test_8",
+      data: {
+        key: "obj_test_8",
+        request: "test",
+        createdAt: now,
+        updatedAt: now,
+        state: "planning",
+        activity: "test",
+        plan: null,
+        workItems: [],
+        run: null,
+        result: null,
+      },
+    });
+  });
+
+  // Distinct control_state identities, forced with an interleaved
+  // pending_approval note per round (a genuinely different note each time)
+  // so the ceiling is exercised on more than CONTROL_NOTE_LIMIT live entries,
+  // and must trim oldest-first while the schema's real state literals stay valid.
+  const validStates = [
+    "planning",
+    "ready_to_execute",
+    "executing",
+    "waiting_for_resource",
+    "waiting",
+    "approval_required",
+    "blocked",
+    "escalated",
+    "recovery_required",
+    "failed",
+  ] as const;
+  const total = CONTROL_NOTE_LIMIT + 10;
+  for (let i = 0; i < total; i += 1) {
+    await t.mutation(async (ctx) => {
+      const ports = buildConvexManagementPorts(ctx as any);
+      await ports.writeObjectiveState(
+        "obj_test_8",
+        validStates[i % validStates.length] as any,
+        `pass ${i}`,
+        now + i,
+      );
+    });
+  }
+
+  const row = await t.query(async (ctx) =>
+    (ctx.db as any)
+      .query("objectives")
+      .withIndex("by_key", (q: any) => q.eq("key", "obj_test_8"))
+      .unique(),
+  );
+  const notes = (row as any).data.management.controlNotes as Array<Record<string, unknown>>;
+  // Every state cycles back to an identity already present (there are only
+  // validStates.length distinct control_state identities), so the ceiling is
+  // never actually exceeded here — this proves replace-in-place holds even
+  // as the state value itself changes across rounds, not just the summary.
+  assert.ok(notes.length <= CONTROL_NOTE_LIMIT);
+  const controlStateNotes = notes.filter((n) => n.type === "control_state");
+  assert.equal(controlStateNotes.length, validStates.length);
+  const last = controlStateNotes.find((n) => n.state === validStates[(total - 1) % validStates.length]);
+  assert.equal(last?.summary, `pass ${total - 1}`);
+});
+
+test("boundNotes ceiling trims oldest-first once genuinely distinct identities exceed CONTROL_NOTE_LIMIT", async () => {
+  const t = convexTest(schema, modules);
+
+  await t.mutation(async (ctx) => {
+    await ctx.db.insert("objectives", {
+      key: "obj_test_9",
+      data: {
+        key: "obj_test_9",
+        request: "test",
+        createdAt: now,
+        updatedAt: now,
+        state: "planning",
+        activity: "test",
+        plan: null,
+        workItems: [],
+        run: null,
+        result: null,
+      },
+    });
+  });
+
+  // pending_approval notes are keyed by question text, so distinct questions
+  // are genuinely distinct identities — enough of them to exceed the ceiling.
+  const total = CONTROL_NOTE_LIMIT + 10;
+  for (let i = 0; i < total; i += 1) {
+    await t.mutation(async (ctx) => {
+      const row = await (ctx.db as any)
+        .query("objectives")
+        .withIndex("by_key", (q: any) => q.eq("key", "obj_test_9"))
+        .unique();
+      const data = row.data;
+      const mgmt = data.management ?? {};
+      const { boundNotes } = await import("../convex/management");
+      await ctx.db.patch(row._id, {
+        data: {
+          ...data,
+          management: {
+            ...mgmt,
+            contractId: mgmt.contractId ?? null,
+            controlNotes: boundNotes(mgmt.controlNotes, {
+              type: "pending_approval",
+              question: `question ${i}`,
+              at: now + i,
+            }),
+          },
+        },
+      });
+    });
+  }
+
+  const row = await t.query(async (ctx) =>
+    (ctx.db as any)
+      .query("objectives")
+      .withIndex("by_key", (q: any) => q.eq("key", "obj_test_9"))
+      .unique(),
+  );
+  const notes = (row as any).data.management.controlNotes as Array<Record<string, unknown>>;
+  assert.equal(notes.length, CONTROL_NOTE_LIMIT);
+  const questions = notes.map((n) => n.question);
+  assert.ok(!questions.includes("question 0"), "oldest note must be evicted");
+  assert.ok(questions.includes(`question ${total - 1}`), "newest note must survive");
 });

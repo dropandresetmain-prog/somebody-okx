@@ -77,17 +77,29 @@ export function evaluateOptionEligibility(
   }
   if (primitivesClear) passed.push("primitives_governed");
 
-  // 2. Resource control (internal paths only). External options intentionally
-  //    consume classes the company does NOT control — that is the point.
-  if (input.kind !== "external") {
+  // 2. Resource / input ownership.
+  // Capability ≠ possession. A worker that can browse public pages does not
+  // mean the company owns licensed/private/attested inputs the Requirement needs.
+  // MAKE (internal): every required class must be company-controlled.
+  // HYBRID: the external half is allowed to supply its resourceClass — do NOT
+  // require that class to already be owned. Other required classes still must.
+  // BUY (external): ownership is intentionally not required.
+  if (input.kind === "internal" || input.kind === "hybrid") {
     const controlled = new Set(input.controlledResourceClasses);
+    const externallySupplied =
+      input.kind === "hybrid" && input.external?.resourceClass
+        ? input.external.resourceClass
+        : null;
     const missing = input.requiredResourceClasses.filter(
-      (resource) => !controlled.has(resource),
+      (resource) =>
+        resource !== externallySupplied && !controlled.has(resource),
     );
     if (missing.length) {
-      reasons.add("capability_not_governed");
-      detail.push(`internal path needs uncontrolled resources: ${missing.join(", ")}`);
-    } else passed.push("resources_controlled");
+      reasons.add("input_not_owned");
+      detail.push(
+        `internal path needs inputs the company does not own/control: ${missing.join(", ")}`,
+      );
+    } else passed.push("inputs_owned");
   }
 
   // 3. Deadline feasibility.
@@ -130,9 +142,23 @@ export function evaluateOptionEligibility(
           `offering ${external.offeringId} does not supply the exact required resource class`,
         );
       }
+      if (!external.executionPathConfigured) {
+        reasons.add("provider_incompatible");
+        detail.push(
+          `offering ${external.offeringId} has no configured execution path in the current runtime composition`,
+        );
+      }
+      if (!external.purposeScopeCompatible) {
+        reasons.add("provider_incompatible");
+        detail.push(
+          `offering ${external.offeringId} product scope cannot fulfill the current purpose`,
+        );
+      }
       if (
         external.registryVerified &&
-        external.compatibleResourceClass
+        external.compatibleResourceClass &&
+        external.executionPathConfigured &&
+        external.purposeScopeCompatible
       )
         passed.push("provider_identity_compatible");
     }

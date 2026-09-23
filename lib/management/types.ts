@@ -95,6 +95,37 @@ export type OutcomeContract = {
 
 export type RequirementPriority = "required" | "supporting";
 
+/**
+ * Semantic requirement discriminator (M6.1 serial protocol).
+ *
+ * - `deliverable` — founder-facing output stays open until the actual
+ *   deliverable exists. A verified BUY is an action receipt only.
+ * - `input` — the Requirement itself is that an accepted input/evidence
+ *   must become available; a scoped verified external result may satisfy it.
+ *
+ * Legacy rows omit this field; readers preserve historical proof-derived
+ * behavior when absent. Never infer from strategy, proofs, or keywords.
+ */
+export type RequirementKind = "deliverable" | "input";
+
+/**
+ * V7 review R4 final scope-origin correction — the APPLICATION-OWNED source
+ * that grants Requirement.authorizedPurposeKinds. Written only by Objective
+ * setup code (e.g. setupCanonicalDemoObjective) BEFORE interpretation runs;
+ * never by interpretation/model output, Requirement prose, or a worker's
+ * proposed purposeKind — those remain proposals only. Binding onto a
+ * newly-interpreted Requirement uses ONLY the structural, application-
+ * validated requirementKind discriminator, never free text (title/
+ * mustBeTrue/scope/expectedOutput). Absent = no purpose scope authorized for
+ * this Objective's Requirements (fail closed, unchanged from today).
+ */
+export type AuthorizedPurposePolicy = {
+  /** Governed PURPOSE_SCOPES kind; re-validated at bind time, never trusted blindly. */
+  purposeKind: string;
+  /** The ONE structurally-targeted Requirement kind this policy authorizes. */
+  targetRequirementKind: RequirementKind;
+};
+
 // CRITICAL: provider-candidate rejection ≠ satisfaction; MAKE decision ≠
 // satisfaction; worker-run completion ≠ satisfaction. Only an accepted
 // resolution with current proof moves state to "satisfied".
@@ -173,6 +204,28 @@ export type Requirement = {
   title: string;
   mustBeTrue: string;
   scope: string; // what is in / out of this requirement
+  /** Requirement keys that must be satisfied/waived before this one is decidable. */
+  dependsOnRequirementKeys: string[];
+  /** Resource classes / input facts this requirement needs (owned or acquired). */
+  requiredResourceClasses: string[];
+  /**
+   * V7 review R4 final correction — APPLICATION-OWNED authority: the governed
+   * PURPOSE_SCOPES kinds THIS Requirement is authorized to request. Never set
+   * from interpretation/model output, from Requirement prose, or from a
+   * worker's proposed purposeKind — those are proposals only, never the
+   * oracle for their own validation. Absent/empty = no purpose scope
+   * authorized: validateMissingInputProposal then refuses any proposed kind
+   * for this Requirement (fail closed), regardless of vocabulary/class
+   * validity.
+   */
+  authorizedPurposeKinds?: readonly string[];
+  /** Short statement of the expected output/state change, when known. */
+  expectedOutput: string | null;
+  /**
+   * Explicit semantic kind. Absent on legacy rows.
+   * Serial path: do not infer from strategy or attached proofs.
+   */
+  requirementKind?: RequirementKind;
   proofs: ProofSpec[];
   state: RequirementState;
   strategy: SatisfactionStrategy | null; // last authorized strategy
@@ -259,6 +312,10 @@ export type GroundedOption = {
     // (a model cannot flip these; they come from the registry lookup).
     registryVerified: boolean;
     compatibleResourceClass: boolean;
+    /** Adapter + composed physical boundary exist for this offering. */
+    executionPathConfigured: boolean;
+    /** Product purpose scope accepts the current need (or no product gate). */
+    purposeScopeCompatible: boolean;
   } | null;
   facts: EconomicFacts;
   // Stage 1 result, computed by application code, never by the model.
@@ -275,6 +332,7 @@ export type IneligibilityReason =
   | "unverified_source"
   | "worker_unavailable"
   | "contradictory_requirement"
+  | "input_not_owned" // required input/resource is not currently company-controlled
   | "unknown";
 
 export type OptionEligibility =
@@ -301,8 +359,13 @@ export type EligibilityInput = {
   // External options only: identity/endpoint compatibility + price.
   external: {
     offeringId: string | null;
+    resourceClass: string | null;
     registryVerified: boolean;
     compatibleResourceClass: boolean;
+    /** Adapter + composed boundary exist for this offering right now. */
+    executionPathConfigured: boolean;
+    /** Product-scope purpose gate; true when no gate or purpose accepted. */
+    purposeScopeCompatible: boolean;
     priceUsd: number | null;
   } | null;
   // Worker options only: availability after reservation filtering.
@@ -541,6 +604,25 @@ export type ExecutionIntent = {
   boundaryNote: string; // truthful statement of where M4 stopped and why
   createdAt: number;
   updatedAt: number;
+  /**
+   * When this BUY answers a validated ResourceNeed, the need's dedupeKey
+   * (purpose-scoped). Same resource class alone must not cross-cover.
+   */
+  needDedupeKey?: string | null;
+  /** Optional ResourceNeed id when known at authorization time. */
+  resourceNeedId?: string | null;
+  /**
+   * Bounded ResourceNeed purpose when known at authorization. Forwarded to the
+   * controlled merchant product request; never secrets or full Objective state.
+   */
+  purpose?: string | null;
+  /**
+   * V7 review R4 — the bound ResourceNeed's APPLICATION-VALIDATED requested
+   * scope kind (ResourceNeed.requestedScope), copied at authorization. The
+   * merchant request and result verification use this, never a stamped
+   * default. Null/absent = no validated scope → a scoped product refuses.
+   */
+  requestedPurposeKind?: string | null;
 };
 
 // ── Wake events (Convex-owned, idempotent) ───────────────────────────────────

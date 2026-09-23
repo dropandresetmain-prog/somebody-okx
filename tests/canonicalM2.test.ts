@@ -83,7 +83,7 @@ Pain point: not "too many tools" but "no one to hand the work to".`;
     assert.equal(v2.history.length, 2);
     assert.equal(v2.provenanceRunId, "run-growth-1");
     // The objective request is the canonical failing-launch text (seed data).
-    assert.match(CANONICAL_OBJECTIVE_REQUEST, /launch isn't working/i);
+    assert.match(CANONICAL_OBJECTIVE_REQUEST, /launch messaging/i);
   });
 });
 

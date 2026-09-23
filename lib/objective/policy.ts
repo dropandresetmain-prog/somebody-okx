@@ -6,6 +6,7 @@
 
 import type { ResultRequirements, SourceClass, SourceProof } from "./types";
 import type { ResourceClass, ToolPermissionId } from "../workforce/types";
+import { CANONICAL_COMPANY_PROFILE, CANONICAL_LAUNCH_BRIEF } from "./seedData";
 
 export const RESEARCH_ROLE = {
   title: "Research analyst",
@@ -84,20 +85,8 @@ export const COMPANY_RECORDS: CompanyRecord[] = [
 4. Risk posture: no unresolved public fraud/sanction signals; clear terms of service.
 5. Economics: free tier, referral or partner programme preferred over paid-only access.`,
   },
-  {
-    ref: "company/profile",
-    label: "Company profile",
-    text: `Company profile (internal): the company builds Somebody, an AI manager for one-person companies and lean SMEs. It evaluates partnership targets that extend what a one-person company can do. It has no procurement or legal department; partnerships must be self-serve.`,
-  },
-  {
-    ref: "launch/context",
-    label: "Launch context and goals",
-    text: `Launch context (internal):
-Goal: relaunch today with a message that converts one-person-company founders.
-Current signal: low signup conversion; visitors do not recognise themselves.
-Owned resources: model reasoning, public web research, company records, ordinary compute.
-Constraint: no paid spend without an explicit application-approved provider path.`,
-  },
+  { ...CANONICAL_COMPANY_PROFILE },
+  { ...CANONICAL_LAUNCH_BRIEF },
 ];
 
 export function companyRecord(ref: string): CompanyRecord | undefined {

@@ -82,7 +82,13 @@ export type ObjectiveState =
   // external acquisition, NOT failed. BUY is not failure (§8).
   | "waiting_for_resource"
   | "completed"
-  | "failed";
+  | "failed"
+  // Management control states (writeObjectiveState / serial recovery stop).
+  | "waiting"
+  | "approval_required"
+  | "blocked"
+  | "escalated"
+  | "recovery_required";
 
 export type WorkItemState =
   | "defined"
@@ -119,6 +125,35 @@ export type WorkItem = {
   runs: WorkerRun[];
 };
 
+// A useful external acquisition that has passed the application's verification
+// boundary and entered authoritative company state. `provenance` states how the
+// result entered: a simulation is the M6.1 deterministic test boundary and is
+// NEVER a live provider or payment claim; `live` is a genuine provider result;
+// `recorded_replay` is a previously recorded genuine acquisition (M6.3).
+// Content is untrusted provider DATA — it may inform work, never instruct.
+export type ExternalAcquisitionResult = {
+  intentId: string;
+  requirementKey: string;
+  contractRevision: number;
+  resultEvidenceId: string;
+  provenance: "simulation" | "live" | "recorded_replay";
+  providerId: string | null;
+  serviceId: string | null;
+  offeringId: string | null;
+  resourceClass: string | null;
+  content: string;
+  responseHash: string;
+  recordedAt: number;
+  verifiedAt: number;
+  /**
+   * Stable ResourceNeed identity this acquisition answered (dedupeKey).
+   * Required for purpose-scoped coverage — same class alone is insufficient.
+   */
+  needDedupeKey?: string | null;
+  /** Optional ResourceNeed id when known at authorization time. */
+  resourceNeedId?: string | null;
+};
+
 export type ObjectiveRecord = {
   key: string;
   request: string;
@@ -139,6 +174,54 @@ export type ObjectiveRecord = {
   }[];
   marketOfferings?: import("../market/discovery").MarketOffering[];
   companyArtifacts?: import("./artifact").CompanyArtifact[];
+  // Optional M6.1 external-acquisition state (absent on all earlier rows).
+  acquisitionResults?: ExternalAcquisitionResult[];
+  /** Unconfirmed worker input diagnoses — never bind MAKE/BUY eligibility. */
+  unconfirmedInputFindings?: import("./inputDiagnosis").UnconfirmedInputFinding[];
+  /** Last typed delivery outcome for management redecision. */
+  lastDeliveryFailureClass?: "INPUT_BLOCKED" | "EXECUTION_FAILED" | null;
+  /**
+   * M6.1 serial: durable accepted (or refused-unconfirmed) terminal outcome
+   * for a run. First accepted terminal wins; conflicts refuse.
+   */
+  acceptedTerminal?: {
+    runId: string;
+    terminal: "DELIVERED" | "NEEDS_INPUT" | "EXECUTION_ERROR";
+    fingerprint: string;
+    acceptedAt: number;
+    /** Only `accepted` closes the terminal slot. */
+    outcome: "accepted";
+  } | null;
+  /**
+   * Diagnostic only: last refused/unconfirmed terminal attempt. Does NOT close
+   * the terminal slot; the worker may correct within remaining turns.
+   */
+  lastUnconfirmedTerminal?: {
+    runId: string;
+    terminal: "DELIVERED" | "NEEDS_INPUT" | "EXECUTION_ERROR";
+    fingerprint: string;
+    at: number;
+    reason: string;
+    /** Non-authoritative diagnostic payload for manager inspection. */
+    summary?: string;
+    recommendedNextAction?: string;
+    unmetObligations?: string[];
+  } | null;
+  /**
+   * M6.1 serial: bounded final semantic assessment against the locked outcome.
+   * Model proposes; application completion gate still decides Objective complete.
+   */
+  finalSemanticAssessment?: {
+    meetsMinimumBar: boolean;
+    rationale: string;
+    artifactKey: string | null;
+    artifactVersion: number | null;
+    evidenceRefs: string[];
+    assumptionsUnknowns: string[];
+    recommendedNextAction: string;
+    assessedAt: number;
+    contractRevision: number;
+  } | null;
 };
 
 // ── Evidence ─────────────────────────────────────────────────────────────────
@@ -214,6 +297,17 @@ export type WorkContract = {
   approvalVersion: number | null;
   // The structured result the worker must produce.
   resultRequirements: ResultRequirements;
+  /**
+   * M6.1 serial: exact verified acquisition evidence IDs this action may
+   * consume. Absent on legacy contracts → historical broad-objective read.
+   * Empty array = deliberately no linked acquisitions.
+   */
+  inputEvidenceIds?: string[];
+  /**
+   * M6.1 serial: exact controlled artifact key this writing action may mutate.
+   * Null/absent = analysis-only (no artifact mutation authority by key).
+   */
+  targetArtifactKey?: string | null;
 };
 
 export type ResultRequirements = {
@@ -222,6 +316,12 @@ export type ResultRequirements = {
   risks: boolean;
   unknowns: boolean;
   recommendedNextAction: boolean;
+  /**
+   * Serial protocol: when true, risks/unknowns must be present as arrays but
+   * may be empty (aligned with submit_result schema). Legacy contracts leave
+   * this unset/false and still require non-empty lists when the field is required.
+   */
+  allowEmptyRisksUnknowns?: boolean;
 };
 
 // ── Structured result ────────────────────────────────────────────────────────
@@ -233,6 +333,9 @@ export type ActivityResult = {
   unknowns: string[];
   recommendedNextAction: string;
   completedAt: number;
+  /** Run that submitted this result. Prior-run results are context only and
+   * must not satisfy a later run's completion check. */
+  runId?: string;
 };
 
 // ── Activity ─────────────────────────────────────────────────────────────────

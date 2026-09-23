@@ -1,4 +1,4 @@
-// Wake planning for worker-originated signals.
+﻿// Wake planning for worker-originated signals.
 //
 // The external rail has planWakeForRailEvent (intents.ts). This is the WORKER
 // side: when a bounded That Guy run calls request_resource, the resource need
@@ -192,6 +192,43 @@ export function planWakeForTimer(input: {
       refKind: "objective",
       refId: input.timerKey,
       summary: `bounded timer #${input.sequence} for ${input.timerKey} elapsed`,
+      at: input.at,
+      consumedAt: null,
+    },
+  };
+}
+
+// RELIABILITY V7 (D) — CORRECTION CONTINUATION.
+//
+// When a negative final semantic assessment reopens a deliverable, the reopen
+// itself must OWN a deduplicated continuation: the correction may not depend on
+// an unrelated old worker timer or on some other event happening to arrive.
+// Identity is the REOPEN (objective + revision + which assessment attempt
+// produced it), so a redelivered gate pass rebuilds a byte-identical
+// eventId/dedupeKey and appendWakeEvent's by_dedupe collapses it. The reason is
+// "recovery_event": a SELF wake, so replaying it never counts as material
+// progress and cannot launder the no-progress ceiling.
+export function planWakeForReopen(input: {
+  objectiveKey: string;
+  contractRevision: number;
+  assessmentAttempt: number;
+  at: number;
+}): ResourceRequestWakePlan {
+  const dedupeKey = `reopen:${input.objectiveKey}:r${input.contractRevision}:a${input.assessmentAttempt}`;
+  const eventId = `wake_ro_${hash24(dedupeKey)}`;
+  return {
+    eventId,
+    dedupeKey,
+    reason: "recovery_event",
+    event: {
+      eventId,
+      objectiveKey: input.objectiveKey,
+      reason: "recovery_event",
+      // Pointer to the objective: the correction's facts are the reopened
+      // requirement rows plus management.lastFinalAssessmentCritique.
+      refKind: "objective",
+      refId: input.objectiveKey,
+      summary: `deliverable reopened after negative final assessment r${input.contractRevision} (attempt ${input.assessmentAttempt}); correction continuation owned by the reopen`,
       at: input.at,
       consumedAt: null,
     },

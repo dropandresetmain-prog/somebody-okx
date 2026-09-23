@@ -536,6 +536,8 @@ export type MerchantReplayFetch = (
   },
 ) => Promise<MerchantReplayResponse>;
 
+export type MerchantReplayRequestHeaders = Record<string, string>;
+
 export const MERCHANT_REPLAY_TIMEOUT_MS = 20_000;
 /** M3 only replays a signed payment to the OKX Mock Merchant origin. */
 export const M3_ALLOWED_MERCHANT_ORIGINS: readonly string[] = ["https://www.okx.com"];
@@ -664,6 +666,7 @@ export class OfficialSignOnlyReplayExecutor implements PaymentExecutor {
     private readonly now: () => number = () => Date.now(),
     private readonly replayFetch: MerchantReplayFetch = (url, init) => fetch(url, init),
     private readonly replayTimeoutMs: number = MERCHANT_REPLAY_TIMEOUT_MS,
+    private readonly merchantRequestHeaders: MerchantReplayRequestHeaders = {},
   ) {}
 
   async executeApprovedPayment(input: {
@@ -828,7 +831,10 @@ export class OfficialSignOnlyReplayExecutor implements PaymentExecutor {
     try {
       response = await this.replayFetch(canonicalMerchantUrl, {
         method: "GET",
-        headers: { [headerName]: authorization },
+        headers: {
+          ...this.merchantRequestHeaders,
+          [headerName]: authorization,
+        },
         redirect: "manual",
         signal: controller.signal,
       });

@@ -226,12 +226,27 @@ export type PaymentExecutor = {
 
 /**
  * Settlement readback abstraction: settlement is a distinct fact from
- * submission and from result verification.
+ * submission and from result verification. A reader must NEVER flatten an
+ * observed non-settlement into a generic `{ settled: false }`: only a genuine
+ * "not yet observable" (`pending`, or a legacy reader that cannot classify)
+ * may REST. An observed reverted receipt is PROVEN non-settlement; an observed
+ * mismatch contradicts the expected settlement. Both are terminal evidence and
+ * must reach the rail unchanged.
  */
+export type SettlementObservation =
+  /** Legacy surface: boolean truth only. Absent classification === pending. */
+  | { settled: boolean; settledAt?: number }
+  /** Explicit "not yet observable": REST; nothing terminal was learned. */
+  | { settled: false; observation: "pending" }
+  /** Settlement proven on-chain (status and transfer log independently verified). */
+  | { settled: true; observation: "settled"; settledAt?: number }
+  /** Receipt observed with status 0x0: proven non-settlement. */
+  | { settled: false; observation: "reverted"; transactionHash: string; blockNumber?: string }
+  /** Observed chain data contradicts the expected settlement terms. */
+  | { settled: false; observation: "mismatch"; reason: string; blockNumber?: string };
+
 export type SettlementReader = {
-  readSettlement(
-    transactionHash: string,
-  ): Promise<{ settled: boolean; settledAt?: number }>;
+  readSettlement(transactionHash: string): Promise<SettlementObservation>;
 };
 
 /**

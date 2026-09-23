@@ -49,4 +49,12 @@ export const VERIFIED_SERVICE_REGISTRY: readonly RegistryEntry[] = [
     notes:
       "Live-X evidence fallback — provides live external X data rather than generic reasoning.",
   },
+  {
+    serviceId: "founder_narrative_pulse",
+    providerId: "somebody_controlled_test",
+    resourceClasses: ["proprietary_data"],
+    verified: true,
+    notes:
+      "Controlled X Layer TESTNET merchant product — qualitative synthetic founder-messaging research only (not live Twitter/NewsLiquid/conversion data).",
+  },
 ];

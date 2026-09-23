@@ -58,14 +58,13 @@ function request(port: number): Promise<{
 }
 
 describe("controlled M3 seller", () => {
-  it("accepts only the exact protected result contract", () => {
+  it("accepts only the founder_narrative_pulse protected result contract", () => {
     assert.equal(verifyM3ProtectedResult({
       ok: true,
       message: "Somebody M3 payment verified",
       resource: "m3-paid-ping",
-    }), true);
+    }), false);
     assert.equal(verifyM3ProtectedResult("hello"), false);
-    assert.equal(verifyM3ProtectedResult({ ok: true, message: "Somebody M3 payment verified", resource: "wrong" }), false);
     assert.equal(verifyM3ProtectedResult({ error: "whatever" }), false);
   });
 

@@ -16,6 +16,10 @@
 import { resolveCompatibleClasses } from "../market/registry";
 import type { RegistryEntry } from "../market/registryData";
 import type { MarketOffering } from "../market/discovery";
+import {
+  externalOfferingAcceptsPurpose,
+  hasConfiguredExternalExecutionPath,
+} from "../providers/executionCapability";
 import { requireCapability, isControlledCapabilityKey } from "../workforce/catalog";
 import type { ResourceClass } from "../workforce/types";
 import {
@@ -37,6 +41,18 @@ export type GroundRegistryOfferingsInput = {
   requiredResourceClass: ResourceClass;
   // Observation timestamp passed in (no Date.now() reads).
   at: number;
+  /**
+   * Bounded ResourceNeed purpose for product-scope gates. When omitted,
+   * offerings without a product gate remain compatible; gated products stay
+   * open only when their contract accepts an empty purpose.
+   */
+  purpose?: string | null;
+  /**
+   * V7 review R4 — the driving ResourceNeed's APPLICATION-VALIDATED requested
+   * scope kind (never a model label, never inferred from prose). Absent/null
+   * means no validated scope: purpose-scoped offerings are incompatible.
+   */
+  purposeKind?: string | null;
 };
 
 export type GroundRegistryOfferingsResult = {
@@ -49,7 +65,7 @@ export type GroundRegistryOfferingsResult = {
 export function groundRegistryOfferings(
   input: GroundRegistryOfferingsInput,
 ): GroundRegistryOfferingsResult {
-  const { registry, discovered, requiredResourceClass, at } = input;
+  const { registry, discovered, requiredResourceClass, at, purpose, purposeKind } = input;
 
   const offerings: RegistryOffering[] = [];
   // Pre-compute facts keyed by offeringId so factsForOffering is O(1).
@@ -66,6 +82,22 @@ export function groundRegistryOfferings(
       : [];
     const compatibleResourceClass = compatibleClasses.includes(requiredResourceClass);
 
+    // Runtime executability is independent of registry membership: a verified
+    // registry row is not automatically an executable BUY path.
+    const executionPathConfigured = hasConfiguredExternalExecutionPath({
+      providerId: offering.providerId,
+      serviceId: offering.serviceId,
+    });
+    // Authority = validated requested scope ∩ the adapter's declared
+    // fulfillment scope. Prose can only REFUSE (affirmative out-of-scope
+    // claims); it can never make an offering compatible.
+    const purposeScopeCompatible = externalOfferingAcceptsPurpose({
+      serviceId: offering.serviceId,
+      purpose,
+      purposeKind: purposeKind ?? null,
+      resourceClass: requiredResourceClass,
+    });
+
     // The single resource class this offering supplies for the need. When the
     // registry declares multiple classes we pick the one matching the need;
     // otherwise the first declared class (the offering's primary identity).
@@ -76,15 +108,16 @@ export function groundRegistryOfferings(
         : "";
 
     // Price: from the offering's quote, parsed as a number. Null when absent.
-    // Provenance is "provider_quote" (the offering's source returned it) or
-    // null when no price exists.
+    // Provenance is honest: snapshot/registry fixtures are registry_data, never
+    // labelled as a fresh live provider_quote.
     let priceUsd: number | null = null;
     let priceProvenance: FactProvenance = "unknown";
     if (offering.price) {
       const parsed = parseDecimalAmount(offering.price.amount);
       if (parsed !== null) {
         priceUsd = parsed;
-        priceProvenance = "provider_quote";
+        priceProvenance =
+          offering.source.kind === "snapshot" ? "registry_data" : "provider_quote";
       }
     }
 
@@ -94,8 +127,11 @@ export function groundRegistryOfferings(
       serviceId: offering.serviceId,
       resourceClass,
       priceUsd,
+      priceProvenance,
       registryVerified,
       compatibleResourceClass,
+      executionPathConfigured,
+      purposeScopeCompatible,
     };
     offerings.push(registryOffering);
 

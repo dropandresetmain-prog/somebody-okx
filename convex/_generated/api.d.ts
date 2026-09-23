@@ -8,7 +8,8 @@
  * @module
  */
 
-import type * as workforce from "./internal/workforce.js";
+import type * as internal_workforce from "../internal/workforce.js";
+import type * as m3Driver from "../m3Driver.js";
 import type * as m5Workspace from "../m5Workspace.js";
 import type * as management from "../management.js";
 import type * as managementValidators from "../managementValidators.js";
@@ -16,6 +17,8 @@ import type * as objectiveArgs from "../objectiveArgs.js";
 import type * as objectiveRunner from "../objectiveRunner.js";
 import type * as objectiveValidators from "../objectiveValidators.js";
 import type * as objectives from "../objectives.js";
+import type * as productCommands from "../productCommands.js";
+import type * as productWorkspace from "../productWorkspace.js";
 import type * as workforceGuards from "../workforceGuards.js";
 import type * as workforceValidators from "../workforceValidators.js";
 
@@ -26,7 +29,8 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
-  "internal/workforce": typeof workforce;
+  "internal/workforce": typeof internal_workforce;
+  m3Driver: typeof m3Driver;
   m5Workspace: typeof m5Workspace;
   management: typeof management;
   managementValidators: typeof managementValidators;
@@ -34,6 +38,8 @@ declare const fullApi: ApiFromModules<{
   objectiveRunner: typeof objectiveRunner;
   objectiveValidators: typeof objectiveValidators;
   objectives: typeof objectives;
+  productCommands: typeof productCommands;
+  productWorkspace: typeof productWorkspace;
   workforceGuards: typeof workforceGuards;
   workforceValidators: typeof workforceValidators;
 }>;

@@ -9,9 +9,11 @@
 
 import { validateCapabilitySpec } from "./capability";
 import { isSatisfactionStrategy } from "./types";
+import { isGovernedPurposeKind } from "../workforce/catalog";
 import type { ProofFacts } from "./requirements";
 import type { ParsedOutcomeContract, ParsedRequirementProposal } from "./proposals";
 import type {
+  AuthorizedPurposePolicy,
   OutcomeContract,
   OutcomeLevel,
   ProofSpec,
@@ -98,6 +100,13 @@ export type RequirementBuildInput = {
   // Application-side knowledge for proof attachment: which artifact key (if
   // any) this objective mutates, and the strategy the application would bind.
   artifactKeyForInternalProof: string | null;
+  /**
+   * V7 review R4 final correction — carried forward from the CURRENT
+   * persisted Requirement row (never from `proposed`/interpretation output):
+   * a decision-pass rebuild must not silently drop already-authorized
+   * purpose scope. Absent/empty = still no purpose scope authorized.
+   */
+  authorizedPurposeKinds?: readonly string[];
   at: number;
 };
 
@@ -151,6 +160,12 @@ export function buildSemanticRequirement(input: {
       title: proposed.title,
       mustBeTrue: proposed.mustBeTrue,
       scope: proposed.scope,
+      dependsOnRequirementKeys: [...(proposed.dependsOnRequirementKeys ?? [])],
+      requiredResourceClasses: [...(proposed.requiredResourceClasses ?? [])],
+      expectedOutput: proposed.expectedOutput ?? null,
+      ...(proposed.requirementKind
+        ? { requirementKind: proposed.requirementKind }
+        : {}),
       proofs: [],
       state: "active",
       strategy: null,
@@ -162,6 +177,39 @@ export function buildSemanticRequirement(input: {
       updatedAt: input.at,
     },
   };
+}
+
+/**
+ * V7 review R4 final scope-origin correction — binds an APPLICATION-OWNED
+ * purpose-scope policy onto the ONE newly-interpreted Requirement it
+ * structurally targets.
+ *
+ * The policy pre-exists interpretation (written only by Objective setup, e.g.
+ * setupCanonicalDemoObjective) and is NEVER derived from interpretation/model
+ * output, Requirement prose, or a worker's proposed purposeKind. Matching
+ * uses only `requirementKind` — a value interpretation itself coerces into a
+ * small governed enum (parseRequirementProposals), never free text.
+ *
+ * Fails closed: an ungoverned purposeKind, or zero / more than one
+ * structurally-matching Requirement in this interpretation batch, grants
+ * nothing rather than guessing which row was meant.
+ */
+export function bindAuthorizedPurposePolicy(
+  requirements: readonly Requirement[],
+  policy: AuthorizedPurposePolicy | null | undefined,
+): Requirement[] {
+  if (!policy) return [...requirements];
+  if (!isGovernedPurposeKind(policy.purposeKind)) return [...requirements];
+  const matches = requirements.filter(
+    (requirement) => requirement.requirementKind === policy.targetRequirementKind,
+  );
+  if (matches.length !== 1) return [...requirements];
+  const target = matches[0]!;
+  return requirements.map((requirement) =>
+    requirement === target
+      ? { ...requirement, authorizedPurposeKinds: [policy.purposeKind] }
+      : requirement,
+  );
 }
 
 export function buildRequirement(
@@ -189,6 +237,15 @@ export function buildRequirement(
       title: proposed.title,
       mustBeTrue: proposed.mustBeTrue,
       scope: proposed.scope,
+      dependsOnRequirementKeys: [...(proposed.dependsOnRequirementKeys ?? [])],
+      requiredResourceClasses: [...(proposed.requiredResourceClasses ?? [])],
+      ...(input.authorizedPurposeKinds && input.authorizedPurposeKinds.length > 0
+        ? { authorizedPurposeKinds: [...input.authorizedPurposeKinds] }
+        : {}),
+      expectedOutput: proposed.expectedOutput ?? null,
+      ...(proposed.requirementKind
+        ? { requirementKind: proposed.requirementKind }
+        : {}),
       proofs,
       state: "active",
       strategy,
@@ -208,8 +265,16 @@ function attachGovernedProofs(
   strategy: SatisfactionStrategy | null,
   artifactKey: string | null,
 ): ProofSpec[] {
-  // Strategy-derived proof, application-owned. The bar level is always
-  // reflected in a real proof method, never in the model's prose.
+  // Explicit semantic kind owns proof attachment for serial rows.
+  // Strategy must not redefine what the founder asked to receive.
+  if (proposed.requirementKind === "deliverable") {
+    return attachDeliverableProofs(proposed, artifactKey);
+  }
+  if (proposed.requirementKind === "input") {
+    return attachInputProofs(proposed, strategy);
+  }
+
+  // Legacy (kind omitted from older callers): strategy-derived proofs.
   const proofs: ProofSpec[] = [];
   if (strategy === "BUY" || strategy === "HYBRID") {
     proofs.push({
@@ -220,7 +285,7 @@ function attachGovernedProofs(
     });
   }
   if (strategy === "MAKE" || strategy === "HYBRID") {
-    if (artifactKey) {
+    if (artifactKey && proposed.expectedOutput) {
       proofs.push({
         proofKey: "artifact_change",
         description: `controlled company artifact ${artifactKey} advanced by an accepted run`,
@@ -243,9 +308,63 @@ function attachGovernedProofs(
       params: {},
     });
   }
-  // WAIT / BLOCK attach no proof: they cannot be satisfied by work, only by a
-  // later strategy decision or an authorized waiver.
   void contract;
+  return proofs;
+}
+
+/** Founder-facing deliverable proofs — independent of MAKE vs BUY selection. */
+function attachDeliverableProofs(
+  proposed: ParsedRequirementProposal,
+  artifactKey: string | null,
+): ProofSpec[] {
+  const proofs: ProofSpec[] = [];
+  if (artifactKey && proposed.expectedOutput) {
+    proofs.push({
+      proofKey: "artifact_change",
+      description: `controlled company artifact ${artifactKey} advanced by an accepted run`,
+      proofKind: "company_artifact_version",
+      params: { artifactKey, minVersion: 2 },
+    });
+  }
+  proofs.push({
+    proofKey: "observation",
+    description: "at least one application-recorded observation supports the requirement",
+    proofKind: "application_observation",
+    params: {},
+  });
+  return proofs;
+}
+
+/** Explicit input requirements may be satisfied by a scoped verified acquisition. */
+function attachInputProofs(
+  proposed: ParsedRequirementProposal,
+  strategy: SatisfactionStrategy | null,
+): ProofSpec[] {
+  const proofs: ProofSpec[] = [];
+  if (strategy === "BUY" || strategy === "HYBRID" || strategy === null) {
+    proofs.push({
+      proofKey: "external_result",
+      description: `acquired external result for ${proposed.title} persisted and verified`,
+      proofKind: "verified_external_result",
+      params: {},
+    });
+  }
+  if (strategy === "MAKE") {
+    proofs.push({
+      proofKey: "observation",
+      description: "at least one application-recorded observation supports the requirement",
+      proofKind: "application_observation",
+      params: {},
+    });
+  }
+  if (strategy === "ASK_FOUNDER") {
+    proofs.push({
+      proofKey: "founder_answer",
+      description: "founder answer recorded against this requirement",
+      proofKind: "founder_confirmation",
+      params: {},
+    });
+  }
   return proofs;
 }
 

@@ -81,16 +81,16 @@ test("R3: the actual Convex bridge refuses a bearer-token-only forged verificati
   process.env.M4_M3_FACT_ATTESTATION_KEY = key;
   try {
     const bad = fixture();
-    const forged: M3DriverFact = { intentId: "int_bridge", expectedUpdatedAt: at, eventKind: "submitted", eventId: "forged_submitted", dedupeKey: "intent:int_bridge:submitted:forged", evidenceId: null, note: "forged", at };
+    const forged: M3DriverFact = { intentId: "int_bridge", expectedUpdatedAt: at, eventKind: "submitted", eventId: "forged_submitted", dedupeKey: "intent:int_bridge:submitted:forged", evidenceId: null, note: "forged", at, acquisitionContentHash: null };
     await assert.rejects(() => invoke(bad.ctx, forged, "00".repeat(32)), /attestation is invalid/);
     assert.equal(bad.current().state, "awaiting_m3");
 
     const good = fixture();
     const submitted: M3DriverFact = { ...forged, eventId: "m3_submitted", dedupeKey: "intent:int_bridge:submitted:m3", note: "attested M3 submission" };
     await invoke(good.ctx, submitted);
-    const result: M3DriverFact = { intentId: "int_bridge", expectedUpdatedAt: at, eventKind: "provider_result", eventId: "m3_result", dedupeKey: "intent:int_bridge:provider_result:m3", evidenceId: "ev_result_attested", note: "attested M3 result", at: at + 1 };
+    const result: M3DriverFact = { intentId: "int_bridge", expectedUpdatedAt: at, eventKind: "provider_result", eventId: "m3_result", dedupeKey: "intent:int_bridge:provider_result:m3", evidenceId: "ev_result_attested", note: "attested M3 result", at: at + 1, acquisitionContentHash: null };
     await invoke(good.ctx, result);
-    const verification: M3DriverFact = { intentId: "int_bridge", expectedUpdatedAt: at + 1, eventKind: "verification_passed", eventId: "m3_verify", dedupeKey: "intent:int_bridge:verification_result:m3", evidenceId: "ev_verify_attested", note: "attested M3 verification", at: at + 2 };
+    const verification: M3DriverFact = { intentId: "int_bridge", expectedUpdatedAt: at + 1, eventKind: "verification_passed", eventId: "m3_verify", dedupeKey: "intent:int_bridge:verification_result:m3", evidenceId: "ev_verify_attested", note: "attested M3 verification", at: at + 2, acquisitionContentHash: null };
     await invoke(good.ctx, verification);
     assert.equal(good.current().state, "verified");
   } finally {
@@ -106,7 +106,7 @@ test("R3: the actual Convex bridge rejects configuration that reuses the bearer 
   process.env.M4_M3_FACT_ATTESTATION_KEY = token;
   try {
     const bridge = fixture();
-    const fact: M3DriverFact = { intentId: "int_bridge", expectedUpdatedAt: at, eventKind: "submitted", eventId: "same_secret", dedupeKey: "intent:int_bridge:submitted:same_secret", evidenceId: null, note: "bad configuration", at };
+    const fact: M3DriverFact = { intentId: "int_bridge", expectedUpdatedAt: at, eventKind: "submitted", eventId: "same_secret", dedupeKey: "intent:int_bridge:submitted:same_secret", evidenceId: null, note: "bad configuration", at, acquisitionContentHash: null };
     await assert.rejects(() => invoke(bridge.ctx, fact, createHmac("sha256", token).update(canonicalM3DriverFact(fact)).digest("hex")), /must be distinct/);
     assert.equal(bridge.current().state, "awaiting_m3");
   } finally {
@@ -122,7 +122,7 @@ test("R3: an attested already-submitted financial fact remains reportable after 
   process.env.M4_M3_FACT_ATTESTATION_KEY = key;
   try {
     const stale = fixture(2);
-    const submitted: M3DriverFact = { intentId: "int_bridge", expectedUpdatedAt: at, eventKind: "submitted", eventId: "m3_submitted_stale", dedupeKey: "intent:int_bridge:submitted:stale", evidenceId: null, note: "attested pre-revision submission", at };
+    const submitted: M3DriverFact = { intentId: "int_bridge", expectedUpdatedAt: at, eventKind: "submitted", eventId: "m3_submitted_stale", dedupeKey: "intent:int_bridge:submitted:stale", evidenceId: null, note: "attested pre-revision submission", at, acquisitionContentHash: null };
     await invoke(stale.ctx, submitted);
     assert.equal(stale.current().state, "handed_off");
   } finally {

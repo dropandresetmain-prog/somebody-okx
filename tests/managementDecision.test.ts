@@ -13,6 +13,7 @@ import type { GroundingContext, RegistryOffering } from "../lib/management/decis
 import type { EconomicFacts, WorkerRecord } from "../lib/management/types";
 import type { EligibilityFacts } from "../lib/management/options";
 import { factValue, optionIdFor } from "../lib/management/options";
+import { CP2_DECISION_PASS_FIELDS } from "./helpers/cp2Requirement";
 
 const at = 1700000000000;
 
@@ -75,8 +76,11 @@ function offering(overrides: Partial<RegistryOffering> = {}): RegistryOffering {
     serviceId: "svc_research_sprint",
     resourceClass: "public_web",
     priceUsd: 1.5,
+    priceProvenance: "provider_quote",
     registryVerified: true,
     compatibleResourceClass: true,
+    executionPathConfigured: true,
+    purposeScopeCompatible: true,
     ...overrides,
   };
 }
@@ -172,6 +176,7 @@ function pass(overrides: Partial<Parameters<typeof runManagerialDecisionPass>[0]
     spendApprovalId: "appr_test_decision_1",
     externalAuthority: "m3_available_bounded",
     waiverRequested: false,
+    ...CP2_DECISION_PASS_FIELDS,
     ...overrides,
   });
 }

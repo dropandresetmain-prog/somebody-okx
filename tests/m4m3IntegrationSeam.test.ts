@@ -48,6 +48,7 @@ import type {
   GroundedOption,
   Requirement,
 } from "../lib/management/types";
+import { CP2_REQUIREMENT_FIELDS } from "./helpers/cp2Requirement";
 import type {
   PaymentExecutor,
   PaymentSubmissionResult,
@@ -131,6 +132,8 @@ function eligibleBuyOption(priceUsd = 4): GroundedOption {
     priceProvenance: "provider_quote",
     registryVerified: true,
     compatibleResourceClass: true,
+    executionPathConfigured: true,
+    purposeScopeCompatible: true,
     facts: {
       ...EMPTY_FACTS,
       externalPriceUsd: {
@@ -962,5 +965,6 @@ function buildVerifiedExternalRequirement(contractRevision: number, intentId: st
     revision: 1,
     createdAt: at0,
     updatedAt: at0,
+    ...CP2_REQUIREMENT_FIELDS,
   };
 }

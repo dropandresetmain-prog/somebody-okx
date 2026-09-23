@@ -49,6 +49,7 @@ import type {
   OutcomeContract,
   Requirement,
 } from "../lib/management/types";
+import { cp2ParsedRequirement } from "./helpers/cp2Requirement";
 
 const modules = {
   "../convex/schema.ts": () => import("../convex/schema"),
@@ -98,13 +99,13 @@ function makeRequirement(objectiveKey: string, strategy: "MAKE" | "BUY" = "MAKE"
     {
       objectiveKey,
       contract: contractFor(objectiveKey),
-      proposed: {
+      proposed: cp2ParsedRequirement({
         requirementKey: REQ,
         priority: "required",
         title: "An observation supports the claim",
         mustBeTrue: "the application recorded a sourced observation",
         scope: "one governed observation",
-      },
+      }),
       artifactKeyForInternalProof: null,
       at: now,
     },
@@ -558,7 +559,7 @@ test("A5-8 legit delivery: kernel-bound observation satisfies via the verify pat
 
 // ── Run-fact reconciliation ──────────────────────────────────────────────────
 
-test("A5-9 reconciliation: a completed managed run becomes result_submitted at pass entry — and without proof it satisfies nothing", async () => {
+test("A5-9 reconciliation: completed managed run submits then failed verification exits cleanly (no proof loop)", async () => {
   const t = convexTest(schema, modules);
   const key = "obj_a5_reconcile";
   const requirement = makeRequirement(key);
@@ -588,7 +589,11 @@ test("A5-9 reconciliation: a completed managed run becomes result_submitted at p
   );
 
   const [assignment] = await assignmentRows(t, key);
-  assert.equal(assignment.data.state, "result_submitted", "run facts, reconciled at the entry, drive the delivery row");
+  // Entry reconciles running→result_submitted, then verify fails closed into
+  // `failed` so the next decision can mint a new identity (CP1 E).
+  assert.equal(assignment.data.state, "failed", "unproven submitted result exits verify as failed delivery");
   const [stored] = await requirementRows(t, key);
   assert.equal(stored.data.state, "active", "a submitted result with NO proof facts satisfies nothing");
+  assert.equal(stored.data.strategy, null, "strategy cleared so a fresh authorization can mint a new identity");
+  assert.ok(stored.data.proofs.length > 0, "proof obligations are preserved (not wiped to vacuous [])");
 });

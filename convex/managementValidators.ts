@@ -126,6 +126,17 @@ export const vRequirement = v.object({
   title: v.string(),
   mustBeTrue: v.string(),
   scope: v.string(),
+  // Optional for rows written before M6.1 CP2; readers normalize to [].
+  dependsOnRequirementKeys: v.optional(v.array(v.string())),
+  requiredResourceClasses: v.optional(v.array(v.string())),
+  // V7 review R4 final correction — application-owned authorized purpose
+  // scope kinds for this Requirement. Never derived from interpretation.
+  authorizedPurposeKinds: v.optional(v.array(v.string())),
+  expectedOutput: v.optional(v.union(v.string(), v.null())),
+  // M6.1 serial: explicit semantic discriminator. Absent on legacy rows.
+  requirementKind: v.optional(
+    v.union(v.literal("deliverable"), v.literal("input")),
+  ),
   proofs: v.array(vProofSpec),
   state: vRequirementState,
   strategy: v.union(vSatisfactionStrategy, v.null()),
@@ -194,6 +205,7 @@ export const vIneligibilityReason = v.union(
   v.literal("unverified_source"),
   v.literal("worker_unavailable"),
   v.literal("contradictory_requirement"),
+  v.literal("input_not_owned"),
   v.literal("unknown"),
 );
 
@@ -235,6 +247,8 @@ export const vGroundedOption = v.object({
       priceSource: vFactProvenance,
       registryVerified: v.boolean(),
       compatibleResourceClass: v.boolean(),
+      executionPathConfigured: v.boolean(),
+      purposeScopeCompatible: v.boolean(),
     }),
     v.null(),
   ),
@@ -511,6 +525,10 @@ export const vExecutionIntent = v.object({
   boundaryNote: v.string(),
   createdAt: v.number(),
   updatedAt: v.number(),
+  needDedupeKey: v.optional(nullableString),
+  resourceNeedId: v.optional(nullableString),
+  purpose: v.optional(nullableString),
+  requestedPurposeKind: v.optional(nullableString),
 });
 
 // ── Wake events ──────────────────────────────────────────────────────────────

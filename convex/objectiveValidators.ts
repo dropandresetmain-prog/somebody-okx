@@ -1,4 +1,4 @@
-// Validators mirroring lib/objective/types.ts for the fresh current-product
+﻿// Validators mirroring lib/objective/types.ts for the fresh current-product
 // tables. Evidence and activity are stored in their own tables and joined in
 // the read model.
 
@@ -64,6 +64,7 @@ export const resultRequirements = v.object({
   risks: v.boolean(),
   unknowns: v.boolean(),
   recommendedNextAction: v.boolean(),
+  allowEmptyRisksUnknowns: v.optional(v.boolean()),
 });
 
 export const sourceProof = v.object({
@@ -94,6 +95,10 @@ export const workContract = v.object({
   // Authority snapshot for gated actions. Always null in M1 MAKE work.
   approvalVersion: v.union(v.number(), v.null()),
   resultRequirements,
+  // M6.1 serial: action-scoped acquisition evidence + artifact target.
+  // Absent on legacy rows.
+  inputEvidenceIds: v.optional(v.array(v.string())),
+  targetArtifactKey: v.optional(v.union(v.string(), v.null())),
 });
 
 export const workerRun = v.object({
@@ -137,6 +142,8 @@ export const activityResult = v.object({
   unknowns: v.array(v.string()),
   recommendedNextAction: v.string(),
   completedAt: v.number(),
+  // Optional for older rows written before run-binding; submitResult always sets it.
+  runId: v.optional(v.string()),
 });
 
 export const objectiveRecord = v.object({
@@ -152,6 +159,12 @@ export const objectiveRecord = v.object({
     v.literal("waiting_for_resource"),
     v.literal("completed"),
     v.literal("failed"),
+    // Management quiescent / control states written by writeObjectiveState.
+    v.literal("waiting"),
+    v.literal("approval_required"),
+    v.literal("blocked"),
+    v.literal("escalated"),
+    v.literal("recovery_required"),
   ),
   activity: v.string(),
   plan: v.union(capabilityPlan, v.null()),
@@ -164,6 +177,72 @@ export const objectiveRecord = v.object({
   candidateAssessments: v.optional(v.array(v.any())),
   marketOfferings: v.optional(v.array(v.any())),
   companyArtifacts: v.optional(v.array(v.any())),
+  // M6.1 — persisted verified external acquisition results. Storage only; the
+  // truth a result carries is whatever its execution intent verified.
+  acquisitionResults: v.optional(v.array(v.any())),
+  // Application-owned input-diagnosis diagnostics (never bind eligibility).
+  unconfirmedInputFindings: v.optional(v.array(v.any())),
+  // Typed delivery outcome for redecision: INPUT_BLOCKED vs EXECUTION_FAILED.
+  lastDeliveryFailureClass: v.optional(
+    v.union(
+      v.literal("INPUT_BLOCKED"),
+      v.literal("EXECUTION_FAILED"),
+      v.null(),
+    ),
+  ),
+  // M6.1 serial: durable terminal handoff record for the run.
+  acceptedTerminal: v.optional(
+    v.union(
+      v.object({
+        runId: v.string(),
+        terminal: v.union(
+          v.literal("DELIVERED"),
+          v.literal("NEEDS_INPUT"),
+          v.literal("EXECUTION_ERROR"),
+        ),
+        fingerprint: v.string(),
+        acceptedAt: v.number(),
+        outcome: v.literal("accepted"),
+      }),
+      v.null(),
+    ),
+  ),
+  lastUnconfirmedTerminal: v.optional(
+    v.union(
+      v.object({
+        runId: v.string(),
+        terminal: v.union(
+          v.literal("DELIVERED"),
+          v.literal("NEEDS_INPUT"),
+          v.literal("EXECUTION_ERROR"),
+        ),
+        fingerprint: v.string(),
+        at: v.number(),
+        reason: v.string(),
+        // Non-authoritative diagnostic payload for manager inspection.
+        summary: v.optional(v.string()),
+        recommendedNextAction: v.optional(v.string()),
+        unmetObligations: v.optional(v.array(v.string())),
+      }),
+      v.null(),
+    ),
+  ),
+  finalSemanticAssessment: v.optional(
+    v.union(
+      v.object({
+        meetsMinimumBar: v.boolean(),
+        rationale: v.string(),
+        artifactKey: v.union(v.string(), v.null()),
+        artifactVersion: v.union(v.number(), v.null()),
+        evidenceRefs: v.array(v.string()),
+        assumptionsUnknowns: v.array(v.string()),
+        recommendedNextAction: v.string(),
+        assessedAt: v.number(),
+        contractRevision: v.number(),
+      }),
+      v.null(),
+    ),
+  ),
   // M4 management engine fields — optional so M2 rows keep loading.
   // Storage only; business rules live in lib/management/*.
   management: v.optional(
@@ -189,6 +268,9 @@ export const objectiveRecord = v.object({
       interpretationRequestId: v.optional(v.union(v.string(), v.null())),
       interpretationAttempts: v.optional(v.number()),
       interpretationDetail: v.optional(v.union(v.string(), v.null())),
+      // V7 review R3 — the pending interpretation reservation's own deadline;
+      // its watchdog never expires it earlier.
+      interpretationExpiresAt: v.optional(v.number()),
       // R3 CP-4 (I2/A7/I3) — the durable DECISION cursor. The decision pass is
       // split begin → propose(action) → apply(mutation) exactly like
       // interpretation, because a mutation cannot make the production model call.
@@ -204,6 +286,14 @@ export const objectiveRecord = v.object({
             requirementKey: v.string(),
             contractRevision: v.number(),
             attempts: v.number(),
+            // Material decision-input fingerprint for this reservation (optional
+            // for older pending rows).
+            inputFingerprint: v.optional(v.string()),
+            // Request-bound expiry (reliability V7 D): the watchdog armed with
+            // this reservation may clear ONLY this requestId, and only after
+            // this deadline. Optional so rows written before the fence stay
+            // readable.
+            expiresAt: v.optional(v.number()),
           }),
           v.null(),
         ),
@@ -213,6 +303,62 @@ export const objectiveRecord = v.object({
       // is the decision analogue of `interpretationAttempts`; it survives the
       // clearing of `pendingDecision` on each terminal apply.
       decisionAttempts: v.optional(v.record(v.string(), v.number())),
+      // Refused decision attempts only — BEGIN_DECISION_CEILING bounds this storm
+      // counter, not successful authorized MAKE/BUY progress.
+      decisionRefusalAttempts: v.optional(v.record(v.string(), v.number())),
+      // Last authorized decision-input fingerprint per requirement. Duplicate
+      // wakes with unchanged material facts do not burn another attempt.
+      decisionInputFingerprints: v.optional(v.record(v.string(), v.string())),
+      // M6.1 serial manager–execution loop. Set at interpretation for new
+      // objectives; absent/legacy keeps historical HYBRID + ceremony readable.
+      executionProtocol: v.optional(
+        v.union(v.literal("m61_serial_v1"), v.null()),
+      ),
+      // Final semantic assessment cursor (serial only). begin → model action →
+      // apply, mirroring pendingDecision so completion cannot skip the model.
+      pendingFinalAssessment: v.optional(
+        v.union(
+          v.object({
+            requestId: v.string(),
+            contractRevision: v.number(),
+            attempts: v.number(),
+            targetArtifactKey: v.optional(v.string()),
+            targetArtifactVersion: v.optional(v.number()),
+            deliverableRequirementKey: v.optional(v.string()),
+            minVersionRequired: v.optional(v.union(v.number(), v.null())),
+            // Request-bound expiry (reliability V7 D) — see pendingDecision.
+            expiresAt: v.optional(v.number()),
+          }),
+          v.null(),
+        ),
+      ),
+      finalAssessmentAttempts: v.optional(v.number()),
+      // Non-substantive final-assessment failures, budgeted apart from attempts.
+      finalAssessmentProviderFailures: v.optional(v.number()),
+      finalAssessmentStructuralFailures: v.optional(v.number()),
+      // Intent identities already released for serial reassessment — historical
+      // verified BUY receipts must not clear a newly authorized distinct action.
+      releasedAcquisitionIntentIds: v.optional(v.array(v.string())),
+      lastFinalAssessmentCritique: v.optional(v.union(v.string(), v.null())),
+      lastFinalAssessmentFailure: v.optional(v.union(v.string(), v.null())),
+      // V7 review R4 final scope-origin correction — the APPLICATION-OWNED
+      // policy that pre-exists interpretation and grants purpose-scope
+      // authority to the ONE Requirement it structurally targets. Written
+      // only by Objective setup code (e.g. setupCanonicalDemoObjective);
+      // never by interpretation/model output. Absent = no purpose scope
+      // authorized (unchanged fail-closed default).
+      authorizedPurposePolicy: v.optional(
+        v.union(
+          v.object({
+            purposeKind: v.string(),
+            targetRequirementKind: v.union(
+              v.literal("deliverable"),
+              v.literal("input"),
+            ),
+          }),
+          v.null(),
+        ),
+      ),
     }),
   ),
 });

@@ -11,6 +11,7 @@
 
 import { isControlledCapabilityKey } from "../workforce/catalog";
 import { isSatisfactionStrategy } from "./types";
+import type { StructuralIssue, StructuralValidation } from "./modelBoundary";
 import type {
   AmbiguityMateriality,
   ContractAmbiguity,
@@ -85,7 +86,9 @@ export function parseOutcomeContractProposal(raw: unknown): ProposalParseResult<
       return;
     }
     const item = entry as Record<string, unknown>;
-    const levelKey = text(item.levelKey, LIMITS.key);
+    // Models often emit mixed-case keys (e.g. L1); IDs are lowercase-only.
+    const levelKeyRaw = text(item.levelKey, LIMITS.key);
+    const levelKey = levelKeyRaw ? levelKeyRaw.toLowerCase() : null;
     if (!levelKey || !LEVEL_KEY_PATTERN.test(levelKey)) {
       errors.push(`level ${index} has no bounded levelKey`);
       return;
@@ -106,9 +109,25 @@ export function parseOutcomeContractProposal(raw: unknown): ProposalParseResult<
     });
   });
 
-  const bar = text(candidate.minimumCompletionBar, LIMITS.key);
-  if (!bar) errors.push("contract proposal declares no minimum completion bar");
-  else if (!seenKeys.has(bar)) errors.push(`minimum completion bar ${bar} is not one of the proposed levels`);
+  // Models often put a prose statement in minimumCompletionBar instead of a
+  // levelKey. Resolve against keys/labels/statements before refusing — never
+  // invent a new level, only remap onto one the proposal already declared.
+  const rawBar = text(candidate.minimumCompletionBar, LIMITS.statement);
+  let bar: string | null = null;
+  const rawBarKey = rawBar ? rawBar.toLowerCase() : null;
+  if (rawBarKey && seenKeys.has(rawBarKey)) bar = rawBarKey;
+  else if (rawBar) {
+    const matched = levels.find(
+      (level) => level.label === rawBar || level.statement === rawBar,
+    );
+    if (matched) bar = matched.levelKey;
+  }
+  if (!bar)
+    errors.push(
+      rawBar
+        ? `minimum completion bar ${rawBar} is not one of the proposed levels`
+        : "contract proposal declares no minimum completion bar",
+    );
 
   const ambiguities: ContractAmbiguity[] = [];
   const rawAmbiguities = Array.isArray(candidate.ambiguities)
@@ -159,6 +178,15 @@ export type ParsedRequirementProposal = {
   title: string;
   mustBeTrue: string;
   scope: string;
+  dependsOnRequirementKeys: string[];
+  requiredResourceClasses: string[];
+  expectedOutput: string | null;
+  /**
+   * Interpretation-proposed semantic kind. Application validates the enum.
+   * Parse fail-safes unknown/absent to `deliverable`. Legacy decision rebinds
+   * may omit when the persisted row has no kind (historical proof behavior).
+   */
+  requirementKind?: "deliverable" | "input";
 };
 
 // Semantic requirement proposals. Proof specs are NOT model-authored: the
@@ -197,8 +225,43 @@ export function parseRequirementProposals(raw: unknown): ProposalParseResult<Par
     // Fail safe on priority: an unclear priority becomes REQUIRED, because
     // downgrading a gate to "supporting" is exactly the false-completion move.
     const priority: RequirementPriority = item.priority === "supporting" ? "supporting" : "required";
-    out.push({ requirementKey: key, priority, title, mustBeTrue, scope });
+    const dependsOnRequirementKeys = [
+      ...new Set(stringList(item.dependsOnRequirementKeys, 8, LIMITS.key)),
+    ].filter((dep) => dep !== key);
+    const requiredResourceClasses = [
+      ...new Set(stringList(item.requiredResourceClasses, 8, LIMITS.key)),
+    ];
+    const expectedOutput = text(item.expectedOutput, LIMITS.statement);
+    // Bounded enum only. Unknown/absent fails safe to deliverable so a BUY
+    // receipt cannot satisfy an output requirement by accident.
+    const rawKind =
+      typeof item.requirementKind === "string"
+        ? item.requirementKind.trim().toLowerCase()
+        : "";
+    const requirementKind: "deliverable" | "input" =
+      rawKind === "input" ? "input" : "deliverable";
+    out.push({
+      requirementKey: key,
+      priority,
+      title,
+      mustBeTrue,
+      scope,
+      dependsOnRequirementKeys,
+      requiredResourceClasses,
+      expectedOutput,
+      requirementKind,
+    });
   });
+  if (errors.length) return { ok: false, errors };
+  const keys = new Set(out.map((requirement) => requirement.requirementKey));
+  for (const requirement of out) {
+    for (const dep of requirement.dependsOnRequirementKeys) {
+      if (!keys.has(dep))
+        errors.push(
+          `requirement ${requirement.requirementKey} depends on unknown key ${dep}`,
+        );
+    }
+  }
   if (errors.length) return { ok: false, errors };
   const hasRequired = out.some((requirement) => requirement.priority === "required");
   if (!hasRequired) return { ok: false, errors: ["proposals contain no required requirement; an objective needs at least one gate"] };
@@ -292,4 +355,218 @@ export function parseManagerialRecommendation(
 // (capability.ts). This helper only extracts candidate keys for reporting.
 export function ungovernedCapabilityKeys(proposed: readonly string[]): string[] {
   return proposed.filter((key) => !isControlledCapabilityKey(key)).sort();
+}
+
+// ── Structural validation for the shared repair boundary (M2) ────────────────
+//
+// These wrap the SAME deterministic parsers used downstream and translate their
+// findings into precise, field-level issues the corrective re-ask can quote. They
+// never repair, default, or choose anything: a failure only says WHAT is wrong
+// and, where the runtime knows a closed set, which values are legal.
+
+
+/** Interpretation: contract + requirements must both parse. */
+export function validateInterpretationStructure(
+  normalized: { contract: unknown; requirements: unknown },
+): StructuralValidation<{ contract: unknown; requirements: unknown }> {
+  const issues: StructuralIssue[] = [];
+  const contract = parseOutcomeContractProposal(normalized.contract);
+  if (!contract.ok) {
+    const levelKeys =
+      typeof normalized.contract === "object" && normalized.contract !== null
+        ? declaredLevelKeys(normalized.contract as Record<string, unknown>)
+        : [];
+    for (const error of contract.errors) {
+      const isBar = /minimum completion bar/.test(error);
+      issues.push({
+        field: isBar ? "contract.minimumCompletionBar" : "contract",
+        reason: error,
+        ...(isBar && levelKeys.length ? { legalValues: levelKeys } : {}),
+      });
+    }
+  }
+  const requirements = parseRequirementProposals(normalized.requirements);
+  if (!requirements.ok) {
+    const keys = Array.isArray(normalized.requirements)
+      ? (normalized.requirements as unknown[])
+          .map((entry) =>
+            typeof entry === "object" && entry !== null
+              ? String((entry as Record<string, unknown>).requirementKey ?? "")
+              : "",
+          )
+          .filter(Boolean)
+      : [];
+    for (const error of requirements.errors) {
+      const isDep = /depends on unknown key/.test(error);
+      issues.push({
+        field: "requirements",
+        reason: error,
+        ...(isDep && keys.length ? { legalValues: keys } : {}),
+      });
+    }
+  }
+  if (issues.length) return { ok: false, issues };
+  return { ok: true, value: normalized };
+}
+
+function declaredLevelKeys(contract: Record<string, unknown>): string[] {
+  if (!Array.isArray(contract.levels)) return [];
+  return contract.levels
+    .map((level) =>
+      typeof level === "object" && level !== null
+        ? String((level as Record<string, unknown>).levelKey ?? "").trim().toLowerCase()
+        : "",
+    )
+    .filter(Boolean);
+}
+
+/** Strategy: enum must be one of the legal strategies; capability keys governed. */
+export function validateStrategyStructure(
+  raw: unknown,
+  legal: { strategies: readonly string[]; capabilityCatalog: readonly string[] },
+): StructuralValidation<unknown> {
+  const issues: StructuralIssue[] = [];
+  if (typeof raw !== "object" || raw === null) {
+    return {
+      ok: false,
+      issues: [{ field: "$", reason: "strategy proposal is not a JSON object" }],
+    };
+  }
+  const candidate = raw as Record<string, unknown>;
+  const strategy = text(candidate.strategy, 20)?.toUpperCase();
+  if (!strategy || !legal.strategies.includes(strategy)) {
+    issues.push({
+      field: "strategy",
+      reason: `${JSON.stringify(candidate.strategy ?? null)} is not a legal strategy`,
+      legalValues: legal.strategies,
+    });
+  }
+  if (candidate.desiredCapabilities !== undefined && !Array.isArray(candidate.desiredCapabilities)) {
+    issues.push({ field: "desiredCapabilities", reason: "must be an array of capability keys" });
+  } else {
+    const unknown = stringList(candidate.desiredCapabilities, LIMITS.list, LIMITS.key).filter(
+      (key) => !legal.capabilityCatalog.includes(key),
+    );
+    if (unknown.length) {
+      issues.push({
+        field: "desiredCapabilities",
+        reason: `unknown capability key(s): ${unknown.join(", ")}`,
+        legalValues: legal.capabilityCatalog,
+      });
+    } else if (
+      (strategy === "MAKE" || strategy === "HYBRID") &&
+      stringList(candidate.desiredCapabilities, LIMITS.list, LIMITS.key).length === 0 &&
+      legal.capabilityCatalog.length > 0
+    ) {
+      // An internal path with no capability can never be authorized; catch it here so the
+      // one bounded repair names the legal keys instead of burning a refusal attempt.
+      issues.push({
+        field: "desiredCapabilities",
+        reason: `${strategy} requires at least one capability key`,
+        legalValues: legal.capabilityCatalog,
+      });
+    }
+  }
+  return issues.length ? { ok: false, issues } : { ok: true, value: raw };
+}
+
+/** Recommendation: the selection must be one of the eligible ids; rationale required. */
+export function validateRecommendationStructure(
+  raw: unknown,
+  legal: { eligibleOptionIds: readonly string[] },
+): StructuralValidation<Record<string, unknown>> {
+  if (typeof raw !== "object" || raw === null) {
+    return {
+      ok: false,
+      issues: [{ field: "$", reason: "recommendation is not a JSON object" }],
+    };
+  }
+  const candidate = raw as Record<string, unknown>;
+  const issues: StructuralIssue[] = [];
+  const selected = text(candidate.selectedOptionId, LIMITS.key * 2);
+  if (!selected) {
+    issues.push({
+      field: "selectedOptionId",
+      reason: "missing",
+      legalValues: legal.eligibleOptionIds,
+    });
+  } else if (!legal.eligibleOptionIds.includes(selected)) {
+    issues.push({
+      field: "selectedOptionId",
+      reason: `${JSON.stringify(selected)} is not an eligible option id`,
+      legalValues: legal.eligibleOptionIds,
+    });
+  }
+  if (!text(candidate.rationale, LIMITS.rationale)) {
+    issues.push({ field: "rationale", reason: "missing business rationale" });
+  }
+  return issues.length ? { ok: false, issues } : { ok: true, value: candidate };
+}
+
+export type ParsedFinalAssessment = {
+  meetsMinimumBar: boolean;
+  rationale: string;
+  evidenceRefs: string[];
+  assumptionsUnknowns: string[];
+  recommendedNextAction: string;
+};
+
+/**
+ * Final assessment: boolean verdict, rationale, and evidence refs that are ALL
+ * among the ids the application supplied. Missing/invalid attribution is a
+ * structural failure — the application never invents which evidence supported the
+ * model's conclusion. An empty list is legal (the model cited nothing).
+ */
+export function validateFinalAssessmentStructure(
+  raw: unknown,
+  legal: { evidenceIds: readonly string[] },
+): StructuralValidation<ParsedFinalAssessment> {
+  if (typeof raw !== "object" || raw === null) {
+    return {
+      ok: false,
+      issues: [{ field: "$", reason: "assessment is not a JSON object" }],
+    };
+  }
+  const candidate = raw as Record<string, unknown>;
+  const issues: StructuralIssue[] = [];
+  if (typeof candidate.meetsMinimumBar !== "boolean") {
+    issues.push({
+      field: "meetsMinimumBar",
+      reason: "must be a JSON boolean (true or false)",
+      legalValues: ["true", "false"],
+    });
+  }
+  const rationale = text(candidate.rationale, 2000);
+  if (!rationale) issues.push({ field: "rationale", reason: "missing assessment rationale" });
+
+  let refs: string[] = [];
+  if (!Array.isArray(candidate.evidenceRefs)) {
+    issues.push({
+      field: "evidenceRefs",
+      reason: "must be an array of supplied evidence ids (use [] to cite none)",
+      legalValues: legal.evidenceIds,
+    });
+  } else {
+    refs = candidate.evidenceRefs.map((ref) => String(ref));
+    const illegal = refs.filter((ref) => !legal.evidenceIds.includes(ref));
+    if (illegal.length) {
+      issues.push({
+        field: "evidenceRefs",
+        reason: `not among the supplied evidence ids: ${illegal.join(", ")}`,
+        legalValues: legal.evidenceIds,
+      });
+    }
+  }
+  if (issues.length) return { ok: false, issues };
+  return {
+    ok: true,
+    value: {
+      meetsMinimumBar: candidate.meetsMinimumBar as boolean,
+      rationale: rationale!,
+      evidenceRefs: [...new Set(refs)].slice(0, 16),
+      assumptionsUnknowns: stringList(candidate.assumptionsUnknowns, 12, LIMITS.assumption),
+      recommendedNextAction:
+        text(candidate.recommendedNextAction, 500) ?? "redecide",
+    },
+  };
 }

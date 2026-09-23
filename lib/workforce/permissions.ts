@@ -4,6 +4,24 @@ import {
   requireCapability,
 } from "./catalog";
 import type { ToolPermissionId } from "./types";
+
+/**
+ * Permissions the worker runtime can turn into tools. Capability grants outside
+ * this set are unrealizable (zombie) and must not reach dispatch.
+ * authorize_external_spend and draft_document are intentionally excluded.
+ */
+export const MATERIALIZABLE_TOOL_PERMISSIONS: ReadonlySet<ToolPermissionId> = new Set([
+  "read_public_web",
+  "read_company_record",
+  "record_finding",
+  "request_resource",
+  "update_company_artifact",
+]);
+
+export function isMaterializableToolPermission(id: string): boolean {
+  return MATERIALIZABLE_TOOL_PERMISSIONS.has(id as ToolPermissionId);
+}
+
 // Deny by default: a permission exists for a worker only because a capability grants it.
 export function toolPermissionsForCapabilities(
   capabilityKeys: readonly string[],

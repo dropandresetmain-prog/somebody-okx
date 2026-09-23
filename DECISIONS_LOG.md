@@ -324,3 +324,29 @@ Shipping sequence:
 **Decision:** the final demo may use **transparent RECORD/REPLAY** for the unreliable external payment/provider boundary. The original acquisition must be genuine, provenance-preserving and bound to the provider/service/normalized request. Replay must not complete the Objective directly: Somebody still makes the decision, ingests the purchased result, resumes the worker, changes the artifact, verifies it and passes the normal completion gate.
 
 This supersedes the earlier release-critical assumption that the canonical mission must include BUY #2/public publication. It does not erase that earlier decision from historical evidence.
+
+---
+
+## 21 September 2026 — M6.1 manager–execution mini-refactor
+
+**Decision status: approved direction and implementation plan; NOT implementation or physical acceptance.**
+
+The founder requested a bounded redesign after the failed M6.1 patch-and-retry sequence. The implementation plan is `docs/work/M6_1_MANAGER_EXECUTION_REFACTOR_PLAN.md`; `docs/work/ACTIVE_TASK.md` is the current execution ledger. The complete prior ledger is preserved at `docs/work/M6_1_PRE_REFACTOR_RECOVERY_HISTORY.md` for historical evidence only.
+
+**Decision:** make the management/execution loop coherent before another blind run. This is an explicit, narrow exception to the 20 September architecture freeze, not permission to rewrite the entire project.
+
+For newly created objectives using the refactored path:
+
+- Keep a stable founder-facing output contract. Separate the final deliverable's criteria from next-action planning and action receipts; do not turn every planning thought into a mandatory requirement.
+- Somebody uses the LLM for semantic diagnosis, evidence adequacy, comparison of grounded eligible options, next-action recommendation and final assessment. Application code owns facts, permission, financial authority, effect identity, validation and acceptance of concrete completion evidence.
+- Availability and semantic adequacy are different. A worker failure cannot manufacture scarcity, and a BUY need not wait for MAKE to fail. The existing economic principle that internal feasibility does not force MAKE remains intact.
+- Execute one current action at a time. Park compound HYBRID execution for new objectives; a mixed plan is separately authorized MAKE and BUY actions with reassessment between them. Preserve historical HYBRID data and evidence without relabelling or replaying old financial actions.
+- Use one worker terminal submission surface for delivered work, an evidence-linked input request, or an application-classified failure. Persist observations/results and wake Somebody through the normal application path; remove mandatory bookkeeping tool ceremonies. An analysis assignment need not mutate the launch artifact just because its tools could do so.
+- A completed acquisition does not itself complete the output requirement. Subsequent work must receive explicitly linked, verified, scoped evidence and use it substantively. An evidence ID or unrelated version bump alone is not causal acceptance.
+- The release deliverable remains a persisted, evidence-backed relaunch recommendation with real revised messaging, assumptions/unknowns and next steps. It is not public posting or a claim of measured conversion improvement.
+
+**Preserved:** Convex, LangGraph, bounded subordinate workers, persistent worker identities, existing authorization and M3 financial authority, leases/fencing, provenance, idempotency, independent completion checks and the accepted M5 visual layout. Do not introduce a parallel demo engine, a second payment/policy authority or hardcoded MAKE → BUY choreography.
+
+**Acceptance:** Gate 1 proves the production path with a pinned live model and only the acquisition edge simulated, including repeat fresh-objective runs without manual state rescue. Gate 2 is the subsequent genuine-acquisition record/replay and release freeze under separate live-execution scope. The next implementation owner is assigned Gate 1, not automatic live spending. Keep intermediate work internal rather than creating more founder checkpoints.
+
+This supersedes conflicting prior assumptions about frozen management/worker protocol, mandatory compound HYBRID execution, strategy-derived outcome meaning and the old STOP-A1/B route as the universal acceptance bar. Unchanged financial/security decisions remain binding. Detailed field choices remain implementation work; code/runtime/schema still establish what is actually implemented. The plan's base is recovery `07230355c0000d294be32aa6bf08a2200631d3e2`; no end-to-end PASS or deployment is asserted by this documentation change.

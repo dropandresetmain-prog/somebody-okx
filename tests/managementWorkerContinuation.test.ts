@@ -20,6 +20,7 @@ import { attemptRequirementSatisfaction } from "../lib/management/requirements";
 import type { WorkerObservation, WorkerPort, ModelNoteInput } from "../lib/worker/port";
 import type { EvidenceRecord, ActivityResult, WorkContract } from "../lib/workforce";
 import type { Requirement } from "../lib/management/types";
+import { CP2_REQUIREMENT_FIELDS } from "./helpers/cp2Requirement";
 
 const now = 1800000000000;
 
@@ -186,6 +187,7 @@ function requirementBound(): Requirement {
     revision: 1,
     createdAt: now,
     updatedAt: now,
+    ...CP2_REQUIREMENT_FIELDS,
   };
 }
 

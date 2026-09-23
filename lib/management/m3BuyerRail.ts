@@ -93,6 +93,7 @@ import type {
   PaymentContext,
   PurchaseRecord,
   RailConfig,
+  SettlementObservation,
   SettlementReader,
   PaidRequestSender,
   PaymentSubmissionResult,
@@ -608,7 +609,32 @@ export async function observePurchase(
     }
     const settlement = await deps.settlementReader.readSettlement(transactionHash);
     if (!settlement.settled) {
-      // Not settled yet: truthful REST. submitted ≠ settled; M4 stays handed_off.
+      // An observed revert is DIRECT proof of non-settlement and must never be
+      // flattened into "not yet". Record it through M3's real machine (report_failure
+      // from `submitted` is a legal transition into reconciliation_required: proven
+      // non-settlement still cannot authorize blind repayment without reconciliation)
+      // and stop loudly — never rest forever at submitted on terminal evidence.
+      if ("observation" in settlement && settlement.observation === "reverted") {
+        lc = driveLifecycle(lc, {
+          type: "report_failure",
+          failureReason: `settlement reverted on-chain: tx ${transactionHash} receipt status 0x0 (proven non-settlement)`,
+        });
+        return reconcileSeam(currentIntent, { ...currentPurchase, state: lc.state }, events, now(),
+          `M3 settlement readback OBSERVED a reverted receipt for tx ${transactionHash} (block ${settlement.blockNumber ?? "unknown"}) — proven non-settlement, NOT pending; recorded at reconciliation_required, no blind repayment, no rest-as-pending`);
+      }
+      // An observed mismatch (malformed receipt, wrong hash, status neither 0x0
+      // nor 0x1, missing provenance/transfer evidence) contradicts the expected
+      // settlement. It is NOT "not yet" either: route to reconciliation, never rest.
+      if ("observation" in settlement && settlement.observation === "mismatch") {
+        lc = driveLifecycle(lc, {
+          type: "report_failure",
+          failureReason: `settlement readback mismatch: ${settlement.reason}`,
+        });
+        return reconcileSeam(currentIntent, { ...currentPurchase, state: lc.state }, events, now(),
+          `M3 settlement readback OBSERVED a mismatch for tx ${transactionHash}: ${settlement.reason} — settlement cannot be confirmed or disproven, NOT pending; recorded at reconciliation_required, no blind repayment`);
+      }
+      // Genuinely pending (explicit observation, or a legacy boolean-only reader
+      // that cannot classify): truthful REST. submitted ≠ settled; M4 stays handed_off.
       return {
         handedOff: true,
         purchase: currentPurchase,

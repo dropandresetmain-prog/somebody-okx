@@ -56,4 +56,15 @@ export const SNAPSHOT_OFFERINGS: readonly MarketOffering[] = [
     source: { kind: "snapshot", retrievedAt: SNAPSHOT_RETRIEVED_AT },
     compatibleResourceClasses: [],
   },
+  {
+    offeringId: "somebody_controlled_test:founder_narrative_pulse",
+    providerId: "somebody_controlled_test",
+    serviceId: "founder_narrative_pulse",
+    name: "Founder Narrative Pulse (controlled TESTNET)",
+    description:
+      "Purpose-bounded synthetic qualitative research on solo-founder workflow pain, founder language, launch/message perception, messaging clarity, and Somebody positioning. Explicitly not live Twitter, NewsLiquid, customer analytics, conversion measurement, or causal proof. Served by the local x402 X Layer TESTNET merchant.",
+    price: { amount: "0.01", asset: "USDT", unit: "per_use" },
+    source: { kind: "snapshot", retrievedAt: SNAPSHOT_RETRIEVED_AT },
+    compatibleResourceClasses: [],
+  },
 ];

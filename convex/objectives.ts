@@ -41,8 +41,9 @@ import {
   resolveWorker,
   validatePlannerProposal,
 } from "../lib/workforce";
-import { CURRENT_RESOURCE_INVENTORY, RESEARCH_ROLE, GROWTH_ROLE } from "../lib/objective/policy";
+import { CURRENT_RESOURCE_INVENTORY, RESEARCH_ROLE, GROWTH_ROLE, COMPANY_RECORDS } from "../lib/objective/policy";
 import { sourceIdentity } from "../lib/objective/contract";
+import { ToolStatusError } from "../lib/worker/toolStatus";
 import { toolPermissionsForCapabilities } from "../lib/workforce/permissions";
 import { createWorkerSpec } from "../lib/workforce/workers";
 import {
@@ -57,9 +58,15 @@ import {
 } from "../lib/objective/runGuards";
 import { providerConfiguration } from "../lib/worker/modelSelection";
 import {
+  CANONICAL_AUTHORIZED_PURPOSE_POLICY,
   CANONICAL_LAUNCH_ARTIFACT,
+  CANONICAL_OBJECTIVE_REQUEST,
 } from "../lib/objective/seedData";
-import { createArtifact, applyArtifactChange } from "../lib/objective/artifact";
+import { createArtifact, applyArtifactChange, MAX_CONTENT_CHARS as MAX_ARTIFACT_CONTENT_CHARS } from "../lib/objective/artifact";
+import {
+  createReceivedObjective,
+  normalizeObjectiveRequest,
+} from "./objectiveCreate";
 import type { ResourceClass } from "../lib/workforce/types";
 import type {
   ActivityEvent,
@@ -77,8 +84,23 @@ import type { ResourceNeed } from "../lib/objective/resourceNeed";
 import type { SourcingDecisionRecord } from "../lib/objective/resourceNeed";
 import type { CandidateAssessment } from "../lib/market/assessment";
 import type { MarketOffering } from "../lib/market/discovery";
+import {
+  currentUnresolvedValidatedGap,
+  listInputObligations,
+  validateMissingInputProposal,
+  type MissingInputProposal,
+  type UnconfirmedInputFinding,
+} from "../lib/objective/inputDiagnosis";
+import {
+  checkInputAvailability,
+} from "../lib/objective/inputAvailability";
+import type { Requirement } from "../lib/management/types";
 import type { CompanyArtifact } from "../lib/objective/artifact";
 import type { WorkerRecord } from "../lib/management/types";
+import {
+  assignmentRequiresArtifactMutation,
+  isSerialManagerProtocol,
+} from "../lib/management/executionProtocol";
 
 type ObjectiveRow = { _id: Id<"objectives">; key: string; data: ObjectiveRecord };
 
@@ -148,11 +170,84 @@ function evidenceForRun(evidence: EvidenceRecord[], runId: string) {
   return evidence.filter((item) => item.runId === runId);
 }
 
+/** Proof kinds on the bound requirement for this work item (wi:<assignmentId>). */
+async function requirementProofKinds(
+  db: QueryCtx["db"],
+  objectiveKey: string,
+  workItem: { id?: string } | null | undefined,
+): Promise<string[]> {
+  const workItemId = workItem?.id;
+  if (!workItemId?.startsWith("wi:")) return [];
+  const assignmentId = workItemId.slice(3);
+  if (!assignmentId) return [];
+  const assignmentRows = await db
+    .query("assignments")
+    .withIndex("by_objective", (q) => q.eq("objectiveKey", objectiveKey))
+    .collect();
+  const assignment = assignmentRows
+    .map((row) => (row as { data: { assignmentId: string; requirementKey?: string } }).data)
+    .find((data) => data.assignmentId === assignmentId);
+  if (!assignment?.requirementKey) return [];
+  const reqRows = await db
+    .query("requirements")
+    .withIndex("by_objectiveRequirement", (q) =>
+      q.eq("objectiveKey", objectiveKey).eq("requirementKey", assignment.requirementKey!),
+    )
+    .collect();
+  if (reqRows.length === 0) return [];
+  const latest = reqRows.reduce((max, row) => {
+    const rev = (row as { data: { contractRevision?: number } }).data.contractRevision ?? 0;
+    const maxRev =
+      (max as { data: { contractRevision?: number } }).data.contractRevision ?? 0;
+    return rev >= maxRev ? row : max;
+  });
+  const proofs = ((latest as { data: { proofs?: Array<{ proofKind?: string }> } }).data
+    .proofs ?? []) as Array<{ proofKind?: string }>;
+  return proofs
+    .map((proof) => proof.proofKind)
+    .filter((kind): kind is string => typeof kind === "string");
+}
+
 // The single write gate for anything a worker does. Uses the same pure fence
 // the lifecycle tests prove, so deployment behavior and test behavior agree.
 function assertActiveRun(record: ObjectiveRecord, runId: string, now: number) {
   const fence = fenceRunWrite({ run: record.run, runId, now });
-  if (!fence.ok) throw new Error(fence.reason);
+  if (!fence.ok) {
+    throw new ToolStatusError("stale", fence.reason);
+  }
+  // Serial: after an accepted terminal for this run, refuse further material
+  // worker writes (durable fence — not only in-memory runtime state).
+  const accepted = record.acceptedTerminal;
+  if (
+    accepted &&
+    accepted.runId === runId &&
+    accepted.outcome === "accepted"
+  ) {
+    throw new ToolStatusError(
+      "refused",
+      `TERMINAL_CLOSED: run ${runId} already accepted terminal ${accepted.terminal}; further material actions refused`,
+    );
+  }
+}
+
+function terminalFingerprint(input: {
+  terminal: string;
+  summary: string;
+  fit: string;
+  risks: string[];
+  unknowns: string[];
+  recommendedNextAction: string;
+  validatedGapAccepted?: boolean;
+}): string {
+  return [
+    input.terminal,
+    input.summary.trim(),
+    input.fit.trim(),
+    input.risks.join("|"),
+    input.unknowns.join("|"),
+    input.recommendedNextAction.trim(),
+    input.validatedGapAccepted === true ? "gap:1" : "gap:0",
+  ].join("::");
 }
 
 // Deterministic planning validation, authoritative because it runs inside the
@@ -193,38 +288,18 @@ export const submitObjective = mutation({
   args: { request: vObjectiveRequest },
   returns: v.object({ key: v.string() }),
   handler: async (ctx, args) => {
-    const request = args.request.trim();
-    if (request.length < 8)
-      throw new Error("Describe the objective in at least 8 characters");
-    if (request.length > 2000)
-      throw new Error("Objective is not bounded (max 2000 characters)");
-    const now = Date.now();
-    const key = `obj_${now}_${Math.random().toString(36).slice(2, 8)}`;
-    const record: ObjectiveRecord = {
-      key,
-      request,
-      createdAt: now,
-      updatedAt: now,
-      state: "received",
-      activity: "Objective received.",
-      plan: null,
-      workItems: [],
-      run: null,
-      result: null,
-    };
-    await ctx.db.insert("objectives", { key, data: record });
-    await appendEvent(ctx.db, key, "system", "Objective received.", now);
+    // Same authoritative create path as productCommands.createObjectiveV1 —
+    // shared via createReceivedObjective so behavior cannot drift (launch
+    // artifact seed + interpretation schedule).
+    const normalized = normalizeObjectiveRequest(args.request);
+    if (!normalized.ok) throw new Error(normalized.message);
     // R3 A1 — a submitted objective enters the MANAGEMENT engine, not only the
     // M2 planner. Interpretation is the durable chain
     //   beginInterpretation (reserve) → proposeInterpretation (model, "use node")
     //   → applyInterpretation (persist contract + semantic requirements + wake).
     // It never changes `state`, so the accepted M2 planning path keeps working on
     // a "received" row; what it adds is the Outcome Contract the engine needs.
-    await ctx.scheduler.runAfter(0, internal.management.beginInterpretation, {
-      objectiveKey: key,
-      at: now,
-    });
-    return { key };
+    return createReceivedObjective(ctx, normalized.request);
   },
 });
 
@@ -564,9 +639,14 @@ export const expireRun = internalMutation({
     runs[runIndex] = run;
     workItem.runs = runs;
     workItem.state = "failed";
+    const isM4Managed = Boolean(
+      (record as unknown as { management?: { contractId: string | null } }).management
+        ?.contractId,
+    );
     const updated: ObjectiveRecord = {
       ...record,
-      state: "failed",
+      // M4: lease expiry fails the run/assignment, not the whole objective.
+      state: isM4Managed ? "executing" : "failed",
       activity: run.summary,
       workItems: [workItem],
       run,
@@ -611,18 +691,18 @@ export const recordFinding = internalMutation({
     );
     if (args.finding.origin === "application_observation") {
       if (!derived)
-        throw new Error(
+        throw new ToolStatusError("refused", 
           "An application observation must carry a resolvable source identity (recordRef or url)",
         );
       if (derived !== args.finding.sourceId)
-        throw new Error(
+        throw new ToolStatusError("refused", 
           `Source identity mismatch: asserted ${args.finding.sourceId}, derived ${derived}`,
         );
     } else {
       if (!args.finding.sourceId.startsWith("note:"))
         // A note may carry any label, but its identity must stay in the note
         // namespace so it can never collide with a real source identity.
-        throw new Error(
+        throw new ToolStatusError("refused", 
           "A model note must use a note-namespaced source identity",
         );
       // A note may annotate a real observation, but only one this run actually
@@ -634,7 +714,7 @@ export const recordFinding = internalMutation({
             item.origin === "application_observation",
         );
         if (!cited)
-          throw new Error(
+          throw new ToolStatusError("refused", 
             `record_finding: ${args.basedOnEvidenceId} is not an application observation in this run`,
           );
       }
@@ -664,7 +744,71 @@ export const recordFinding = internalMutation({
   },
 });
 
-// Store the structured result. Submitting it is NOT acceptance.
+const MAX_OBLIGATIONS = 8;
+function boundObligations(unmet: string[]): string[] {
+  return unmet.slice(0, MAX_OBLIGATIONS).map((item) => item.slice(0, 300));
+}
+
+// The deterministic action-level obligations still unmet for THIS run. One
+// kernel for the worker observation (what the model sees) and the pre-terminal
+// DELIVERED gate in submitResult; finishRun re-runs the same checks as the
+// final backstop. Never Objective completion.
+async function computeActionObligations(input: {
+  db: QueryCtx["db"];
+  objectiveKey: string;
+  record: ObjectiveRecord;
+  runId: string;
+  evidence: EvidenceRecord[];
+  result: ActivityResult | null;
+}): Promise<string[]> {
+  const { record } = input;
+  const workItem = record.workItems[0];
+  const contract = workItem.contract;
+  const unmet = [
+    ...evaluateCompletion({
+      contract,
+      evidence: input.evidence,
+      result: input.result,
+      currentRunId: input.runId,
+    }).unmet,
+  ];
+  const management = (
+    record as unknown as {
+      management?: { executionProtocol?: string | null; contractId?: string | null };
+    }
+  ).management;
+  const requiresArtifactMutation = assignmentRequiresArtifactMutation({
+    allowedToolPermissions: contract.allowedToolPermissions,
+    proofKinds: await requirementProofKinds(input.db, input.objectiveKey, workItem),
+    serialProtocol: isSerialManagerProtocol(management),
+  });
+  if (requiresArtifactMutation) {
+    const targetKey = contract.targetArtifactKey ?? null;
+    const artifactChanged = (record.companyArtifacts ?? []).some(
+      (a) =>
+        a.provenanceRunId === input.runId &&
+        a.version > 1 &&
+        (targetKey == null || a.key === targetKey),
+    );
+    if (!artifactChanged) {
+      unmet.push("company_artifact: no version change by this run");
+    }
+    if (management?.contractId == null) {
+      const hasNeed = (record.resourceNeeds ?? []).some(
+        (n) => n.proposedByRunId === input.runId,
+      );
+      if (!hasNeed) {
+        unmet.push("resource_need: growth run must propose a resource need");
+      }
+    }
+  }
+  return unmet;
+}
+
+// Store the structured result. Submitting it is NOT Objective completion.
+// Serial path: application owns terminal acceptance, idempotency, and fencing.
+// Optional missingInputs are validated by reportMissingInput (same authority path
+// as request_resource) — never trusted as scarcity facts on their own.
 export const submitResult = internalMutation({
   args: {
     objectiveKey: v.string(),
@@ -675,24 +819,291 @@ export const submitResult = internalMutation({
       risks: v.array(v.string()),
       unknowns: v.array(v.string()),
       recommendedNextAction: v.string(),
+      terminal: v.optional(
+        v.union(
+          v.literal("DELIVERED"),
+          v.literal("NEEDS_INPUT"),
+          v.literal("EXECUTION_ERROR"),
+        ),
+      ),
+      // Canonical serial gap (resourceClass, unansweredQuestion, observedEvidenceIds,
+      // whyInsufficient, howAdditionalWouldChange) plus optional legacy aliases the
+      // application maps internally (normalizeGapSubmission). Not authority.
+      missingInputs: v.optional(
+        v.array(
+          v.object({
+            resourceClass: v.string(),
+            unansweredQuestion: v.optional(v.string()),
+            observedEvidenceIds: v.optional(v.array(v.string())),
+            whyInsufficient: v.optional(v.string()),
+            howAdditionalWouldChange: v.optional(v.string()),
+            inputCheckId: v.optional(v.string()),
+            purpose: v.optional(v.string()),
+            reasonOwnedInsufficient: v.optional(v.string()),
+            supportingEvidenceIds: v.optional(v.array(v.string())),
+            semanticGap: v.optional(v.boolean()),
+            // V7 R4: proposed requested scope; validated in reportMissingInput.
+            purposeKind: v.optional(v.string()),
+          }),
+        ),
+      ),
+      // When set by the runner after validating missingInputs for NEEDS_INPUT.
+      validatedGapAccepted: v.optional(v.boolean()),
     }),
   },
-  returns: v.null(),
+  returns: v.object({
+    status: v.union(
+      v.literal("accepted"),
+      v.literal("refused"),
+      v.literal("idempotent_replay"),
+      v.literal("stale"),
+      v.literal("unavailable"),
+    ),
+    detail: v.string(),
+    terminalAccepted: v.boolean(),
+    // Exact deterministic obligations still unmet when a DELIVERED is refused.
+    unmetObligations: v.optional(v.array(v.string())),
+  }),
   handler: async (ctx, args) => {
     const now = Date.now();
     const row = await loadObjective(ctx.db, args.objectiveKey);
-    assertActiveRun(row.data, args.runId, now);
-    const result: ActivityResult = { ...args.result, completedAt: now };
-    const data: ObjectiveRecord = { ...row.data, result, updatedAt: now };
-    await ctx.db.patch(row._id, { data });
+    const record = row.data;
+    const fence = fenceRunWrite({ run: record.run, runId: args.runId, now });
+    if (!fence.ok) {
+      return {
+        status: "stale" as const,
+        detail: fence.reason,
+        terminalAccepted: false,
+      };
+    }
+
+    const {
+      missingInputs: _ignored,
+      terminal,
+      validatedGapAccepted,
+      ...resultFields
+    } = args.result;
+    const management = (
+      record as unknown as { management?: { executionProtocol?: string | null } }
+    ).management;
+    const serial = isSerialManagerProtocol(management);
+
+    const result: ActivityResult = {
+      ...resultFields,
+      completedAt: now,
+      runId: args.runId,
+    };
+
+    // No terminal tag: legacy structured-result store (not a serial handoff).
+    if (!terminal) {
+      await ctx.db.patch(row._id, {
+        data: { ...record, result, updatedAt: now },
+      });
+      await appendEvent(
+        ctx.db,
+        args.objectiveKey,
+        "result",
+        "Structured result submitted (awaiting application proof check).",
+        now,
+      );
+      return {
+        status: "accepted" as const,
+        detail: "structured result stored",
+        terminalAccepted: false,
+      };
+    }
+
+    const fingerprint = terminalFingerprint({
+      terminal,
+      summary: resultFields.summary,
+      fit: resultFields.fit,
+      risks: resultFields.risks,
+      unknowns: resultFields.unknowns,
+      recommendedNextAction: resultFields.recommendedNextAction,
+      validatedGapAccepted: validatedGapAccepted === true,
+    });
+
+    const prior = record.acceptedTerminal;
+    // Only an ACCEPTED terminal closes the slot. Refused/unconfirmed attempts
+    // must not block a corrected submission on the same run.
+    if (prior && prior.runId === args.runId && prior.outcome === "accepted") {
+      if (prior.fingerprint === fingerprint && prior.terminal === terminal) {
+        return {
+          status: "idempotent_replay" as const,
+          detail: `exact terminal replay for ${terminal}`,
+          terminalAccepted: true,
+        };
+      }
+      return {
+        status: "refused" as const,
+        detail: `conflicting terminal submission refused (prior ${prior.terminal} vs ${terminal})`,
+        terminalAccepted: false,
+      };
+    }
+
+    // Pre-terminal deterministic validation (F3): a DELIVERED that leaves known
+    // action obligations unmet is REFUSED before the terminal slot is sealed.
+    // The same run may perform the missing legal action and resubmit. This
+    // reuses the worker-observation obligation kernel; it is not a second
+    // completion authority (Objective completion stays with the management gate).
+    if (serial && terminal === "DELIVERED") {
+      const unmet = await computeActionObligations({
+        db: ctx.db,
+        objectiveKey: args.objectiveKey,
+        record,
+        runId: args.runId,
+        evidence: evidenceForRun(
+          await listEvidence(ctx.db, args.objectiveKey),
+          args.runId,
+        ),
+        result,
+      });
+      if (unmet.length > 0) {
+        const bounded = boundObligations(unmet);
+        await ctx.db.patch(row._id, {
+          data: {
+            ...record,
+            // Refused output never becomes the objective's stored result.
+            lastUnconfirmedTerminal: {
+              runId: args.runId,
+              terminal,
+              fingerprint,
+              at: now,
+              reason: "DELIVERED refused: deterministic action obligations unmet",
+              summary: resultFields.summary.slice(0, 800),
+              recommendedNextAction: resultFields.recommendedNextAction.slice(0, 500),
+              unmetObligations: bounded,
+            },
+            updatedAt: now,
+          },
+        });
+        await appendEvent(
+          ctx.db,
+          args.objectiveKey,
+          "result",
+          `DELIVERED refused for run ${args.runId}: ${bounded.join("; ")}`.slice(0, 500),
+          now,
+        );
+        return {
+          status: "refused" as const,
+          detail:
+            "DELIVERED refused: unmet action obligations; terminal slot remains open — satisfy them with a legal action, then resubmit",
+          terminalAccepted: false,
+          unmetObligations: bounded,
+        };
+      }
+    }
+
+    // NEEDS_INPUT: INPUT_BLOCKED is authoritative only after a validated gap.
+    // Persist a diagnostic only — do NOT write acceptedTerminal or the
+    // objective's stored result (F2: refused output is non-authoritative).
+    if (serial && terminal === "NEEDS_INPUT" && validatedGapAccepted !== true) {
+      await ctx.db.patch(row._id, {
+        data: {
+          ...record,
+          // Keep any prior refused diagnostic off the accepted-terminal slot.
+          acceptedTerminal:
+            prior?.outcome === "accepted" ? prior : null,
+          lastUnconfirmedTerminal: {
+            runId: args.runId,
+            terminal,
+            fingerprint,
+            at: now,
+            reason: "NEEDS_INPUT without accepted evidence-gap proposal",
+            summary: resultFields.summary.slice(0, 800),
+            recommendedNextAction: resultFields.recommendedNextAction.slice(0, 500),
+          },
+          updatedAt: now,
+        },
+      });
+      await appendEvent(
+        ctx.db,
+        args.objectiveKey,
+        "result",
+        "NEEDS_INPUT refused/unconfirmed: no accepted evidence-gap proposal; terminal slot remains open.",
+        now,
+      );
+      return {
+        status: "refused" as const,
+        detail:
+          "NEEDS_INPUT requires an application-accepted evidence-gap proposal; terminal not authoritative",
+        terminalAccepted: false,
+      };
+    }
+
+    const lastDeliveryFailureClass =
+      terminal === "EXECUTION_ERROR"
+        ? ("EXECUTION_FAILED" as const)
+        : terminal === "NEEDS_INPUT"
+          ? ("INPUT_BLOCKED" as const)
+          : record.lastDeliveryFailureClass;
+
+    const acceptedTerminal = {
+      runId: args.runId,
+      terminal,
+      fingerprint,
+      acceptedAt: now,
+      outcome: "accepted" as const,
+    };
+
+    await ctx.db.patch(row._id, {
+      data: {
+        ...record,
+        result,
+        acceptedTerminal,
+        lastUnconfirmedTerminal: null,
+        lastDeliveryFailureClass: lastDeliveryFailureClass ?? null,
+        updatedAt: now,
+      },
+    });
     await appendEvent(
       ctx.db,
       args.objectiveKey,
       "result",
-      "Structured result submitted (awaiting application proof check).",
+      `Terminal ${terminal} accepted by application for run ${args.runId}.`,
       now,
     );
-    return null;
+    return {
+      status: "accepted" as const,
+      detail: `terminal ${terminal} accepted`,
+      terminalAccepted: true,
+    };
+  },
+});
+
+// Application-PERSISTED observations for final assessment grounding. Persisted by the
+// application does NOT make the content trusted: web/provider text stays untrusted DATA.
+export const listOwnedObservationsForAssessment = internalQuery({
+  args: {
+    objectiveKey: v.string(),
+    limit: v.optional(v.number()),
+  },
+  returns: v.array(
+    v.object({
+      evidenceId: v.string(),
+      sourceClass: v.string(),
+      label: v.string(),
+      text: v.string(),
+      url: v.optional(v.string()),
+      recordRef: v.optional(v.string()),
+    }),
+  ),
+  handler: async (ctx, args) => {
+    const cap = Math.min(Math.max(args.limit ?? 6, 1), 12);
+    const evidence = await listEvidence(ctx.db, args.objectiveKey);
+    return evidence
+      .filter((item) => item.origin === "application_observation")
+      .slice(-cap)
+      .map((item) => ({
+        evidenceId: item.id,
+        sourceClass: String(item.sourceClass ?? ""),
+        label: String(item.label ?? "").slice(0, 200),
+        text: String(item.text ?? "").slice(0, 800),
+        // Content provenance stays visible: where the CONTENT came from is not
+        // the same fact as "the application persisted this record".
+        ...(item.url ? { url: String(item.url).slice(0, 500) } : {}),
+        ...(item.recordRef ? { recordRef: String(item.recordRef).slice(0, 200) } : {}),
+      }));
   },
 });
 
@@ -723,54 +1134,167 @@ export const readWorkerObservation = internalQuery({
         recordRef: v.optional(v.string()),
       }),
     ),
+    acquiredInputs: v.array(
+      v.object({
+        intentId: v.string(),
+        resultEvidenceId: v.string(),
+        providerId: v.string(),
+        serviceId: v.string(),
+        resourceClass: v.string(),
+        provenance: v.string(),
+        responseHash: v.string(),
+        text: v.string(),
+      }),
+    ),
+    // Application-loaded input package (serial). Not a fictional tool call.
+    loadedInputPackage: v.optional(
+      v.object({
+        companyRecords: v.array(
+          v.object({
+            ref: v.string(),
+            label: v.string(),
+            text: v.string(),
+            truncated: v.boolean(),
+          }),
+        ),
+        targetArtifact: v.union(
+          v.object({
+            key: v.string(),
+            version: v.number(),
+            content: v.string(),
+            truncated: v.boolean(),
+            complete: v.boolean(),
+            exceedsReplacementCeiling: v.boolean(),
+          }),
+          v.null(),
+        ),
+        priorActionOutputs: v.array(
+          v.object({
+            runId: v.string(),
+            summary: v.string(),
+            fit: v.string(),
+            recommendedNextAction: v.string(),
+            truncated: v.boolean(),
+            status: v.string(),
+            classification: v.string(),
+          }),
+        ),
+        linkedAcquisitions: v.array(
+          v.object({
+            intentId: v.string(),
+            resultEvidenceId: v.string(),
+            providerId: v.string(),
+            serviceId: v.string(),
+            resourceClass: v.string(),
+            provenance: v.string(),
+            responseHash: v.string(),
+            text: v.string(),
+            truncated: v.boolean(),
+          }),
+        ),
+        targetArtifactKey: v.union(v.string(), v.null()),
+        inputEvidenceIds: v.array(v.string()),
+        lockedCriteria: v.optional(
+          v.union(
+            v.object({
+              requirementKey: v.string(),
+              mustBeTrue: v.string(),
+              expectedOutput: v.union(v.string(), v.null()),
+              minimumCompletionBar: v.string(),
+              contractRevision: v.number(),
+            }),
+            v.null(),
+          ),
+        ),
+        correction: v.optional(
+          v.object({
+            reviewCritique: v.string(),
+            reviewUnknowns: v.optional(v.array(v.string())),
+            reviewRecommendedAction: v.optional(v.string()),
+            classification: v.string(),
+          }),
+        ),
+      }),
+    ),
     unmetCompletionRequirements: v.array(v.string()),
+    yieldReason: v.union(v.string(), v.null()),
   }),
   handler: async (ctx, args) => {
     const row = await loadObjective(ctx.db, args.objectiveKey);
     const record = row.data;
     const workItem = record.workItems[0];
+    const contract = workItem.contract;
     const evidence = evidenceForRun(
       await listEvidence(ctx.db, args.objectiveKey),
       args.runId,
     );
-    const check = evaluateCompletion({
-      contract: workItem.contract,
+    const management = (
+      record as unknown as { management?: { executionProtocol?: string | null; contractId?: string | null } }
+    ).management;
+    const serial = isSerialManagerProtocol(management);
+    const unmet = await computeActionObligations({
+      db: ctx.db,
+      objectiveKey: args.objectiveKey,
+      record,
+      runId: args.runId,
       evidence,
-      result: record.result,
+      result: record.result ?? null,
     });
-    const unmet = [...check.unmet];
-    // M2-legacy obligation: growth contracts (those granted update_company_artifact)
-    // require an actual artifact version bump beyond the seed AND a resource-need
-    // proposal from this run (the M2 canonical loop is how external acquisition
-    // gets discovered at all). This is the historical M2 completion rule,
-    // preserved behind the legacy boundary so M4-managed rows are evaluated by
-    // the independent gate, not this spine predicate.
-    const isM4Managed = (record as unknown as { management?: { contractId: string | null } }).management?.contractId != null;
-    if (!isM4Managed) {
-      const isGrowth = workItem.contract.allowedToolPermissions.includes(
-        "update_company_artifact",
-      );
-      if (isGrowth) {
-        const artifactChanged = (record.companyArtifacts ?? []).some(
-          (a) => a.provenanceRunId === args.runId && a.version > 1,
-        );
-        if (!artifactChanged) {
-          unmet.push("company_artifact: no version change by this run");
-        }
-        const hasNeed = (record.resourceNeeds ?? []).some(
-          (n) => n.proposedByRunId === args.runId,
-        );
-        if (!hasNeed) {
-          unmet.push("resource_need: growth run must propose a resource need");
-        }
-      }
-    }
+
+    const validatedGap = currentUnresolvedValidatedGap(
+      (record.resourceNeeds ?? []) as ResourceNeed[],
+      (record.acquisitionResults ?? []).map((a) => ({
+        requirementKey: a.requirementKey,
+        contractRevision: a.contractRevision,
+        resourceClass: a.resourceClass,
+        verifiedAt: a.verifiedAt,
+      })),
+    );
+    // Historical lastDeliveryFailureClass is diagnostic only — it must not
+    // authorize a yield for a newly resumed run with no current gap.
+    const yieldReason = validatedGap
+      ? `INPUT_BLOCKED: validated gap ${validatedGap.resourceClass} — stop and yield to management`
+      : null;
+
+    const linkedIds = contract.inputEvidenceIds;
+    const allAcquired = await verifiedAcquiredInputs(ctx.db, record);
+    // Serial with explicit linkage: workers see only linked acquisitions.
+    // Legacy / absent field: historical broad-objective verified set.
+    const acquiredInputs =
+      serial && linkedIds !== undefined
+        ? allAcquired.filter((a) => linkedIds.includes(a.resultEvidenceId))
+        : allAcquired;
+
+    // The COMPLETE supported target artifact is provided to writing workers:
+    // `update_company_artifact` requires a full replacement up to the stored
+    // ceiling (MAX_CONTENT_CHARS), so a truncated view would force a worker to
+    // rewrite from an incomplete picture. The ceiling is NOT raised here; the
+    // worker sees exactly what it may replace.
+    const TEXT_CAP = 2000;
+    // Serial writing workers are evaluated against the LOCKED completion
+    // criteria; pass the verbatim bar and this action's requirement statement
+    // into the package so correction happens against the same contract the
+    // gate will use — unchanged, neither widened nor narrowed here.
+    const lockedCriteria = serial
+      ? await loadLockedCriteriaForRun(ctx.db, record, workItem)
+      : null;
+    const loadedInputPackage = serial
+      ? buildLoadedInputPackage({
+          contract,
+          record,
+          acquiredInputs,
+          textCap: TEXT_CAP,
+          artifactCap: MAX_ARTIFACT_CONTENT_CHARS,
+          lockedCriteria,
+        })
+      : undefined;
+
     return {
-      assignment: workItem.contract.assignment,
-      responsibility: workItem.contract.assignment,
-      requiredSourceClasses: [...workItem.contract.requiredSourceClasses],
-      minObservations: workItem.contract.minObservations,
-      sourceProofs: workItem.contract.sourceProofs.map((proof) => ({
+      assignment: contract.assignment,
+      responsibility: contract.assignment,
+      requiredSourceClasses: [...contract.requiredSourceClasses],
+      minObservations: contract.minObservations,
+      sourceProofs: contract.sourceProofs.map((proof) => ({
         sourceClass: proof.sourceClass,
         minDistinctSources: proof.minDistinctSources,
       })),
@@ -783,10 +1307,330 @@ export const readWorkerObservation = internalQuery({
         ...(item.url ? { url: item.url } : {}),
         ...(item.recordRef ? { recordRef: item.recordRef } : {}),
       })),
+      acquiredInputs,
+      ...(loadedInputPackage ? { loadedInputPackage } : {}),
       unmetCompletionRequirements: unmet,
+      yieldReason,
     };
   },
 });
+
+function buildLoadedInputPackage(input: {
+  contract: WorkContract;
+  record: ObjectiveRecord;
+  acquiredInputs: Array<{
+    intentId: string;
+    resultEvidenceId: string;
+    providerId: string;
+    serviceId: string;
+    resourceClass: string;
+    provenance: string;
+    responseHash: string;
+    text: string;
+  }>;
+  textCap: number;
+  /** Full-replacement ceiling a writing worker may submit (MAX_CONTENT_CHARS). */
+  artifactCap: number;
+  /** Locked completion criteria for this action, loaded from current revision. */
+  lockedCriteria: {
+    requirementKey: string;
+    mustBeTrue: string;
+    expectedOutput: string | null;
+    minimumCompletionBar: string;
+    contractRevision: number;
+  } | null;
+}) {
+  const { contract, record, acquiredInputs, textCap, artifactCap, lockedCriteria } = input;
+  const canReadCompany = contract.allowedToolPermissions.includes(
+    "read_company_record",
+  );
+  const companyRecords = canReadCompany
+    ? COMPANY_RECORDS.slice(0, 8).map((rec) => {
+        const truncated = rec.text.length > textCap;
+        return {
+          ref: rec.ref,
+          label: rec.label,
+          text: truncated ? rec.text.slice(0, textCap) : rec.text,
+          truncated,
+        };
+      })
+    : [];
+
+  const targetKey = contract.targetArtifactKey ?? null;
+  let targetArtifact: {
+    key: string;
+    version: number;
+    content: string;
+    truncated: boolean;
+    complete: boolean;
+    exceedsReplacementCeiling: boolean;
+  } | null = null;
+  if (targetKey) {
+    const art = (record.companyArtifacts ?? []).find((a) => a.key === targetKey);
+    if (art) {
+      // The writing worker sees the COMPLETE current version it must replace
+      // (bounded only by the stored ceiling the tool itself enforces). The old
+      // view truncated to textCap (2,000) — and the runtime truncated again to
+      // 1,200 — while `update_company_artifact` requires a complete replacement
+      // up to MAX_CONTENT_CHARS: a worker was forced to rewrite text it could
+      // not read. Accuracy metadata travels with the payload: `truncated`
+      // stays the literal completeness fact, `complete` asserts the supported
+      // package is whole, and an over-ceiling artifact (which the tool cannot
+      // replace) is flagged instead of silently cut.
+      const exceeds = art.content.length > artifactCap;
+      targetArtifact = {
+        key: art.key,
+        version: art.version,
+        content: exceeds ? art.content.slice(0, artifactCap) : art.content,
+        truncated: exceeds,
+        complete: !exceeds,
+        exceedsReplacementCeiling: exceeds,
+      };
+    }
+  }
+
+  // Accepted-output continuity: only the application's durable accepted
+  // terminal record makes prior output "accepted". A stored `record.result`
+  // without a matching accepted terminal is a diagnostic view of what a run
+  // CLAIMED, never authoritative input the next action may build on as fact.
+  const accepted = record.acceptedTerminal ?? null;
+  const unconfirmed = record.lastUnconfirmedTerminal ?? null;
+  const priorActionOutputs: Array<{
+    runId: string;
+    summary: string;
+    fit: string;
+    recommendedNextAction: string;
+    truncated: boolean;
+    status: "accepted" | "diagnostic";
+    classification: string;
+  }> = [];
+  if (
+    record.result &&
+    record.result.runId &&
+    record.result.runId !== record.run?.id
+  ) {
+    const summary = record.result.summary ?? "";
+    const fit = record.result.fit ?? "";
+    const next = record.result.recommendedNextAction ?? "";
+    const truncated =
+      summary.length > textCap || fit.length > textCap || next.length > textCap;
+    const isAccepted =
+      accepted?.outcome === "accepted" &&
+      accepted.runId === record.result.runId &&
+      accepted.terminal === "DELIVERED";
+    priorActionOutputs.push({
+      runId: record.result.runId,
+      summary: summary.slice(0, textCap),
+      fit: fit.slice(0, textCap),
+      recommendedNextAction: next.slice(0, 500),
+      truncated,
+      status: isAccepted ? "accepted" : "diagnostic",
+      classification: isAccepted
+        ? `accepted:${accepted.terminal}`
+        : unconfirmed && unconfirmed.runId === record.result.runId
+          ? `refused_unconfirmed:${unconfirmed.terminal}`
+          : "unaccepted_result",
+    });
+  }
+
+  const linkedAcquisitions = acquiredInputs.map((a) => ({
+    ...a,
+    truncated: a.text.length >= textCap,
+  }));
+
+  // Correction continuity: when management reopened a deliverable after a
+  // negative final assessment, the corrective worker must see the locked bar
+  // it is being measured against and the review rationale — as DATA, without
+  // any new approval authority. The critique lives on management state; the
+  // locked criteria travel with the contract the application already holds.
+  const management = (
+    record as unknown as {
+      management?: {
+        lastFinalAssessmentCritique?: string | null;
+        currentContractRevision?: number;
+      };
+      finalSemanticAssessment?: {
+        meetsMinimumBar: boolean;
+        rationale: string;
+        assumptionsUnknowns?: string[];
+        recommendedNextAction?: string;
+        contractRevision: number;
+      } | null;
+    }
+  ).management ?? (record as unknown as { management?: never }).management;
+  const critique =
+    typeof (record as unknown as { management?: { lastFinalAssessmentCritique?: string | null } })
+      .management?.lastFinalAssessmentCritique === "string"
+      ? String(
+          (record as unknown as { management: { lastFinalAssessmentCritique: string } })
+            .management.lastFinalAssessmentCritique,
+        ).slice(0, 800)
+      : null;
+  const negativeReview = (
+    record as unknown as { finalSemanticAssessment?: {
+      meetsMinimumBar: boolean;
+      rationale: string;
+      assumptionsUnknowns?: string[];
+      recommendedNextAction?: string;
+    } | null }
+  ).finalSemanticAssessment;
+  const correction =
+    critique !== null
+      ? {
+          reviewCritique: critique,
+          ...(negativeReview && negativeReview.meetsMinimumBar === false
+            ? {
+                reviewUnknowns: (negativeReview.assumptionsUnknowns ?? [])
+                  .slice(0, 6)
+                  .map((text) => text.slice(0, 300)),
+                reviewRecommendedAction: String(
+                  negativeReview.recommendedNextAction ?? "",
+                ).slice(0, 500),
+              }
+            : {}),
+          // The critique is application review output, not independent source
+          // evidence: it must not be cited as company fact, and it neither
+          // adds nor removes anything from the locked bar below.
+          classification: "application_review" as const,
+        }
+      : null;
+
+  return {
+    companyRecords,
+    targetArtifact,
+    priorActionOutputs,
+    linkedAcquisitions,
+    targetArtifactKey: targetKey,
+    inputEvidenceIds: [...(contract.inputEvidenceIds ?? [])],
+    ...(lockedCriteria ? { lockedCriteria } : {}),
+    ...(correction ? { correction } : {}),
+  };
+}
+
+/**
+ * Load the LOCKED completion criteria this action will be assessed against:
+ * the bound Requirement's statement/expectedOutput and the contract's
+ * minimumCompletionBar, at the requirement's own contractRevision. This is a
+ * read-only projection of the same rows the gate and the final assessor use —
+ * it changes no bar and grants no authority.
+ */
+async function loadLockedCriteriaForRun(
+  db: QueryCtx["db"],
+  record: ObjectiveRecord,
+  workItem: { id?: string } | null | undefined,
+): Promise<{
+  requirementKey: string;
+  mustBeTrue: string;
+  expectedOutput: string | null;
+  minimumCompletionBar: string;
+  contractRevision: number;
+} | null> {
+  const workItemId = workItem?.id;
+  if (!workItemId?.startsWith("wi:")) return null;
+  const assignmentId = workItemId.slice(3);
+  if (!assignmentId) return null;
+  const assignmentRows = await db
+    .query("assignments")
+    .withIndex("by_objective", (q) => q.eq("objectiveKey", record.key))
+    .collect();
+  const assignment = assignmentRows
+    .map((row) => (row as { data: { assignmentId: string; requirementKey?: string; contractRevision?: number } }).data)
+    .find((data) => data.assignmentId === assignmentId);
+  if (!assignment?.requirementKey) return null;
+  const reqRows = await db
+    .query("requirements")
+    .withIndex("by_objectiveRequirement", (q) =>
+      q.eq("objectiveKey", record.key).eq("requirementKey", assignment.requirementKey!),
+    )
+    .collect();
+  if (reqRows.length === 0) return null;
+  const sameAsDispatch =
+    typeof assignment.contractRevision === "number"
+      ? reqRows.find(
+          (row) =>
+            (row as { data: { contractRevision?: number } }).data.contractRevision ===
+            assignment.contractRevision,
+        ) ?? null
+      : null;
+  const latest =
+    sameAsDispatch ??
+    reqRows.reduce((max, row) => {
+      const rev = (row as { data: { contractRevision?: number } }).data.contractRevision ?? 0;
+      const maxRev = (max as { data: { contractRevision?: number } }).data.contractRevision ?? 0;
+      return rev >= maxRev ? row : max;
+    });
+  const data = (latest as {
+    data: {
+      contractRevision?: number;
+      mustBeTrue?: string;
+      expectedOutput?: string | null;
+    };
+  }).data;
+  const contractRows = await db
+    .query("outcomeContracts")
+    .withIndex("by_objective", (q) => q.eq("objectiveKey", record.key))
+    .collect();
+  if (contractRows.length === 0) return null;
+  const latestContract = contractRows.reduce((max, row) =>
+    (row as { revision: number }).revision > (max as { revision: number }).revision ? row : max,
+  );
+  return {
+    requirementKey: assignment.requirementKey,
+    mustBeTrue: String(data.mustBeTrue ?? "").slice(0, 2000),
+    expectedOutput:
+      typeof data.expectedOutput === "string" ? data.expectedOutput.slice(0, 2000) : null,
+    minimumCompletionBar: String(
+      (latestContract as { data: { minimumCompletionBar?: string } }).data
+        .minimumCompletionBar ?? "",
+    ).slice(0, 800),
+    contractRevision: data.contractRevision ?? (latestContract as { revision: number }).revision,
+  };
+}
+
+// M6.1: acquisitions the worker may read are exactly those whose intent reached
+// `verified`. A recorded-but-unverified provider result is never presented as
+// acquired input, so the worker can only build on truth the application holds.
+async function verifiedAcquiredInputs(
+  db: QueryCtx["db"],
+  record: ObjectiveRecord,
+): Promise<
+  Array<{
+    intentId: string;
+    resultEvidenceId: string;
+    providerId: string;
+    serviceId: string;
+    resourceClass: string;
+    provenance: string;
+    responseHash: string;
+    text: string;
+  }>
+> {
+  const acquisitions = record.acquisitionResults ?? [];
+  if (acquisitions.length === 0) return [];
+  const intentRows = await db
+    .query("executionIntents")
+    .withIndex("by_objective", (q) => q.eq("objectiveKey", record.key))
+    .collect();
+  const verified = new Set(
+    intentRows
+      .filter((row) => row.data.state === "verified")
+      .map((row) => row.data.intentId),
+  );
+  return acquisitions
+    .filter((result) => verified.has(result.intentId))
+    .map((result) => ({
+      intentId: result.intentId,
+      resultEvidenceId: result.resultEvidenceId,
+      // Intent targets are nullable; the read port reports honest "unknown"
+      // placeholders rather than leaking nulls into the worker surface.
+      providerId: result.providerId ?? "unknown",
+      serviceId: result.serviceId ?? "unknown",
+      resourceClass: result.resourceClass ?? "unknown",
+      provenance: result.provenance,
+      responseHash: result.responseHash,
+      text: result.content.slice(0, 2000),
+    }));
+}
 
 // ── Application-owned M2 mutations (artifact + sourced need persistence) ─────
 
@@ -797,6 +1641,14 @@ export const updateCompanyArtifact = internalMutation({
     runId: v.string(),
     content: v.string(),
     changeNote: v.string(),
+    // M6.1: provenance the worker CLAIMS for this revision. Claimed ids must
+    // reference acquisition results whose intent is verified with a matching
+    // resultEvidenceId; the application owns the truth, never the model.
+    usedAcquisitionEvidenceIds: v.optional(v.array(v.string())),
+    // Serial: the exact artifact version the composing view showed, bound by
+    // the runtime (never model-supplied). Absent = legacy write path without a
+    // shown-version fence.
+    expectedArtifactVersion: v.optional(v.number()),
   },
   returns: v.object({ key: v.string(), version: v.number() }),
   handler: async (ctx, args) => {
@@ -806,16 +1658,122 @@ export const updateCompanyArtifact = internalMutation({
     assertActiveRun(record, args.runId, now);
     const artifacts = [...(record.companyArtifacts ?? [])];
     if (artifacts.length === 0) {
-      throw new Error("No company artifact seeded for this objective");
+      throw new ToolStatusError("refused", "No company artifact seeded for this objective");
     }
-    const idx = 0;
-    const next = applyArtifactChange(artifacts[idx], {
+    const workItem = record.workItems[0];
+    const contract = workItem?.contract;
+    const management = (
+      record as unknown as { management?: { executionProtocol?: string | null } }
+    ).management;
+    const serial = isSerialManagerProtocol(management);
+
+    // Serial: mutate the exact bound target only — never artifacts[0].
+    let targetIdx = 0;
+    if (serial && contract?.targetArtifactKey != null) {
+      const idx = artifacts.findIndex((a) => a.key === contract.targetArtifactKey);
+      if (idx < 0) {
+        throw new ToolStatusError("refused", 
+          `targetArtifactKey ${contract.targetArtifactKey} is absent or unauthorized on this Objective`,
+        );
+      }
+      targetIdx = idx;
+    } else if (serial && contract && "targetArtifactKey" in contract) {
+      // Explicit null target on serial = analysis-only; refuse mutation.
+      if (contract.targetArtifactKey === null) {
+        throw new ToolStatusError("refused", 
+          "This assignment has no targetArtifactKey; artifact mutation is not authorized",
+        );
+      }
+    }
+
+    // Stale-view fence (serial): an edit bound to a shown version must match
+    // the target's CURRENT version. Rejected before provenance validation or
+    // any write, so the refusal has no side effects.
+    if (
+      serial &&
+      args.expectedArtifactVersion !== undefined &&
+      args.expectedArtifactVersion !== artifacts[targetIdx].version
+    ) {
+      throw new ToolStatusError(
+        "stale",
+        `update_company_artifact refused: edit bound to v${args.expectedArtifactVersion} but ${artifacts[targetIdx].key} is now v${artifacts[targetIdx].version}; recompose from the current version`,
+      );
+    }
+
+    const intentRows = await ctx.db
+      .query("executionIntents")
+      .withIndex("by_objective", (q) => q.eq("objectiveKey", args.objectiveKey))
+      .collect();
+    const verifiedIntents = new Map(
+      intentRows
+        .filter((row) => row.data.state === "verified")
+        .map((row) => [row.data.intentId, row.data]),
+    );
+    const verifiedAcquisitions = (record.acquisitionResults ?? []).filter(
+      (result) => {
+        const intent = verifiedIntents.get(result.intentId);
+        return (
+          intent != null && intent.resultEvidenceId === result.resultEvidenceId
+        );
+      },
+    );
+    const claimedIds = [...new Set(args.usedAcquisitionEvidenceIds ?? [])];
+
+    // Serial action-scoped: only evidence linked on THIS contract may be cited.
+    // Do not force a citation merely because some acquisition exists elsewhere.
+    const linkedIds = contract?.inputEvidenceIds;
+    if (serial && linkedIds !== undefined) {
+      const linkedSet = new Set(linkedIds);
+      for (const id of claimedIds) {
+        if (!linkedSet.has(id)) {
+          throw new ToolStatusError("refused", 
+            `usedAcquisitionEvidenceIds: ${id} is not linked to this action (inputEvidenceIds)`,
+          );
+        }
+        const result = verifiedAcquisitions.find(
+          (candidate) => candidate.resultEvidenceId === id,
+        );
+        if (!result) {
+          throw new ToolStatusError("refused", 
+            `usedAcquisitionEvidenceIds: ${id} is not a verified acquisition result for this objective`,
+          );
+        }
+      }
+      // When the action declares linked acquisitions and the worker cites use,
+      // those exact IDs must be present (material use → must cite).
+      // If the worker cites none while links exist, allow only when content does
+      // not claim use — still refuse silent discard when they claim use via ids.
+      // Require citation when linked IDs exist AND worker provided a non-empty
+      // claim list that must match; if claim list empty with links, do NOT
+      // force-require (worker may revise without consuming acquisition).
+    } else {
+      // Legacy: if any verified acquisitions exist on the Objective and the
+      // revision cites none, refuse silent provenance discard.
+      if (verifiedAcquisitions.length > 0 && claimedIds.length === 0) {
+        throw new ToolStatusError("refused", 
+          "Artifact revision must cite the verified acquisition evidence it used (usedAcquisitionEvidenceIds)",
+        );
+      }
+      for (const id of claimedIds) {
+        const result = verifiedAcquisitions.find(
+          (candidate) => candidate.resultEvidenceId === id,
+        );
+        if (!result) {
+          throw new ToolStatusError("refused", 
+            `usedAcquisitionEvidenceIds: ${id} is not a verified acquisition result for this objective`,
+          );
+        }
+      }
+    }
+
+    const next = applyArtifactChange(artifacts[targetIdx], {
       content: args.content,
       changeNote: args.changeNote,
       runId: args.runId,
       at: now,
+      ...(claimedIds.length > 0 ? { usedAcquisitionEvidenceIds: claimedIds } : {}),
     });
-    artifacts[idx] = next;
+    artifacts[targetIdx] = next;
     const updated: ObjectiveRecord = {
       ...record,
       companyArtifacts: artifacts,
@@ -827,10 +1785,399 @@ export const updateCompanyArtifact = internalMutation({
       ctx.db,
       args.objectiveKey,
       "evidence",
-      `Artifact ${next.key} updated to version ${next.version} by ${args.runId}`,
+      `Artifact ${next.key} updated to version ${next.version} by ${args.runId}${
+        claimedIds.length > 0
+          ? `; used acquired evidence: ${claimedIds.join(", ")}`
+          : ""
+      }`,
       now,
     );
     return { key: next.key, version: next.version };
+  },
+});
+
+// Persist a governed input-availability check as an application observation.
+// Only NOT_AVAILABLE results may later support validated missing-input gaps.
+export const recordInputAvailabilityCheck = internalMutation({
+  args: {
+    objectiveKey: v.string(),
+    runId: v.string(),
+    inputCheckId: v.string(),
+    requirementKey: v.union(v.string(), v.null()),
+    workItemId: v.union(v.string(), v.null()),
+  },
+  returns: v.object({
+    status: v.string(),
+    inputCheckId: v.string(),
+    detail: v.string(),
+    evidenceId: v.string(),
+    evidenceText: v.string(),
+    label: v.string(),
+  }),
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const row = await loadObjective(ctx.db, args.objectiveKey);
+    assertActiveRun(row.data, args.runId, now);
+    const record = row.data;
+    const workItem =
+      record.workItems.find((wi) => wi.id === args.workItemId) ??
+      record.workItems[0];
+    if (!workItem) throw new Error("no work item for input availability check");
+
+    let requiredResourceClasses: string[] = [];
+    let mustBeTrue = workItem.contract.assignment;
+    let expectedOutput: string | null = null;
+    let contractRevision: number | null = null;
+    if (args.requirementKey) {
+      const reqRows = await ctx.db
+        .query("requirements")
+        .withIndex("by_objectiveKey", (q) => q.eq("objectiveKey", args.objectiveKey))
+        .collect();
+      const reqRow = reqRows.find((r) => {
+        const data = (r as { data: Requirement }).data;
+        return data.requirementKey === args.requirementKey;
+      });
+      if (reqRow) {
+        const requirement = (reqRow as { data: Requirement }).data;
+        requiredResourceClasses = requirement.requiredResourceClasses ?? [];
+        mustBeTrue = requirement.mustBeTrue;
+        expectedOutput = requirement.expectedOutput ?? null;
+        contractRevision = requirement.contractRevision;
+      }
+    }
+
+    const evidence = await listEvidence(ctx.db, args.objectiveKey);
+    const obligations = listInputObligations({
+      requiredResourceClasses,
+      sourceProofs: workItem.contract.sourceProofs,
+      mustBeTrue,
+      expectedOutput,
+    });
+    const acquisitions = (record.acquisitionResults ?? []).map((a) => ({
+      requirementKey: a.requirementKey,
+      contractRevision: a.contractRevision,
+      resourceClass: a.resourceClass ?? "unknown",
+      verifiedAt: a.verifiedAt,
+    }));
+    const result = checkInputAvailability({
+      inputCheckId: args.inputCheckId,
+      obligations,
+      sourceProofs: workItem.contract.sourceProofs,
+      controlledResourceClasses: [...CURRENT_RESOURCE_INVENTORY],
+      evidence,
+      runId: args.runId,
+      requirementKey: args.requirementKey,
+      contractRevision,
+      acquisitions,
+    });
+
+    const recordRef = `input_check/${result.inputCheckId || "unknown"}/${result.status}`;
+    const derived = sourceIdentity({
+      sourceClass: "company_record",
+      recordRef,
+    });
+    if (!derived || derived !== `record:${recordRef}`)
+      throw new Error("input availability check produced an invalid source identity");
+
+    const evidenceId = `ev_${now}_${Math.random().toString(36).slice(2, 8)}`;
+    const evidenceRow: EvidenceRecord = {
+      sourceClass: "company_record",
+      label: result.label,
+      text: result.evidenceText,
+      origin: "application_observation",
+      sourceId: derived,
+      recordRef,
+      observedAt: now,
+      id: evidenceId,
+      recordedBy: workItem.workerKey,
+      runId: args.runId,
+    };
+    await recordEvidenceRow(ctx.db, args.objectiveKey, evidenceRow);
+    await appendEvent(
+      ctx.db,
+      args.objectiveKey,
+      "evidence",
+      `Input availability ${result.status} for ${result.inputCheckId || "unknown"}`,
+      now,
+    );
+    return {
+      status: result.status,
+      inputCheckId: result.inputCheckId,
+      detail: result.detail,
+      evidenceId,
+      evidenceText: result.evidenceText,
+      label: result.label,
+    };
+  },
+});
+
+// Persist a worker missing-input proposal after APPLICATION validation.
+// Validated → authoritative ResourceNeed (active) + Requirement class binding.
+// Refused → at most an unconfirmed diagnostic; eligibility unchanged.
+export const reportMissingInput = internalMutation({
+  args: {
+    objectiveKey: v.string(),
+    runId: v.string(),
+    requirementKey: v.string(),
+    workItemId: v.union(v.string(), v.null()),
+    proposal: v.object({
+      // Optional: the application derives the accepted obligation when omitted.
+      inputCheckId: v.optional(v.string()),
+      resourceClass: v.string(),
+      purpose: v.string(),
+      reasonOwnedInsufficient: v.string(),
+      supportingEvidenceIds: v.array(v.string()),
+      // true/false: legacy explicit; "derive": canonical serial submission.
+      semanticAdequacyGap: v.optional(
+        v.union(v.boolean(), v.literal("derive")),
+      ),
+      // V7 review R4: PROPOSED requested scope. Validated by
+      // validateMissingInputProposal; never authority by itself.
+      purposeKind: v.optional(v.string()),
+    }),
+  },
+  returns: v.object({
+    validated: v.boolean(),
+    needId: v.union(v.string(), v.null()),
+    needStatus: v.union(v.string(), v.null()),
+    refusalCode: v.union(v.string(), v.null()),
+    detail: v.string(),
+    shouldYield: v.boolean(),
+  }),
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const row = await loadObjective(ctx.db, args.objectiveKey);
+    const record = row.data;
+    assertActiveRun(record, args.runId, now);
+
+    const management = (
+      record as unknown as {
+        management?: { contractId?: string | null };
+      }
+    ).management;
+    const isM4Managed = Boolean(management?.contractId);
+
+    // Load current Requirement for this objective.
+    const reqRows = await ctx.db
+      .query("requirements")
+      .withIndex("by_objectiveKey", (q) => q.eq("objectiveKey", args.objectiveKey))
+      .collect();
+    const reqRow = reqRows.find((r) => {
+      const data = (r as { data: Requirement }).data;
+      return data.requirementKey === args.requirementKey;
+    });
+    if (!reqRow) {
+      return {
+        validated: false,
+        needId: null,
+        needStatus: null,
+        refusalCode: "requirement_not_found",
+        detail: "no current Requirement for this run",
+        shouldYield: false,
+      };
+    }
+    const requirement = (reqRow as { data: Requirement }).data;
+
+    // Contract revision must match the live outcome contract when managed.
+    let contractRevision = requirement.contractRevision;
+    if (isM4Managed) {
+      const contractRows = await ctx.db
+        .query("outcomeContracts")
+        .withIndex("by_objective", (q) => q.eq("objectiveKey", args.objectiveKey))
+        .collect();
+      const live = contractRows
+        .map((r) => ({
+          revision: (r as { revision: number }).revision,
+        }))
+        .sort((a, b) => b.revision - a.revision)[0];
+      if (live && live.revision !== requirement.contractRevision) {
+        return {
+          validated: false,
+          needId: null,
+          needStatus: null,
+          refusalCode: "stale_revision",
+          detail: "Requirement revision is not current",
+          shouldYield: false,
+        };
+      }
+      if (live?.revision != null) contractRevision = live.revision;
+    }
+
+    const workItem =
+      record.workItems.find((wi) => wi.id === args.workItemId) ??
+      record.workItems[0];
+    if (!workItem) {
+      return {
+        validated: false,
+        needId: null,
+        needStatus: null,
+        refusalCode: "work_item_missing",
+        detail: "no work item for this run",
+        shouldYield: false,
+      };
+    }
+
+    const evidence = await listEvidence(ctx.db, args.objectiveKey);
+    const needId = `need_${now}_${Math.random().toString(36).slice(2, 8)}`;
+    const proposal: MissingInputProposal = {
+      ...(args.proposal.inputCheckId
+        ? { inputCheckId: args.proposal.inputCheckId }
+        : {}),
+      resourceClass: args.proposal.resourceClass,
+      purpose: args.proposal.purpose,
+      reasonOwnedInsufficient: args.proposal.reasonOwnedInsufficient,
+      supportingEvidenceIds: args.proposal.supportingEvidenceIds,
+      ...(args.proposal.semanticAdequacyGap === true ||
+      args.proposal.semanticAdequacyGap === "derive"
+        ? { semanticAdequacyGap: args.proposal.semanticAdequacyGap }
+        : {}),
+      ...(args.proposal.purposeKind !== undefined
+        ? { purposeKind: args.proposal.purposeKind }
+        : {}),
+    };
+
+    const managementProtocol = (
+      record as unknown as {
+        management?: { executionProtocol?: string | null };
+      }
+    ).management;
+    const serial = isSerialManagerProtocol(managementProtocol);
+    const linkedIds = workItem.contract.inputEvidenceIds;
+    const acquisitionRows = (record.acquisitionResults ?? []).map((a) => ({
+      resultEvidenceId: a.resultEvidenceId,
+      requirementKey: a.requirementKey,
+      contractRevision: a.contractRevision,
+      resourceClass: a.resourceClass ?? "unknown",
+      verifiedAt: a.verifiedAt,
+      needDedupeKey: a.needDedupeKey ?? null,
+    }));
+
+    const validated = validateMissingInputProposal(proposal, {
+      objectiveKey: args.objectiveKey,
+      requirementKey: args.requirementKey,
+      contractRevision,
+      runId: args.runId,
+      workItemId: workItem.id,
+      requiredResourceClasses: requirement.requiredResourceClasses ?? [],
+      // V7 review R4 final correction — application-owned Requirement
+      // authority; never derived from the worker's own proposal.
+      authorizedPurposeKinds: requirement.authorizedPurposeKinds ?? [],
+      mustBeTrue: requirement.mustBeTrue,
+      expectedOutput: requirement.expectedOutput ?? null,
+      sourceProofs: workItem.contract.sourceProofs,
+      requiredSourceClasses: workItem.contract.requiredSourceClasses,
+      controlledResourceClasses: CURRENT_RESOURCE_INVENTORY,
+      evidence,
+      existingNeeds: (record.resourceNeeds ?? []) as ResourceNeed[],
+      acquisitions: acquisitionRows.map((a) => ({
+        requirementKey: a.requirementKey,
+        contractRevision: a.contractRevision,
+        resourceClass: a.resourceClass,
+        verifiedAt: a.verifiedAt,
+        needDedupeKey: a.needDedupeKey,
+      })),
+      citeableAcquisitions: acquisitionRows,
+      ...(serial && linkedIds !== undefined
+        ? { linkedInputEvidenceIds: linkedIds }
+        : {}),
+      at: now,
+      needId,
+    });
+
+    if (!validated.ok) {
+      const findings = [
+        ...((record.unconfirmedInputFindings ?? []) as UnconfirmedInputFinding[]),
+        validated.unconfirmed,
+      ].slice(-16);
+      const updated: ObjectiveRecord = {
+        ...record,
+        unconfirmedInputFindings: findings,
+        updatedAt: now,
+        activity: `Unconfirmed input diagnosis: ${validated.refusalCode}`,
+      };
+      await ctx.db.patch(row._id, { data: updated });
+      await appendEvent(
+        ctx.db,
+        args.objectiveKey,
+        "decision",
+        `Missing-input proposal refused (${validated.refusalCode}): ${validated.detail}`.slice(
+          0,
+          500,
+        ),
+        now,
+      );
+      return {
+        validated: false,
+        needId: null,
+        needStatus: null,
+        refusalCode: validated.refusalCode,
+        detail: validated.detail,
+        shouldYield: false,
+      };
+    }
+
+    // Persist authoritative need (dedupe-aware).
+    const needs = [...(record.resourceNeeds ?? [])] as ResourceNeed[];
+    const existingIdx = needs.findIndex(
+      (n) => n.id === validated.need.id || n.dedupeKey === validated.need.dedupeKey,
+    );
+    if (existingIdx >= 0) needs[existingIdx] = validated.need;
+    else needs.push(validated.need);
+
+    // Bind the validated class onto the Requirement so decision truth retains it.
+    const priorClasses = [...(requirement.requiredResourceClasses ?? [])];
+    const nextClasses = priorClasses.includes(validated.need.resourceClass)
+      ? priorClasses
+      : [...priorClasses, validated.need.resourceClass];
+    const classesChanged = nextClasses.length !== priorClasses.length;
+    if (classesChanged || requirement.strategy !== null) {
+      const bound: Requirement = {
+        ...requirement,
+        requiredResourceClasses: nextClasses,
+        // Yield clears in-flight MAKE strategy so management redecides on new facts.
+        strategy: null,
+        updatedAt: now,
+      };
+      await ctx.runMutation(internal.internal.workforce.putRequirement, {
+        objectiveKey: bound.objectiveKey,
+        requirementKey: bound.requirementKey,
+        data: bound,
+        currentContractRevision: bound.contractRevision,
+      });
+    }
+
+    const workItems = record.workItems.map((wi) =>
+      wi.id === workItem.id
+        ? { ...wi, state: "waiting_for_resource" as const }
+        : wi,
+    );
+
+    const updated: ObjectiveRecord = {
+      ...record,
+      resourceNeeds: needs,
+      workItems,
+      lastDeliveryFailureClass: "INPUT_BLOCKED",
+      state: isM4Managed ? "waiting_for_resource" : record.state,
+      activity: `Validated input gap ${validated.need.id} (${validated.need.resourceClass})`,
+      updatedAt: now,
+    };
+    await ctx.db.patch(row._id, { data: updated });
+    await appendEvent(
+      ctx.db,
+      args.objectiveKey,
+      "decision",
+      `Validated missing input ${validated.need.resourceClass} for ${args.requirementKey}; worker may yield.`,
+      now,
+    );
+
+    return {
+      validated: true,
+      needId: validated.need.id,
+      needStatus: validated.need.status,
+      refusalCode: null,
+      detail: `authoritative ResourceNeed ${validated.need.id} status=${validated.need.status}`,
+      shouldYield: true,
+    };
   },
 });
 
@@ -940,6 +2287,10 @@ export const finishRun = internalMutation({
     runId: v.string(),
     failed: v.optional(v.boolean()),
     failureReason: v.optional(v.string()),
+    /** Actual tool invocations during this run (was previously a dead counter). */
+    toolCalls: v.optional(v.number()),
+    /** Safe one-line runtime telemetry (names/counts only). */
+    telemetrySummary: v.optional(v.string()),
   },
   returns: v.object({
     completed: v.boolean(),
@@ -966,6 +2317,7 @@ export const finishRun = internalMutation({
                 contract: record.workItems[0].contract,
                 evidence: evidenceForRun(all, args.runId),
                 result: record.result,
+                currentRunId: args.runId,
               }).unmet
             : ["Run was superseded before it could complete"];
       return { completed: decision.completed, unmet };
@@ -975,6 +2327,23 @@ export const finishRun = internalMutation({
     const runs = [...workItem.runs];
     const runIndex = runs.findIndex((candidate) => candidate.id === args.runId);
     const run = { ...runs[runIndex] };
+    if (typeof args.toolCalls === "number" && args.toolCalls >= 0) {
+      run.toolCalls = args.toolCalls;
+    }
+    const managementEarly = (
+      record as unknown as { management?: { contractId: string | null } }
+    ).management;
+    const isM4Managed = Boolean(managementEarly?.contractId);
+
+    if (args.telemetrySummary) {
+      await appendEvent(
+        ctx.db,
+        args.objectiveKey,
+        "system",
+        `Worker telemetry: ${args.telemetrySummary}`.slice(0, 500),
+        now,
+      );
+    }
 
     if (args.failed) {
       run.status = "failed";
@@ -982,10 +2351,19 @@ export const finishRun = internalMutation({
       runs[runIndex] = run;
       workItem.runs = runs;
       workItem.state = "failed";
+      // M4: one failed assignment is delivery DATA for the manager to re-decide,
+      // not a terminal objective failure. M2-legacy keeps historical spine fail.
+      // Ordinary execution failure does NOT invent missing inputs.
       const updated: ObjectiveRecord = {
         ...record,
-        state: "failed",
-        activity: `Run failed: ${args.failureReason ?? "unknown"}`,
+        state: isM4Managed ? "executing" : "failed",
+        lastDeliveryFailureClass: "EXECUTION_FAILED",
+        activity: isM4Managed
+          ? `Assignment run failed; manager will re-decide. ${args.failureReason ?? "unknown"}`.slice(
+              0,
+              500,
+            )
+          : `Run failed: ${args.failureReason ?? "unknown"}`,
         workItems: [workItem],
         run,
         updatedAt: now,
@@ -1010,49 +2388,70 @@ export const finishRun = internalMutation({
       contract: workItem.contract,
       evidence,
       result: record.result,
+      currentRunId: args.runId,
     });
 
-    // M2-legacy obligation: growth contracts (those granted update_company_artifact)
-    // require an actual artifact version bump beyond the seed. This is the historical
-    // M2 completion rule, preserved behind the legacy boundary so M4-managed rows
-    // are evaluated by the independent gate, not this spine predicate.
-    const isM4Managed = (record as unknown as { management?: { contractId: string | null } }).management?.contractId != null;
-    if (!isM4Managed) {
-      const isGrowthContract = workItem.contract.allowedToolPermissions.includes(
-        "update_company_artifact",
+    // Serial protocol: artifact mutation only when proofs demand it.
+    const management = (
+      record as unknown as { management?: { executionProtocol?: string | null } }
+    ).management;
+    const requiresArtifactMutation = assignmentRequiresArtifactMutation({
+      allowedToolPermissions: workItem.contract.allowedToolPermissions,
+      proofKinds: await requirementProofKinds(
+        ctx.db,
+        args.objectiveKey,
+        workItem,
+      ),
+      serialProtocol: isSerialManagerProtocol(management),
+    });
+    if (requiresArtifactMutation) {
+      const artifacts = record.companyArtifacts ?? [];
+      const artifactChanged = artifacts.some(
+        (a) => a.provenanceRunId === args.runId && a.version > 1,
       );
-      if (isGrowthContract) {
-        const artifacts = record.companyArtifacts ?? [];
-        const artifactChanged = artifacts.some(
-          (a) => a.provenanceRunId === args.runId && a.version > 1,
-        );
-        if (!artifactChanged) {
-          check.complete = false;
-          check.unmet = [
-            ...check.unmet,
-            "company_artifact: no version change by this run",
-          ];
-        }
+      if (!artifactChanged) {
+        check.complete = false;
+        check.unmet = [
+          ...check.unmet,
+          "company_artifact: no version change by this run",
+        ];
       }
     }
 
     const buyPending = (record.resourceNeeds ?? []).some(
       (n) => n.status === "buy_pending",
     );
+    // Current unresolved validated gap only — historical lastDeliveryFailureClass
+    // is diagnostic and must not re-block a resumed run after coverage.
+    const inputBlocked =
+      currentUnresolvedValidatedGap(
+        (record.resourceNeeds ?? []) as ResourceNeed[],
+        (record.acquisitionResults ?? []).map((a) => ({
+          requirementKey: a.requirementKey,
+          contractRevision: a.contractRevision,
+          resourceClass: a.resourceClass,
+          verifiedAt: a.verifiedAt,
+        })),
+      ) != null;
 
     run.status = "stopped";
     runs[runIndex] = run;
     workItem.runs = runs;
 
-    // BUY is not failure: unresolved buy_pending → waiting_for_resource.
-    if (buyPending) {
-      run.summary = "Paused: waiting for external resource acquisition";
+    // BUY pending OR validated input gap: pause for management redecision.
+    // INPUT_BLOCKED is not EXECUTION_FAILED — coverage facts changed.
+    if (buyPending || inputBlocked) {
+      run.summary = inputBlocked && !buyPending
+        ? "Paused: INPUT_BLOCKED — validated missing input; awaiting management redecision"
+        : "Paused: waiting for external resource acquisition";
       workItem.state = "waiting_for_resource";
       const updated: ObjectiveRecord = {
         ...record,
         state: "waiting_for_resource",
-        activity:
-          "Waiting for external resource — BUY pending; no payment created.",
+        lastDeliveryFailureClass: inputBlocked ? "INPUT_BLOCKED" : record.lastDeliveryFailureClass,
+        activity: inputBlocked && !buyPending
+          ? "INPUT_BLOCKED — validated input gap; worker yielded; no payment created."
+          : "Waiting for external resource — BUY pending; no payment created.",
         workItems: [workItem],
         run,
         updatedAt: now,
@@ -1062,12 +2461,18 @@ export const finishRun = internalMutation({
         ctx.db,
         args.objectiveKey,
         "decision",
-        "Objective waiting_for_resource: buy_pending need unresolved; no spend.",
+        inputBlocked && !buyPending
+          ? "Objective waiting_for_resource: INPUT_BLOCKED validated gap; no spend."
+          : "Objective waiting_for_resource: buy_pending need unresolved; no spend.",
         now,
       );
       return {
         completed: false,
-        unmet: ["waiting_for_resource: buy_pending need unresolved"],
+        unmet: [
+          inputBlocked && !buyPending
+            ? "INPUT_BLOCKED: validated missing input"
+            : "waiting_for_resource: buy_pending need unresolved",
+        ],
       };
     }
 
@@ -1081,7 +2486,15 @@ export const finishRun = internalMutation({
     // not the objective's completion authority. When check.complete is true,
     // the spine PROPOSES completion to the independent gate (lib/management/completion.ts).
     // The gate re-derives against the OutcomeContract; it never inherits the spine verdict.
-    let management = (record as unknown as { management?: { contractId: string | null; currentContractRevision?: number; controlNotes?: unknown[] } }).management;
+    // Spread existing management so decisionAttempts / fingerprints / cursors survive.
+    // Named distinctly from the earlier protocol read (`management`) in this handler.
+    type ManagementBlob = {
+      contractId: string | null;
+      currentContractRevision?: number;
+      controlNotes?: unknown[];
+      [key: string]: unknown;
+    };
+    let managementForPatch = (record as unknown as { management?: ManagementBlob }).management;
     if (check.complete) {
       const proposalNote = {
         type: "completion_proposed",
@@ -1090,30 +2503,35 @@ export const finishRun = internalMutation({
         spineVerdict: "complete",
         proposedAt: now,
       };
-      const existingNotes = management?.controlNotes ?? [];
-      management = {
-        contractId: management?.contractId ?? null,
-        ...(management?.currentContractRevision != null
-          ? { currentContractRevision: management.currentContractRevision }
-          : {}),
+      const existingNotes = managementForPatch?.controlNotes ?? [];
+      managementForPatch = {
+        ...(managementForPatch ?? { contractId: null }),
+        contractId: managementForPatch?.contractId ?? null,
         controlNotes: [...existingNotes, proposalNote],
       };
     }
 
     // M4-managed rows (management.contractId set) do NOT transition to "completed":
-    // the independent gate decides. M2-legacy rows (no contractId) keep the historical
-    // spine state transition so canonicalM2 stays green, but the controlNote carries
-    // the M4 truth: completion is proposed, not asserted by the spine.
+    // the independent gate decides. Incomplete/failed assignment delivery is also
+    // NOT a terminal objective failure under M4 — the manager clears strategy and
+    // re-decides. M2-legacy rows keep the historical spine state transition.
     const recordState = check.complete
       ? isM4Managed
         ? "executing" // M4: awaiting the independent gate
         : "completed" // M2-legacy: historical spine verdict
-      : "failed";
+      : isM4Managed
+        ? "executing" // M4: failed delivery → manager re-decides
+        : "failed";
     const recordActivity = check.complete
       ? isM4Managed
         ? "Completion proposed; awaiting the independent gate."
         : "Work completed with verified proof."
-      : `Run ended without required proof: ${check.unmet.join("; ")}`;
+      : isM4Managed
+        ? `Assignment ended without required proof; manager will re-decide. ${check.unmet.join("; ")}`.slice(
+            0,
+            500,
+          )
+        : `Run ended without required proof: ${check.unmet.join("; ")}`;
 
     const updated = {
       ...record,
@@ -1121,7 +2539,7 @@ export const finishRun = internalMutation({
       activity: recordActivity,
       workItems: [workItem],
       run,
-      ...(management ? { management } : {}),
+      ...(managementForPatch ? { management: managementForPatch } : {}),
       updatedAt: now,
     } as ObjectiveRecord;
     await ctx.db.patch(row._id, { data: updated });
@@ -1254,6 +2672,130 @@ export const startManagedRun = internalMutation({
   },
 });
 
+/**
+ * Bounded final semantic assessment against the locked Outcome Contract.
+ * Somebody proposes; the model does NOT complete the Objective. The
+ * deterministic completion gate still rechecks artifact/evidence/requirements.
+ */
+export const submitFinalSemanticAssessment = internalMutation({
+  args: {
+    objectiveKey: v.string(),
+    meetsMinimumBar: v.boolean(),
+    rationale: v.string(),
+    artifactKey: v.union(v.string(), v.null()),
+    artifactVersion: v.union(v.number(), v.null()),
+    evidenceRefs: v.array(v.string()),
+    assumptionsUnknowns: v.array(v.string()),
+    recommendedNextAction: v.string(),
+    contractRevision: v.number(),
+  },
+  returns: v.object({
+    status: v.union(v.literal("accepted"), v.literal("refused")),
+    detail: v.string(),
+  }),
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const row = await loadObjective(ctx.db, args.objectiveKey);
+    const record = row.data;
+    const management = (
+      record as unknown as {
+        management?: {
+          executionProtocol?: string | null;
+          currentContractRevision?: number;
+        };
+      }
+    ).management;
+    if (!isSerialManagerProtocol(management)) {
+      return {
+        status: "refused" as const,
+        detail: "final semantic assessment is only for serial manager protocol",
+      };
+    }
+    const currentRevision =
+      management?.currentContractRevision ??
+      (typeof management === "object" ? undefined : undefined);
+    // Prefer explicit arg; refuse if objective has a known newer revision.
+    if (
+      typeof currentRevision === "number" &&
+      currentRevision !== args.contractRevision
+    ) {
+      return {
+        status: "refused" as const,
+        detail: `stale contract revision: assessment r${args.contractRevision} vs current r${currentRevision}`,
+      };
+    }
+    if (args.artifactKey) {
+      const art = (record.companyArtifacts ?? []).find(
+        (a) => a.key === args.artifactKey,
+      );
+      if (!art) {
+        return {
+          status: "refused" as const,
+          detail: `artifact ${args.artifactKey} not on Objective`,
+        };
+      }
+      if (
+        args.artifactVersion != null &&
+        art.version !== args.artifactVersion
+      ) {
+        return {
+          status: "refused" as const,
+          detail: `artifact version mismatch: assessed v${args.artifactVersion} vs current v${art.version}`,
+        };
+      }
+    }
+    // Evidence refs must exist on this Objective (ids or sourceIds).
+    if (args.evidenceRefs.length > 0) {
+      const evidenceRows = await listEvidence(ctx.db, args.objectiveKey);
+      const known = new Set<string>();
+      for (const ev of evidenceRows) {
+        known.add(ev.id);
+        if (ev.sourceId) known.add(ev.sourceId);
+      }
+      for (const acq of record.acquisitionResults ?? []) {
+        known.add(acq.resultEvidenceId);
+      }
+      for (const ref of args.evidenceRefs) {
+        if (!known.has(ref)) {
+          return {
+            status: "refused" as const,
+            detail: `evidence ref ${ref} is not present on this Objective`,
+          };
+        }
+      }
+    }
+    const assessment = {
+      meetsMinimumBar: args.meetsMinimumBar,
+      rationale: args.rationale.slice(0, 2000),
+      artifactKey: args.artifactKey,
+      artifactVersion: args.artifactVersion,
+      evidenceRefs: args.evidenceRefs.slice(0, 16),
+      assumptionsUnknowns: args.assumptionsUnknowns.slice(0, 12),
+      recommendedNextAction: args.recommendedNextAction.slice(0, 500),
+      assessedAt: now,
+      contractRevision: args.contractRevision,
+    };
+    await ctx.db.patch(row._id, {
+      data: {
+        ...record,
+        finalSemanticAssessment: assessment,
+        updatedAt: now,
+      },
+    });
+    await appendEvent(
+      ctx.db,
+      args.objectiveKey,
+      "decision",
+      `Final semantic assessment stored (meetsMinimumBar=${args.meetsMinimumBar}).`,
+      now,
+    );
+    return {
+      status: "accepted" as const,
+      detail: "final semantic assessment persisted",
+    };
+  },
+});
+
 // Internal read of the raw record for actions.
 export const getObjectiveInternal = internalQuery({
   args: { objectiveKey: v.string() },
@@ -1304,6 +2846,7 @@ export const getObjective = query({
               ? evidenceForRun(evidence, record.run.id)
               : evidence,
             result: record.result,
+            ...(record.run ? { currentRunId: record.run.id } : {}),
           }).unmet
         : ["No work item has been planned yet"];
     return {
@@ -1326,18 +2869,174 @@ export const listObjectives = query({
     }),
   ),
   handler: async (ctx) => {
-    const rows = await ctx.db.query("objectives").collect();
-    return rows
-      .map((row) => {
-        const data = (row as { key: string; data: ObjectiveRecord }).data;
-        return {
-          key: row.key,
-          request: data.request,
-          state: data.state,
-          updatedAt: data.updatedAt,
-        };
-      })
-      .sort((a, b) => b.updatedAt - a.updatedAt)
-      .slice(0, 20);
+    // Bounded, indexed read: only the 20 most-recently-updated Objective
+    // documents are loaded, instead of collecting and sorting every row.
+    const rows = await ctx.db
+      .query("objectives")
+      .withIndex("by_updatedAt")
+      .order("desc")
+      .take(20);
+    return rows.map((row) => {
+      const data = (row as { key: string; data: ObjectiveRecord }).data;
+      return {
+        key: row.key,
+        request: data.request,
+        state: data.state,
+        updatedAt: data.updatedAt,
+      };
+    });
+  },
+});
+
+// A small status read for polling loops (e.g. the model-portability gate),
+// which previously called the full getObjective + getObjectiveWorkspaceV2 on
+// every 5-second tick — loading evidence, events, contracts, assignments,
+// decisions, intents, grants and the entire workers table just to watch
+// state transitions. This exposes only what a poll loop needs to decide
+// whether to act or keep waiting; full reads remain for final evidence
+// capture and anywhere actual business decisions are made.
+export const getObjectiveStatus = query({
+  args: { objectiveKey: v.string() },
+  returns: v.union(
+    v.null(),
+    v.object({
+      key: v.string(),
+      state: v.string(),
+      updatedAt: v.number(),
+      requirements: v.array(
+        v.object({
+          requirementKey: v.string(),
+          state: v.string(),
+          strategy: v.union(v.string(), v.null()),
+        }),
+      ),
+    }),
+  ),
+  handler: async (ctx, args) => {
+    const row = await ctx.db
+      .query("objectives")
+      .withIndex("by_key", (q) => q.eq("key", args.objectiveKey))
+      .unique();
+    if (!row) return null;
+    const record = (row as ObjectiveRow).data;
+    const requirementRows = await ctx.db
+      .query("requirements")
+      .withIndex("by_objectiveKey", (q) => q.eq("objectiveKey", args.objectiveKey))
+      .collect();
+    const requirements = requirementRows.map((r) => {
+      const data = (r as { data: { requirementKey: string; state: string; strategy: string | null } }).data;
+      return { requirementKey: data.requirementKey, state: data.state, strategy: data.strategy };
+    });
+    return {
+      key: record.key,
+      state: record.state,
+      updatedAt: record.updatedAt,
+      requirements,
+    };
+  },
+});
+
+// ── M6.1 demo setup (operator-gated, no payment path) ───────────────────────
+
+// Operator gate for the M6.1 canonical demo entrypoints. Constant-time compare
+// so the demo operator token is not distinguishable byte-by-byte.
+function assertDemoOperator(token: string): void {
+  const expected = process.env.SOMEBODY_DEMO_OPERATOR_TOKEN;
+  if (!expected || token.length !== expected.length) {
+    throw new Error("demo operator is not authorized");
+  }
+  let difference = 0;
+  for (let index = 0; index < expected.length; index += 1) {
+    difference |= token.charCodeAt(index) ^ expected.charCodeAt(index);
+  }
+  if (difference !== 0) throw new Error("demo operator is not authorized");
+}
+
+// Creates the canonical founder objective with its seeded launch artifact at
+// v1 (runId "seed", so the accepted M5 story holds: the final artifact must be
+// a materially DIFFERENT version produced by worker execution, not the seed),
+// a bounded founder spend grant for justified external acquisition, and the
+// management-engine wake. No scenario vocabulary is injected: the canonical
+// request is the demo's own fixture text, never a runtime branch.
+export const setupCanonicalDemoObjective = mutation({
+  args: {
+    operatorToken: v.string(),
+    request: v.optional(v.string()),
+    spendLimitUsd: v.number(),
+  },
+  returns: v.object({ key: v.string() }),
+  handler: async (ctx, args) => {
+    assertDemoOperator(args.operatorToken);
+    if (!(args.spendLimitUsd > 0) || args.spendLimitUsd > 5) {
+      throw new Error("spendLimitUsd must be within (0, 5] for the demo");
+    }
+    const request = (args.request ?? CANONICAL_OBJECTIVE_REQUEST).trim();
+    if (request.length < 8 || request.length > 2000) {
+      throw new Error("Objective request is unbounded");
+    }
+    const now = Date.now();
+    const key = `obj_${now}_${Math.random().toString(36).slice(2, 8)}`;
+    const record: ObjectiveRecord = {
+      key,
+      request,
+      createdAt: now,
+      updatedAt: now,
+      state: "received",
+      activity: "Canonical demo objective received.",
+      plan: null,
+      workItems: [],
+      run: null,
+      result: null,
+      companyArtifacts: [
+        createArtifact({
+          key: CANONICAL_LAUNCH_ARTIFACT.key,
+          objectiveKey: key,
+          label: CANONICAL_LAUNCH_ARTIFACT.label,
+          content: CANONICAL_LAUNCH_ARTIFACT.initialContent,
+          runId: "seed",
+          at: now,
+        }),
+      ],
+      // Verified acquisitions are appended by the M6.1 simulation boundary.
+      acquisitionResults: [],
+      // The management engine owns this row from the start (contractId null
+      // until beginInterpretation rewrites it with the durable contract; the
+      // engine's own guard sets interpretationStatus itself).
+      // V7 review R4 final scope-origin correction — the canonical demo's
+      // application-owned purpose-scope policy is recorded HERE, before
+      // interpretation ever runs, so the authority applyInterpretation later
+      // binds onto the deliverable Requirement pre-exists any model output.
+      management: {
+        contractId: null,
+        authorizedPurposePolicy: CANONICAL_AUTHORIZED_PURPOSE_POLICY,
+      },
+    } as ObjectiveRecord;
+    await ctx.db.insert("objectives", { key, data: record });
+    await appendEvent(
+      ctx.db,
+      key,
+      "system",
+      "Canonical demo objective received (M6.1 setup).",
+      now,
+    );
+    await ctx.runMutation(internal.internal.workforce.putSpendGrant, {
+      approvalId: `demo_grant_${key}`,
+      objectiveKey: key,
+      limitUsd: args.spendLimitUsd,
+      at: now,
+      note: "Founder-approved demo spend limit for justified external acquisition; this grant authorizes no payment and reaches no payment rail.",
+    });
+    await appendEvent(
+      ctx.db,
+      key,
+      "system",
+      `Founder spend grant recorded (limit ${args.spendLimitUsd} USD); payment rail untouched.`,
+      now,
+    );
+    await ctx.scheduler.runAfter(0, internal.management.beginInterpretation, {
+      objectiveKey: key,
+      at: now,
+    });
+    return { key };
   },
 });

@@ -161,7 +161,7 @@ test("M2-legacy row: spine completes, controlNote carries completion_proposed, s
     }),
   ) as { completed: boolean; unmet: string[] };
 
-  assert.equal(result.completed, true, "spine reports completion");
+  assert.equal(result.completed, true, `spine reports completion unmet=${result.unmet.join("; ")}`);
   assert.equal(result.unmet.length, 0, "no unmet requirements");
 
   const updated = await getObjective(t, "test-obj-1");

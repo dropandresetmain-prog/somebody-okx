@@ -88,12 +88,13 @@ test("distinct purposes do NOT dedupe", () => {
   assert.equal(result.need.id, "p1");
 });
 
-test("fulfilled need allows a fresh need (no dedupe)", () => {
+test("fulfilled need does not allow a fresh duplicate of the same obligation", () => {
   const existing = makeNeed({ id: "done", status: "fulfilled" });
   const proposed = makeNeed({ id: "fresh" });
   const result = dedupeResourceNeeds([existing], proposed);
-  assert.equal(result.created, true);
-  assert.equal(result.need.id, "fresh");
+  assert.equal(result.created, false);
+  assert.equal(result.need.id, "done");
+  assert.equal(result.need.status, "fulfilled");
 });
 
 test("rejected need allows a fresh need (no dedupe)", () => {
@@ -178,6 +179,13 @@ test("illegal transition proposed -> fulfilled throws", () => {
 test("illegal transition fulfilled -> proposed throws", () => {
   const need = makeNeed({ status: "fulfilled" });
   assert.throws(() => transitionNeedStatus(need, "proposed", AT + 1));
+});
+
+test("active/sourcing -> fulfilled is legal after verified acquisition", () => {
+  const active = makeNeed({ status: "active" });
+  const sourcing = makeNeed({ status: "sourcing" });
+  assert.equal(transitionNeedStatus(active, "fulfilled", AT + 1).status, "fulfilled");
+  assert.equal(transitionNeedStatus(sourcing, "fulfilled", AT + 1).status, "fulfilled");
 });
 
 test("active/sourcing -> rejected is legal", () => {
