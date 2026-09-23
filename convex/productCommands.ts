@@ -45,6 +45,21 @@ const vCreateObjectiveArgs = {
       externalEffectPolicy: v.optional(v.string()),
     }),
   ),
+  /**
+   * Explicit structured purpose-scope authority for THIS Objective only.
+   * Application-validated against PURPOSE_SCOPES. Absent = no social /
+   * purpose-scope authorization (normal `/start` path). Never inferred from
+   * request text.
+   */
+  authorizedPurposePolicy: v.optional(
+    v.object({
+      purposeKind: v.string(),
+      targetRequirementKind: v.union(
+        v.literal("deliverable"),
+        v.literal("input"),
+      ),
+    }),
+  ),
 };
 
 const vSubmitAttentionActionArgs = {
@@ -148,8 +163,16 @@ export const createObjectiveV1 = mutation({
 
     try {
       // This is the real `/start` founder product path — Objectives created
-      // here belong in the product sidebar.
-      const { key } = await createReceivedObjective(ctx, normalized.request, "visible");
+      // here belong in the product sidebar. Purpose-scope authority is only
+      // attached when the caller passes an explicit structured policy.
+      const { key } = await createReceivedObjective(
+        ctx,
+        normalized.request,
+        "visible",
+        {
+          authorizedPurposePolicy: args.authorizedPurposePolicy ?? null,
+        },
+      );
       return {
         accepted: true,
         commandId: `create:${key}`,
@@ -157,6 +180,10 @@ export const createObjectiveV1 = mutation({
       };
     } catch (err) {
       const message = err instanceof Error ? err.message : "Objective creation failed";
+      // Ungoverned purpose policy is a validation failure, not a temporary outage.
+      if (message.includes("authorizedPurposePolicy")) {
+        return reject("validation_error", message);
+      }
       // Unexpected persistence/scheduler failures: surface as temporary, not a
       // stack dump. Do not invent a second Objective on retry.
       console.error("createObjectiveV1 failed:", message);

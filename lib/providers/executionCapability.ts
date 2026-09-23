@@ -22,6 +22,18 @@ import {
   NEWSLIQUID_FULFILLMENT_SCOPE,
   resolveSupportedPurposeKind as resolveNewsliquidSupportedPurposeKind,
 } from "../payment/newsliquidProduct";
+import {
+  SOCIAL_MEDIA_GURU_PROVIDER_ID,
+  SOCIAL_MEDIA_GURU_SERVICE_ID,
+  SOCIAL_MEDIA_GURU_FULFILLMENT_SCOPE,
+  resolveSupportedPurposeKind as resolveSocialMediaGuruSupportedPurposeKind,
+} from "../payment/socialMediaGuruProduct";
+import {
+  TESTNET_TOKEN_MARKET_SERVICE_ID,
+  TESTNET_TOKEN_MARKET_FULFILLMENT_SCOPE,
+  TESTNET_WALLET_RISK_SERVICE_ID,
+  TESTNET_WALLET_RISK_FULFILLMENT_SCOPE,
+} from "../payment/testnetDemoProducts";
 
 export type ComposedExternalExecution = {
   providerId: string;
@@ -45,6 +57,11 @@ export const COMPOSED_EXTERNAL_EXECUTION: readonly ComposedExternalExecution[] =
   {
     providerId: M3_PRODUCT_PROVIDER_ID,
     serviceId: M3_PRODUCT_SERVICE_ID,
+    boundary: "m3_local_testnet_merchant",
+  },
+  {
+    providerId: SOCIAL_MEDIA_GURU_PROVIDER_ID,
+    serviceId: SOCIAL_MEDIA_GURU_SERVICE_ID,
     boundary: "m3_local_testnet_merchant",
   },
   {
@@ -111,6 +128,35 @@ export function externalOfferingAcceptsPurpose(input: {
     return resolved.ok;
   }
 
+  if (input.serviceId === SOCIAL_MEDIA_GURU_SERVICE_ID) {
+    const purposeKind =
+      typeof input.purposeKind === "string" && input.purposeKind.trim()
+        ? input.purposeKind.trim()
+        : null;
+    if (purposeKind === null) return false;
+    if (
+      !(SOCIAL_MEDIA_GURU_FULFILLMENT_SCOPE.purposeKinds as readonly string[]).includes(
+        purposeKind,
+      ) ||
+      !input.resourceClass ||
+      !(SOCIAL_MEDIA_GURU_FULFILLMENT_SCOPE.resourceClasses as readonly string[]).includes(
+        input.resourceClass,
+      )
+    ) {
+      return false;
+    }
+    const resolved = resolveSocialMediaGuruSupportedPurposeKind({
+      resourceClass: input.resourceClass,
+      productId: SOCIAL_MEDIA_GURU_SERVICE_ID,
+      serviceId: SOCIAL_MEDIA_GURU_SERVICE_ID,
+      offeringId: null,
+      purpose: input.purpose ?? null,
+      purposeKind,
+      requestId: null,
+    });
+    return resolved.ok;
+  }
+
   if (input.serviceId === NEWSLIQUID_SERVICE_ID) {
     const purposeKind =
       typeof input.purposeKind === "string" && input.purposeKind.trim()
@@ -133,6 +179,41 @@ export function externalOfferingAcceptsPurpose(input: {
       requestId: null,
     });
     return resolved.ok;
+  }
+
+  // Controlled Testnet distractors: class-compatible market entries that must
+  // NOT accept external_social_intelligence (empty purposeKinds).
+  if (input.serviceId === TESTNET_TOKEN_MARKET_SERVICE_ID) {
+    const purposeKind =
+      typeof input.purposeKind === "string" && input.purposeKind.trim()
+        ? input.purposeKind.trim()
+        : null;
+    if (purposeKind === null) return false;
+    return (
+      (TESTNET_TOKEN_MARKET_FULFILLMENT_SCOPE.purposeKinds as readonly string[]).includes(
+        purposeKind,
+      ) &&
+      !!input.resourceClass &&
+      (TESTNET_TOKEN_MARKET_FULFILLMENT_SCOPE.resourceClasses as readonly string[]).includes(
+        input.resourceClass,
+      )
+    );
+  }
+  if (input.serviceId === TESTNET_WALLET_RISK_SERVICE_ID) {
+    const purposeKind =
+      typeof input.purposeKind === "string" && input.purposeKind.trim()
+        ? input.purposeKind.trim()
+        : null;
+    if (purposeKind === null) return false;
+    return (
+      (TESTNET_WALLET_RISK_FULFILLMENT_SCOPE.purposeKinds as readonly string[]).includes(
+        purposeKind,
+      ) &&
+      !!input.resourceClass &&
+      (TESTNET_WALLET_RISK_FULFILLMENT_SCOPE.resourceClasses as readonly string[]).includes(
+        input.resourceClass,
+      )
+    );
   }
 
   return true;

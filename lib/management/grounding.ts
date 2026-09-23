@@ -117,7 +117,10 @@ export function groundRegistryOfferings(
       if (parsed !== null) {
         priceUsd = parsed;
         priceProvenance =
-          offering.source.kind === "snapshot" ? "registry_data" : "provider_quote";
+          offering.source.kind === "snapshot" ||
+          offering.source.kind === "controlled_testnet"
+            ? "registry_data"
+            : "provider_quote";
       }
     }
 

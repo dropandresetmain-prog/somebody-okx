@@ -1,16 +1,15 @@
 /**
- * Extract human-usable acquisition content from a verified M3 protected result.
- * Returns null when the result is not a verified founder_narrative_pulse payload.
- *
- * Transport provenance (Objective acquisition boundary) is separate: callers
- * label the ExternalAcquisitionResult as `live` when payment went through the
- * live M3 path. Content/source provenance inside the payload remains
- * `synthetic_test_provider`.
+ * Extract human-usable acquisition content from a verified controlled-Testnet
+ * protected result (founder_narrative_pulse or social_media_guru).
  */
 import {
   normalizeM3FounderNarrativeResult,
   verifyM3ProtectedResult,
 } from "../payment/m3FounderNarrativeProduct";
+import {
+  normalizeSocialMediaGuruResult,
+  verifySocialMediaGuruProtectedResult,
+} from "../payment/socialMediaGuruProduct";
 import { sha256Hex } from "../management/sha256";
 
 export type LiveAcquisitionContent = {
@@ -26,8 +25,24 @@ export function extractLiveAcquisitionContent(
   raw: unknown,
   ctx?: { offeringId?: string | null; serviceId?: string | null },
 ): LiveAcquisitionContent | null {
+  if (verifySocialMediaGuruProtectedResult(raw)) {
+    if (raw.provenance !== "synthetic_test_provider") return null;
+    const normalized = normalizeSocialMediaGuruResult(raw, {
+      offeringId: ctx?.offeringId ?? raw.offeringId ?? undefined,
+      serviceId: ctx?.serviceId ?? raw.serviceId,
+    });
+    const content = raw.content.trim();
+    if (!contentIncludesSyntheticMarkers(content)) return null;
+    return {
+      content,
+      contentHash: sha256Hex(content),
+      providerId: normalized.provenance.providerId,
+      serviceId: normalized.provenance.serviceId || raw.serviceId,
+      offeringId: normalized.offeringId || raw.offeringId || "",
+      resourceClass: normalized.resourceClass,
+    };
+  }
   if (!verifyM3ProtectedResult(raw)) return null;
-  // Transport may be live; content source remains synthetic_test_provider.
   if (raw.provenance !== "synthetic_test_provider") return null;
   const normalized = normalizeM3FounderNarrativeResult(raw, {
     offeringId: ctx?.offeringId ?? raw.offeringId ?? undefined,

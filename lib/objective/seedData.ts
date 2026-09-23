@@ -10,7 +10,10 @@
 
 import type { ResourceClass } from "../workforce/types";
 import type { AuthorizedPurposePolicy } from "../management/types";
-import { FOUNDER_MESSAGING_QUALITATIVE_PURPOSE_KIND } from "../workforce/catalog";
+import {
+  EXTERNAL_SOCIAL_INTELLIGENCE_PURPOSE_KIND,
+  FOUNDER_MESSAGING_QUALITATIVE_PURPOSE_KIND,
+} from "../workforce/catalog";
 
 // The canonical failing-launch objective request. This is seed text, not logic.
 // It asks for a better relaunch, permits bounded spend when justified, and
@@ -145,6 +148,18 @@ export const CANONICAL_AUTHORIZED_PURPOSE_POLICY: AuthorizedPurposePolicy = {
   purposeKind: FOUNDER_MESSAGING_QUALITATIVE_PURPOSE_KIND,
   targetRequirementKind: "deliverable",
 };
+
+/**
+ * Explicit, application-owned purpose-scope policy for the Testnet BUY
+ * submission Objective. Bound only when create callers pass this structured
+ * policy (or an equivalent validated AuthorizedPurposePolicy) — never inferred
+ * from request text, and never applied to every visible `/start` Objective.
+ */
+export const SUBMISSION_EXTERNAL_SOCIAL_PURPOSE_POLICY: AuthorizedPurposePolicy =
+  {
+    purposeKind: EXTERNAL_SOCIAL_INTELLIGENCE_PURPOSE_KIND,
+    targetRequirementKind: "deliverable",
+  };
 
 // A second, LATER need used only to prove the seam is repeatable: after the
 // purchased intelligence changes the message, the worker needs an external

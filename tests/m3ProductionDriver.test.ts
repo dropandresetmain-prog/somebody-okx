@@ -99,6 +99,20 @@ test("D1-D11: exact persisted awaiting_m3 intent runs one simulated purchase, re
   assert.equal(verified.events[0]?.reason, "verification_result");
 });
 
+test("grant-backed authorized intents may prepare (parity with awaiting_m3)", async () => {
+  const authorizedIntent = { ...intent, state: "authorized" as const };
+  const backing = store(authorizedIntent);
+  const purchases = new MemoryPurchases();
+  const prepared = await runM3ProductionDriver("prepare", authorizedIntent.intentId, {
+    store: backing,
+    purchases,
+    rail: rail(),
+  });
+  assert.equal(prepared.purchase?.id, authorizedIntent.intentId);
+  assert.equal(prepared.purchase?.state, "prepared");
+  assert.equal(backing.current.state, "authorized", "prepare must not demote authorized");
+});
+
 test("D14: stale business authority rejects a new execution but permits read-only reconciliation", async () => {
   const stale = store();
   stale.read = async (id) => id === intent.intentId ? { intent: stale.current, objectiveExists: true, contractCurrent: false, requirementCurrent: false, founderSpendApprovalCurrent: true } : null;
@@ -246,7 +260,7 @@ test("D20-D23: a restart from attempted, submitted, settled, result_received, or
     let executorCalls = 0;
     const deps = rail();
     deps.executor = { kind: "test_scaffold", async executeApprovedPayment() { executorCalls += 1; return { submitted: true, transactionHash: "0x" + "1".repeat(64) }; } };
-    await assert.rejects(() => runM3ProductionDriver("execute", intent.intentId, { store: backing, purchases, rail: deps, executionAuthorized: true }), /refusing execution|not awaiting_m3/);
+    await assert.rejects(() => runM3ProductionDriver("execute", intent.intentId, { store: backing, purchases, rail: deps, executionAuthorized: true }), /refusing execution|not authorized or awaiting_m3/);
     assert.equal(executorCalls, 0, `${state} restart cannot call executor again`);
   }
 });

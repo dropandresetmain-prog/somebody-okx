@@ -9,8 +9,10 @@ import type { ExternalResourceResult, ProviderAdapter } from "./types";
 import { newsliquidAdapter } from "./newsliquid";
 import { xbirdAdapter } from "./xbird";
 import { controlledTestMerchantAdapter } from "./controlledTestMerchant";
+import { socialMediaGuruAdapter } from "./socialMediaGuru";
 import { M3_PRODUCT_PROVIDER_ID } from "../payment/m3FounderNarrativeProduct";
 import { NEWSLIQUID_PROVIDER_ID } from "../payment/newsliquidProduct";
+import { SOCIAL_MEDIA_GURU_PROVIDER_ID } from "../payment/socialMediaGuruProduct";
 
 const ADAPTERS: Record<string, ProviderAdapter> = {
   newsliquid: newsliquidAdapter,
@@ -20,6 +22,7 @@ const ADAPTERS: Record<string, ProviderAdapter> = {
   [NEWSLIQUID_PROVIDER_ID]: newsliquidAdapter,
   xbird: xbirdAdapter,
   [M3_PRODUCT_PROVIDER_ID]: controlledTestMerchantAdapter,
+  [SOCIAL_MEDIA_GURU_PROVIDER_ID]: socialMediaGuruAdapter,
 };
 
 /**

@@ -22,10 +22,16 @@ import {
   verifyM3ProtectedResult,
   type M3ProtectedSuccessResult,
 } from "./m3FounderNarrativeProduct";
+import {
+  evaluateSocialMediaGuruProductFulfillment,
+  SOCIAL_MEDIA_GURU_SERVICE_ID,
+} from "./socialMediaGuruProduct";
 
 export const M3_SELLER_NETWORK = "eip155:1952" as const;
 /** Payment resource path kept stable so existing TESTNET challenge binding stays intact. */
 export const M3_SELLER_PATH = "/m3/paid-ping" as const;
+/** Distinct Social Media Guru product path on the same controlled Testnet merchant. */
+export const M3_SOCIAL_MEDIA_GURU_PATH = "/m3/social-media-guru" as const;
 export const M3_SELLER_PORT = 4021 as const;
 export const M3_SELLER_DEFAULT_HOST = "127.0.0.1" as const;
 export const M3_SELLER_ASSET =
@@ -139,21 +145,23 @@ export function createM3SellerRoutes(receiver: string): RoutesConfig {
     throw new Error("M3 seller receiver must be a 20-byte EVM address");
   }
 
-  const route: RouteConfig = {
-    accepts: {
-      scheme: "exact",
-      network: M3_SELLER_NETWORK,
-      payTo: receiver,
-      price: {
-        asset: M3_SELLER_ASSET,
-        amount: M3_SELLER_AMOUNT,
-        extra: {
-          name: M3_SELLER_ASSET_NAME,
-          version: M3_SELLER_ASSET_VERSION,
-        },
+  const baseAccepts = {
+    scheme: "exact" as const,
+    network: M3_SELLER_NETWORK,
+    payTo: receiver,
+    price: {
+      asset: M3_SELLER_ASSET,
+      amount: M3_SELLER_AMOUNT,
+      extra: {
+        name: M3_SELLER_ASSET_NAME,
+        version: M3_SELLER_ASSET_VERSION,
       },
-      maxTimeoutSeconds: M3_SELLER_TIMEOUT_SECONDS,
     },
+    maxTimeoutSeconds: M3_SELLER_TIMEOUT_SECONDS,
+  };
+
+  const founderRoute: RouteConfig = {
+    accepts: baseAccepts,
     resource: M3_SELLER_PATH,
     description:
       "Somebody M3 controlled Testnet product founder_narrative_pulse (proprietary_data synthetic research)",
@@ -164,8 +172,21 @@ export function createM3SellerRoutes(receiver: string): RoutesConfig {
     }),
   };
 
+  const socialGuruRoute: RouteConfig = {
+    accepts: baseAccepts,
+    resource: M3_SOCIAL_MEDIA_GURU_PATH,
+    description:
+      "Somebody controlled Testnet product social_media_guru (synthetic social-intelligence; NOT live platform data)",
+    mimeType: "application/json",
+    unpaidResponseBody: () => ({
+      contentType: "application/json",
+      body: { ok: false, error: "payment_required" },
+    }),
+  };
+
   return {
-    [`GET ${M3_SELLER_PATH}`]: route,
+    [`GET ${M3_SELLER_PATH}`]: founderRoute,
+    [`GET ${M3_SOCIAL_MEDIA_GURU_PATH}`]: socialGuruRoute,
   } as Record<string, RouteConfig>;
 }
 
@@ -230,6 +251,32 @@ export function createM3SellerApp(options: {
       // Payment verified, but product scope refused. Return a typed provider
       // error body (not the qualitative fixture). HTTP 200 keeps settlement
       // distinct from fulfillment; verifyM3ProtectedResult rejects ok:false.
+      res.status(200).json(result);
+      return;
+    }
+    res.json(result);
+  });
+
+  app.get(M3_SOCIAL_MEDIA_GURU_PATH, (req, res) => {
+    const productRequest = readM3MerchantProductRequest({
+      headers: {
+        get(name: string) {
+          const key = name.toLowerCase();
+          const raw = req.headers[key];
+          if (Array.isArray(raw)) return raw[0] ?? null;
+          return typeof raw === "string" ? raw : null;
+        },
+      },
+      query: queryRecord(req),
+    });
+    // Force service identity when the path is the Social Media Guru route.
+    const scoped = {
+      ...productRequest,
+      serviceId: productRequest.serviceId ?? SOCIAL_MEDIA_GURU_SERVICE_ID,
+      productId: productRequest.productId ?? SOCIAL_MEDIA_GURU_SERVICE_ID,
+    };
+    const result = evaluateSocialMediaGuruProductFulfillment(scoped);
+    if (!result.ok) {
       res.status(200).json(result);
       return;
     }

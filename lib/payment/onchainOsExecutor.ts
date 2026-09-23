@@ -23,6 +23,10 @@ import {
   normalizeX402V2PaymentRequirement,
   type X402V2Normalization,
 } from "./x402V2Compat";
+import {
+  assertNetworkMaySignOrSubmit,
+  readSomebodyExecutionMode,
+} from "../execution/executionMode";
 import type {
   BoundPaymentIntent,
   NormalizedChallengeTerms,
@@ -708,6 +712,12 @@ export class OfficialSignOnlyReplayExecutor implements PaymentExecutor {
       );
     }
     assertFreshExecutionQuote(this.quoted, this.now());
+    // Application execution-mode policy: refuse Mainnet (and any non-Testnet
+    // target) under testnet_demo before any wallet interaction.
+    assertNetworkMaySignOrSubmit(
+      readSomebodyExecutionMode(),
+      this.quoted.terms.network,
+    );
     if (this.quoted.terms.scheme !== "exact" || this.quoted.terms.network !== "eip155:1952") {
       throw new Error("M3 official executor only permits exact payments on X Layer Testnet");
     }

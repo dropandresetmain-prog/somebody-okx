@@ -15,6 +15,11 @@ import type {
 } from "./types";
 import { parse402Challenge, bindTermsToApproval, parseAtomicAmount } from "./challenge";
 import { assertIdempotencyDistinct } from "./purchase";
+import {
+  assertNetworkMaySignOrSubmit,
+  isMainnetExecutionTarget,
+  readSomebodyExecutionMode,
+} from "../execution/executionMode";
 
 export type { PaymentExecutor, PaymentSubmissionResult };
 
@@ -154,6 +159,20 @@ export async function executeApprovedPayment(
   }
   if (!prepared.purchaseId || !prepared.idempotencyKey) {
     throw new Error("Cannot execute payment without a durable purchase identity");
+  }
+  // Application policy: always refuse Mainnet unless mode is mainnet_live
+  // (this lane still hard-refuses signing there). Under testnet_demo, only
+  // eip155:1952 may proceed. Disabled mode relies on executionAuthorized /
+  // OfficialSignOnlyReplayExecutor so injected test_scaffold executors remain
+  // usable for lifecycle tests.
+  const mode = readSomebodyExecutionMode();
+  if (isMainnetExecutionTarget(prepared.terms.network) && mode !== "mainnet_live") {
+    throw new Error(
+      `SOMEBODY_EXECUTION_MODE=${mode} refuses Mainnet execution target ${prepared.terms.network} before signing`,
+    );
+  }
+  if (mode === "testnet_demo" || mode === "mainnet_live") {
+    assertNetworkMaySignOrSubmit(mode, prepared.terms.network);
   }
   return executor.executeApprovedPayment({
     purchaseId: prepared.purchaseId,
