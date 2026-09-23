@@ -17,6 +17,7 @@ import type * as objectiveArgs from "../objectiveArgs.js";
 import type * as objectiveRunner from "../objectiveRunner.js";
 import type * as objectiveValidators from "../objectiveValidators.js";
 import type * as objectives from "../objectives.js";
+import type * as productCommands from "../productCommands.js";
 import type * as productWorkspace from "../productWorkspace.js";
 import type * as workforceGuards from "../workforceGuards.js";
 import type * as workforceValidators from "../workforceValidators.js";
@@ -37,6 +38,7 @@ declare const fullApi: ApiFromModules<{
   objectiveRunner: typeof objectiveRunner;
   objectiveValidators: typeof objectiveValidators;
   objectives: typeof objectives;
+  productCommands: typeof productCommands;
   productWorkspace: typeof productWorkspace;
   workforceGuards: typeof workforceGuards;
   workforceValidators: typeof workforceValidators;
