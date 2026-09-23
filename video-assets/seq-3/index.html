@@ -54,10 +54,10 @@
 .intern-state.visible{opacity:1;transform:none}
 .second-intern{position:absolute;right:24px;bottom:98px;width:230px;height:265px;opacity:0;transform:translateX(18px) scale(.97);transition:opacity 760ms ease,transform 760ms cubic-bezier(.2,.72,.2,1)}
 .stage.make-second .second-intern{opacity:1;transform:none}
-.assignment-line{position:absolute;left:300px;top:350px;width:205px;height:2px;background:var(--orange);transform-origin:left;transform:scaleX(0);transition:transform 720ms cubic-bezier(.2,.72,.2,1)}
+.assignment-line{position:absolute;left:350px;top:405px;width:120px;height:2px;background:var(--orange);transform-origin:left;transform:scaleX(0);transition:transform 720ms cubic-bezier(.2,.72,.2,1)}
 .assignment-line:after{content:"";position:absolute;right:-1px;top:-5px;width:10px;height:10px;border-top:2px solid var(--orange);border-right:2px solid var(--orange);transform:rotate(45deg)}
 .stage.make-assigned .assignment-line{transform:scaleX(1)}
-.assignment-label{position:absolute;left:305px;top:315px;font-size:16px;font-weight:780;color:var(--orangeDark);opacity:0;transform:translateY(6px);transition:opacity 500ms ease,transform 500ms ease}.stage.make-assigned .assignment-label{opacity:1;transform:none}
+.assignment-label{position:absolute;left:358px;top:367px;font-size:15px;font-weight:780;color:var(--orangeDark);opacity:0;transform:translateY(6px);transition:opacity 500ms ease,transform 500ms ease}.stage.make-assigned .assignment-label{opacity:1;transform:none}
 .capabilities{position:absolute;left:373px;top:95px;width:385px;display:flex;gap:10px;flex-wrap:wrap}
 .capability{padding:11px 16px;border-radius:999px;border:1px solid var(--line);background:rgba(255,253,249,.86);font-size:16px;font-weight:730;color:var(--ink2);opacity:0;transform:translateY(8px);transition:opacity 520ms ease,transform 580ms ease}
 .stage.make-tools .capability{opacity:1;transform:none}.stage.make-tools .capability:nth-child(2){transition-delay:.12s}.stage.make-tools .capability:nth-child(3){transition-delay:.24s}.stage.make-tools .capability:nth-child(4){transition-delay:.36s}
