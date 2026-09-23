@@ -9,7 +9,11 @@
 
 import type { ObjectiveListView, ObjectiveWorkspaceView } from "../../app/product/contracts";
 
-export type DemoTimingMode = "original" | "demo_sequence";
+/**
+ * "immediate" shows the final recorded frame at once (no delay, no pacing) —
+ * a review/QA convenience over the same frames; it never changes content.
+ */
+export type DemoTimingMode = "original" | "demo_sequence" | "immediate";
 
 export type DemoFrame = {
   /** Elapsed ms from the historical run start (authoritative where known). */
@@ -72,10 +76,12 @@ export type DemoPlaybackControls = {
 export const DEFAULT_START_DELAY_MS = 3_000;
 
 export function durationForMode(scenario: DemoScenario, mode: DemoTimingMode): number {
+  if (mode === "immediate") return 0;
   return mode === "original" ? scenario.originalDurationMs : scenario.demoSequenceDurationMs;
 }
 
 export function sequenceForMode(scenario: DemoScenario, mode: DemoTimingMode): DemoSequenceEntry[] {
+  if (mode === "immediate") return [{ frameIndex: Math.max(0, scenario.frames.length - 1), atMs: 0 }];
   return mode === "original" ? scenario.originalSequence : scenario.demoSequence;
 }
 
@@ -164,6 +170,9 @@ export function engineSnapshot(engine: PlaybackEngineState, nowMs: number): Demo
 }
 
 export function engineRun(engine: PlaybackEngineState, nowMs: number): PlaybackEngineState {
+  if (engine.mode === "immediate") {
+    return { ...engine, phase: "finished", frozenElapsedMs: 0, frozenDelayElapsedMs: 0, segmentStartedAtMs: null };
+  }
   const startDelayMs = Math.max(0, engine.startDelayMs);
   if (startDelayMs <= 0) {
     return {

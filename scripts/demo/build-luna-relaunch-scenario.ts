@@ -204,20 +204,27 @@ const BEATS = [
   { id: "completed", at: T0 + 122_913, note: "Gate accepted completion (completion.acceptedAt)." },
 ] as const;
 
-/** Compressed demo sequence (~26s) over the SAME frames — hand-authored pacing only. */
+/**
+ * Compressed demo sequence (~70s) over the SAME frames — hand-authored pacing
+ * only. Each beat sits at ~0.5× its historical elapsed time so the relative
+ * rhythm of the real run is preserved while staying readable.
+ */
 const DEMO_SEQUENCE_AT_MS = [
   0, // received
-  1_500, // interpreted
-  4_000, // make_working
-  7_500, // evidence_gap
-  11_000, // buy_decision
-  14_000, // external_result
-  17_000, // make_req02
-  19_500, // artifact_v2
-  21_500, // make_req03
-  24_000, // artifact_v3
-  26_000, // completed
+  9_800, // interpreted
+  14_400, // make_working
+  20_600, // evidence_gap
+  24_800, // buy_decision
+  25_200, // external_result
+  30_700, // make_req02
+  38_700, // artifact_v2
+  46_300, // make_req03
+  56_400, // artifact_v3
+  61_500, // completed
 ] as const;
+
+/** The final (completed) frame stays on screen until the sequence ends. */
+const DEMO_SEQUENCE_DURATION_MS = 70_000;
 
 function loadEvidence(): EvidenceFile {
   return JSON.parse(readFileSync(EVIDENCE, "utf8")) as EvidenceFile;
@@ -649,7 +656,7 @@ function main() {
       acquisitionProvenance: "simulation",
     },
     originalDurationMs: ev.elapsedS * 1000,
-    demoSequenceDurationMs: DEMO_SEQUENCE_AT_MS[DEMO_SEQUENCE_AT_MS.length - 1]!,
+    demoSequenceDurationMs: DEMO_SEQUENCE_DURATION_MS,
     frames,
     originalSequence: frames.map((frame, frameIndex) => ({
       frameIndex,

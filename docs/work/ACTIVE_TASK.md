@@ -30,7 +30,7 @@ and leave it ready for founder manual inspection.
 | Evidence | `docs/work/gate-evidence/8f53da0/run-luna-5-obj_1790046504201_vporlj.json` |
 | Provenance | `simulation` (historical truth — do not relabel) |
 | Original duration | 141000 ms |
-| Demo sequence | 26000 ms |
+| Demo sequence | 70000 ms (~0.5× original; final frame holds from 61.5s) |
 | Source module | `lib/demo/scenarios/lunaRelaunch.ts` |
 
 ## Out of scope
@@ -51,7 +51,7 @@ and leave it ready for founder manual inspection.
 - [x] successful Luna scenario source verified
 - [x] focused demo tests pass
 - [x] current V6 starts locally
-- [x] 26s demo replay completes
+- [x] 70s demo replay completes (was 26s; slowed for readability)
 - [x] 141s original replay completes
 - [x] pause/resume/restart/reset work
 - [x] reset restores live UI

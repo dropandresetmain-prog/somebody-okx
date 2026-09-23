@@ -91,12 +91,23 @@ export function DemoConsole({ defaultOpen = false }: { defaultOpen?: boolean }) 
               <span>Demo sequence</span>
               <span className="demo-console-meta">{demoSec}s</span>
             </label>
+            <label className="demo-console-option">
+              <input
+                type="radio"
+                name="demo-mode"
+                checked={demo.mode === "immediate"}
+                disabled={demo.active}
+                onChange={() => demo.setMode("immediate")}
+              />
+              <span>Immediate</span>
+              <span className="demo-console-meta">final frame</span>
+            </label>
           </div>
 
           <div className="demo-console-block">
             <p className="demo-console-label">Start delay</p>
             <p className="demo-console-value">
-              {delaySec} seconds
+              {demo.mode === "immediate" ? "None" : `${delaySec} seconds`}
               {demo.phase === "delaying" || (demo.phase === "paused" && demo.delayRemainingMs > 0) ? (
                 <span className="demo-console-meta"> · countdown {(demo.delayRemainingMs / 1000).toFixed(1)}s</span>
               ) : null}

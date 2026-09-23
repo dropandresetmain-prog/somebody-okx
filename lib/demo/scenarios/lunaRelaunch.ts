@@ -25,7 +25,7 @@ export const lunaRelaunchScenario: DemoScenario = {
     "acquisitionProvenance": "simulation"
   },
   "originalDurationMs": 141000,
-  "demoSequenceDurationMs": 26000,
+  "demoSequenceDurationMs": 70000,
   "frames": [
     {
       "elapsedMs": 0,
@@ -3717,43 +3717,43 @@ export const lunaRelaunchScenario: DemoScenario = {
     },
     {
       "frameIndex": 1,
-      "atMs": 1500
+      "atMs": 9800
     },
     {
       "frameIndex": 2,
-      "atMs": 4000
+      "atMs": 14400
     },
     {
       "frameIndex": 3,
-      "atMs": 7500
+      "atMs": 20600
     },
     {
       "frameIndex": 4,
-      "atMs": 11000
+      "atMs": 24800
     },
     {
       "frameIndex": 5,
-      "atMs": 14000
+      "atMs": 25200
     },
     {
       "frameIndex": 6,
-      "atMs": 17000
+      "atMs": 30700
     },
     {
       "frameIndex": 7,
-      "atMs": 19500
+      "atMs": 38700
     },
     {
       "frameIndex": 8,
-      "atMs": 21500
+      "atMs": 46300
     },
     {
       "frameIndex": 9,
-      "atMs": 24000
+      "atMs": 56400
     },
     {
       "frameIndex": 10,
-      "atMs": 26000
+      "atMs": 61500
     }
   ]
 } as DemoScenario;

@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import type { ObjectiveListView, ObjectiveWorkspaceView } from "../app/product/contracts";
 import {
   createIdleEngine,
+  durationForMode,
   enginePause,
   engineReset,
   engineRestart,
@@ -16,6 +17,7 @@ import {
   frameIndexAtElapsed,
   type DemoScenario,
 } from "../lib/demo/playback";
+import { lunaRelaunchScenario } from "../lib/demo/scenarios/lunaRelaunch";
 
 const NOW = 1_700_000_000_000;
 
@@ -175,4 +177,19 @@ test("reset exits playback (live mode) without changing scenario content", () =>
 test("formatPlaybackClock shows one decimal second", () => {
   assert.equal(formatPlaybackClock(18_400, 26_000), "18.4s / 26.0s");
   assert.equal(formatPlaybackClock(0, 141_000), "0.0s / 141.0s");
+});
+
+test("immediate mode jumps straight to the final frame with no delay or pacing", () => {
+  const scenario = lunaRelaunchScenario;
+  let engine = createIdleEngine(scenario, "immediate", 3_000);
+  engine = engineRun(engine, 1_000);
+  const snap = engineSnapshot(engine, 1_000);
+  assert.equal(snap.phase, "finished");
+  assert.equal(snap.delayRemainingMs, 0);
+  assert.equal(snap.durationMs, 0);
+  assert.equal(snap.frameIndex, scenario.frames.length - 1);
+  assert.equal(snap.currentFrame, scenario.frames[scenario.frames.length - 1]);
+  // Same frames — immediate never changes scenario content or other modes.
+  assert.equal(durationForMode(scenario, "original"), 141_000);
+  assert.equal(durationForMode(scenario, "demo_sequence"), 70_000);
 });

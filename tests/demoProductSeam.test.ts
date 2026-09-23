@@ -31,9 +31,9 @@ test("playback mode returns current DemoFrame product contract views", () => {
 test("sidebar list and workspace switch together on the same frame", () => {
   let engine = createIdleEngine(lunaRelaunchScenario, "demo_sequence", 0);
   engine = engineRun(engine, 0);
-  // Advance to completed frame (last demo sequence entry at 26s).
-  engine = engineTick(engine, 26_000);
-  const snap = engineSnapshot(engine, 26_000);
+  // Advance to the end of the ~70s demo sequence (completed frame).
+  engine = engineTick(engine, 70_000);
+  const snap = engineSnapshot(engine, 70_000);
   assert.ok(snap.currentFrame);
   const { objectiveList, workspace } = snap.currentFrame!;
   assert.equal(workspace.objective.status, "completed");
