@@ -1,15 +1,15 @@
-// Jev Stage-3 recommendation seam — focused tests against the converged lock +
-// rationale-honor helpers used by proposeDecision (convex/objectiveRunner.ts).
+// Jev Stage-3 recommendation seam (J4) — focused tests against the composed
+// bounded selector used by proposeDecision (convex/objectiveRunner.ts).
 //
-// Stage-4 applyDecision remains the sole authorizer; these tests prove Stage-3
-// composition never grants authority and never silently falls back while the
-// Jev gate is ON.
+// Stage-4 applyDecision remains the sole authorizer; these tests prove the
+// Stage-3 composition never grants authority, never calls a second/rationale
+// model after a valid bounded selection, and never falls back to the
+// incumbent for anything but a PRE-SELECTION technical/provider failure.
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  assertRationaleHonorsLockedSelection,
+  composeBoundedStage3Recommendation,
   isJevOptionSelectionEnabled,
-  lockEligibleOptionSelection,
   JEV_OPTION_SELECTION_ENV,
 } from "../lib/management/jevStage3";
 import type { JevGatewayCall, JevGatewayResult } from "../lib/management/jev/client";
@@ -88,37 +88,44 @@ test("zero eligible: Jev not called; no_candidates", async () => {
     called += 1;
     return gatewayResultFor({ type: "choice", choice: "x" });
   };
-  const result = await lockEligibleOptionSelection(
-    { requirement, eligible: [] },
+  const result = await composeBoundedStage3Recommendation(
+    { requirementKey: "req_relaunch", contractRevision: 1, requirement, eligible: [] },
     { callGateway },
   );
   assert.equal(result.kind, "no_candidates");
   assert.equal(called, 0);
 });
 
-test("one eligible: Jev not called; selection locked to sole option", async () => {
+test("one eligible: Jev not called; deterministic sole-eligible recommendation via the J2 bridge", async () => {
   let called = 0;
   const callGateway: JevGatewayCall = async () => {
     called += 1;
     return gatewayResultFor({ type: "choice", choice: "opt_only" });
   };
   const sole = option("opt_only");
-  const result = await lockEligibleOptionSelection(
-    { requirement, eligible: [sole] },
+  const result = await composeBoundedStage3Recommendation(
+    { requirementKey: "req_relaunch", contractRevision: 1, requirement, eligible: [sole] },
     { callGateway },
   );
   assert.equal(called, 0);
-  assert.equal(result.kind, "selected");
-  if (result.kind === "selected") {
-    assert.equal(result.selectedOptionId, "opt_only");
-    assert.equal(result.source, "sole_eligible");
-  }
-  // Rationale source cannot escape the lock.
-  assert.equal(assertRationaleHonorsLockedSelection("opt_only", "opt_only").ok, true);
-  assert.equal(assertRationaleHonorsLockedSelection("opt_only", "opt_other").ok, false);
+  assert.equal(result.kind, "recommendation");
+  if (result.kind !== "recommendation") return;
+  assert.equal(result.source, "sole_eligible");
+  assert.equal(result.recommendation.selectedOptionId, "opt_only");
+  assert.equal(result.recommendation.strongestAlternativeId, null);
+  // Truthful attribution — never claim Jev picked a sole-eligible option.
+  assert.doesNotMatch(result.recommendation.rationale, /^Jev selected/);
+  assert.match(result.recommendation.rationale, /sole eligible/i);
+
+  const parsed = parseManagerialRecommendation(result.recommendation, {
+    requirementKey: "req_relaunch",
+    contractRevision: 1,
+    eligibleOptionIds: ["opt_only"],
+  });
+  assert.equal(parsed.ok, true);
 });
 
-test("several eligible: Jev receives exactly the application-computed eligible IDs", async () => {
+test("several eligible: Jev receives exactly the application-computed eligible IDs, using the neutral rubric", async () => {
   const eligible = [option("opt_make"), buyOption("opt_buy", 12), option("opt_make_b")];
   // Ineligible ID must never be offered to Jev.
   const ineligible = option("opt_ineligible", {
@@ -127,9 +134,13 @@ test("several eligible: Jev receives exactly the application-computed eligible I
   void ineligible;
 
   let seenIds: string[] = [];
+  let callCount = 0;
   const callGateway: JevGatewayCall = async ({ questions }) => {
-    const criteria = (questions.selectedOption as { criteria: Record<string, unknown> }).criteria;
-    seenIds = Object.keys(criteria);
+    callCount += 1;
+    const question = questions.selectedOption as { criteria: Record<string, unknown>; instructions: string };
+    seenIds = Object.keys(question.criteria);
+    // J3.1-evaluated neutral managerial rubric must be in production use.
+    assert.match(question.instructions, /No strategy or option kind is inherently preferred/);
     return gatewayResultFor({
       type: "choice",
       choice: "opt_buy",
@@ -137,29 +148,22 @@ test("several eligible: Jev receives exactly the application-computed eligible I
     });
   };
 
-  const result = await lockEligibleOptionSelection(
-    { requirement, eligible },
+  const result = await composeBoundedStage3Recommendation(
+    { requirementKey: "req_relaunch", contractRevision: 1, requirement, eligible },
     { callGateway },
   );
+  assert.equal(callCount, 1);
   assert.deepEqual(seenIds, ["opt_make", "opt_buy", "opt_make_b"]);
   assert.ok(!seenIds.includes("opt_ineligible"));
-  assert.equal(result.kind, "selected");
-  if (result.kind === "selected") {
-    assert.equal(result.selectedOptionId, "opt_buy");
-    assert.equal(result.source, "jev");
-  }
+  assert.equal(result.kind, "recommendation");
+  if (result.kind !== "recommendation") return;
+  assert.equal(result.source, "jev");
+  assert.equal(result.recommendation.selectedOptionId, "opt_buy");
+  assert.equal(result.recommendation.strongestAlternativeId, "opt_make");
+  assert.match(result.recommendation.rationale, /^Jev selected/);
 
-  // Valid Jev selection flows into a raw ManagerialRecommendation shape.
-  const raw = {
-    requirementKey: "req_relaunch",
-    contractRevision: 1,
-    selectedOptionId: "opt_buy",
-    strongestAlternativeId: "opt_make",
-    rationale: "Buy fills the founder-language gap faster.",
-    materialAssumptions: ["simulated offering remains available"],
-    changeMyMindEvidence: ["price changes"],
-  };
-  const parsed = parseManagerialRecommendation(raw, {
+  // Valid Jev selection flows straight through the real parser.
+  const parsed = parseManagerialRecommendation(result.recommendation, {
     requirementKey: "req_relaunch",
     contractRevision: 1,
     eligibleOptionIds: eligible.map((o) => o.optionId),
@@ -168,66 +172,56 @@ test("several eligible: Jev receives exactly the application-computed eligible I
   if (parsed.ok) assert.equal(parsed.value.selectedOptionId, "opt_buy");
 });
 
-test("Jev returns unknown ID: typed refusal; no decision authority", async () => {
+test("Jev returns unknown ID: technical_failure (fallback-eligible), no decision authority granted here", async () => {
   const eligible = [option("opt_a"), option("opt_b")];
   const callGateway: JevGatewayCall = async () =>
     gatewayResultFor({ type: "choice", choice: "opt_not_eligible", probabilities: {} });
 
-  const result = await lockEligibleOptionSelection(
-    { requirement, eligible },
+  const result = await composeBoundedStage3Recommendation(
+    { requirementKey: "req_relaunch", contractRevision: 1, requirement, eligible },
     { callGateway },
   );
-  assert.equal(result.kind, "failure");
-  if (result.kind === "failure") {
+  assert.equal(result.kind, "technical_failure");
+  if (result.kind === "technical_failure") {
     assert.match(result.detail, /not an eligible grounded option|unknown option id/i);
   }
 });
 
-test("Jev malformed / unavailable / timeout: typed refusal; no silent legacy fallback", async () => {
+test("Jev malformed / unavailable / timeout: technical_failure; no silent incumbent inside this helper", async () => {
   const eligible = [option("opt_a"), option("opt_b")];
 
-  const malformed = await lockEligibleOptionSelection(
-    { requirement, eligible },
-    {
-      callGateway: async () => gatewayResultFor({ type: "choice", choice: 123 }),
-    },
+  const malformed = await composeBoundedStage3Recommendation(
+    { requirementKey: "req_relaunch", contractRevision: 1, requirement, eligible },
+    { callGateway: async () => gatewayResultFor({ type: "choice", choice: 123 }) },
   );
-  assert.equal(malformed.kind, "failure");
+  assert.equal(malformed.kind, "technical_failure");
 
-  const unavailable = await lockEligibleOptionSelection(
-    { requirement, eligible },
+  const unavailable = await composeBoundedStage3Recommendation(
+    { requirementKey: "req_relaunch", contractRevision: 1, requirement, eligible },
     {
       callGateway: async () => {
         throw new Error("gateway down");
       },
     },
   );
-  assert.equal(unavailable.kind, "failure");
-  if (unavailable.kind === "failure") {
+  assert.equal(unavailable.kind, "technical_failure");
+  if (unavailable.kind === "technical_failure") {
     assert.ok(unavailable.failureClass);
   }
 
-  const timeout = await lockEligibleOptionSelection(
-    { requirement, eligible, timeoutMs: 20 },
+  const timeout = await composeBoundedStage3Recommendation(
+    { requirementKey: "req_relaunch", contractRevision: 1, requirement, eligible, timeoutMs: 20 },
     {
-      callGateway: async ({ abortSignal }) =>
+      callGateway: async ({ abortSignal }: { abortSignal?: AbortSignal }) =>
         new Promise((_, reject) => {
           abortSignal?.addEventListener("abort", () => reject(new Error("aborted")));
         }),
     },
   );
-  assert.equal(timeout.kind, "failure");
+  assert.equal(timeout.kind, "technical_failure");
 });
 
-test("rationale model returns another selectedOptionId: refusal; Jev lock not replaced", () => {
-  const honor = assertRationaleHonorsLockedSelection("opt_jev", "opt_model_escape");
-  assert.equal(honor.ok, false);
-  if (!honor.ok) assert.match(honor.detail, /opt_jev/);
-  // Locked id is preserved as the only acceptable value.
-  assert.equal(assertRationaleHonorsLockedSelection("opt_jev", "opt_jev").ok, true);
-});
-
-test("stale eligible set between propose and apply: parser refuses Jev-locked id", () => {
+test("stale eligible set between propose and apply: parser refuses Jev-selected id", () => {
   // Stage-4 fence: applyDecision recomputes eligible from fresh truth. If the
   // Jev-selected id is no longer eligible, parseManagerialRecommendation fails.
   const raw = {
@@ -249,23 +243,25 @@ test("stale eligible set between propose and apply: parser refuses Jev-locked id
 });
 
 test("budget/spend: Jev cannot make an otherwise ineligible BUY appear eligible", async () => {
-  // Application only passes eligible options into the lock. An over-budget BUY
-  // never reaches Jev — prove by locking with MAKE-only eligible set while a
-  // BUY id is requested by a malicious gateway.
+  // Application only passes eligible options into the composer. An over-budget
+  // BUY never reaches Jev — prove by composing with a MAKE-only eligible set
+  // while a BUY id is requested by a malicious gateway.
   const eligible = [option("opt_make")];
   let called = 0;
   const callGateway: JevGatewayCall = async () => {
     called += 1;
     return gatewayResultFor({ type: "choice", choice: "opt_buy_over_budget" });
   };
-  // Sole eligible → Jev never called; lock is MAKE.
-  const result = await lockEligibleOptionSelection(
-    { requirement, eligible },
+  // Sole eligible → Jev never called; selection is MAKE.
+  const result = await composeBoundedStage3Recommendation(
+    { requirementKey: "req_relaunch", contractRevision: 1, requirement, eligible },
     { callGateway },
   );
   assert.equal(called, 0);
-  assert.equal(result.kind, "selected");
-  if (result.kind === "selected") assert.equal(result.selectedOptionId, "opt_make");
+  assert.equal(result.kind, "recommendation");
+  if (result.kind === "recommendation") {
+    assert.equal(result.recommendation.selectedOptionId, "opt_make");
+  }
 
   // Even if a raw recommendation tried the ineligible BUY, Stage-4 parser refuses.
   const parsed = parseManagerialRecommendation(
@@ -290,24 +286,25 @@ test("budget/spend: Jev cannot make an otherwise ineligible BUY appear eligible"
 test("purpose scope: Jev never sees an M3 option the application marked ineligible", async () => {
   const eligible = [option("opt_make_scoped")];
   // Purpose-incompatible BUY would have failed Stage-1/2 grounding and must
-  // not be in `eligible`. Confirm lock cannot select it.
-  const result = await lockEligibleOptionSelection(
-    { requirement, eligible },
+  // not be in `eligible`. Confirm composition cannot select it.
+  const result = await composeBoundedStage3Recommendation(
+    { requirementKey: "req_relaunch", contractRevision: 1, requirement, eligible },
     {
-      callGateway: async () =>
-        gatewayResultFor({ type: "choice", choice: "opt_m3_incompatible" }),
+      callGateway: async () => gatewayResultFor({ type: "choice", choice: "opt_m3_incompatible" }),
     },
   );
-  assert.equal(result.kind, "selected");
-  if (result.kind === "selected") {
-    assert.equal(result.selectedOptionId, "opt_make_scoped");
+  assert.equal(result.kind, "recommendation");
+  if (result.kind === "recommendation") {
+    assert.equal(result.recommendation.selectedOptionId, "opt_make_scoped");
     assert.equal(result.source, "sole_eligible");
   }
 });
 
-test("successful canonical path shape: eligible MAKE/BUY → Jev → raw recommendation parses", async () => {
+test("successful canonical path: eligible MAKE/BUY → Jev exactly once → recommendation parses; no second model call needed", async () => {
   const eligible = [option("opt_make"), buyOption("opt_buy", 9)];
+  let callCount = 0;
   const callGateway: JevGatewayCall = async ({ questions }) => {
+    callCount += 1;
     const ids = Object.keys(
       (questions.selectedOption as { criteria: Record<string, unknown> }).criteria,
     );
@@ -318,30 +315,37 @@ test("successful canonical path shape: eligible MAKE/BUY → Jev → raw recomme
       probabilities: { opt_make: 0.7, opt_buy: 0.3 },
     });
   };
-  const lock = await lockEligibleOptionSelection(
-    { requirement, eligible },
+  const result = await composeBoundedStage3Recommendation(
+    { requirementKey: "req_relaunch", contractRevision: 1, requirement, eligible },
     { callGateway },
   );
-  assert.equal(lock.kind, "selected");
-  if (lock.kind !== "selected") return;
+  assert.equal(callCount, 1);
+  assert.equal(result.kind, "recommendation");
+  if (result.kind !== "recommendation") return;
 
-  const honor = assertRationaleHonorsLockedSelection(lock.selectedOptionId, lock.selectedOptionId);
-  assert.equal(honor.ok, true);
-
-  const raw = {
-    requirementKey: "req_relaunch",
-    contractRevision: 1,
-    selectedOptionId: lock.selectedOptionId,
-    strongestAlternativeId: "opt_buy",
-    rationale: "MAKE with owned research first.",
-    materialAssumptions: ["owned public web suffices for first draft"],
-    changeMyMindEvidence: ["founder-language gap remains after MAKE"],
-  };
-  const parsed = parseManagerialRecommendation(raw, {
+  const parsed = parseManagerialRecommendation(result.recommendation, {
     requirementKey: "req_relaunch",
     contractRevision: 1,
     eligibleOptionIds: eligible.map((o) => o.optionId),
   });
   assert.equal(parsed.ok, true);
   if (parsed.ok) assert.equal(parsed.value.selectedOptionId, "opt_make");
+});
+
+test("bridge identity failure (application-truth): reported as bridge_failure, not technical_failure — no fallback semantics implied", async () => {
+  // Duplicate option identity inside the eligible set is an application-truth
+  // problem, never a Jev/provider problem — the composer must surface it as
+  // bridge_failure so the caller does NOT spend an incumbent fallback call on it.
+  const eligible = [option("dup"), option("dup")];
+  const result = await composeBoundedStage3Recommendation(
+    { requirementKey: "req_relaunch", contractRevision: 1, requirement, eligible },
+    {
+      callGateway: async () =>
+        gatewayResultFor({ type: "choice", choice: "dup", probabilities: { dup: 1 } }),
+    },
+  );
+  assert.equal(result.kind, "bridge_failure");
+  if (result.kind === "bridge_failure") {
+    assert.equal(result.reason, "duplicate_option_id");
+  }
 });
