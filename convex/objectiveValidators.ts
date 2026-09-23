@@ -341,6 +341,19 @@ export const objectiveRecord = v.object({
       releasedAcquisitionIntentIds: v.optional(v.array(v.string())),
       lastFinalAssessmentCritique: v.optional(v.union(v.string(), v.null())),
       lastFinalAssessmentFailure: v.optional(v.union(v.string(), v.null())),
+      // Post-interpretation management-pass watchdog (founder live-run recovery).
+      managementPassWatch: v.optional(
+        v.union(
+          v.object({
+            watchToken: v.string(),
+            contractId: v.string(),
+            contractRevision: v.number(),
+            armedAt: v.number(),
+          }),
+          v.null(),
+        ),
+      ),
+      lastManagementPassCompletedAt: v.optional(v.number()),
       // V7 review R4 final scope-origin correction — the APPLICATION-OWNED
       // policy that pre-exists interpretation and grants purpose-scope
       // authority to the ONE Requirement it structurally targets. Written

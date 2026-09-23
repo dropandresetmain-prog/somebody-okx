@@ -37,6 +37,7 @@ import type {
   InternState,
   InternView,
   ObjectiveListView,
+  ObjectiveLivenessView,
   ObjectiveProductStatus,
   ObjectiveSummaryView,
   ObjectiveWorkspaceView,
@@ -212,6 +213,8 @@ export type ProductObjectiveRow = {
   controlNotes: Array<Record<string, unknown>>;
   pendingFinalAssessmentRevision: number | null;
   interpretationStatus: string | null;
+  interpretationPending: boolean;
+  pendingDecisionRequirementKey: string | null;
 };
 
 /** Everything the status/attention/list derivation needs (no evidence/workers). */
@@ -1615,6 +1618,102 @@ export function projectActivity(source: ProductSource, facts: ObjectiveFacts, no
   });
 }
 
+// ── Liveness (founder live-run) ──────────────────────────────────────────────
+
+export function projectObjectiveLiveness(
+  source: ProductSource,
+  facts: ObjectiveFacts,
+  currentWork: CurrentWorkView | null,
+): ObjectiveLivenessView {
+  const objective = source.objective;
+  const revision = facts.revision;
+  const stamps: number[] = [objective.createdAt, objective.updatedAt];
+  for (const requirement of facts.currentRequirements) stamps.push(requirement.updatedAt);
+  if (revision !== null) {
+    for (const assignment of source.assignments) {
+      if (assignment.contractRevision === revision) stamps.push(assignment.updatedAt);
+    }
+    for (const intent of source.intents) {
+      if (intent.contractRevision === revision) stamps.push(intent.updatedAt);
+    }
+    for (const decision of source.decisions) {
+      if (decision.contractRevision === revision) stamps.push(decision.at);
+    }
+  }
+  if (currentWork) stamps.push(currentWork.updatedAt);
+  const lastProgressAt = Math.max(...stamps);
+
+  if (facts.completionAccepted || facts.status === "blocked" || facts.status === "needs_you") {
+    return {
+      active: false,
+      phase: "idle",
+      lastProgressAt,
+      detail: facts.status === "needs_you" ? "Waiting on you." : "No active engine step.",
+    };
+  }
+
+  if (objective.interpretationPending || facts.status === "starting") {
+    return {
+      active: true,
+      phase: "interpreting",
+      lastProgressAt,
+      detail: "Turning your request into an outcome that can be proved.",
+    };
+  }
+
+  if (objective.pendingDecisionRequirementKey) {
+    return {
+      active: true,
+      phase: "deciding",
+      lastProgressAt,
+      detail: "Comparing the paths that are actually available.",
+    };
+  }
+
+  if (facts.status === "verifying" || objective.pendingFinalAssessmentRevision !== null) {
+    return {
+      active: true,
+      phase: "verifying",
+      lastProgressAt,
+      detail: "Checking the work against the required outcome.",
+    };
+  }
+
+  if (facts.status === "waiting") {
+    return {
+      active: false,
+      phase: "waiting_external",
+      lastProgressAt,
+      detail: "Waiting on an external or timed condition.",
+    };
+  }
+
+  if (currentWork && (currentWork.status === "working" || currentWork.status === "queued")) {
+    return {
+      active: true,
+      phase: "working",
+      lastProgressAt,
+      detail: "Researching the current requirement.",
+    };
+  }
+
+  if (facts.status === "working") {
+    return {
+      active: true,
+      phase: "working",
+      lastProgressAt,
+      detail: "Choosing and executing the next bounded step.",
+    };
+  }
+
+  return {
+    active: false,
+    phase: "idle",
+    lastProgressAt,
+    detail: "No active engine step.",
+  };
+}
+
 // ── Workspace / list / capabilities ──────────────────────────────────────────
 
 export function deriveViewRevision(view: unknown): string {
@@ -1638,6 +1737,7 @@ export function projectObjectiveWorkspace(source: ProductSource, options: Projec
       createdAt: objective.createdAt,
       updatedAt: objective.updatedAt,
     },
+    liveness: projectObjectiveLiveness(source, facts, currentWork),
     progress,
     somebodyNow: projectSomebodyNow(source, facts, currentWork),
     currentWork,

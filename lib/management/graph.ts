@@ -118,12 +118,22 @@ const GraphAnnotation = Annotation.Root({
 
 type Ann = typeof GraphAnnotation.State;
 
+// Compiled once per isolate: rebuilding LangGraph on every management pass was
+// blowing the local Convex mutation budget before decide could even begin.
+let activeGraphDeps: GraphDeps | null = null;
+let cachedInvoke: ((initial: Ann, config: { recursionLimit: number }) => Promise<Ann>) | null = null;
+
+function graphDeps(): GraphDeps {
+  if (!activeGraphDeps) throw new Error("management graph invoked without active deps");
+  return activeGraphDeps;
+}
+
 // ── Nodes ────────────────────────────────────────────────────────────────────
 
 export type NodeResult = Partial<Ann>;
-async function observeNode(state: Ann, deps: GraphDeps): Promise<NodeResult> {
-  const { ports } = deps;
-  const at = deps.now();
+async function observeNode(state: Ann): Promise<NodeResult> {
+  const { ports } = graphDeps();
+  const at = graphDeps().now();
   // Fold unconsumed wakes into this pass (ids only) and mark them consumed —
   // duplicate delivery is harmless because consumption is by event id.
   const wakes = await ports.loadWakeEvents(state.objectiveKey);
@@ -148,9 +158,9 @@ async function observeNode(state: Ann, deps: GraphDeps): Promise<NodeResult> {
   };
 }
 
-async function reduceNode(state: Ann, deps: GraphDeps): Promise<NodeResult> {
-  const { ports } = deps;
-  const at = deps.now();
+async function reduceNode(state: Ann): Promise<NodeResult> {
+  const { ports } = graphDeps();
+  const at = graphDeps().now();
   const { contract, currentContractRevision } = await ports.loadContract(state.objectiveKey);
   const requirements = contract
     ? await ports.loadRequirements(state.objectiveKey, currentContractRevision)
@@ -202,9 +212,9 @@ async function reduceNode(state: Ann, deps: GraphDeps): Promise<NodeResult> {
 
 // Route on the reduced action carried in graph memory. The routing rule is
 // action → node, nothing else; business conclusions are NEVER carried.
-async function decideNode(state: Ann, deps: GraphDeps): Promise<NodeResult> {
-  const at = deps.now();
-  const { ports } = deps;
+async function decideNode(state: Ann): Promise<NodeResult> {
+  const at = graphDeps().now();
+  const { ports } = graphDeps();
   if (!state.focusRequirementKey) return { lastNode: "decide" };
   await ports.spendDecisionCall(state.objectiveKey, at);
   const result = await ports.runDecisionPass(state as GraphState, ports, at);
@@ -233,11 +243,11 @@ async function decideNode(state: Ann, deps: GraphDeps): Promise<NodeResult> {
 // judgement: the reducer already concluded "authorized and undelivered" from
 // reloaded state, and the adapter's dispatch is idempotent on stable identity,
 // so re-entering this node cannot mint a second assignment or intent.
-async function dispatchNode(state: Ann, deps: GraphDeps): Promise<NodeResult> {
-  const at = deps.now();
+async function dispatchNode(state: Ann): Promise<NodeResult> {
+  const at = graphDeps().now();
   const requirementKey = state.focusRequirementKey;
   if (!requirementKey) return { lastNode: "dispatch" };
-  const effectId = await deps.ports.dispatchRequirement(state as GraphState, requirementKey, at);
+  const effectId = await graphDeps().ports.dispatchRequirement(state as GraphState, requirementKey, at);
   return {
     lastNode: "dispatch",
     pendingIntentId: effectId ?? state.pendingIntentId,
@@ -251,7 +261,7 @@ async function dispatchNode(state: Ann, deps: GraphDeps): Promise<NodeResult> {
   };
 }
 
-async function verifyNode(state: Ann, deps: GraphDeps): Promise<NodeResult> {
+async function verifyNode(state: Ann): Promise<NodeResult> {
   // Verification of assignment/intent outcomes lives with the CP3/CP6 seams
   // (the wake EVENT carries the evidence); this node's job is only to route
   // "did the world change" wakes into satisfaction attempts. It never marks
@@ -261,10 +271,10 @@ async function verifyNode(state: Ann, deps: GraphDeps): Promise<NodeResult> {
   // accounting; nothing here reads it as business truth.
   let satisfied = false;
   if (state.focusRequirementKey)
-    satisfied = await deps.ports.recordSatisfactionAttempt(
+    satisfied = await graphDeps().ports.recordSatisfactionAttempt(
       state as GraphState,
       state.focusRequirementKey,
-      deps.now(),
+      graphDeps().now(),
     );
   return {
     lastNode: "verify",
@@ -276,9 +286,9 @@ async function verifyNode(state: Ann, deps: GraphDeps): Promise<NodeResult> {
   };
 }
 
-async function proposeNode(state: Ann, deps: GraphDeps): Promise<NodeResult> {
-  const { ports } = deps;
-  const at = deps.now();
+async function proposeNode(state: Ann): Promise<NodeResult> {
+  const { ports } = graphDeps();
+  const at = graphDeps().now();
   const { contract, currentContractRevision } = await ports.loadContract(state.objectiveKey);
   if (!contract) return { lastNode: "propose" };
   const requirements = await ports.loadRequirements(state.objectiveKey, currentContractRevision);
@@ -310,21 +320,21 @@ async function proposeNode(state: Ann, deps: GraphDeps): Promise<NodeResult> {
   return { lastNode: "propose" };
 }
 
-async function settleNode(state: Ann, deps: GraphDeps): Promise<NodeResult> {
-  const at = deps.now();
+async function settleNode(state: Ann): Promise<NodeResult> {
+  const at = graphDeps().now();
   // Re-reduce after the action to compute the pass outcome from CURRENT truth.
-  const { contract, currentContractRevision } = await deps.ports.loadContract(state.objectiveKey);
-  const requirements = contract ? await deps.ports.loadRequirements(state.objectiveKey, currentContractRevision) : [];
-  const grounded = contract ? await deps.ports.loadGrounded(state.objectiveKey, currentContractRevision) : new Map();
+  const { contract, currentContractRevision } = await graphDeps().ports.loadContract(state.objectiveKey);
+  const requirements = contract ? await graphDeps().ports.loadRequirements(state.objectiveKey, currentContractRevision) : [];
+  const grounded = contract ? await graphDeps().ports.loadGrounded(state.objectiveKey, currentContractRevision) : new Map();
   const decisionRefusalAttempts = contract
-    ? await deps.ports.loadDecisionRefusalAttempts(state.objectiveKey)
+    ? await graphDeps().ports.loadDecisionRefusalAttempts(state.objectiveKey)
     : {};
   const [assignments, intents, budgetVerdict, pendingApproval, completionVerdict] = await Promise.all([
-    deps.ports.loadAssignments(state.objectiveKey),
-    deps.ports.loadIntents(state.objectiveKey),
-    deps.ports.loadBudgetVerdict(state.objectiveKey, at),
-    deps.ports.loadPendingApproval(state.objectiveKey),
-    deps.ports.loadCompletionVerdict(state.objectiveKey),
+    graphDeps().ports.loadAssignments(state.objectiveKey),
+    graphDeps().ports.loadIntents(state.objectiveKey),
+    graphDeps().ports.loadBudgetVerdict(state.objectiveKey, at),
+    graphDeps().ports.loadPendingApproval(state.objectiveKey),
+    graphDeps().ports.loadCompletionVerdict(state.objectiveKey),
   ]);
   const reduced = reduceManagementState({
     contract, currentContractRevision, requirements,
@@ -333,7 +343,7 @@ async function settleNode(state: Ann, deps: GraphDeps): Promise<NodeResult> {
   });
   // Persist the post-action control state (including gate-accepted `completed`).
   // reduceNode writes the pre-action state; settle owns the final pass verdict.
-  await deps.ports.writeObjectiveState(
+  await graphDeps().ports.writeObjectiveState(
     state.objectiveKey,
     reduced.state,
     reduced.detail,
@@ -393,17 +403,17 @@ async function settleNode(state: Ann, deps: GraphDeps): Promise<NodeResult> {
     continueRequested = true;
   if (!continueRequested) {
     if (reduced.action.kind === "await_wake" && nextWakeExpected === "worker_result" && liveInternalWork) {
-      timerScheduled = await deps.ports.scheduleTimer(
+      timerScheduled = await graphDeps().ports.scheduleTimer(
         state.objectiveKey, "timeout", TIMER_DELAYS_MS.work_in_flight,
         `lease:${state.objectiveKey}`, at,
       );
     } else if (reduced.state === "waiting" || reduced.state === "blocked") {
-      timerScheduled = await deps.ports.scheduleTimer(
+      timerScheduled = await graphDeps().ports.scheduleTimer(
         state.objectiveKey, "timeout", TIMER_DELAYS_MS.no_eligible_path,
         `${reduced.state}:${state.objectiveKey}`, at,
       );
     } else if (reduced.state === "approval_required") {
-      timerScheduled = await deps.ports.scheduleTimer(
+      timerScheduled = await graphDeps().ports.scheduleTimer(
         state.objectiveKey, "timeout", TIMER_DELAYS_MS.founder_pending,
         `founder_pending:${state.objectiveKey}`, at,
       );
@@ -422,7 +432,7 @@ async function settleNode(state: Ann, deps: GraphDeps): Promise<NodeResult> {
     carried.effectId !== undefined ||             // an effect row exists
     carried.verifiedSatisfied === "true" ||       // a requirement was resolved
     carried.gateAccepted === "true";              // the independent gate accepted
-  await deps.ports.recordPassProgress(state.objectiveKey, progressed, at);
+  await graphDeps().ports.recordPassProgress(state.objectiveKey, progressed, at);
 
   const outcome: GraphOutcome = {
     objectiveState: reduced.state,
@@ -450,15 +460,16 @@ export type ManagementGraph = {
 
 const NODE_LIMIT = 14; // bounded continue-cycles × 2 supersteps + the fixed nodes
 
-export function buildManagementGraph(deps: GraphDeps): ManagementGraph {
+function ensureCompiledInvoke(): (initial: Ann, config: { recursionLimit: number }) => Promise<Ann> {
+  if (cachedInvoke) return cachedInvoke;
   const builder = new StateGraph(GraphAnnotation)
-    .addNode("observe", (state: Ann) => observeNode(state, deps))
-    .addNode("reduce", (state: Ann) => reduceNode(state, deps))
-    .addNode("decide", (state: Ann) => decideNode(state, deps))
-    .addNode("verify", (state: Ann) => verifyNode(state, deps))
-    .addNode("dispatch", (state: Ann) => dispatchNode(state, deps))
-    .addNode("propose", (state: Ann) => proposeNode(state, deps))
-    .addNode("settle", (state: Ann) => settleNode(state, deps))
+    .addNode("observe", (state: Ann) => observeNode(state))
+    .addNode("reduce", (state: Ann) => reduceNode(state))
+    .addNode("decide", (state: Ann) => decideNode(state))
+    .addNode("verify", (state: Ann) => verifyNode(state))
+    .addNode("dispatch", (state: Ann) => dispatchNode(state))
+    .addNode("propose", (state: Ann) => proposeNode(state))
+    .addNode("settle", (state: Ann) => settleNode(state))
     .addEdge(START, "observe")
     .addEdge("observe", "reduce")
     .addConditionalEdges("reduce", async (state: Ann) => {
@@ -492,13 +503,25 @@ export function buildManagementGraph(deps: GraphDeps): ManagementGraph {
     { reduce: "reduce", [END]: END });
 
   const compiled = builder.compile();
+  cachedInvoke = compiled.invoke.bind(compiled) as (
+    initial: Ann,
+    config: { recursionLimit: number },
+  ) => Promise<Ann>;
+  return cachedInvoke;
+}
+
+export function buildManagementGraph(deps: GraphDeps): ManagementGraph {
+  const invokeCompiled = ensureCompiledInvoke();
 
   return {
     async invoke(initial: GraphState) {
-      const final = await compiled.invoke(
-        { ...initial } as Ann,
-        { recursionLimit: NODE_LIMIT },
-      );
+      activeGraphDeps = deps;
+      let final: Ann;
+      try {
+        final = await invokeCompiled({ ...initial } as Ann, { recursionLimit: NODE_LIMIT });
+      } finally {
+        activeGraphDeps = null;
+      }
       const carried = final as Ann;
       const carriedState = carried.continuation.reducerState as ManagementState | undefined;
       const LEGAL: readonly ManagementState[] = ["received","planning","ready_to_execute","executing","waiting_for_resource","completed","failed","waiting","approval_required","blocked","escalated","recovery_required"];

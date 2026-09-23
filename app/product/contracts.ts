@@ -81,6 +81,22 @@ export type SomebodyNowView = {
   updatedAt: number;
 };
 
+/** Product-level liveness — durable progress timestamps, not UI heartbeats. */
+export type ObjectiveLivenessPhase =
+  | "interpreting"
+  | "deciding"
+  | "working"
+  | "waiting_external"
+  | "verifying"
+  | "idle";
+
+export type ObjectiveLivenessView = {
+  active: boolean;
+  phase: ObjectiveLivenessPhase;
+  lastProgressAt: number;
+  detail: string;
+};
+
 // ── Progress / checkpoints (§12) ─────────────────────────────────────────────
 
 export type CheckpointState = "pending" | "active" | "complete" | "blocked";
@@ -330,6 +346,7 @@ export type ObjectiveActionView = {
 
 export type ObjectiveWorkspaceView = {
   objective: ObjectiveView;
+  liveness: ObjectiveLivenessView;
   progress: ProgressView;
   somebodyNow: SomebodyNowView;
   currentWork: CurrentWorkView | null;

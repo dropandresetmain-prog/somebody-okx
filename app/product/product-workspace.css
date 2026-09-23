@@ -290,6 +290,54 @@
   border: 0;
 }
 
+.v6-manager-byline .dot.is-pulsing {
+  animation: v6-liveness-pulse 1.8s ease-in-out infinite;
+}
+
+.mascot.is-live.has-art img {
+  animation: v6-liveness-breathe 2.4s ease-in-out infinite;
+}
+
+.v6-liveness-age {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+.v6-liveness-detail {
+  margin: 4px 0 0;
+  font-size: 12px;
+}
+
+@keyframes v6-liveness-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.55;
+    transform: scale(0.92);
+  }
+}
+
+@keyframes v6-liveness-breathe {
+  0%,
+  100% {
+    filter: brightness(1);
+  }
+  50% {
+    filter: brightness(1.06);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .v6-manager-byline .dot.is-pulsing,
+  .mascot.is-live.has-art img {
+    animation: none;
+  }
+}
+
 .v6-somebody-card {
   display: grid;
   grid-template-columns: 1fr 200px;

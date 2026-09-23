@@ -6,8 +6,6 @@ import { internal } from "./_generated/api";
 import type { MutationCtx } from "./_generated/server";
 import type { ObjectiveRecord } from "../lib/workforce";
 import { normalizeObjectiveRequest } from "../lib/product/objectiveRequest";
-import { CANONICAL_LAUNCH_ARTIFACT } from "../lib/objective/seedData";
-import { createArtifact } from "../lib/objective/artifact";
 
 export {
   OBJECTIVE_REQUEST_MAX_CHARS,
@@ -21,9 +19,8 @@ export {
  *
  * Callers must pass an already-normalized request (trimmed + length-checked).
  *
- * Seeds the same governed launch artifact the canonical demo setup uses, so
- * Intern MAKE can change a real company-owned version instead of refusing with
- * "No company artifact seeded".
+ * Generic `/start` objectives do not seed scenario-specific company artifacts;
+ * canonical demo setup seeds launch artifacts explicitly.
  */
 export async function createReceivedObjective(
   ctx: MutationCtx,
@@ -47,16 +44,7 @@ export async function createReceivedObjective(
     workItems: [],
     run: null,
     result: null,
-    companyArtifacts: [
-      createArtifact({
-        key: CANONICAL_LAUNCH_ARTIFACT.key,
-        objectiveKey: key,
-        label: CANONICAL_LAUNCH_ARTIFACT.label,
-        content: CANONICAL_LAUNCH_ARTIFACT.initialContent,
-        runId: "seed",
-        at: now,
-      }),
-    ],
+    companyArtifacts: [],
   };
   await ctx.db.insert("objectives", { key, data: record });
   await ctx.db.insert("objectiveEvents", {

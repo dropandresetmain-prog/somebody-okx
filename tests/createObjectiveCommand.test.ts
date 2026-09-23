@@ -160,13 +160,14 @@ test("createObjectiveV1: valid request creates one Objective with authoritative 
   assert.equal(rows.length, 1);
   const row = rows[0] as {
     key: string;
-    data: { key: string; request: string; state: string; activity: string };
+    data: { key: string; request: string; state: string; activity: string; companyArtifacts?: unknown[] };
   };
   assert.equal(row.key, result.objectiveId);
   assert.equal(row.data.key, result.objectiveId);
   assert.equal(row.data.request, VALID_REQUEST, "request must be trimmed");
   assert.equal(row.data.state, "received");
   assert.equal(row.data.activity, "Objective received.");
+  assert.deepEqual(row.data.companyArtifacts ?? [], [], "generic /start objectives do not seed canonical launch artifacts");
 
   const events = await t.run(async (ctx) =>
     ctx.db

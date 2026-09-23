@@ -911,7 +911,7 @@ test("somebodyNow state follows product status", () => {
 
 test("workspace leaks no raw engine arrays or states", () => {
   const view = projectObjectiveWorkspace(acquisitionScenario(), opts);
-  assert.deepEqual(Object.keys(view).sort(), ["acquisitions", "activity", "attention", "availableActions", "currentWork", "deliverables", "objective", "progress", "somebodyNow"]);
+  assert.deepEqual(Object.keys(view).sort(), ["acquisitions", "activity", "attention", "availableActions", "currentWork", "deliverables", "liveness", "objective", "progress", "somebodyNow"]);
   const text = JSON.stringify(view);
   for (const leak of ["result_submitted", "awaiting_m3", "handed_off", "dependsOnRequirementKeys", "workContract", "coarsePlanSummary"]) {
     assert.ok(!text.includes(leak), `leaked ${leak}`);

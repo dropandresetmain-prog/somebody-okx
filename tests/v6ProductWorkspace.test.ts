@@ -49,6 +49,12 @@ function workspace(over: Partial<ObjectiveWorkspaceView> = {}): ObjectiveWorkspa
       createdAt: NOW - 100_000,
       updatedAt: NOW,
     },
+    liveness: {
+      active: true,
+      phase: "working",
+      lastProgressAt: NOW,
+      detail: "Choosing and executing the next bounded step.",
+    },
     progress: { checkpoints: [] },
     somebodyNow: { state: "working", headline: "Working on it", detail: "An intern is doing bounded work.", updatedAt: NOW },
     currentWork: null,

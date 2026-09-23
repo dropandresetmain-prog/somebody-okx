@@ -1,42 +1,26 @@
-﻿# ACTIVE TASK — OKX Final Convergence (Primary Integrator)
+﻿# ACTIVE TASK — Founder live runtime liveness repair
 
 Updated: 23 September 2026 (Singapore)
-Status: **PROMOTED TO MAIN** — merge commit `14d64ee` via PR #1. **Not deployed.**
+Branch: `fix/founder-live-runtime-liveness` from `origin/main` @ `7e6dcf4`
 
-## Promotion
+## Phases
 
-- PR: https://github.com/dropandresetmain-prog/somebody-okx/pull/1
-- Merged: 23 September 2026
-- `main` tip: `14d64eed23c45df8eeb9321b6684f9c2372896d6`
-- Candidate tip included: `26685a2`
-- Deploy: **not run** (ask explicitly if needed)
+| Phase | Focus | Status |
+| --- | --- | --- |
+| A | Management pass timeout + recovery | in progress |
+| B | V6 read-query performance | in progress |
+| C | Liveness projection + UI | in progress |
+| D | Generic objective seed separation | in progress |
 
-## Source lane SHAs (promoted)
+## Incident
 
-| Lane | Head |
-| --- | --- |
-| Reliability V7 tip / start | `51bb7c6` (code `ac1c64e`) |
-| Final frontend | `6bde197` |
-| Business Seed V2 | `27cd275` |
-| Jev selector | `4d9c704` |
+- Objective `obj_1790169699655_st8i4h` (founder Share Society) — first `runManagementPass` ~1s local timeout, no decision follow-on.
 
-## Gate (pre-merge)
+## Findings (open)
 
-- Suite excl. hang file: 1168 / 1158 pass / 10 fail (names = V7 baseline)
-- Convex typecheck clean; root tsc 74-line inherited debt
-- Next compiled, then inherited typecheck fail
-
-## Jev
-
-- `JEV_OPTION_SELECTION_ENABLED=true` to enable; default off
-- Stage-4 `applyDecision` unchanged
-
-## Findings carried
-
-- **Investigate Now:** `setupCanonicalDemoObjective` optional custom request + canonical purpose policy
-- **Ignore / Accept Risk:** 10 inherited fails; root tsc / Next typecheck debt
+- **Act Now:** management pass budget, V6 read timeouts under cohort data, liveness UX, canonical artifact on generic create
+- **Investigate Now:** scheduler retry on mutation timeout; local vs cloud limits
 
 ## Non-claims
 
-- No live M3 / payment / provider success claimed
-- No deploy in this promotion
+- No deploy, M3, payment, Jev, or model changes in this lane
