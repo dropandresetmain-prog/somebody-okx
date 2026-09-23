@@ -73,6 +73,12 @@ function completedObjectiveRow(key: string) {
   };
 }
 
+// `loadRow`'s `ctx.db.query("objectives").withIndex(...)` hits the same
+// pre-existing convex-test ctx/schema type-inference limitation already
+// present (and accepted) in tests/v7ReviewR4ScopeOrigin.test.ts when a
+// Convex `run`/`mutation` callback is factored into a helper taking `t` as a
+// parameter — a `tsc`-only quirk with zero runtime effect (every test below
+// passes; convex-test's actual `ctx.db` is unaffected at runtime).
 async function insertCompletedObjective(t: ReturnType<typeof convexTest>, key: string) {
   await t.mutation(async (ctx) => {
     await ctx.db.insert("objectives", { key, data: completedObjectiveRow(key) as never });

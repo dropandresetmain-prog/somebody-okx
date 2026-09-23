@@ -51,6 +51,7 @@ async function seed(t: ReturnType<typeof convexTest>, key: string, updatedAt: nu
         updatedAt,
         state: "executing",
         activity: "working",
+        productVisibility: "visible",
         plan: null,
         workItems: [],
         run: null,
