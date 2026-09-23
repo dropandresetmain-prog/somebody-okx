@@ -1,8 +1,11 @@
 import type { ProgressView } from "../contracts";
+import { clipText } from "../humanize";
 import { CHECKPOINT_LABEL } from "../presentation";
 
 // Right-rail Checkpoints (DESIGN.md §4, contract §12–13). Renders exactly the
 // supplied checkpoints — no numeric progress, no Requirement inspection.
+// The compact rail shows label + state; the requirement detail is shown only
+// for the checkpoint in progress, clipped. Checkpoint data is never changed.
 export function Checkpoints({ progress }: { progress: ProgressView }) {
   const completeCount = progress.checkpoints.filter((item) => item.state === "complete").length;
   const total = progress.checkpoints.length;
@@ -36,7 +39,11 @@ export function Checkpoints({ progress }: { progress: ProgressView }) {
               </div>
               <div className="v6-checkpoint-copy">
                 <p className="v6-checkpoint-label">{checkpoint.label}</p>
-                {checkpoint.detail ? <p className="v6-checkpoint-detail muted">{checkpoint.detail}</p> : null}
+                {checkpoint.detail && (checkpoint.state === "active" || checkpoint.state === "blocked") ? (
+                  <p className="v6-checkpoint-detail muted" title={checkpoint.detail}>
+                    {clipText(checkpoint.detail, 110)}
+                  </p>
+                ) : null}
               </div>
               <span className="v6-checkpoint-state muted">{CHECKPOINT_LABEL[checkpoint.state]}</span>
             </li>

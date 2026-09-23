@@ -139,7 +139,7 @@ export function somebodyByline(state: SomebodyNowState): string {
 export function activityTypeLabel(type: ActivityType): string {
   switch (type) {
     case "objective_interpreted":
-      return "Somebody";
+      return "Outcome";
     case "intern_assigned":
       return "Delegated";
     case "work_started":

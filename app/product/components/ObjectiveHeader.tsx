@@ -1,10 +1,12 @@
 import { Mascot } from "../../somebody/Mascot";
 import type { CurrentWorkView, ObjectiveView, SomebodyNowView } from "../contracts";
+import { somebodyNowCopy } from "../humanize";
 import { OBJECTIVE_STATUS_LABEL, objectiveStatusTone, somebodyByline, somebodyNowPose } from "../presentation";
 
 // Top of main (DESIGN.md §3): Objective title + founder request, then ONE
 // Somebody update card. Current work is supporting meta inside that card —
-// not a second hero block. Copy is rendered exactly as supplied.
+// not a second hero block. Copy is the supplied copy passed through the
+// deterministic founder-language layer (../humanize); nothing is invented.
 export function ObjectiveHeader({
   objective,
   somebodyNow,
@@ -14,6 +16,9 @@ export function ObjectiveHeader({
   somebodyNow: SomebodyNowView;
   currentWork?: CurrentWorkView | null;
 }) {
+  const now = somebodyNowCopy(somebodyNow);
+  // Skip "Working now" when the headline already names the same work.
+  const showWorkingNow = Boolean(currentWork && !now.headline.includes(currentWork.title));
   return (
     <header className="v6-objective-header">
       <div className="v6-objective-head">
@@ -33,11 +38,11 @@ export function ObjectiveHeader({
             <i className="dot tone-somebody" aria-hidden="true" />
             {somebodyByline(somebodyNow.state)}
           </p>
-          <h2 className="v6-somebody-headline">{somebodyNow.headline}</h2>
-          <p className="v6-somebody-detail">{somebodyNow.detail}</p>
+          <h2 className="v6-somebody-headline">{now.headline}</h2>
+          <p className="v6-somebody-detail">{now.detail}</p>
           <div className="v6-manager-meta">
-            {currentWork ? <span>Working now: {currentWork.title}</span> : null}
-            {currentWork ? <span aria-hidden="true">•</span> : null}
+            {showWorkingNow && currentWork ? <span>Working now: {currentWork.title}</span> : null}
+            {showWorkingNow ? <span aria-hidden="true">•</span> : null}
             <span>{ballLabel(somebodyNow.state)}</span>
           </div>
         </div>

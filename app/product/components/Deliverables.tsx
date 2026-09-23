@@ -1,4 +1,5 @@
 import type { DeliverableView } from "../contracts";
+import { clipText, humanizeProse } from "../humanize";
 import { DELIVERABLE_STATUS_LABEL, deliverableTone } from "../presentation";
 
 // Right-rail Deliverables (contract §24–28). Status is rendered exactly as
@@ -45,7 +46,7 @@ function DeliverableRow({ deliverable }: { deliverable: DeliverableView }) {
         {deliverable.status === "verified" ? "Final deliverable" : "Working deliverable"} · v{deliverable.version}
       </p>
       <p className="v6-deliverable-title">{deliverable.title}</p>
-      {deliverable.summary ? <p className="muted v6-deliverable-summary">{deliverable.summary}</p> : null}
+      {deliverable.summary ? <p className="muted v6-deliverable-summary">{clipText(humanizeProse(deliverable.summary), 160)}</p> : null}
       <span className={`pill tone-${deliverableTone(deliverable.status)}`}>{DELIVERABLE_STATUS_LABEL[deliverable.status]}</span>
       {deliverable.recommendedNextMove ? <p className="muted v6-deliverable-next">Next: {deliverable.recommendedNextMove}</p> : null}
       {deliverable.unknowns && deliverable.unknowns.length > 0 ? (

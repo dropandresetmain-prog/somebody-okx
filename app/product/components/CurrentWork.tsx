@@ -1,5 +1,6 @@
 import { InternArt } from "../characters";
 import type { CurrentWorkView } from "../contracts";
+import { humanizeProse, internDisplayName, internDisplayRole } from "../humanize";
 import { APPROACH_LABEL, CURRENT_WORK_STATUS_LABEL, internPresentation } from "../presentation";
 
 // Current Work / Intern (contract §14–17). Intern "done" is rendered exactly
@@ -16,7 +17,7 @@ export function CurrentWork({ currentWork }: { currentWork: CurrentWorkView | nu
         <span className="v6-current-work-status muted">{CURRENT_WORK_STATUS_LABEL[currentWork.status]}</span>
       </div>
       <p className="v6-current-work-title">{currentWork.title}</p>
-      {currentWork.summary ? <p className="v6-current-work-summary muted">{currentWork.summary}</p> : null}
+      {currentWork.summary ? <p className="v6-current-work-summary muted">{humanizeProse(currentWork.summary)}</p> : null}
       {currentWork.intern ? <InternChip intern={currentWork.intern} /> : null}
     </section>
   );
@@ -25,12 +26,13 @@ export function CurrentWork({ currentWork }: { currentWork: CurrentWorkView | nu
 function InternChip({ intern }: { intern: CurrentWorkView["intern"] }) {
   if (!intern) return null;
   const { label } = internPresentation(intern.state);
+  const role = internDisplayRole(intern);
   return (
     <div className="v6-intern-chip" data-intern-id={intern.id} data-intern-state={intern.state}>
       <InternFrameCompact />
       <div>
-        <p className="v6-intern-chip-label">{intern.label}</p>
-        {intern.specialty ? <p className="muted v6-intern-chip-specialty">{intern.specialty}</p> : null}
+        <p className="v6-intern-chip-label">{internDisplayName(intern)}</p>
+        {role ? <p className="muted v6-intern-chip-specialty">{role}</p> : null}
         <p className="muted v6-intern-chip-state">{label}</p>
       </div>
     </div>

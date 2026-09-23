@@ -1,4 +1,5 @@
 import type { AcquisitionView } from "../contracts";
+import { acquisitionResourceLabel, providerDisplayName } from "../humanize";
 import { ACQUISITION_STATUS_LABEL, acquisitionTone } from "../presentation";
 
 // Acquisitions receipt treatment (contract §34–36). Renders ONLY supplied
@@ -33,8 +34,8 @@ function AcquisitionReceipt({ acquisition }: { acquisition: AcquisitionView }) {
           </span>
         ) : null}
       </div>
-      <p className="v6-acquisition-resource">{acquisition.resourceLabel}</p>
-      {acquisition.providerLabel ? <p className="muted">{acquisition.providerLabel}</p> : null}
+      <p className="v6-acquisition-resource">{acquisitionResourceLabel(acquisition)}</p>
+      {acquisition.providerLabel ? <p className="muted">{providerDisplayName(acquisition.providerLabel)}</p> : null}
       {acquisition.provenance ? (
         <span className="pill tone-neutral" data-acquisition-provenance={acquisition.provenance}>
           {provenanceLabel(acquisition.provenance)}
