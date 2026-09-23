@@ -177,6 +177,9 @@ function stopbWorldNow(
     contractRevision: 1,
     supportingEvidenceIds: ["ev_check"],
     dedupeKey: `${key}:proprietary_data:${REQ}`,
+    // V7 review R4: the application-validated requested scope. Eligibility of
+    // the purpose-scoped product comes from this, not from prose keywords.
+    requestedScope: { purposeKind: "founder_messaging_qualitative", authority: "application" },
   };
   const failedDelivery: Assignment = {
     ...(() => {
@@ -265,6 +268,9 @@ async function seedPostA1(
     contractRevision: 1,
     supportingEvidenceIds: ["ev_check"],
     dedupeKey: `${key}:proprietary_data:${REQ}`,
+    // V7 review R4: the application-validated requested scope. Eligibility of
+    // the purpose-scoped product comes from this, not from prose keywords.
+    requestedScope: { purposeKind: "founder_messaging_qualitative", authority: "application" },
   };
 
   const seededAssignment: Assignment = {

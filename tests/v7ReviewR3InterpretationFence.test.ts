@@ -45,6 +45,12 @@ const modules = {
   "../convex/_generated/dataModel.d.ts": () => import("../convex/_generated/dataModel"),
 };
 
+/** Untyped harness handle (the helper Backend type does not carry the schema). */
+type ObjectivesDb = {
+  query(table: "objectives"): {
+    withIndex(index: "by_key", f: (q: { eq(field: "key", value: string): unknown }) => unknown): { unique(): Promise<unknown> };
+  };
+};
 type Handler = { _handler: (c: unknown, a: Record<string, unknown>) => Promise<unknown> };
 type Backend = ReturnType<typeof convexTest>;
 
@@ -127,7 +133,7 @@ async function seedObjective(t: Backend, key: string) {
 
 async function readManagement(t: Backend, key: string) {
   return t.query(async (ctx) => {
-    const row = await ctx.db.query("objectives").withIndex("by_key", (q) => q.eq("key", key)).unique();
+    const row = await (ctx.db as unknown as ObjectivesDb).query("objectives").withIndex("by_key", (q) => q.eq("key", key)).unique();
     const data = (row as unknown as { data: Record<string, unknown> }).data;
     return { state: data.state, management: data.management as Record<string, unknown> };
   });

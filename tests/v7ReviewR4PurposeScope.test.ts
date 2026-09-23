@@ -41,6 +41,12 @@ afterAll(() => mock.timers.reset());
 const now = 1_990_000_000_000;
 const REQ = "req_scope";
 const SUPPORTED = "founder_messaging_qualitative";
+/** Untyped harness handle (the helper Backend type does not carry the schema). */
+type ObjectivesDb = {
+  query(table: "objectives"): {
+    withIndex(index: "by_key", f: (q: { eq(field: "key", value: string): unknown }) => unknown): { unique(): Promise<unknown> };
+  };
+};
 type Handler = { _handler: (c: unknown, a: Record<string, unknown>) => Promise<unknown> };
 
 function contractFor(key: string): OutcomeContract {
@@ -147,7 +153,7 @@ async function ground(t: ReturnType<typeof convexTest>, key: string): Promise<{ 
 const productOption = (options: GroundedOption[]) => options.find((o) => o.external?.serviceId === "founder_narrative_pulse");
 const storedNeeds = async (t: ReturnType<typeof convexTest>, key: string) =>
   (await t.run(async (ctx) => {
-    const row = await ctx.db.query("objectives").withIndex("by_key", (q) => q.eq("key", key)).unique();
+    const row = await (ctx.db as unknown as ObjectivesDb).query("objectives").withIndex("by_key", (q) => q.eq("key", key)).unique();
     return ((row as { data: ObjectiveRecord }).data.resourceNeeds ?? []) as ResourceNeed[];
   }));
 

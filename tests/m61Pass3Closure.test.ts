@@ -856,7 +856,13 @@ test("pass3: second negative assessment reaches explicit blocked stop", async ()
   assert.equal((await readReqs(t, key))[0]?.state, "satisfied");
 });
 
-test("pass3: manager-initiated serial BUY without worker ResourceNeed; stale bound refused", async () => {
+// V7 review R4: this test previously asserted that a manager-initiated BUY
+// (no worker ResourceNeed, hence NO application-validated requested scope)
+// could buy the purpose-scoped founder_narrative_pulse product. That
+// eligibility came only from prose keyword luck ("relaunch"). Missing scope
+// must now fail closed: the scoped product is grounded but ineligible, no BUY
+// is authorized, no intent is created, and no need/scope is fabricated.
+test("pass3: manager-initiated serial BUY without a validated scope cannot buy the purpose-scoped product (fails closed, nothing fabricated)", async () => {
   const t = convexTest(schema, modules);
   const key = "obj_p3_mgr_buy";
   const reqKey = "req_relaunch";
@@ -957,65 +963,25 @@ test("pass3: manager-initiated serial BUY without worker ResourceNeed; stale bou
       notes: "manager-initiated acquisition",
     },
     async (eligible) => {
-      const external = eligible.find(
-        (o) => o.kind === "external" && o.eligibility.eligible,
-      );
-      assert.ok(
-        external,
-        `manager BUY must be eligible without ResourceNeed; got ${eligible
-          .map((o) => `${o.kind}:${o.eligibility.eligible}`)
-          .join("|")}`,
-      );
-      buyOptionId = external!.optionId;
-      return {
-        requirementKey: reqKey,
-        contractRevision: 1,
-        selectedOptionId: external!.optionId,
-        rationale: "Manager authorizes BUY without worker-discovered need",
-        materialAssumptions: [],
-        changeMyMindEvidence: [],
-      };
+      buyOptionId =
+        eligible.find((o) => o.kind === "external" && o.eligibility.eligible)?.optionId ?? null;
+      return null; // the double never forces a strategy or provider
     },
   );
   assert.equal(built.ok, true);
   if (!built.ok) return;
-  await runManagerialDecisionPass(built.input);
-  assert.ok(buyOptionId);
-
-  const buy = (await t.mutation(async (ctx) =>
-    (applyDecision as unknown as Handler)._handler(ctx, {
-      objectiveKey: key,
-      requestId: `decide_${key}_${reqKey}_r1_a1`,
-      rawStrategyProposal: {
-        strategy: "BUY",
-        desiredCapabilities: [],
-        needsExternalResourceClass: "proprietary_data",
-        notes: "manager-initiated acquisition before MAKE",
-      },
-      rawRecommendation: {
-        requirementKey: reqKey,
-        contractRevision: 1,
-        selectedOptionId: buyOptionId!,
-        rationale: "Manager authorizes BUY without worker-discovered need",
-        materialAssumptions: [],
-        changeMyMindEvidence: [],
-      },
-      at: now,
-    }),
-  )) as { ok: boolean; authorized?: boolean; strategy?: string; reason?: string };
-  assert.equal(buy.ok, true, buy.reason);
-  assert.equal(buy.authorized, true, JSON.stringify(buy));
-  assert.equal(buy.strategy, "BUY");
+  const pass = await runManagerialDecisionPass(built.input);
+  assert.equal(buyOptionId, null, "no external option is eligible without a validated requested scope");
+  const product = pass.options.find((o) => o.external?.serviceId === "founder_narrative_pulse");
+  assert.ok(product, "the scoped product is still grounded (visible), not hidden");
+  assert.equal(product!.external!.purposeScopeCompatible, false);
+  assert.equal(product!.eligibility.eligible, false);
+  assert.notEqual(pass.authorization.kind, "authorized", "no BUY is authorized");
 
   await invokePass(t, key, "decision_applied");
-  const intents = await readIntents(t, key);
-  assert.equal(intents.length, 1, "manager-initiated BUY must create an intent");
-  assert.ok(
-    intents[0]!.state === "authorized" || intents[0]!.state === "awaiting_m3",
-  );
-  // Must not fabricate a ResourceNeed just to authorize BUY.
+  assert.equal((await readIntents(t, key)).length, 0, "no intent without validated scope");
   const needs = (await readObj(t, key)).resourceNeeds ?? [];
-  assert.equal(needs.length, 0, "manager BUY must not fabricate scarcity needs");
+  assert.equal(needs.length, 0, "no need (or scope) is fabricated to make BUY pass");
 });
 
 test("pass3: serial BUY with stale bound ResourceNeed is refused", async () => {
