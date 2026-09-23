@@ -165,6 +165,17 @@ export type ObjectiveRecord = {
   workItems: WorkItem[];
   run: WorkerRun | null;
   result: ActivityResult | null;
+  /**
+   * Application-owned, explicit product-sidebar visibility. Set once at
+   * creation by createReceivedObjective (or directly by
+   * setupCanonicalDemoObjective) — never inferred from request text, title,
+   * ID prefix or timestamps. "visible" = shows in the founder product
+   * sidebar (getObjectiveListV1); "internal" = internal/gate/eval/demo rows
+   * that must never appear there. Optional so legacy rows written before
+   * this field existed keep loading; absent is treated as NOT visible
+   * (hidden by default) by getObjectiveListV1.
+   */
+  productVisibility?: "visible" | "internal";
   // Optional M2 mission state (absent on accepted M1 rows — loaders must tolerate).
   resourceNeeds?: import("./resourceNeed").ResourceNeed[];
   sourcingDecisions?: import("./resourceNeed").SourcingDecisionRecord[];

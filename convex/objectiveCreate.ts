@@ -24,10 +24,16 @@ export {
  * Seeds a scenario-neutral Objective-owned deliverable workspace so MAKE can
  * write a governed artifact. Canonical demo setup still seeds the Somebody
  * launch artifact explicitly — this path must not.
+ *
+ * `productVisibility` is required (never defaulted) so every caller states
+ * explicitly whether this Objective belongs in the founder product sidebar
+ * ("visible") or is internal/gate/eval/demo traffic ("internal"). This is an
+ * application-owned decision, never inferred from the request text.
  */
 export async function createReceivedObjective(
   ctx: MutationCtx,
   request: string,
+  productVisibility: "visible" | "internal",
 ): Promise<{ key: string }> {
   // Defense in depth: never persist an un-normalized request even if a caller
   // forgets to validate at the boundary.
@@ -43,6 +49,7 @@ export async function createReceivedObjective(
     updatedAt: now,
     state: "received",
     activity: "Objective received.",
+    productVisibility,
     plan: null,
     workItems: [],
     run: null,

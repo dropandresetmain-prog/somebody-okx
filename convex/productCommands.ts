@@ -147,7 +147,9 @@ export const createObjectiveV1 = mutation({
     }
 
     try {
-      const { key } = await createReceivedObjective(ctx, normalized.request);
+      // This is the real `/start` founder product path — Objectives created
+      // here belong in the product sidebar.
+      const { key } = await createReceivedObjective(ctx, normalized.request, "visible");
       return {
         accepted: true,
         commandId: `create:${key}`,
