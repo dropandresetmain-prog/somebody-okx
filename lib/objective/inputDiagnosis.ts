@@ -194,6 +194,15 @@ export type ValidateMissingInputContext = {
   workItemId: string | null;
   /** Declared on the current Requirement (may be empty initially). */
   requiredResourceClasses: readonly string[];
+  /**
+   * V7 review R4 final correction — APPLICATION-OWNED governed purpose scope
+   * kinds the current Requirement is authorized to request (Requirement.
+   * authorizedPurposeKinds). Absent/empty = no purpose scope authorized: a
+   * worker-proposed purposeKind is refused regardless of vocabulary/class
+   * validity. Never populate this from prose, interpretation output, or the
+   * proposal being validated.
+   */
+  authorizedPurposeKinds?: readonly string[];
   mustBeTrue: string;
   expectedOutput: string | null;
   /** Work-contract evidence obligations (source proofs). */
@@ -385,12 +394,16 @@ export function validateMissingInputProposal(
 
   const resourceClass = proposal.resourceClass;
 
-  // V7 review R4 — a proposed requested scope is validated HERE, by the
-  // application, before it can bind anything: it must be a governed kind and
-  // applicable to the proposed class. An unknown or inapplicable kind is a
-  // typed refusal (never coerced to a supported kind); an absent kind yields a
-  // need with NO requestedScope, which purpose-scoped offerings treat as
-  // incompatible downstream (fail closed).
+  // V7 review R4 (final correction) — a proposed requested scope is
+  // validated HERE, by the application, before it can bind anything, through
+  // THREE independent gates: (1) it must be a governed kind; (2) it must be
+  // applicable to the proposed class; (3) the CURRENT governed Requirement
+  // must itself be application-authorized to request that exact kind
+  // (Requirement.authorizedPurposeKinds) — a worker/model-selected label
+  // never grants itself authority merely by being a valid, class-applicable
+  // enum value. Any failure is a typed refusal (never coerced to a supported
+  // kind); an absent kind yields a need with NO requestedScope, which
+  // purpose-scoped offerings treat as incompatible downstream (fail closed).
   const proposedKind =
     typeof proposal.purposeKind === "string" ? proposal.purposeKind.trim() : "";
   if (proposedKind && !isGovernedPurposeKind(proposedKind))
@@ -402,6 +415,11 @@ export function validateMissingInputProposal(
     return refuse(
       "purpose_scope_class_mismatch",
       `purposeKind ${proposedKind} cannot be requested for resource class ${resourceClass}`,
+    );
+  if (proposedKind && !(ctx.authorizedPurposeKinds ?? []).includes(proposedKind))
+    return refuse(
+      "purpose_scope_not_authorized",
+      `Requirement ${ctx.requirementKey} does not authorize purposeKind ${proposedKind}`,
     );
 
   // Company already controls this class → no acquisition-relevant gap.

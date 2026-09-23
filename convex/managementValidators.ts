@@ -129,6 +129,9 @@ export const vRequirement = v.object({
   // Optional for rows written before M6.1 CP2; readers normalize to [].
   dependsOnRequirementKeys: v.optional(v.array(v.string())),
   requiredResourceClasses: v.optional(v.array(v.string())),
+  // V7 review R4 final correction — application-owned authorized purpose
+  // scope kinds for this Requirement. Never derived from interpretation.
+  authorizedPurposeKinds: v.optional(v.array(v.string())),
   expectedOutput: v.optional(v.union(v.string(), v.null())),
   // M6.1 serial: explicit semantic discriminator. Absent on legacy rows.
   requirementKind: v.optional(

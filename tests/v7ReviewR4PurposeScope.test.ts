@@ -78,13 +78,19 @@ function workContract(): WorkContract {
   };
 }
 
-/** Seeds one Objective whose Requirement text is `mustBeTrue`/`expectedOutput` (descriptive prose). */
-async function seed(t: ReturnType<typeof convexTest>, key: string, prose: { mustBeTrue: string; expectedOutput: string; title: string }) {
+/**
+ * Seeds one Objective whose Requirement text is `mustBeTrue`/`expectedOutput`
+ * (descriptive prose). `authorizedPurposeKinds` is the APPLICATION-OWNED
+ * authority (V7 R4 final correction) — set here the same way the test seeds
+ * any other application-owned fact (spend grant, budget), never derived from
+ * the prose above. Defaults to none authorized.
+ */
+async function seed(t: ReturnType<typeof convexTest>, key: string, prose: { mustBeTrue: string; expectedOutput: string; title: string }, authorizedPurposeKinds: string[] = []) {
   const contract = contractFor(key);
   const requirement: Requirement = {
     requirementKey: REQ, objectiveKey: key, contractId: contract.contractId, contractRevision: 1, priority: "required",
     title: prose.title, mustBeTrue: prose.mustBeTrue, scope: "owned then external if needed", dependsOnRequirementKeys: [],
-    requiredResourceClasses: [], expectedOutput: prose.expectedOutput, proofs: [], state: "active", strategy: null,
+    requiredResourceClasses: [], authorizedPurposeKinds, expectedOutput: prose.expectedOutput, proofs: [], state: "active", strategy: null,
     resolution: null, blockedReason: null, waiver: null, revision: 1, createdAt: now, updatedAt: now,
   };
   const runId = `run_${key}`;
@@ -163,10 +169,10 @@ test("R4: the adapter declares only governed kinds (one taxonomy, no second voca
   for (const kind of M3_PRODUCT_FULFILLMENT_SCOPE.purposeKinds) assert.ok(GOVERNED_PURPOSE_KINDS.includes(kind));
 });
 
-test("R4: a supported, application-validated structured scope is eligible through the real grounding path", async () => {
+test("R4-B: a genuinely authorized Requirement + matching worker-proposed scope is eligible through the real grounding path", async () => {
   const t = convexTest(schema, modules);
   const key = "obj_r4_supported";
-  const ids = await seed(t, key, RELAUNCH);
+  const ids = await seed(t, key, RELAUNCH, [SUPPORTED]);
   const rep = await report(t, key, ids, "How do solo founders phrase launch pain?", SUPPORTED);
   assert.equal(rep.validated, true);
   const [need] = await storedNeeds(t, key);
@@ -194,24 +200,76 @@ test("R4: missing scope fails closed — the same prose that used to match by ke
   assert.equal(product!.eligibility.eligible, false);
 });
 
-test("R4: equivalent paraphrases do not change authoritative compatibility; unrelated signal-word prose does not become eligible", async () => {
+test("R4: equivalent paraphrases of an AUTHORIZED Requirement do not change authoritative compatibility; unrelated signal-word prose does not become eligible", async () => {
   const t = convexTest(schema, modules);
-  const cases: Array<{ key: string; prose: typeof RELAUNCH; kind?: string; expected: boolean }> = [
-    // Paraphrases with the validated scope — including one with NONE of the former signal words.
-    { key: "obj_r4_para_a", prose: RELAUNCH, kind: SUPPORTED, expected: true },
-    { key: "obj_r4_para_b", prose: { title: "Customer wording", mustBeTrue: "the copy reflects how our target customers put the problem in their own words", expectedOutput: "saved copy recommendation" }, kind: SUPPORTED, expected: true },
-    // Unrelated requests packed with former signal words, no validated scope.
+  const cases: Array<{ key: string; prose: typeof RELAUNCH; authorized?: string[]; kind?: string; expected: boolean }> = [
+    // Paraphrases of a genuinely AUTHORIZED Requirement — including one with NONE of the former signal words.
+    { key: "obj_r4_para_a", prose: RELAUNCH, authorized: [SUPPORTED], kind: SUPPORTED, expected: true },
+    { key: "obj_r4_para_b", prose: { title: "Customer wording", mustBeTrue: "the copy reflects how our target customers put the problem in their own words", expectedOutput: "saved copy recommendation" }, authorized: [SUPPORTED], kind: SUPPORTED, expected: true },
+    // Unrelated requests packed with former signal words, no validated scope proposed, no authority either.
     { key: "obj_r4_unrelated_a", prose: { title: "Workflow language", mustBeTrue: "translate the launch workflow docs into another language with message clarity", expectedOutput: "translated workflow docs" }, expected: false },
     { key: "obj_r4_unrelated_b", prose: { title: "Founder perception", mustBeTrue: "benchmark the founder dashboard message queue workflow for clarity", expectedOutput: "benchmark report" }, expected: false },
   ];
   for (const c of cases) {
-    const ids = await seed(t, c.key, c.prose);
+    const ids = await seed(t, c.key, c.prose, c.authorized ?? []);
     const rep = await report(t, c.key, ids, "What evidence is missing?", c.kind);
     assert.equal(rep.validated, true, c.key);
     const product = productOption((await ground(t, c.key)).options);
     assert.equal(product?.external?.purposeScopeCompatible, c.expected, c.key);
     assert.equal(product?.eligibility.eligible, c.expected, c.key);
   }
+});
+
+test("R4-A (blocker): unrelated Requirement + worker-selected governed scope label does NOT gain application authority", async () => {
+  const t = convexTest(schema, modules);
+  const key = "obj_r4a_unrelated_worker_label";
+  const TRANSLATE = { title: "Docs translation", mustBeTrue: "our developer documentation is translated into Japanese", expectedOutput: "translated developer documentation" };
+  const ids = await seed(t, key, TRANSLATE); // no authorizedPurposeKinds — this Requirement authorizes nothing
+  const rep = await report(t, key, ids, "What evidence is missing to translate the docs?", SUPPORTED);
+  assert.equal(rep.validated, false);
+  assert.equal(rep.refusalCode, "purpose_scope_not_authorized");
+  assert.equal((await storedNeeds(t, key)).length, 0, "no ResourceNeed, no scope, nothing coerced");
+  const product = productOption((await ground(t, key)).options);
+  assert.equal(product?.eligibility.eligible, false, "no BUY authority for the scoped product is created");
+});
+
+test("R4-C: on-topic prose with no application authority is still refused — a valid governed kind is not its own oracle", async () => {
+  const t = convexTest(schema, modules);
+  const key = "obj_r4c_no_authority";
+  // RELAUNCH prose IS genuinely about founder messaging, but the Requirement
+  // authorizes no purpose scope: prose relevance must never substitute for it.
+  const ids = await seed(t, key, RELAUNCH);
+  const rep = await report(t, key, ids, "How do solo founders phrase launch pain?", SUPPORTED);
+  assert.equal(rep.validated, false);
+  assert.equal(rep.refusalCode, "purpose_scope_not_authorized");
+});
+
+test("R4-D: an authorized Requirement never invents a scope the worker did not propose", async () => {
+  const t = convexTest(schema, modules);
+  const key = "obj_r4d_authorized_no_proposal";
+  const ids = await seed(t, key, RELAUNCH, [SUPPORTED]);
+  const rep = await report(t, key, ids, "How do solo founders phrase launch pain?");
+  assert.equal(rep.validated, true);
+  const [need] = await storedNeeds(t, key);
+  assert.equal(need!.requestedScope, undefined, "Requirement authority alone never invents a worker proposal");
+});
+
+test("R4-E: prose stays non-authoritative in both directions — signal words never grant scope, and an authorized Requirement needs no signal words", async () => {
+  const t = convexTest(schema, modules);
+  const keyA = "obj_r4e_keywords_no_authority";
+  const KEYWORDY = { title: "Founder perception", mustBeTrue: "benchmark the founder dashboard message queue workflow for clarity", expectedOutput: "benchmark report" };
+  const idsA = await seed(t, keyA, KEYWORDY); // packed with former signal words, no authority
+  const repA = await report(t, keyA, idsA, "What evidence is missing?", SUPPORTED);
+  assert.equal(repA.validated, false);
+  assert.equal(repA.refusalCode, "purpose_scope_not_authorized");
+
+  const keyB = "obj_r4e_no_keywords_authorized";
+  const PLAIN = { title: "Customer wording", mustBeTrue: "understand how our target customers describe their workflow problem", expectedOutput: "saved wording notes" };
+  const idsB = await seed(t, keyB, PLAIN, [SUPPORTED]); // no signal words at all, but explicitly authorized
+  const repB = await report(t, keyB, idsB, "What evidence is missing?", SUPPORTED);
+  assert.equal(repB.validated, true);
+  const [need] = await storedNeeds(t, keyB);
+  assert.deepEqual(need!.requestedScope, { purposeKind: SUPPORTED, authority: "application" });
 });
 
 test("R4: unknown or class-inapplicable scope is refused by the application — never coerced to the supported kind", async () => {
@@ -230,7 +288,7 @@ test("R4: unknown or class-inapplicable scope is refused by the application — 
 test("R4: conflicting requested vs fulfilled scope refuses — a stored non-governed or tampered scope never reaches grounding", async () => {
   const t = convexTest(schema, modules);
   const key = "obj_r4_conflict";
-  const ids = await seed(t, key, RELAUNCH);
+  const ids = await seed(t, key, RELAUNCH, [SUPPORTED]);
   assert.equal((await report(t, key, ids, "How do solo founders phrase launch pain?", SUPPORTED)).validated, true);
   // Tamper the stored row: a kind the adapter does not declare / not application-owned.
   for (const tampered of [
@@ -252,7 +310,7 @@ test("R4: conflicting requested vs fulfilled scope refuses — a stored non-gove
 test("R4: prose can only refuse — an affirmative out-of-scope claim fails closed even with the validated kind", async () => {
   const t = convexTest(schema, modules);
   const key = "obj_r4_claim";
-  const ids = await seed(t, key, { title: "Uplift", mustBeTrue: "measure conversion uplift from the relaunch A/B test", expectedOutput: "conversion uplift report" });
+  const ids = await seed(t, key, { title: "Uplift", mustBeTrue: "measure conversion uplift from the relaunch A/B test", expectedOutput: "conversion uplift report" }, [SUPPORTED]);
   assert.equal((await report(t, key, ids, "What moved conversion?", SUPPORTED)).validated, true);
   const product = productOption((await ground(t, key)).options);
   assert.equal(product?.external?.purposeScopeCompatible, false);

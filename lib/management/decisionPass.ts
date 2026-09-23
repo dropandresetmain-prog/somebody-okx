@@ -454,6 +454,10 @@ export async function buildDecisionPassInput(
       ...(requirement.requirementKind
         ? { requirementKind: requirement.requirementKind }
         : {}),
+      // V7 review R4 final correction — carried forward from the current
+      // persisted Requirement row so a decision-pass rebuild never drops
+      // already-authorized purpose scope.
+      authorizedPurposeKinds: [...(requirement.authorizedPurposeKinds ?? [])],
       artifactKeyForInternalProof,
       staffing: {
         objectiveKey: contract.objectiveKey,

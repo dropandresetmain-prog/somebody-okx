@@ -190,6 +190,17 @@ export type Requirement = {
   dependsOnRequirementKeys: string[];
   /** Resource classes / input facts this requirement needs (owned or acquired). */
   requiredResourceClasses: string[];
+  /**
+   * V7 review R4 final correction — APPLICATION-OWNED authority: the governed
+   * PURPOSE_SCOPES kinds THIS Requirement is authorized to request. Never set
+   * from interpretation/model output, from Requirement prose, or from a
+   * worker's proposed purposeKind — those are proposals only, never the
+   * oracle for their own validation. Absent/empty = no purpose scope
+   * authorized: validateMissingInputProposal then refuses any proposed kind
+   * for this Requirement (fail closed), regardless of vocabulary/class
+   * validity.
+   */
+  authorizedPurposeKinds?: readonly string[];
   /** Short statement of the expected output/state change, when known. */
   expectedOutput: string | null;
   /**

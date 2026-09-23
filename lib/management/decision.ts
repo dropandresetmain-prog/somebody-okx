@@ -100,6 +100,12 @@ export type DecisionPassInput = {
   expectedOutput: string | null;
   /** Persisted semantic kind; omitted on legacy rows. */
   requirementKind?: "deliverable" | "input";
+  /**
+   * V7 review R4 final correction — APPLICATION-OWNED authorized purpose
+   * scope kinds, carried forward from the persisted Requirement row (never
+   * from a worker/model proposal). Absent/empty = none authorized.
+   */
+  authorizedPurposeKinds?: readonly string[];
   artifactKeyForInternalProof: string | null;
   staffing: StaffingRequest & { inventory: readonly WorkerRecord[]; creationAllowed: boolean };
   grounding: GroundingContext;
@@ -361,6 +367,7 @@ export async function runManagerialDecisionPass(
             : {}),
         },
         artifactKeyForInternalProof: input.artifactKeyForInternalProof,
+        authorizedPurposeKinds: input.authorizedPurposeKinds,
         at: input.at,
       },
       authorization.strategy,

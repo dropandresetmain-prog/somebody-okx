@@ -98,6 +98,13 @@ export type RequirementBuildInput = {
   // Application-side knowledge for proof attachment: which artifact key (if
   // any) this objective mutates, and the strategy the application would bind.
   artifactKeyForInternalProof: string | null;
+  /**
+   * V7 review R4 final correction — carried forward from the CURRENT
+   * persisted Requirement row (never from `proposed`/interpretation output):
+   * a decision-pass rebuild must not silently drop already-authorized
+   * purpose scope. Absent/empty = still no purpose scope authorized.
+   */
+  authorizedPurposeKinds?: readonly string[];
   at: number;
 };
 
@@ -197,6 +204,9 @@ export function buildRequirement(
       scope: proposed.scope,
       dependsOnRequirementKeys: [...(proposed.dependsOnRequirementKeys ?? [])],
       requiredResourceClasses: [...(proposed.requiredResourceClasses ?? [])],
+      ...(input.authorizedPurposeKinds && input.authorizedPurposeKinds.length > 0
+        ? { authorizedPurposeKinds: [...input.authorizedPurposeKinds] }
+        : {}),
       expectedOutput: proposed.expectedOutput ?? null,
       ...(proposed.requirementKind
         ? { requirementKind: proposed.requirementKind }

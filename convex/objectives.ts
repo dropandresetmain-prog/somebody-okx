@@ -2074,6 +2074,9 @@ export const reportMissingInput = internalMutation({
       runId: args.runId,
       workItemId: workItem.id,
       requiredResourceClasses: requirement.requiredResourceClasses ?? [],
+      // V7 review R4 final correction — application-owned Requirement
+      // authority; never derived from the worker's own proposal.
+      authorizedPurposeKinds: requirement.authorizedPurposeKinds ?? [],
       mustBeTrue: requirement.mustBeTrue,
       expectedOutput: requirement.expectedOutput ?? null,
       sourceProofs: workItem.contract.sourceProofs,
