@@ -22,7 +22,9 @@ export function Checkpoints({ progress }: { progress: ProgressView }) {
           <span>None yet</span>
         )}
       </div>
-      {progress.currentPhase ? <p className="v6-checkpoints-phase">{progress.currentPhase}</p> : null}
+      {progress.currentPhase && !progress.checkpoints.some((item) => item.label === progress.currentPhase) ? (
+        <p className="v6-checkpoints-phase">{progress.currentPhase}</p>
+      ) : null}
       {progress.checkpoints.length === 0 ? (
         <p className="muted v6-rail-empty">No checkpoints yet.</p>
       ) : (

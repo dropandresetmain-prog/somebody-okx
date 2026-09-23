@@ -4,6 +4,8 @@ import { useEffect, useRef } from "react";
 import { useDemoPlayback } from "./useDemoPlayback";
 
 const NEAR_BOTTOM_PX = 140;
+/** Scroll events inside this window after our own scrollIntoView are ours, not the founder's. */
+const AUTO_SCROLL_GUARD_MS = 1_200;
 
 function prefersReducedMotion(): boolean {
   return (
@@ -27,6 +29,7 @@ export function DemoActivityFollow({ activityCount }: { activityCount: number })
   const demo = useDemoPlayback();
   const followRef = useRef(true);
   const lastCountRef = useRef(0);
+  const autoScrollUntilRef = useRef(0);
 
   useEffect(() => {
     if (!demo.active) {
@@ -36,11 +39,27 @@ export function DemoActivityFollow({ activityCount }: { activityCount: number })
     }
 
     function onScroll() {
+      // Mid-animation of our own smooth scroll the page is briefly "not near
+      // the bottom"; reading that as the founder scrolling away would stop
+      // following for the rest of the run (closely spaced events hit this).
+      if (performance.now() < autoScrollUntilRef.current) return;
       followRef.current = isNearBottom();
+    }
+    // Any real founder input ends the guard immediately so their scroll wins.
+    function onUserIntent() {
+      autoScrollUntilRef.current = 0;
     }
 
     window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
+    window.addEventListener("wheel", onUserIntent, { passive: true });
+    window.addEventListener("touchstart", onUserIntent, { passive: true });
+    window.addEventListener("keydown", onUserIntent);
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("wheel", onUserIntent);
+      window.removeEventListener("touchstart", onUserIntent);
+      window.removeEventListener("keydown", onUserIntent);
+    };
   }, [demo.active]);
 
   useEffect(() => {
@@ -61,6 +80,7 @@ export function DemoActivityFollow({ activityCount }: { activityCount: number })
     const latest = items[items.length - 1];
     if (!latest) return;
 
+    autoScrollUntilRef.current = performance.now() + AUTO_SCROLL_GUARD_MS;
     latest.scrollIntoView({
       behavior: prefersReducedMotion() ? "auto" : "smooth",
       block: "nearest",
