@@ -309,6 +309,56 @@
   font-size: 12px;
 }
 
+/* Clearly-visible "alive" badge — layered on top of the subtle dot/mascot
+   pulse below, not a replacement for it. Shown only while liveness.active. */
+.v6-liveness-working {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 0;
+  padding: 5px 11px;
+  border-radius: 999px;
+  background: var(--somebody-wash);
+  color: var(--somebody-ink);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.v6-liveness-working-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.v6-liveness-working-dots {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 8px;
+}
+
+.v6-liveness-working-dots i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.35;
+  animation: v6-liveness-dot-bounce 1.2s ease-in-out infinite;
+}
+
+.v6-liveness-working-dots i:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.v6-liveness-working-dots i:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+.v6-liveness-working-phase {
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
 @keyframes v6-liveness-pulse {
   0%,
   100% {
@@ -331,10 +381,28 @@
   }
 }
 
+@keyframes v6-liveness-dot-bounce {
+  0%,
+  80%,
+  100% {
+    opacity: 0.35;
+    transform: translateY(0);
+  }
+  40% {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .v6-manager-byline .dot.is-pulsing,
   .mascot.is-live.has-art img {
     animation: none;
+  }
+  .v6-liveness-working-dots i {
+    animation: none;
+    opacity: 0.7;
+    transform: none;
   }
 }
 

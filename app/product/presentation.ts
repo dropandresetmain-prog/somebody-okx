@@ -18,6 +18,7 @@ import type {
   CurrentWorkStatus,
   DeliverableStatus,
   InternState,
+  ObjectiveLivenessPhase,
   ObjectiveProductStatus,
   ProductApproach,
   SomebodyNowState,
@@ -134,6 +135,23 @@ export function somebodyByline(state: SomebodyNowState): string {
     case "blocked":
       return "Somebody · stopped";
   }
+}
+
+// Short "working" copy shown next to the animated liveness indicator
+// (ObjectiveHeader). Grounded in ObjectiveLivenessView.phase only — never a
+// second, invented string per render. `idle` has no active-indicator copy
+// since the indicator only renders while liveness.active is true.
+export const LIVENESS_PHASE_LABEL: Record<ObjectiveLivenessPhase, string> = {
+  interpreting: "Understanding your objective…",
+  deciding: "Choosing the next move…",
+  working: "Intern is working…",
+  waiting_external: "Waiting on outside help…",
+  verifying: "Verifying the result…",
+  idle: "Somebody · working",
+};
+
+export function livenessPhaseLabel(phase: ObjectiveLivenessPhase): string {
+  return LIVENESS_PHASE_LABEL[phase];
 }
 
 // Eyebrow over each Activity card: what KIND of moment this is, in founder
