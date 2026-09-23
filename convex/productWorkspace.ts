@@ -70,12 +70,22 @@ async function loadStatusSource(ctx: QueryCtx, objectiveRow: unknown): Promise<S
   };
 }
 
+// Product list window: the V6 list shows recent navigation summaries only, so
+// the read is bounded to the most-recently-updated rows via the by_updatedAt
+// index (the same discipline as `listObjectives`) instead of collecting every
+// Objective document — with its full management state — just to summarize it.
+const OBJECTIVE_LIST_WINDOW = 20;
+
 export const getObjectiveListV1 = query({
   args: {},
   returns: v.any(),
   handler: async (ctx): Promise<ProductReadEnvelope<ObjectiveListView>> => {
     const now = Date.now();
-    const objectiveRows = (await ctx.db.query("objectives").collect()) as AnyRow[];
+    const objectiveRows = (await ctx.db
+      .query("objectives")
+      .withIndex("by_updatedAt")
+      .order("desc")
+      .take(OBJECTIVE_LIST_WINDOW)) as AnyRow[];
     // Lightweight: only the rows the status derivation needs; no evidence,
     // workers, deliverable content, activity or full workspace composition.
     const sources = await Promise.all(objectiveRows.map((row) => loadStatusSource(ctx, row)));
