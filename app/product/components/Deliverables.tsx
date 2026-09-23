@@ -38,6 +38,9 @@ export function Deliverables({ deliverables }: { deliverables: DeliverableView[]
 
 function DeliverableRow({ deliverable }: { deliverable: DeliverableView }) {
   const emphasized = deliverable.status === "current" || deliverable.status === "verified";
+  // Openable only when there is somewhere to open it to: the main-column Final
+  // Deliverable section mounts exactly this row's content when it is present.
+  const openable = emphasized && Boolean(deliverable.content);
   const unknowns = deliverable.unknowns ?? [];
   return (
     <li
@@ -51,7 +54,15 @@ function DeliverableRow({ deliverable }: { deliverable: DeliverableView }) {
         </p>
         <span className={`pill tone-${deliverableTone(deliverable.status)}`}>{DELIVERABLE_STATUS_LABEL[deliverable.status]}</span>
       </div>
-      <p className="v6-deliverable-title">{deliverable.title}</p>
+      <p className="v6-deliverable-title">
+        {openable ? (
+          <a href="#final-deliverable" className="v6-deliverable-title-link">
+            {deliverable.title}
+          </a>
+        ) : (
+          deliverable.title
+        )}
+      </p>
       {deliverable.summary ? (
         <p className="muted v6-deliverable-summary">{presentDeliverableSummary(deliverable.summary)}</p>
       ) : null}
