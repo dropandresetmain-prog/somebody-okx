@@ -38,8 +38,10 @@ export function prepareFounderVisiblePreview(input: {
   previews: PreviewLedger;
   at: number;
 }): { purchase: PurchaseRecord; preview: StoredPreviewQuote } {
-  if (input.intent.state !== "awaiting_m3") {
-    throw new Error(`M4 intent is ${input.intent.state}, not awaiting_m3`);
+  if (input.intent.state !== "awaiting_m3" && input.intent.state !== "authorized") {
+    throw new Error(
+      `M4 intent is ${input.intent.state}, not authorized or awaiting_m3`,
+    );
   }
   if (input.purchase.id !== input.intent.intentId || input.purchase.idempotencyKey !== input.intent.idempotencyKey) {
     throw new Error("purchase identity does not match the exact persisted execution intent");
