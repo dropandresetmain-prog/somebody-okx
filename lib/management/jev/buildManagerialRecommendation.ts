@@ -26,6 +26,14 @@ export type JevRecommendationBridgeInput = {
   eligible: readonly GroundedOption[];
   /** Successful Jev selection only — failures must not reach this bridge. */
   selection: JevValidatedSelection;
+  /**
+   * Truthful attribution for the factual receipt. Defaults to "jev" for
+   * backward compatibility with callers that always used Jev. J4 composition
+   * passes "sole_eligible" when the application — not Jev — determined the
+   * selection because exactly one option was eligible; the receipt must
+   * never say "Jev selected ..." in that case.
+   */
+  source?: "jev" | "sole_eligible";
 };
 
 export type JevRecommendationBridgeFailureReason =
@@ -128,6 +136,7 @@ export function buildJevManagerialRecommendation(
       selected,
       alternative,
       eligibleCount: eligible.length,
+      source: input.source ?? "jev",
     }),
     materialAssumptions: [],
     changeMyMindEvidence: [],
@@ -172,9 +181,12 @@ function buildFactualDecisionReceipt(input: {
   selected: GroundedOption;
   alternative: GroundedOption | null;
   eligibleCount: number;
+  source: "jev" | "sole_eligible";
 }): string {
   const lines = [
-    `Jev selected ${input.selected.optionId} from ${input.eligibleCount} eligible grounded options.`,
+    input.source === "sole_eligible"
+      ? `${input.selected.optionId} was the sole eligible grounded option; Jev was not called.`
+      : `Jev selected ${input.selected.optionId} from ${input.eligibleCount} eligible grounded options.`,
     `Selected option facts: ${describeGroundedOptionFacts(input.selected)}.`,
   ];
   if (input.alternative) {

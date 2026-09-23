@@ -22,7 +22,7 @@ export type JevGatewayCall = (input: {
 }) => Promise<JevGatewayResult>;
 
 /** Live call. Tests inject a different `JevGatewayCall`, never this one. */
-export const callJevGateway: JevGatewayCall = ({ state, questions, abortSignal }) =>
+const liveCallJevGateway: JevGatewayCall = ({ state, questions, abortSignal }) =>
   evaluate({
     model: JEV_MODEL_ID,
     // `state` is application-built plain data (see stateBuilder.ts) — always
@@ -32,3 +32,27 @@ export const callJevGateway: JevGatewayCall = ({ state, questions, abortSignal }
     questions,
     abortSignal,
   });
+
+// Production seams (convex/objectiveRunner.ts) resolve the gateway call
+// through `resolveJevGatewayCall()` rather than importing `liveCallJevGateway`
+// directly, mirroring `installStructuredChatDouble` in ../modelBoundary.ts —
+// tests inject a deterministic double, no network call, no bypass of the
+// composition/bridge/parser/authorization seam itself.
+let testDouble: JevGatewayCall | null = null;
+
+/** Test-only: install or clear a Jev gateway double. */
+export function installJevGatewayDouble(handler: JevGatewayCall | null): void {
+  testDouble = handler;
+}
+
+export function jevGatewayDoubleInstalled(): boolean {
+  return testDouble !== null;
+}
+
+/** Resolves to the installed test double when present, else the live gateway call. */
+export function resolveJevGatewayCall(): JevGatewayCall {
+  return testDouble ?? liveCallJevGateway;
+}
+
+/** Preserved for existing direct callers/tests; resolves the double at call time. */
+export const callJevGateway: JevGatewayCall = (input) => resolveJevGatewayCall()(input);

@@ -9,9 +9,10 @@
  * stale-contract validity — those stay deterministic, upstream of this call.
  *
  * Selection → ManagerialRecommendation bridging is application-owned
- * (`buildJevManagerialRecommendation`). This package still does NOT wire
- * into the live `recommend` seam (../decision.ts); production routing is
- * a later milestone.
+ * (`buildJevManagerialRecommendation`). Production routing lives in
+ * ../jevStage3.ts (`composeBoundedStage3Recommendation`), wired into the live
+ * `recommend` seam by convex/objectiveRunner.ts behind
+ * JEV_OPTION_SELECTION_ENABLED (default OFF — see ../jevStage3.ts).
  *
  * USAGE:
  * 1. Compute eligible GroundedOption[] the normal way (../options.ts).
@@ -21,7 +22,12 @@
  * 5. Never invent a fallback selection here; the caller owns fallback policy.
  */
 export { selectEligibleOption } from "./selectEligibleOption";
-export { callJevGateway, JEV_MODEL_ID } from "./client";
+export {
+  callJevGateway,
+  installJevGatewayDouble,
+  jevGatewayDoubleInstalled,
+  JEV_MODEL_ID,
+} from "./client";
 export { buildOptionSelectionState, serializeJevEvalInput } from "./stateBuilder";
 export { buildOptionChoiceQuestion, SELECTION_QUESTION_ID } from "./questionBuilder";
 export { validateJevSelection } from "./validate";
