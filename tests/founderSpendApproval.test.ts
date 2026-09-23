@@ -107,6 +107,9 @@ function objective(over: Partial<ProductObjectiveRow> = {}): ProductObjectiveRow
     controlNotes: [{ type: "pending_approval", question: QUESTION, at: DECISION_AT }],
     pendingFinalAssessmentRevision: null,
     interpretationStatus: null,
+    interpretationPending: false,
+    pendingDecisionRequirementKey: null,
+    managementPassWatchActive: false,
     ...over,
   };
 }

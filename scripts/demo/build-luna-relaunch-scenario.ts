@@ -548,6 +548,9 @@ function buildObjective(ev: EvidenceFile, until: number): ProductObjectiveRow {
     controlNotes,
     pendingFinalAssessmentRevision: assessing ? 1 : null,
     interpretationStatus: until >= T0 + 19_635 ? "done" : until >= T0 ? "running" : null,
+    interpretationPending: until >= T0 && until < T0 + 19_635,
+    pendingDecisionRequirementKey: null,
+    managementPassWatchActive: false,
   };
 }
 

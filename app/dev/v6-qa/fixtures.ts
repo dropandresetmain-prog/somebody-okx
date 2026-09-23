@@ -211,6 +211,12 @@ const BASE_WORKSPACE: ObjectiveWorkspaceView = {
     detail: "The current launch copy reads like software. New audience-language evidence points to a more concrete promise.",
     updatedAt: NOW,
   },
+  liveness: {
+    active: true,
+    phase: "working",
+    lastProgressAt: NOW,
+    detail: "Fixture: live work in progress.",
+  },
   currentWork: {
     id: "cw1",
     title: "Relaunch recommendation v2",
@@ -256,6 +262,12 @@ export function needsYouWorkspace(): ObjectiveWorkspaceView {
   return {
     ...BASE_WORKSPACE,
     objective: { ...BASE_WORKSPACE.objective, id: "obj_needs_you", status: "needs_you" },
+    liveness: {
+      active: false,
+      phase: "idle",
+      lastProgressAt: NOW,
+      detail: "Waiting on you.",
+    },
     somebodyNow: {
       state: "needs_you",
       headline: "I need your say on one bounded decision.",
@@ -292,6 +304,12 @@ export function completedWorkspace(): ObjectiveWorkspaceView {
   return {
     ...BASE_WORKSPACE,
     objective: { ...BASE_WORKSPACE.objective, id: "obj_done", title: "Launch messaging relaunch", status: "completed" },
+    liveness: {
+      active: false,
+      phase: "idle",
+      lastProgressAt: NOW,
+      detail: "No active engine step.",
+    },
     somebodyNow: {
       state: "completed",
       headline: "The required outcome is verified.",

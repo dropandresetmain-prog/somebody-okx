@@ -109,6 +109,12 @@ test("completion hero is one calm sentence and never repeats the deliverable sum
   const html = renderToStaticMarkup(
     createElement(ObjectiveHeader, {
       objective: frame.objective,
+      liveness: {
+        active: false,
+        phase: "idle",
+        lastProgressAt: frame.objective.updatedAt,
+        detail: "No active engine step.",
+      },
       somebodyNow: frame.somebodyNow,
       deliverables: frame.deliverables,
     }),
@@ -132,6 +138,12 @@ test("waiting on outside help does not claim the ball is with the founder", () =
   const html = renderToStaticMarkup(
     createElement(ObjectiveHeader, {
       objective: { id: "o", title: "T", request: "R", status: "waiting", createdAt: NOW, updatedAt: NOW },
+      liveness: {
+        active: false,
+        phase: "waiting_external",
+        lastProgressAt: NOW,
+        detail: "Waiting on an external or timed condition.",
+      },
       somebodyNow: {
         state: "waiting",
         headline: "Waiting on proprietary_data",

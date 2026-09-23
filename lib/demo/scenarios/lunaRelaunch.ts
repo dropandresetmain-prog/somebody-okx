@@ -3756,4 +3756,4 @@ export const lunaRelaunchScenario: DemoScenario = {
       "atMs": 26000
     }
   ]
-} as DemoScenario;
+} as unknown as DemoScenario;

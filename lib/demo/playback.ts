@@ -147,7 +147,13 @@ export function engineSnapshot(engine: PlaybackEngineState, nowMs: number): Demo
 
   const frameIndex =
     engine.phase === "idle" ? 0 : frameIndexAtElapsed(engine.scenario, engine.mode, elapsedMs);
-  const currentFrame = engine.phase === "idle" ? null : (engine.scenario.frames[frameIndex] ?? null);
+  const rawFrame = engine.phase === "idle" ? null : (engine.scenario.frames[frameIndex] ?? null);
+  const currentFrame = rawFrame
+    ? {
+        ...rawFrame,
+        workspace: ensureWorkspaceLiveness(rawFrame.workspace),
+      }
+    : null;
 
   return {
     active: engine.phase !== "idle",
@@ -160,6 +166,20 @@ export function engineSnapshot(engine: PlaybackEngineState, nowMs: number): Demo
     frameIndex,
     durationMs,
     currentFrame,
+  };
+}
+
+/** Historical demo frames predate ObjectiveLivenessView — fill a truthful idle default. */
+export function ensureWorkspaceLiveness(workspace: ObjectiveWorkspaceView): ObjectiveWorkspaceView {
+  if (workspace.liveness) return workspace;
+  return {
+    ...workspace,
+    liveness: {
+      active: false,
+      phase: "idle",
+      lastProgressAt: workspace.objective.updatedAt,
+      detail: "Demo frame.",
+    },
   };
 }
 
