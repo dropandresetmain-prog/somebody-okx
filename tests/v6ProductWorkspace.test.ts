@@ -49,6 +49,12 @@ function workspace(over: Partial<ObjectiveWorkspaceView> = {}): ObjectiveWorkspa
       createdAt: NOW - 100_000,
       updatedAt: NOW,
     },
+    liveness: {
+      active: true,
+      phase: "working",
+      lastProgressAt: NOW,
+      detail: "Choosing and executing the next bounded step.",
+    },
     progress: { checkpoints: [] },
     somebodyNow: { state: "working", headline: "Working on it", detail: "An intern is doing bounded work.", updatedAt: NOW },
     currentWork: null,
@@ -98,6 +104,7 @@ test("every ObjectiveProductStatus renders as the supplied value via data-object
     const html = renderToStaticMarkup(
       createElement(ObjectiveHeader, {
         objective: workspace({ objective: { ...workspace().objective, status } }).objective,
+        liveness: workspace().liveness,
         somebodyNow: workspace().somebodyNow,
       }),
     );
@@ -111,6 +118,7 @@ test("Somebody Now renders supplied headline/detail/state verbatim", () => {
   const html = renderToStaticMarkup(
     createElement(ObjectiveHeader, {
       objective: workspace().objective,
+      liveness: { ...workspace().liveness, active: false },
       somebodyNow: { state: "needs_you", headline: "Somebody needs your approval", detail: "A $50 purchase is waiting.", updatedAt: NOW },
     }),
   );
@@ -260,6 +268,7 @@ test("ObjectiveHeader completed state uses verified treatment; working/blocked s
   const completed = renderToStaticMarkup(
     createElement(ObjectiveHeader, {
       objective: { ...workspace().objective, status: "completed" },
+      liveness: { ...workspace().liveness, active: false, phase: "idle" },
       somebodyNow: { state: "completed", headline: "The required outcome is verified.", detail: "Saved.", updatedAt: NOW },
     }),
   );
@@ -270,6 +279,7 @@ test("ObjectiveHeader completed state uses verified treatment; working/blocked s
   const working = renderToStaticMarkup(
     createElement(ObjectiveHeader, {
       objective: workspace().objective,
+      liveness: workspace().liveness,
       somebodyNow: workspace().somebodyNow,
     }),
   );
@@ -280,6 +290,7 @@ test("ObjectiveHeader completed state uses verified treatment; working/blocked s
   const blocked = renderToStaticMarkup(
     createElement(ObjectiveHeader, {
       objective: { ...workspace().objective, status: "blocked" },
+      liveness: { ...workspace().liveness, active: false, phase: "idle" },
       somebodyNow: { state: "blocked", headline: "Stopped", detail: "Missing authority.", updatedAt: NOW },
     }),
   );
@@ -289,6 +300,7 @@ test("ObjectiveHeader completed state uses verified treatment; working/blocked s
   const needsYou = renderToStaticMarkup(
     createElement(ObjectiveHeader, {
       objective: { ...workspace().objective, status: "needs_you" },
+      liveness: { ...workspace().liveness, active: false, phase: "idle" },
       somebodyNow: { state: "needs_you", headline: "Needs you", detail: "Approve spend.", updatedAt: NOW },
     }),
   );

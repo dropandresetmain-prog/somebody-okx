@@ -78,6 +78,15 @@ export function normalizeObjective(data: Loose): ProductObjectiveRow {
     controlNotes: asArray(management.controlNotes),
     pendingFinalAssessmentRevision: pending && typeof pending.contractRevision === "number" ? pending.contractRevision : null,
     interpretationStatus: strOrNull(management.interpretationStatus),
+    interpretationPending: management.interpretationStatus === "pending",
+    pendingDecisionRequirementKey:
+      typeof (management.pendingDecision as Loose | null | undefined)?.requirementKey === "string"
+        ? String((management.pendingDecision as Loose).requirementKey)
+        : null,
+    managementPassWatchActive: Boolean(
+      management.managementPassWatch &&
+        typeof (management.managementPassWatch as Loose).watchToken === "string",
+    ),
   };
 }
 

@@ -6,8 +6,8 @@ import { internal } from "./_generated/api";
 import type { MutationCtx } from "./_generated/server";
 import type { ObjectiveRecord } from "../lib/workforce";
 import { normalizeObjectiveRequest } from "../lib/product/objectiveRequest";
-import { CANONICAL_LAUNCH_ARTIFACT } from "../lib/objective/seedData";
 import { createArtifact } from "../lib/objective/artifact";
+import { GENERIC_OBJECTIVE_DELIVERABLE } from "../lib/objective/seedData";
 
 export {
   OBJECTIVE_REQUEST_MAX_CHARS,
@@ -21,9 +21,9 @@ export {
  *
  * Callers must pass an already-normalized request (trimmed + length-checked).
  *
- * Seeds the same governed launch artifact the canonical demo setup uses, so
- * Intern MAKE can change a real company-owned version instead of refusing with
- * "No company artifact seeded".
+ * Seeds a scenario-neutral Objective-owned deliverable workspace so MAKE can
+ * write a governed artifact. Canonical demo setup still seeds the Somebody
+ * launch artifact explicitly — this path must not.
  */
 export async function createReceivedObjective(
   ctx: MutationCtx,
@@ -49,11 +49,11 @@ export async function createReceivedObjective(
     result: null,
     companyArtifacts: [
       createArtifact({
-        key: CANONICAL_LAUNCH_ARTIFACT.key,
+        key: GENERIC_OBJECTIVE_DELIVERABLE.key,
         objectiveKey: key,
-        label: CANONICAL_LAUNCH_ARTIFACT.label,
-        content: CANONICAL_LAUNCH_ARTIFACT.initialContent,
-        runId: "seed",
+        label: GENERIC_OBJECTIVE_DELIVERABLE.label,
+        content: GENERIC_OBJECTIVE_DELIVERABLE.initialContent,
+        runId: GENERIC_OBJECTIVE_DELIVERABLE.provenanceRunId,
         at: now,
       }),
     ],

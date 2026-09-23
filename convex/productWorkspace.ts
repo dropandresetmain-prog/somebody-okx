@@ -65,7 +65,7 @@ async function loadStatusSource(ctx: QueryCtx, objectiveRow: unknown): Promise<S
     contracts: contractRows.map((row) => normalizeContract(dataOf(row))),
     requirements: requirementRows.map((row) => normalizeRequirement(dataOf(row))),
     assignments: assignmentRows.map((row) => normalizeAssignment(dataOf(row))),
-    decisions: decisionRows.map((row) => normalizeDecision(dataOf(row))),
+    decisions: trimDecisionsForStatus(decisionRows as AnyRow[]).map((row) => normalizeDecision(dataOf(row))),
     intents: intentRows.map((row) => normalizeIntent(dataOf(row))),
   };
 }
@@ -75,6 +75,30 @@ async function loadStatusSource(ctx: QueryCtx, objectiveRow: unknown): Promise<S
 // index (the same discipline as `listObjectives`) instead of collecting every
 // Objective document — with its full management state — just to summarize it.
 const OBJECTIVE_LIST_WINDOW = 20;
+/** Status derivation only needs recent decision rows; unbounded collect was timing out locally. */
+const STATUS_DECISION_SCAN_CAP = 48;
+const LIST_STATUS_BATCH_SIZE = 5;
+
+function trimDecisionsForStatus(rows: AnyRow[]): AnyRow[] {
+  if (rows.length <= STATUS_DECISION_SCAN_CAP) return rows;
+  return [...rows]
+    .sort((a, b) => (num(dataOf(b), "at") ?? 0) - (num(dataOf(a), "at") ?? 0))
+    .slice(0, STATUS_DECISION_SCAN_CAP);
+}
+
+function num(data: Loose, key: string): number | undefined {
+  const value = data[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+async function mapInBatches<T, R>(items: T[], batchSize: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const out: R[] = [];
+  for (let i = 0; i < items.length; i += batchSize) {
+    const batch = items.slice(i, i + batchSize);
+    out.push(...(await Promise.all(batch.map(fn))));
+  }
+  return out;
+}
 
 export const getObjectiveListV1 = query({
   args: {},
@@ -88,7 +112,7 @@ export const getObjectiveListV1 = query({
       .take(OBJECTIVE_LIST_WINDOW)) as AnyRow[];
     // Lightweight: only the rows the status derivation needs; no evidence,
     // workers, deliverable content, activity or full workspace composition.
-    const sources = await Promise.all(objectiveRows.map((row) => loadStatusSource(ctx, row)));
+    const sources = await mapInBatches(objectiveRows, LIST_STATUS_BATCH_SIZE, (row) => loadStatusSource(ctx, row));
     const list = groupObjectiveSummaries(sources.map((source) => projectObjectiveSummary(source)));
     return envelope(list, now);
   },

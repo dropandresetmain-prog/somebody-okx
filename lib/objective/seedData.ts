@@ -35,6 +35,23 @@ Current result: Signups are weaker than expected, and visitors often leave witho
 Status: The current message is live. Any replacement should remain a draft until it is reviewed.`,
 } as const;
 
+/**
+ * Scenario-neutral deliverable workspace for generic `/start` Objectives.
+ * Seeded at create time so MAKE can mutate a governed target. Version 1 with
+ * `seed/system` provenance is NOT worker-authored completion proof — governed
+ * company_artifact_version proofs require a later worker-authored version.
+ */
+export const GENERIC_OBJECTIVE_DELIVERABLE = {
+  key: "objective/deliverable",
+  label: "Objective deliverable",
+  provenanceRunId: "seed/system",
+  initialContent: `Objective deliverable
+
+This is the governed workspace for this Objective's produced output.
+It starts empty of worker-authored content.
+Status: Draft seed — awaiting a real worker update.`,
+} as const;
+
 // Business context for the canonical demo. These records are written as normal
 // company knowledge, not as instructions to the orchestration/runtime layers.
 export const CANONICAL_COMPANY_PROFILE = {

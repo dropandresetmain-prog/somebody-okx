@@ -112,6 +112,7 @@ function MainPane({
           ) : null}
           <ObjectiveHeader
             objective={main.view.objective}
+            liveness={main.view.liveness}
             somebodyNow={main.view.somebodyNow}
             currentWork={main.view.currentWork}
             deliverables={main.view.deliverables}

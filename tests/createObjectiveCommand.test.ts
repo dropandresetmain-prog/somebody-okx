@@ -160,13 +160,30 @@ test("createObjectiveV1: valid request creates one Objective with authoritative 
   assert.equal(rows.length, 1);
   const row = rows[0] as {
     key: string;
-    data: { key: string; request: string; state: string; activity: string };
+    data: { key: string; request: string; state: string; activity: string; companyArtifacts?: unknown[] };
   };
   assert.equal(row.key, result.objectiveId);
   assert.equal(row.data.key, result.objectiveId);
   assert.equal(row.data.request, VALID_REQUEST, "request must be trimmed");
   assert.equal(row.data.state, "received");
   assert.equal(row.data.activity, "Objective received.");
+  const arts = row.data.companyArtifacts ?? [];
+  assert.equal(arts.length, 1, "generic /start seeds one neutral deliverable");
+  const art = arts[0] as {
+    key: string;
+    label: string;
+    version: number;
+    provenanceRunId: string;
+    content: string;
+  };
+  assert.equal(art.key, "objective/deliverable");
+  assert.equal(art.label, "Objective deliverable");
+  assert.equal(art.version, 1);
+  assert.equal(art.provenanceRunId, "seed/system");
+  assert.ok(!art.content.toLowerCase().includes("somebody: an ai manager"));
+  assert.ok(!art.key.includes("launch"));
+  assert.ok(!JSON.stringify(arts).includes("Share Society"));
+  assert.ok(!JSON.stringify(arts).includes("launch/page-message"));
 
   const events = await t.run(async (ctx) =>
     ctx.db

@@ -1,42 +1,49 @@
-﻿# ACTIVE TASK — OKX Final Convergence (Primary Integrator)
+﻿# ACTIVE TASK — Founder E2E Readiness
 
 Updated: 23 September 2026 (Singapore)
-Status: **PROMOTED TO MAIN** — merge commit `14d64ee` via PR #1. **Not deployed.**
+Status: **CANDIDATE READY FOR GATE** — `fix/founder-e2e-readiness`
 
-## Promotion
+## Base / source
 
-- PR: https://github.com/dropandresetmain-prog/somebody-okx/pull/1
-- Merged: 23 September 2026
-- `main` tip: `14d64eed23c45df8eeb9321b6684f9c2372896d6`
-- Candidate tip included: `26685a2`
-- Deploy: **not run** (ask explicitly if needed)
-
-## Source lane SHAs (promoted)
-
-| Lane | Head |
+| Item | SHA |
 | --- | --- |
-| Reliability V7 tip / start | `51bb7c6` (code `ac1c64e`) |
-| Final frontend | `6bde197` |
-| Business Seed V2 | `27cd275` |
-| Jev selector | `4d9c704` |
+| Current main (J4 promoted) | `3608e2ccec875b2dfdd61e0233a27145bcc79208` |
+| Source repair (useful material) | `42b98f31d72b4a2b6eadefd2343ae22fe9878f20` |
+| Repair old base | `7e6dcf4b96145d6a88049438044092a4305fa5c7` |
 
-## Gate (pre-merge)
+## Constraints
 
-- Suite excl. hang file: 1168 / 1158 pass / 10 fail (names = V7 baseline)
-- Convex typecheck clean; root tsc 74-line inherited debt
-- Next compiled, then inherited typecheck fail
+- J4 present on main; **OFF by default** — `JEV_OPTION_SELECTION_ENABLED=false`
+- Do **not** start J4.1 / turn Jev on
+- Do **not** run Founder E2E Objective
+- Do **not** merge to main / deploy / enable M3
 
-## Jev
+## Phases
 
-- `JEV_OPTION_SELECTION_ENABLED=true` to enable; default off
-- Stage-4 `applyDecision` unchanged
+1. ~~Transplant safe parts of `42b98f3` onto current main~~
+2. ~~Act Now #1 — graph-cache invocation-local deps + concurrency regression~~
+3. ~~Act Now #2 — generic Objective deliverable artifact (scenario-neutral)~~
+4. ~~Act Now #3 — truthful liveness (no pulse from bare `working`)~~
+5. ~~Keep bounded management recovery + V6 bounded reads~~
+6. ~~Focused / seam / risk tests~~
+7. Freeze candidate; baseline vs gate vs `3608e2c`
+8. One Convex + one Next; leave `/start` empty; STOP
 
-## Findings carried
+## Checkpoint
 
-- **Investigate Now:** `setupCanonicalDemoObjective` optional custom request + canonical purpose policy
-- **Ignore / Accept Risk:** 10 inherited fails; root tsc / Next typecheck debt
+- Cherry-picked `42b98f3` onto `3608e2c`; fixed three Act Now defects
+- Graph deps via LangGraph `configurable` (invocation-local); concurrency test green
+- Generic seed: `objective/deliverable` + `seed/system`; canonical demo unchanged
+- Liveness: no `facts.status === "working"` forever-pulse; watch/pending/live assignment only
+- `objectiveRunner.ts` untouched (J4 authoritative)
 
-## Non-claims
+## Acceptance evidence (focused)
 
-- No live M3 / payment / provider success claimed
-- No deploy in this promotion
+- `managementGraphConcurrency`, `managementPassRecovery`, `genericObjectiveArtifact`
+- `createObjectiveCommand`, `frontendContractProjection` (incl. liveness), `v6ProductWorkspace`
+- `managementGraph`, `demoPlaybackEngine`, `businessSeed`, `m61V6BoundedRetention`
+- Totals sampled: 123 + 8 + 3 focused batches green
+
+## Gate
+
+_(fill after freeze)_

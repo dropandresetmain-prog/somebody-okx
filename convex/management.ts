@@ -479,10 +479,9 @@ export function buildConvexManagementPorts(ctx: MutationCtx): ManagementPorts {
       )) as ObjectiveBudget | null;
       // Availability of execution capacity for the strategy this requirement
       // last bound, via the shared rule the fixtures use.
-      const workerRowsForFingerprint = (await ctx.runQuery(
-        internal.internal.workforce.listWorkers,
-        {},
-      )) as Array<{ lifecycle: string; reservedBy: { objectiveKey: string } | null }>;
+      const workerRowsForFingerprint = (await ctx.db.query("workers").collect()).map(
+        (workerRow) => (workerRow as AnyRow).data as { lifecycle: string; reservedBy: { objectiveKey: string } | null },
+      );
       const workerAvailability = decisionWorkerAvailability({
         strategy: requirement.strategy,
         objectiveKey: state.objectiveKey,
@@ -1687,6 +1686,7 @@ export const runManagementPass = internalMutation({
     // can accept a scoped external result.
     await releaseSerialAcquisitionForReassessment(ctx, args.objectiveKey, Date.now());
 
+    const at = Date.now();
     const { outcome } = await graph.invoke({
       objectiveKey: args.objectiveKey,
       contractRevision: null,
@@ -1700,6 +1700,7 @@ export const runManagementPass = internalMutation({
       pass: 0,
     });
 
+    await markManagementPassCompleted(ctx, args.objectiveKey, at);
     return outcome;
   },
 });
@@ -1861,6 +1862,7 @@ export const applyInterpretation = internalMutation({
     // THE seam R3 said was missing: management.contractId now points at the
     // current contract, so the spine treats this row as M4-managed and the pass
     // can load contract + requirements from it.
+    const managementPassWatchToken = `mpass:${contract.contractId}:r${contract.revision}:${args.at}`;
     await ctx.db.patch(row._id, {
       data: {
         ...data,
@@ -1874,6 +1876,12 @@ export const applyInterpretation = internalMutation({
           // New managed objectives use the serial MAKE/BUY loop. Historical
           // rows without this flag keep the legacy HYBRID path readable.
           executionProtocol: "m61_serial_v1",
+          managementPassWatch: {
+            watchToken: managementPassWatchToken,
+            contractId: contract.contractId,
+            contractRevision: contract.revision,
+            armedAt: args.at,
+          },
           controlNotes: boundNotes(mgmt.controlNotes, {
             type: "contract_interpreted",
             contractId: contract.contractId,
@@ -1911,6 +1919,11 @@ export const applyInterpretation = internalMutation({
       objectiveKey: args.objectiveKey,
       reason: "objective_submitted",
     });
+    await ctx.scheduler.runAfter(
+      MANAGEMENT_PASS_RECOVERY_DELAY_MS,
+      internal.management.recoverStalledManagementPass,
+      { objectiveKey: args.objectiveKey, watchToken: managementPassWatchToken },
+    );
 
     return {
       ok: true as const,
@@ -2963,6 +2976,104 @@ async function dispatchExternal(
 // watchdog only ever acts on genuinely orphaned reservations.
 export const INTERPRETATION_RESERVATION_TTL_MS = 10 * 60_000;
 export const DECISION_RESERVATION_TTL_MS = 10 * 60_000;
+
+/** Bounded continuation if the first post-interpretation pass dies (local ~1s mutation budget). */
+export const MANAGEMENT_PASS_RECOVERY_DELAY_MS = 8_000;
+
+async function markManagementPassCompleted(
+  ctx: MutationCtx,
+  objectiveKey: string,
+  at: number,
+): Promise<void> {
+  const row = await ctx.db
+    .query("objectives")
+    .withIndex("by_key", (q) => q.eq("key", objectiveKey))
+    .unique();
+  if (!row) return;
+  const data = (row as AnyRow).data as Record<string, unknown>;
+  const mgmt = (data.management ?? {}) as Record<string, unknown>;
+  await ctx.db.patch(row._id, {
+    data: {
+      ...data,
+      updatedAt: at,
+      management: {
+        ...mgmt,
+        contractId: (mgmt.contractId as string | null) ?? null,
+        managementPassWatch: null,
+        lastManagementPassCompletedAt: at,
+      },
+    },
+  } as never);
+}
+
+/**
+ * One bounded recovery attempt per interpretation management-pass watch. If the
+ * scheduled pass timed out before reserving a decision, this re-enters the loop
+ * without manual UI rescue and without an infinite retry storm.
+ */
+export const recoverStalledManagementPass = internalMutation({
+  args: {
+    objectiveKey: v.string(),
+    watchToken: v.string(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const row = await ctx.db
+      .query("objectives")
+      .withIndex("by_key", (q) => q.eq("key", args.objectiveKey))
+      .unique();
+    if (!row) return null;
+    const data = (row as AnyRow).data as Record<string, unknown>;
+    const mgmt = (data.management ?? {}) as Record<string, unknown>;
+    const watch = mgmt.managementPassWatch as
+      | { watchToken: string; contractId: string; contractRevision: number; armedAt: number }
+      | null
+      | undefined;
+    if (!watch || watch.watchToken !== args.watchToken) return null;
+    if (mgmt.interpretationStatus === "pending") return null;
+    if (mgmt.pendingDecision) return null;
+    const completedAt = mgmt.lastManagementPassCompletedAt as number | undefined;
+    if (typeof completedAt === "number" && completedAt >= watch.armedAt) return null;
+
+    const decisionRows = await ctx.db
+      .query("managerialDecisions")
+      .withIndex("by_objectiveKey", (q) => q.eq("objectiveKey", args.objectiveKey))
+      .collect();
+    const hasDecisionAtRevision = decisionRows.some(
+      (decisionRow) =>
+        ((decisionRow as AnyRow).data as Record<string, unknown>).contractRevision === watch.contractRevision,
+    );
+    if (hasDecisionAtRevision) {
+      await ctx.db.patch(row._id, {
+        data: {
+          ...data,
+          management: {
+            ...mgmt,
+            contractId: (mgmt.contractId as string | null) ?? null,
+            managementPassWatch: null,
+          },
+        },
+      } as never);
+      return null;
+    }
+
+    await ctx.db.patch(row._id, {
+      data: {
+        ...data,
+        management: {
+          ...mgmt,
+          contractId: (mgmt.contractId as string | null) ?? null,
+          managementPassWatch: null,
+        },
+      },
+    } as never);
+    await ctx.scheduler.runAfter(0, internal.management.runManagementPass, {
+      objectiveKey: args.objectiveKey,
+      reason: "recovery_event",
+    });
+    return null;
+  },
+});
 export const FINAL_ASSESSMENT_RESERVATION_TTL_MS = 10 * 60_000;
 
 export const BEGIN_FINAL_ASSESSMENT_CEILING = 2;

@@ -33,6 +33,12 @@ function workspace(status: ObjectiveWorkspaceView["objective"]["status"], id = "
       createdAt: NOW,
       updatedAt: NOW,
     },
+    liveness: {
+      active: status !== "completed" && status !== "blocked",
+      phase: status === "starting" ? "interpreting" : "working",
+      lastProgressAt: NOW,
+      detail: "Demo frame.",
+    },
     progress: { checkpoints: [] },
     somebodyNow: { state: status === "completed" ? "completed" : "working", headline: "h", detail: "d", updatedAt: NOW },
     currentWork: null,

@@ -14,6 +14,7 @@ import type * as m5Workspace from "../m5Workspace.js";
 import type * as management from "../management.js";
 import type * as managementValidators from "../managementValidators.js";
 import type * as objectiveArgs from "../objectiveArgs.js";
+import type * as objectiveCreate from "../objectiveCreate.js";
 import type * as objectiveRunner from "../objectiveRunner.js";
 import type * as objectiveValidators from "../objectiveValidators.js";
 import type * as objectives from "../objectives.js";
@@ -35,6 +36,7 @@ declare const fullApi: ApiFromModules<{
   management: typeof management;
   managementValidators: typeof managementValidators;
   objectiveArgs: typeof objectiveArgs;
+  objectiveCreate: typeof objectiveCreate;
   objectiveRunner: typeof objectiveRunner;
   objectiveValidators: typeof objectiveValidators;
   objectives: typeof objectives;

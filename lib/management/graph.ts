@@ -18,7 +18,13 @@
 // adapters (CP3/CP7 wiring), and deterministic fakes in Cutoff-2 adversarial
 // tests. The graph itself holds zero state between invocations.
 
-import { Annotation, END, START, StateGraph } from "@langchain/langgraph";
+import {
+  Annotation,
+  END,
+  START,
+  StateGraph,
+  type LangGraphRunnableConfig,
+} from "@langchain/langgraph";
 import { isCoherentHold, reduceManagementState } from "./reducer";
 import type { DecisionPassResult } from "./decision";
 import type {
@@ -31,6 +37,9 @@ import type {
   Requirement,
   WakeReason,
 } from "./types";
+
+/** Invocation-local deps key — never module-global; never persisted GraphState. */
+const MANAGEMENT_GRAPH_DEPS = "managementGraphDeps" as const;
 
 // ── Ports: the ONLY way the graph touches the world ──────────────────────────
 
@@ -98,6 +107,10 @@ export type GraphDeps = {
   now: () => number;
 };
 
+type ManagementGraphConfig = LangGraphRunnableConfig<{
+  [MANAGEMENT_GRAPH_DEPS]: GraphDeps;
+}>;
+
 // ── Graph state annotation (the frozen small shape, field-for-field) ─────────
 
 const GraphAnnotation = Annotation.Root({
@@ -118,12 +131,27 @@ const GraphAnnotation = Annotation.Root({
 
 type Ann = typeof GraphAnnotation.State;
 
+// Compiled once per isolate: rebuilding LangGraph on every management pass was
+// blowing the local Convex mutation budget before decide could even begin.
+// Topology is cacheable; GraphDeps must stay invocation-local via configurable.
+let cachedInvoke:
+  | ((initial: Ann, config: ManagementGraphConfig & { recursionLimit: number }) => Promise<Ann>)
+  | null = null;
+
+function graphDeps(config: LangGraphRunnableConfig): GraphDeps {
+  const deps = (config.configurable as { [MANAGEMENT_GRAPH_DEPS]?: GraphDeps } | undefined)?.[
+    MANAGEMENT_GRAPH_DEPS
+  ];
+  if (!deps) throw new Error("management graph invoked without invocation-local deps");
+  return deps;
+}
+
 // ── Nodes ────────────────────────────────────────────────────────────────────
 
 export type NodeResult = Partial<Ann>;
-async function observeNode(state: Ann, deps: GraphDeps): Promise<NodeResult> {
-  const { ports } = deps;
-  const at = deps.now();
+async function observeNode(state: Ann, config: LangGraphRunnableConfig): Promise<NodeResult> {
+  const { ports } = graphDeps(config);
+  const at = graphDeps(config).now();
   // Fold unconsumed wakes into this pass (ids only) and mark them consumed —
   // duplicate delivery is harmless because consumption is by event id.
   const wakes = await ports.loadWakeEvents(state.objectiveKey);
@@ -148,9 +176,9 @@ async function observeNode(state: Ann, deps: GraphDeps): Promise<NodeResult> {
   };
 }
 
-async function reduceNode(state: Ann, deps: GraphDeps): Promise<NodeResult> {
-  const { ports } = deps;
-  const at = deps.now();
+async function reduceNode(state: Ann, config: LangGraphRunnableConfig): Promise<NodeResult> {
+  const { ports } = graphDeps(config);
+  const at = graphDeps(config).now();
   const { contract, currentContractRevision } = await ports.loadContract(state.objectiveKey);
   const requirements = contract
     ? await ports.loadRequirements(state.objectiveKey, currentContractRevision)
@@ -202,9 +230,9 @@ async function reduceNode(state: Ann, deps: GraphDeps): Promise<NodeResult> {
 
 // Route on the reduced action carried in graph memory. The routing rule is
 // action → node, nothing else; business conclusions are NEVER carried.
-async function decideNode(state: Ann, deps: GraphDeps): Promise<NodeResult> {
-  const at = deps.now();
-  const { ports } = deps;
+async function decideNode(state: Ann, config: LangGraphRunnableConfig): Promise<NodeResult> {
+  const at = graphDeps(config).now();
+  const { ports } = graphDeps(config);
   if (!state.focusRequirementKey) return { lastNode: "decide" };
   await ports.spendDecisionCall(state.objectiveKey, at);
   const result = await ports.runDecisionPass(state as GraphState, ports, at);
@@ -233,11 +261,11 @@ async function decideNode(state: Ann, deps: GraphDeps): Promise<NodeResult> {
 // judgement: the reducer already concluded "authorized and undelivered" from
 // reloaded state, and the adapter's dispatch is idempotent on stable identity,
 // so re-entering this node cannot mint a second assignment or intent.
-async function dispatchNode(state: Ann, deps: GraphDeps): Promise<NodeResult> {
-  const at = deps.now();
+async function dispatchNode(state: Ann, config: LangGraphRunnableConfig): Promise<NodeResult> {
+  const at = graphDeps(config).now();
   const requirementKey = state.focusRequirementKey;
   if (!requirementKey) return { lastNode: "dispatch" };
-  const effectId = await deps.ports.dispatchRequirement(state as GraphState, requirementKey, at);
+  const effectId = await graphDeps(config).ports.dispatchRequirement(state as GraphState, requirementKey, at);
   return {
     lastNode: "dispatch",
     pendingIntentId: effectId ?? state.pendingIntentId,
@@ -251,7 +279,7 @@ async function dispatchNode(state: Ann, deps: GraphDeps): Promise<NodeResult> {
   };
 }
 
-async function verifyNode(state: Ann, deps: GraphDeps): Promise<NodeResult> {
+async function verifyNode(state: Ann, config: LangGraphRunnableConfig): Promise<NodeResult> {
   // Verification of assignment/intent outcomes lives with the CP3/CP6 seams
   // (the wake EVENT carries the evidence); this node's job is only to route
   // "did the world change" wakes into satisfaction attempts. It never marks
@@ -261,10 +289,10 @@ async function verifyNode(state: Ann, deps: GraphDeps): Promise<NodeResult> {
   // accounting; nothing here reads it as business truth.
   let satisfied = false;
   if (state.focusRequirementKey)
-    satisfied = await deps.ports.recordSatisfactionAttempt(
+    satisfied = await graphDeps(config).ports.recordSatisfactionAttempt(
       state as GraphState,
       state.focusRequirementKey,
-      deps.now(),
+      graphDeps(config).now(),
     );
   return {
     lastNode: "verify",
@@ -276,9 +304,9 @@ async function verifyNode(state: Ann, deps: GraphDeps): Promise<NodeResult> {
   };
 }
 
-async function proposeNode(state: Ann, deps: GraphDeps): Promise<NodeResult> {
-  const { ports } = deps;
-  const at = deps.now();
+async function proposeNode(state: Ann, config: LangGraphRunnableConfig): Promise<NodeResult> {
+  const { ports } = graphDeps(config);
+  const at = graphDeps(config).now();
   const { contract, currentContractRevision } = await ports.loadContract(state.objectiveKey);
   if (!contract) return { lastNode: "propose" };
   const requirements = await ports.loadRequirements(state.objectiveKey, currentContractRevision);
@@ -310,7 +338,8 @@ async function proposeNode(state: Ann, deps: GraphDeps): Promise<NodeResult> {
   return { lastNode: "propose" };
 }
 
-async function settleNode(state: Ann, deps: GraphDeps): Promise<NodeResult> {
+async function settleNode(state: Ann, config: LangGraphRunnableConfig): Promise<NodeResult> {
+  const deps = graphDeps(config);
   const at = deps.now();
   // Re-reduce after the action to compute the pass outcome from CURRENT truth.
   const { contract, currentContractRevision } = await deps.ports.loadContract(state.objectiveKey);
@@ -450,15 +479,19 @@ export type ManagementGraph = {
 
 const NODE_LIMIT = 14; // bounded continue-cycles × 2 supersteps + the fixed nodes
 
-export function buildManagementGraph(deps: GraphDeps): ManagementGraph {
+function ensureCompiledInvoke(): (
+  initial: Ann,
+  config: ManagementGraphConfig & { recursionLimit: number },
+) => Promise<Ann> {
+  if (cachedInvoke) return cachedInvoke;
   const builder = new StateGraph(GraphAnnotation)
-    .addNode("observe", (state: Ann) => observeNode(state, deps))
-    .addNode("reduce", (state: Ann) => reduceNode(state, deps))
-    .addNode("decide", (state: Ann) => decideNode(state, deps))
-    .addNode("verify", (state: Ann) => verifyNode(state, deps))
-    .addNode("dispatch", (state: Ann) => dispatchNode(state, deps))
-    .addNode("propose", (state: Ann) => proposeNode(state, deps))
-    .addNode("settle", (state: Ann) => settleNode(state, deps))
+    .addNode("observe", (state: Ann, config) => observeNode(state, config))
+    .addNode("reduce", (state: Ann, config) => reduceNode(state, config))
+    .addNode("decide", (state: Ann, config) => decideNode(state, config))
+    .addNode("verify", (state: Ann, config) => verifyNode(state, config))
+    .addNode("dispatch", (state: Ann, config) => dispatchNode(state, config))
+    .addNode("propose", (state: Ann, config) => proposeNode(state, config))
+    .addNode("settle", (state: Ann, config) => settleNode(state, config))
     .addEdge(START, "observe")
     .addEdge("observe", "reduce")
     .addConditionalEdges("reduce", async (state: Ann) => {
@@ -492,13 +525,22 @@ export function buildManagementGraph(deps: GraphDeps): ManagementGraph {
     { reduce: "reduce", [END]: END });
 
   const compiled = builder.compile();
+  cachedInvoke = compiled.invoke.bind(compiled) as (
+    initial: Ann,
+    config: ManagementGraphConfig & { recursionLimit: number },
+  ) => Promise<Ann>;
+  return cachedInvoke;
+}
+
+export function buildManagementGraph(deps: GraphDeps): ManagementGraph {
+  const invokeCompiled = ensureCompiledInvoke();
 
   return {
     async invoke(initial: GraphState) {
-      const final = await compiled.invoke(
-        { ...initial } as Ann,
-        { recursionLimit: NODE_LIMIT },
-      );
+      const final = await invokeCompiled({ ...initial } as Ann, {
+        recursionLimit: NODE_LIMIT,
+        configurable: { [MANAGEMENT_GRAPH_DEPS]: deps },
+      });
       const carried = final as Ann;
       const carriedState = carried.continuation.reducerState as ManagementState | undefined;
       const LEGAL: readonly ManagementState[] = ["received","planning","ready_to_execute","executing","waiting_for_resource","completed","failed","waiting","approval_required","blocked","escalated","recovery_required"];

@@ -45,6 +45,9 @@ function objective(over: Partial<ProductObjectiveRow> = {}): ProductObjectiveRow
     controlNotes: [],
     pendingFinalAssessmentRevision: null,
     interpretationStatus: null,
+    interpretationPending: false,
+    pendingDecisionRequirementKey: null,
+    managementPassWatchActive: false,
     ...over,
   };
 }
@@ -911,7 +914,7 @@ test("somebodyNow state follows product status", () => {
 
 test("workspace leaks no raw engine arrays or states", () => {
   const view = projectObjectiveWorkspace(acquisitionScenario(), opts);
-  assert.deepEqual(Object.keys(view).sort(), ["acquisitions", "activity", "attention", "availableActions", "currentWork", "deliverables", "objective", "progress", "somebodyNow"]);
+  assert.deepEqual(Object.keys(view).sort(), ["acquisitions", "activity", "attention", "availableActions", "currentWork", "deliverables", "liveness", "objective", "progress", "somebodyNow"]);
   const text = JSON.stringify(view);
   for (const leak of ["result_submitted", "awaiting_m3", "handed_off", "dependsOnRequirementKeys", "workContract", "coarsePlanSummary"]) {
     assert.ok(!text.includes(leak), `leaked ${leak}`);
@@ -953,6 +956,62 @@ test("list: grouping and stable sort (updatedAt DESC, id tie-break)", () => {
   assert.equal(list.needsYou[0].hasAttention, true);
   assert.equal(list.inProgress[0].status, "blocked");
   assert.deepEqual(Object.keys(list.done[0]).sort(), ["hasAttention", "id", "status", "statusLabel", "title", "updatedAt"]);
+});
+
+test("liveness: bare product working without in-flight facts is idle (no forever pulse)", () => {
+  const view = projectObjectiveWorkspace(
+    source({
+      objective: objective({ state: "executing", interpretationPending: false, managementPassWatchActive: false }),
+      requirements: [req("r1")],
+      // No assignments / pending decision / watch — stranded "working" product status.
+    }),
+    opts,
+  );
+  assert.equal(view.objective.status, "working");
+  assert.equal(view.liveness.active, false);
+  assert.equal(view.liveness.phase, "idle");
+  assert.match(view.liveness.detail, /Waiting for the next engine step/i);
+});
+
+test("liveness: managementPassWatch and live assignment are active; external wait is not", () => {
+  const watch = projectObjectiveWorkspace(
+    source({
+      objective: objective({ managementPassWatchActive: true }),
+      requirements: [req("r1")],
+    }),
+    opts,
+  );
+  assert.equal(watch.liveness.active, true);
+  assert.equal(watch.liveness.phase, "deciding");
+
+  const live = projectObjectiveWorkspace(
+    source({
+      assignments: [assignment("a1", "r1", { state: "running", runId: "run_1" })],
+      objective: objective({
+        workItems: [
+          {
+            id: "wi",
+            state: "running",
+            runs: [{ id: "run_1", status: "running", startedAt: NOW - 1000, leaseUntil: NOW + 60_000 }],
+          },
+        ],
+      }),
+      requirements: [req("r1")],
+    }),
+    opts,
+  );
+  assert.equal(live.liveness.active, true);
+  assert.equal(live.liveness.phase, "working");
+
+  const waiting = projectObjectiveWorkspace(
+    source({
+      intents: [intent("i1", { state: "awaiting_m3" })],
+      requirements: [req("r1")],
+    }),
+    opts,
+  );
+  assert.equal(waiting.liveness.active, false);
+  assert.equal(waiting.liveness.phase, "waiting_external");
 });
 
 test("start capabilities advertise wired Create Objective only", () => {
