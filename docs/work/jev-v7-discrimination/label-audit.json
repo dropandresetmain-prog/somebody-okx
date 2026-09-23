@@ -1,0 +1,196 @@
+[
+  {
+    "caseId": "v7_cp2_make_vs_buy_both_eligible",
+    "corpusSource": "REAL",
+    "original": {
+      "kind": "HUMAN_REVIEW",
+      "expectedOptionId": null,
+      "notes": "MAKE vs BUY trade speed/cost/context vs provider sprint; no single dominant fact."
+    },
+    "corrected": {
+      "kind": "HUMAN_REVIEW",
+      "expectedOptionId": null,
+      "rationale": "Preserved subjective/ambiguous J3 label.",
+      "paretoFront": [
+        "opt_3d1baaf29c53c6746c21f1df"
+      ],
+      "dominatorOptionId": "opt_3d1baaf29c53c6746c21f1df"
+    },
+    "dataQualityIssues": [
+      {
+        "optionId": "opt_386010810fcf8af17c61d16f",
+        "kind": "DATA_QUALITY",
+        "code": "external_advantage_speed_vs_timing",
+        "detail": "externalAdvantage=speed but known total minutes 100 > competitor opt_3d1baaf29c53c6746c21f1df 30.",
+        "authoritativeField": "none_documented"
+      }
+    ],
+    "pairwiseDominanceNotes": [
+      "opt_3d1baaf29c53c6746c21f1df Pareto-dominates opt_386010810fcf8af17c61d16f on known facts",
+      "opt_3d1baaf29c53c6746c21f1df Pareto-dominates opt_5b17f3c460269069fe58eec9 on known facts"
+    ]
+  },
+  {
+    "caseId": "v7_cp2_wrapper_inside_budget_make_wins",
+    "corpusSource": "REAL",
+    "original": {
+      "kind": "DETERMINISTIC_DOMINANCE",
+      "expectedOptionId": "opt_3d1baaf29c53c6746c21f1df",
+      "notes": "$3 external vs $0.40 internal for already-controlled public_web."
+    },
+    "corrected": {
+      "kind": "DETERMINISTIC_DOMINANCE",
+      "expectedOptionId": "opt_3d1baaf29c53c6746c21f1df",
+      "rationale": "Full-set Pareto dominator on known dimensions matches label.",
+      "paretoFront": [
+        "opt_3d1baaf29c53c6746c21f1df"
+      ],
+      "dominatorOptionId": "opt_3d1baaf29c53c6746c21f1df"
+    },
+    "dataQualityIssues": [
+      {
+        "optionId": "opt_ffaf58c917918c55b1ededda",
+        "kind": "DATA_QUALITY",
+        "code": "external_advantage_speed_vs_timing",
+        "detail": "externalAdvantage=speed but known total minutes 100 > competitor opt_3d1baaf29c53c6746c21f1df 30.",
+        "authoritativeField": "none_documented"
+      }
+    ],
+    "pairwiseDominanceNotes": [
+      "opt_3d1baaf29c53c6746c21f1df Pareto-dominates opt_ffaf58c917918c55b1ededda on known facts",
+      "opt_3d1baaf29c53c6746c21f1df Pareto-dominates opt_7cc4e19a61012564c0e670f1 on known facts"
+    ]
+  },
+  {
+    "caseId": "v7_cp2_hybrid_eligible",
+    "corpusSource": "REAL",
+    "original": {
+      "kind": "HUMAN_REVIEW",
+      "expectedOptionId": null,
+      "notes": "MAKE, BUY, and HYBRID all eligible; hybrid combines gather+write."
+    },
+    "corrected": {
+      "kind": "HUMAN_REVIEW",
+      "expectedOptionId": null,
+      "rationale": "Preserved subjective/ambiguous J3 label.",
+      "paretoFront": [
+        "opt_3d1baaf29c53c6746c21f1df"
+      ],
+      "dominatorOptionId": "opt_3d1baaf29c53c6746c21f1df"
+    },
+    "dataQualityIssues": [
+      {
+        "optionId": "opt_386010810fcf8af17c61d16f",
+        "kind": "DATA_QUALITY",
+        "code": "external_advantage_speed_vs_timing",
+        "detail": "externalAdvantage=speed but known total minutes 100 > competitor opt_3d1baaf29c53c6746c21f1df 30.",
+        "authoritativeField": "none_documented"
+      }
+    ],
+    "pairwiseDominanceNotes": [
+      "opt_3d1baaf29c53c6746c21f1df Pareto-dominates opt_386010810fcf8af17c61d16f on known facts",
+      "opt_3d1baaf29c53c6746c21f1df Pareto-dominates opt_5b17f3c460269069fe58eec9 on known facts"
+    ]
+  },
+  {
+    "caseId": "v7_cp2_two_external_providers_price_dominance",
+    "corpusSource": "REAL",
+    "original": {
+      "kind": "DETERMINISTIC_DOMINANCE",
+      "expectedOptionId": "opt_b4d674e36e3e598ab93706f6",
+      "notes": "Same class and verification; provider_b strictly cheaper with comparable facts."
+    },
+    "corrected": {
+      "kind": "DETERMINISTIC_DOMINANCE",
+      "expectedOptionId": "opt_3d1baaf29c53c6746c21f1df",
+      "rationale": "J3 expected opt_b4d674e36e3e598ab93706f6 but full-set dominator is opt_3d1baaf29c53c6746c21f1df.",
+      "paretoFront": [
+        "opt_3d1baaf29c53c6746c21f1df"
+      ],
+      "dominatorOptionId": "opt_3d1baaf29c53c6746c21f1df"
+    },
+    "dataQualityIssues": [
+      {
+        "optionId": "opt_a3e66fcb0d034479c9800b04",
+        "kind": "DATA_QUALITY",
+        "code": "external_advantage_speed_vs_timing",
+        "detail": "externalAdvantage=speed but known total minutes 100 > competitor opt_3d1baaf29c53c6746c21f1df 30.",
+        "authoritativeField": "none_documented"
+      },
+      {
+        "optionId": "opt_b4d674e36e3e598ab93706f6",
+        "kind": "DATA_QUALITY",
+        "code": "external_advantage_speed_vs_timing",
+        "detail": "externalAdvantage=speed but known total minutes 100 > competitor opt_3d1baaf29c53c6746c21f1df 30.",
+        "authoritativeField": "none_documented"
+      }
+    ],
+    "pairwiseDominanceNotes": [
+      "opt_3d1baaf29c53c6746c21f1df Pareto-dominates opt_a3e66fcb0d034479c9800b04 on known facts",
+      "opt_3d1baaf29c53c6746c21f1df Pareto-dominates opt_b4d674e36e3e598ab93706f6 on known facts",
+      "opt_3d1baaf29c53c6746c21f1df Pareto-dominates opt_a307f14a1f5c9c0f13678305 on known facts"
+    ]
+  },
+  {
+    "caseId": "v7_cp2_make_vs_buy_speed_tradeoff",
+    "corpusSource": "REAL",
+    "original": {
+      "kind": "HUMAN_REVIEW",
+      "expectedOptionId": null,
+      "notes": "External faster execution minutes vs lower internal cost — genuine tradeoff."
+    },
+    "corrected": {
+      "kind": "HUMAN_REVIEW",
+      "expectedOptionId": null,
+      "rationale": "Preserved subjective/ambiguous J3 label.",
+      "paretoFront": [
+        "opt_3d1baaf29c53c6746c21f1df",
+        "opt_386010810fcf8af17c61d16f"
+      ],
+      "dominatorOptionId": null
+    },
+    "dataQualityIssues": [],
+    "pairwiseDominanceNotes": [
+      "opt_3d1baaf29c53c6746c21f1df Pareto-dominates opt_5b17f3c460269069fe58eec9 on known facts"
+    ]
+  },
+  {
+    "caseId": "v7_derived_price_swap_two_external",
+    "corpusSource": "REAL_DERIVED_VARIANT",
+    "original": {
+      "kind": "AMBIGUOUS",
+      "expectedOptionId": null,
+      "notes": "Derived variant — inverted price dominance; not independent runtime truth."
+    },
+    "corrected": {
+      "kind": "AMBIGUOUS",
+      "expectedOptionId": null,
+      "rationale": "Preserved subjective/ambiguous J3 label.",
+      "paretoFront": [
+        "opt_3d1baaf29c53c6746c21f1df"
+      ],
+      "dominatorOptionId": "opt_3d1baaf29c53c6746c21f1df"
+    },
+    "dataQualityIssues": [
+      {
+        "optionId": "opt_a3e66fcb0d034479c9800b04",
+        "kind": "DATA_QUALITY",
+        "code": "external_advantage_speed_vs_timing",
+        "detail": "externalAdvantage=speed but known total minutes 100 > competitor opt_3d1baaf29c53c6746c21f1df 30.",
+        "authoritativeField": "none_documented"
+      },
+      {
+        "optionId": "opt_b4d674e36e3e598ab93706f6",
+        "kind": "DATA_QUALITY",
+        "code": "external_advantage_speed_vs_timing",
+        "detail": "externalAdvantage=speed but known total minutes 100 > competitor opt_3d1baaf29c53c6746c21f1df 30.",
+        "authoritativeField": "none_documented"
+      }
+    ],
+    "pairwiseDominanceNotes": [
+      "opt_3d1baaf29c53c6746c21f1df Pareto-dominates opt_a3e66fcb0d034479c9800b04 on known facts",
+      "opt_3d1baaf29c53c6746c21f1df Pareto-dominates opt_b4d674e36e3e598ab93706f6 on known facts",
+      "opt_3d1baaf29c53c6746c21f1df Pareto-dominates opt_a307f14a1f5c9c0f13678305 on known facts"
+    ]
+  }
+]

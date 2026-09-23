@@ -30,7 +30,7 @@ export async function selectEligibleOption(
 
   const eligibleOptionIds = new Set(eligible.map((option) => option.optionId));
   const state = buildOptionSelectionState(requirement, eligible);
-  const question = buildOptionChoiceQuestion(eligible);
+  const question = buildOptionChoiceQuestion(eligible, input.questionRubric ?? "baseline");
   const callGateway = deps.callGateway ?? callJevGateway;
 
   const controller = new AbortController();
