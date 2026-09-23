@@ -27,6 +27,7 @@
     "@okxweb3/x402-evm": "^0.2.1",
     "@okxweb3/x402-express": "^0.1.1",
     "@openai/agents": "^0.18.0",
+    "ai": "7.0.111",
     "convex": "^1.45.0",
     "express": "^5.2.1",
     "googleapis": "^159.0.0",
