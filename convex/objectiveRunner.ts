@@ -95,6 +95,11 @@ import {
 import { buildDecisionPassInput } from "../lib/management/decisionPass";
 import type { DecisionPassReads } from "../lib/management/decisionPass";
 import { runManagerialDecisionPass } from "../lib/management/decision";
+import {
+  assertRationaleHonorsLockedSelection,
+  isJevOptionSelectionEnabled,
+  lockEligibleOptionSelection,
+} from "../lib/management/jevStage3";
 import { createOkxDiscovery } from "../lib/market/okxDiscovery";
 import { createLocalOnchainosRunner } from "../lib/market/okxCliBridge";
 import { VERIFIED_SERVICE_REGISTRY } from "../lib/market/registryData";
@@ -1597,40 +1602,95 @@ export const proposeDecision = internalAction({
           const missingResourceClasses = declaredClasses.filter(
             (value) => !controlled.includes(value as ResourceClass),
           );
+          const requirementContext = {
+            title: reads.requirement.title,
+            mustBeTrue: reads.requirement.mustBeTrue,
+            priority: reads.requirement.priority,
+            dependsOnRequirementKeys: reads.requirement.dependsOnRequirementKeys ?? [],
+            requiredResourceClasses: reads.requirement.requiredResourceClasses ?? [],
+            expectedOutput: reads.requirement.expectedOutput ?? null,
+            ownedResourceClasses,
+            missingResourceClasses,
+            openResourceNeeds: (reads.openResourceNeeds ?? []).slice(0, 6),
+            prerequisiteResults: (reads.prerequisiteResults ?? []).slice(0, 6),
+          };
+          const mapOption = (option: (typeof eligible)[number]) => ({
+            optionId: option.optionId,
+            kind: option.kind,
+            strategy: option.strategy,
+            eligible: option.eligibility.eligible,
+            checksPassed:
+              option.eligibility.eligible
+                ? option.eligibility.checksPassed ?? []
+                : [],
+            ineligibilityReasons:
+              option.eligibility.eligible
+                ? []
+                : option.eligibility.reasons ?? [],
+            internalCapabilities: option.internal?.capabilityKeys ?? [],
+            externalResourceClass: option.external?.resourceClass ?? null,
+            externalPriceUsd: option.external?.priceUsd ?? null,
+            registryVerified: option.external?.registryVerified ?? null,
+          });
+
+          // Stage 3 — optional Jev selection among already-eligible options.
+          // Gate OFF preserves the legacy unconstrained (among eligible) model
+          // recommendation. Gate ON: Jev/sole lock then rationale-only model.
+          let optionsForRationale = eligible.map(mapOption);
+          let lockedOptionId: string | null = null;
+          if (isJevOptionSelectionEnabled()) {
+            const lock = await lockEligibleOptionSelection({
+              requirement: {
+                requirementKey: args.requirementKey,
+                title: reads.requirement.title,
+                mustBeTrue: reads.requirement.mustBeTrue,
+                scope: reads.requirement.scope ?? "",
+                expectedOutput: reads.requirement.expectedOutput ?? null,
+                requiredResourceClasses: reads.requirement.requiredResourceClasses ?? [],
+              },
+              eligible,
+            });
+            if (lock.kind === "no_candidates") {
+              rawRecommendation = null;
+              return null;
+            }
+            if (lock.kind === "failure") {
+              const envelope = {
+                requirementKey: args.requirementKey,
+                contractRevision: args.contractRevision,
+              };
+              raw = {
+                ...envelope,
+                error: `jev option selection failed${lock.failureClass ? ` (${lock.failureClass})` : ""}: ${lock.detail}`.slice(0, 300),
+              };
+              rawRecommendation = raw;
+              return raw;
+            }
+            lockedOptionId = lock.selectedOptionId;
+            const locked = eligible.find((option) => option.optionId === lockedOptionId);
+            if (!locked) {
+              // Should be unreachable: lockEligibleOptionSelection only returns
+              // IDs from the eligible set. Fail closed anyway.
+              const envelope = {
+                requirementKey: args.requirementKey,
+                contractRevision: args.contractRevision,
+              };
+              raw = {
+                ...envelope,
+                error: `jev locked unknown option id: ${lockedOptionId}`.slice(0, 300),
+              };
+              rawRecommendation = raw;
+              return raw;
+            }
+            optionsForRationale = [mapOption(locked)];
+          }
+
           const recommendationOutcome = await recommendWithModel({
             configuration: decisionConfiguration,
             requirementKey: args.requirementKey,
             canAffordCall: canAfford,
-            requirementContext: {
-              title: reads.requirement.title,
-              mustBeTrue: reads.requirement.mustBeTrue,
-              priority: reads.requirement.priority,
-              dependsOnRequirementKeys: reads.requirement.dependsOnRequirementKeys ?? [],
-              requiredResourceClasses: reads.requirement.requiredResourceClasses ?? [],
-              expectedOutput: reads.requirement.expectedOutput ?? null,
-              ownedResourceClasses,
-              missingResourceClasses,
-              openResourceNeeds: (reads.openResourceNeeds ?? []).slice(0, 6),
-              prerequisiteResults: (reads.prerequisiteResults ?? []).slice(0, 6),
-            },
-            options: eligible.map((option) => ({
-              optionId: option.optionId,
-              kind: option.kind,
-              strategy: option.strategy,
-              eligible: option.eligibility.eligible,
-              checksPassed:
-                option.eligibility.eligible
-                  ? option.eligibility.checksPassed ?? []
-                  : [],
-              ineligibilityReasons:
-                option.eligibility.eligible
-                  ? []
-                  : option.eligibility.reasons ?? [],
-              internalCapabilities: option.internal?.capabilityKeys ?? [],
-              externalResourceClass: option.external?.resourceClass ?? null,
-              externalPriceUsd: option.external?.priceUsd ?? null,
-              registryVerified: option.external?.registryVerified ?? null,
-            })),
+            requirementContext,
+            options: optionsForRationale,
             managerResultPackage: reads.managerResultPackage ?? null,
           });
           await recordModelCalls(ctx, args.objectiveKey, recommendationOutcome);
@@ -1641,6 +1701,20 @@ export const proposeDecision = internalAction({
             contractRevision: args.contractRevision,
           };
           if (recommendationOutcome.ok) {
+            if (lockedOptionId !== null) {
+              const honor = assertRationaleHonorsLockedSelection(
+                lockedOptionId,
+                recommendationOutcome.value.selectedOptionId,
+              );
+              if (!honor.ok) {
+                raw = {
+                  ...envelope,
+                  error: honor.detail.slice(0, 300),
+                };
+                rawRecommendation = raw;
+                return raw;
+              }
+            }
             raw = { ...recommendationOutcome.value, ...envelope };
           } else if (recommendationOutcome.failure === "structural_rejection") {
             // Invalid after the one bounded repair: forward what the model said
