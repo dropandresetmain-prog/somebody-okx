@@ -1,0 +1,1245 @@
+{
+ "label": "nemotron-super-3",
+ "objectiveKey": "obj_1790161453482_cs7qdj",
+ "startedAt": "2026-09-23T11:04:13.442Z",
+ "elapsedS": 904,
+ "timeline": [
+  {
+   "t": 0,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 5,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 10,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 15,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 20,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 25,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 30,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 35,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 40,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 45,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 50,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 55,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 60,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 65,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 71,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 76,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 81,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 86,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 91,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 96,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 101,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 106,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 111,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 116,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 121,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 126,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 131,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 136,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 141,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 146,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 151,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 156,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 161,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 166,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 171,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 176,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 181,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 186,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 191,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 196,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 201,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 206,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 211,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 216,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 221,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 226,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 231,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 236,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 241,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 246,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 251,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 256,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 261,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 266,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 271,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 276,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 281,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 286,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 291,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 296,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 301,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 306,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 311,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 316,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 321,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 326,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 331,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 336,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 341,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 346,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 352,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 357,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 362,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 367,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 372,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 377,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 382,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 387,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 392,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 397,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 402,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 407,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 412,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 417,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 422,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 427,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 432,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 437,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 442,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 447,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 452,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 457,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 462,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 467,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 472,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 477,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 482,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 487,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 492,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 497,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 502,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 507,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 512,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 517,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 522,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 527,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 532,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 537,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 542,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 547,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 552,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 557,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 562,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 568,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 573,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 578,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 583,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 588,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 593,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 598,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 603,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 608,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 613,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 618,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 623,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 628,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 633,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 638,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 643,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 648,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 653,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 658,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 663,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 668,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 673,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 678,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 683,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 688,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 693,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 698,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 703,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 708,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 713,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 718,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 723,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 728,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 733,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 738,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 743,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 748,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 753,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 758,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 763,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 768,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 773,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 778,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 783,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 788,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 793,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 798,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 803,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 808,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 813,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 818,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 824,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 829,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 834,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 839,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 844,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 849,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 854,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 859,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 864,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 869,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 874,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 879,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 884,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 889,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 894,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 899,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "t": 904,
+   "state": "received",
+   "reqs": "",
+   "cand": null
+  },
+  {
+   "timeout": true
+  }
+ ],
+ "raw": {
+  "completion": {
+   "accepted": false,
+   "unmet": [
+    "No work item has been planned yet"
+   ]
+  },
+  "events": [
+   {
+    "at": 1790161453482,
+    "kind": "system",
+    "text": "Canonical demo objective received (M6.1 setup)."
+   },
+   {
+    "at": 1790161453482,
+    "kind": "system",
+    "text": "Founder spend grant recorded (limit 2 USD); payment rail untouched."
+   }
+  ],
+  "evidence": [],
+  "record": {
+   "acquisitionResults": [],
+   "activity": "Canonical demo objective received.",
+   "companyArtifacts": [
+    {
+     "content": "Current launch page\n\nHeadline: \"Somebody: an AI manager for your business.\"\nSubhead: \"Automate your workflows with AI.\"\n\nAudience: General small businesses.\nCurrent result: Signups are weaker than expected, and visitors often leave without clearly understanding who Somebody is for or why it is different from other AI tools.\nStatus: The current message is live. Any replacement should remain a draft until it is reviewed.",
+     "history": [
+      {
+       "changeNote": "initial",
+       "changedAt": 1790161453482,
+       "changedByRunId": "seed",
+       "content": "Current launch page\n\nHeadline: \"Somebody: an AI manager for your business.\"\nSubhead: \"Automate your workflows with AI.\"\n\nAudience: General small businesses.\nCurrent result: Signups are weaker than expected, and visitors often leave without clearly understanding who Somebody is for or why it is different from other AI tools.\nStatus: The current message is live. Any replacement should remain a draft until it is reviewed.",
+       "version": 1
+      }
+     ],
+     "key": "launch/page-message",
+     "label": "Launch page headline and message",
+     "objectiveKey": "obj_1790161453482_cs7qdj",
+     "provenanceRunId": "seed",
+     "updatedAt": 1790161453482,
+     "version": 1
+    }
+   ],
+   "createdAt": 1790161453482,
+   "key": "obj_1790161453482_cs7qdj",
+   "management": {
+    "authorizedPurposePolicy": {
+     "purposeKind": "founder_messaging_qualitative",
+     "targetRequirementKind": "deliverable"
+    },
+    "contractId": null,
+    "controlNotes": [
+     {
+      "at": 1790161454822,
+      "errors": [
+       "contract: contract proposal is not an object"
+      ],
+      "providerError": "model unavailable (other): Cannot read properties of undefined (reading '0')",
+      "type": "interpretation_refused"
+     }
+    ],
+    "interpretationAttempts": 1,
+    "interpretationDetail": "model unavailable (other): Cannot read properties of undefined (reading '0'); contract: contract proposal is not an object",
+    "interpretationExpiresAt": 1790162053482,
+    "interpretationRequestId": "interpret_obj_1790161453482_cs7qdj_a1",
+    "interpretationStatus": "refused"
+   },
+   "plan": null,
+   "request": "Our launch messaging isn’t working. Figure out what’s wrong and get a better relaunch ready. You can spend within the approved limit if it’s justified.",
+   "result": null,
+   "run": null,
+   "state": "received",
+   "updatedAt": 1790161453482,
+   "workItems": []
+  }
+ },
+ "view": {
+  "artifacts": [
+   {
+    "artifactId": "artifact:obj_1790161453482_cs7qdj:launch/page-message",
+    "label": "Launch page headline and message",
+    "versions": [
+     {
+      "at": 1790161453482,
+      "evidenceRefs": [],
+      "id": "artifact-version:obj_1790161453482_cs7qdj:launch/page-message:1",
+      "summary": "initial",
+      "version": 1
+     }
+    ]
+   }
+  ],
+  "assignments": [],
+  "attention": [],
+  "completion": {
+   "accepted": false,
+   "acceptedAt": null,
+   "proofRefs": [],
+   "remaining": [],
+   "summary": "Completion has not been accepted. A worker result is not a completion claim."
+  },
+  "decisions": [],
+  "evidence": [],
+  "external": [],
+  "missionStory": [
+   {
+    "at": 1790161453482,
+    "detail": "Launch page headline and message — initial",
+    "id": "story:artifact:obj_1790161453482_cs7qdj:launch/page-message:1",
+    "kind": "artifact",
+    "relatedIds": [
+     "artifact:obj_1790161453482_cs7qdj:launch/page-message"
+    ],
+    "title": "Artifact advanced to v1"
+   },
+   {
+    "at": 1790161453482,
+    "detail": "Our launch messaging isn’t working. Figure out what’s wrong and get a better relaunch ready. You can spend within the approved limit if it’s justified.",
+    "id": "story:objective:obj_1790161453482_cs7qdj",
+    "kind": "objective",
+    "relatedIds": [
+     "obj_1790161453482_cs7qdj"
+    ],
+    "title": "Objective submitted"
+   }
+  ],
+  "objective": {
+   "createdAt": 1790161453482,
+   "objectiveKey": "obj_1790161453482_cs7qdj",
+   "request": "Our launch messaging isn’t working. Figure out what’s wrong and get a better relaunch ready. You can spend within the approved limit if it’s justified.",
+   "state": "received",
+   "title": "Our launch messaging isn’t working. Figure out what’s wro…",
+   "updatedAt": 1790161453482
+  },
+  "outcome": null,
+  "provenance": "backend_query",
+  "requirements": [],
+  "somebodyNow": {
+   "ball": "Somebody",
+   "condition": "working",
+   "currentRequirementKey": null,
+   "detail": "Somebody is interpreting the request into an outcome that can be proved.",
+   "headline": "An Objective, not another to-do list."
+  },
+  "workers": [],
+  "xray": null
+ },
+ "simulationCandidate": null
+}

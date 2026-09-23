@@ -1,0 +1,15 @@
+{
+  "testedSha": "26685a2ccf9e9b6057d807a92e8e71dad20154b9",
+  "startedAt": "2026-09-23T10:05:20.862Z",
+  "runs": [
+    "luna-1",
+    "nemotron-super-1",
+    "nex-mini-1",
+    "luna-2",
+    "nemotron-super-2",
+    "nex-mini-2",
+    "luna-3",
+    "nemotron-super-3",
+    "nex-mini-3"
+  ]
+}
