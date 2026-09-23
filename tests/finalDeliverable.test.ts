@@ -47,6 +47,7 @@ function deliverable(over: Partial<DeliverableView> = {}): DeliverableView {
 function workspace(over: Partial<ObjectiveWorkspaceView> = {}): ObjectiveWorkspaceView {
   return {
     objective: objective(),
+    liveness: { active: false, phase: "idle", lastProgressAt: NOW, detail: "Idle." },
     progress: { checkpoints: [] },
     somebodyNow: somebodyNow(),
     currentWork: null,
