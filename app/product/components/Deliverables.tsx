@@ -1,9 +1,12 @@
 import type { DeliverableView } from "../contracts";
+import { deliverableKind, presentDeliverableSummary } from "../humanize";
 import { DELIVERABLE_STATUS_LABEL, deliverableTone } from "../presentation";
 
 // Right-rail Deliverables (contract §24–28). Status is rendered exactly as
 // supplied — "verified" is never inferred from version/Intern/Requirement
 // state, and no frontend "highest version = current" rule is applied.
+// Default view: kind/version, title, status, short description, next move.
+// Remaining unknowns stay one click away.
 export function Deliverables({ deliverables }: { deliverables: DeliverableView[] }) {
   if (deliverables.length === 0) {
     return (
@@ -22,7 +25,7 @@ export function Deliverables({ deliverables }: { deliverables: DeliverableView[]
     <section className="v6-rail-card" aria-label="Deliverables">
       <div className="v6-rail-card-head">
         <h3>Deliverables</h3>
-        <span>{emphasized.some((item) => item.status === "verified") ? "Verified" : "Current"}</span>
+        <span>{deliverables.length}</span>
       </div>
       <ul className="v6-deliverable-list">
         {[...emphasized, ...rest].map((deliverable) => (
@@ -42,14 +45,21 @@ function DeliverableRow({ deliverable }: { deliverable: DeliverableView }) {
       data-deliverable-id={deliverable.id}
       data-deliverable-status={deliverable.status}
     >
-      <p className="v6-deliverable-kicker">
-        {deliverable.status === "verified" ? "Final deliverable" : "Working deliverable"} · v{deliverable.version}
-      </p>
+      <div className="v6-deliverable-head">
+        <p className="v6-deliverable-kicker">
+          {deliverableKind(deliverable.type)} · v{deliverable.version}
+        </p>
+        <span className={`pill tone-${deliverableTone(deliverable.status)}`}>{DELIVERABLE_STATUS_LABEL[deliverable.status]}</span>
+      </div>
       <p className="v6-deliverable-title">{deliverable.title}</p>
-      {deliverable.summary ? <p className="muted v6-deliverable-summary">{deliverable.summary}</p> : null}
-      <span className={`pill tone-${deliverableTone(deliverable.status)}`}>{DELIVERABLE_STATUS_LABEL[deliverable.status]}</span>
+      {deliverable.summary ? (
+        <p className="muted v6-deliverable-summary">{presentDeliverableSummary(deliverable.summary)}</p>
+      ) : null}
       {deliverable.recommendedNextMove ? (
-        <p className="muted v6-deliverable-next">Next: {deliverable.recommendedNextMove}</p>
+        <div className="v6-deliverable-next">
+          <span>Next move</span>
+          <p>{deliverable.recommendedNextMove}</p>
+        </div>
       ) : null}
       {unknowns.length > 0 ? (
         <details className="v6-deliverable-unknowns-disclosure">

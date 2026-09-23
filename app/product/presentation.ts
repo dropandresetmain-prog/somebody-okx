@@ -126,7 +126,7 @@ export function somebodyByline(state: SomebodyNowState): string {
     case "waiting":
       return "Somebody · waiting";
     case "needs_you":
-      return "Somebody · waiting for authority";
+      return "Somebody · waiting for you";
     case "verifying":
       return "Somebody · checking the outcome";
     case "completed":
@@ -136,39 +136,42 @@ export function somebodyByline(state: SomebodyNowState): string {
   }
 }
 
+// Eyebrow over each Activity card: what KIND of moment this is, in founder
+// language. The card title says what happened.
 export function activityTypeLabel(type: ActivityType): string {
   switch (type) {
     case "objective_interpreted":
-      return "Somebody";
+      return "Outcome";
     case "intern_assigned":
       return "Delegated";
     case "work_started":
+      return "Started";
     case "work_resumed":
-      return "Now";
+      return "Resumed";
     case "work_summary":
-      return "Work";
+      return "Report";
     case "work_completed":
-      return "Assignment";
+      return "Accepted";
     case "finding_added":
       return "Finding";
     case "evidence_gap_identified":
-      return "Evidence gap";
+      return "Missing input";
     case "manager_decision":
-      return "Managerial decision";
+      return "Decision";
     case "founder_action_required":
-      return "Somebody needs your say";
+      return "Needs you";
     case "acquisition_started":
     case "acquisition_submitted":
     case "external_result_received":
     case "external_result_verified":
-      return "External capability";
+      return "Outside help";
     case "artifact_changed":
-      return "Artifact changed";
+      return "Updated";
     case "verification_started":
     case "verification_completed":
       return "Verification";
     case "objective_completed":
-      return "Verified";
+      return "Done";
     case "objective_blocked":
       return "Stopped";
   }

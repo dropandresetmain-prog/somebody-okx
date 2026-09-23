@@ -347,7 +347,7 @@ test("Activity objective completion avoids duplicating the deliverable summary",
   };
   const html = renderToStaticMarkup(createElement(Activity, { items: [item] }));
   assert.ok(html.includes("Objective complete"));
-  assert.ok(html.includes("The required outcome is verified. Review the final deliverable and any remaining unknowns."));
+  assert.ok(html.includes("The final deliverable is ready to review."));
   assert.ok(!html.includes("A very long deliverable summary that belongs on the Deliverables card."));
 });
 
@@ -377,7 +377,8 @@ test("Activity renders type-specific treatments for major event types", () => {
   assert.ok(html.includes("Screenshot"));
   assert.ok(html.includes("Old copy"));
   assert.ok(html.includes("New copy"));
-  assert.ok(html.includes("Landing copy updated"));
+  assert.ok(html.includes("Landing copy"));
+  assert.ok(html.includes("Now version 2"));
   assert.ok(!html.includes("Rewrote the hero"), "diff owns the change; skip redundant summary prose");
 });
 

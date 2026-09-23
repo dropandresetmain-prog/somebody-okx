@@ -114,6 +114,7 @@ function MainPane({
             objective={main.view.objective}
             somebodyNow={main.view.somebodyNow}
             currentWork={main.view.currentWork}
+            deliverables={main.view.deliverables}
           />
           <div className="v6-columns">
             <div className="v6-column-primary">

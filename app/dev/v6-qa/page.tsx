@@ -11,6 +11,7 @@ import {
   needsYouWorkspace,
   workingWorkspace,
 } from "./fixtures";
+import { lunaRelaunchScenario } from "../../../lib/demo/scenarios/lunaRelaunch";
 import "../../product/product-workspace.css";
 import "../../start/start.css";
 
@@ -27,6 +28,22 @@ function V6QaInner() {
       <div className="v6-start-page">
         <StartView capabilities={ALL_FALSE_START} />
       </div>
+    );
+  }
+
+  if (scene === "luna") {
+    // Real recorded Luna replay frames (?frame=N, default last) for copy QA.
+    const frames = lunaRelaunchScenario.frames;
+    const requested = Number(params.get("frame") ?? frames.length - 1);
+    const frame = frames[Math.min(Math.max(0, Number.isFinite(requested) ? requested : frames.length - 1), frames.length - 1)];
+    return (
+      <V6WorkspaceView
+        list={frame.objectiveList}
+        selectedId={frame.workspace.objective.id}
+        onSelect={() => {}}
+        onStartNew={() => {}}
+        main={{ kind: "ready", view: frame.workspace }}
+      />
     );
   }
 
