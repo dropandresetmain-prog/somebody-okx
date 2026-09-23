@@ -11,6 +11,7 @@ import type { AddressInfo } from "node:net";
 import { convexTest } from "convex-test";
 import schema from "../convex/schema";
 import { proposeInterpretation } from "../convex/objectiveRunner";
+import { beginInterpretation } from "../convex/management";
 import type { ObjectiveRecord } from "../lib/objective/types";
 
 const modules = {
@@ -96,7 +97,7 @@ afterAll(() => {
   mock.timers.reset();
 });
 
-async function seedAndRun(label: string) {
+async function seedAndRun(label: string, opts: { realTimersForCall?: boolean } = {}) {
   await ready;
   process.env.LIVE_AI_ENABLED = "true";
   process.env.AI_PROVIDER = "openai";
@@ -120,14 +121,31 @@ async function seedAndRun(label: string) {
         run: null,
         result: null,
         companyArtifacts: [],
-        management: { contractId: null, interpretationStatus: "pending", interpretationAttempts: 1 },
+        // V7 review R3: no pre-set reservation here -- beginInterpretation below
+        // performs the real reservation (status/attempts/requestId) that
+        // applyInterpretation now fences on.
+        management: { contractId: null },
       } as never,
     });
   });
+  // V7 review R3: applyInterpretation now only applies against a live
+  // reservation (interpretationStatus:"pending" + matching requestId) written
+  // by beginInterpretation. Perform that reservation for real instead of
+  // hardcoding the requestId string, and forward the requestId it returns.
+  const begun = (await t.mutation(async (ctx) =>
+    (beginInterpretation as unknown as Handler)._handler(ctx, { objectiveKey: key, at: now }),
+  )) as { proceed: boolean; requestId?: string };
+  assert.equal(begun.proceed, true, "test setup: beginInterpretation must reserve before proposeInterpretation runs");
+  const requestId = begun.requestId!;
+  // The reservation's scheduled jobs (proposeInterpretation + its 10-minute
+  // watchdog) were armed under MOCKED timers and never run by themselves.
+  // A case that needs REAL timers (SDK backoff) switches only now, which
+  // discards those mocked jobs: no concurrent model call, no hanging timer.
+  if (opts.realTimersForCall) mock.timers.reset();
   const result = (await t.action(async (ctx) =>
     (proposeInterpretation as unknown as Handler)._handler(ctx, {
       objectiveKey: key,
-      requestId: `interpret_${key}_a1`,
+      requestId,
       request: REQUEST,
       founderResolvedQuestions: [],
     }),
@@ -191,10 +209,12 @@ test("probe: empty content is a PROVIDER failure — no repair re-ask, typed det
 });
 
 test("probe: HTTP 429 is a PROVIDER failure; SDK-internal retry is telemetry, NOT a second logical call", async () => {
-  mock.timers.reset(); // let the SDK's real backoff timer run
+  mock.timers.reset();
+  mock.timers.enable({ apis: ["setTimeout"] }); // reserve under mocked timers …
   hits.length = 0;
   replies = [{ status: 429 }, { status: 429 }];
-  const { result, obj, budget } = await seedAndRun("ratelimit");
+  // … then let the SDK's real backoff timer run for the probed call only.
+  const { result, obj, budget } = await seedAndRun("ratelimit", { realTimersForCall: true });
   assert.equal(result.ok, false);
   assert.equal(hits.length, 2, "SDK maxRetries=1 ⇒ two HTTP attempts for one logical call");
   assert.match(String(obj.management.interpretationDetail), /model unavailable \(rate_limit\)/);

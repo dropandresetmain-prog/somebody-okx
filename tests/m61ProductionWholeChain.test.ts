@@ -13,6 +13,7 @@ import {
   applyInterpretation,
   applyDecision,
   beginFinalSemanticAssessment,
+  beginInterpretation,
   runManagementPass,
 } from "../convex/management";
 import {
@@ -173,10 +174,21 @@ async function seedFounderOnly(
 }
 
 async function interpretDeliverable(t: Backend, key: string, reqKey: string) {
+  // V7 review R3 fence: applyInterpretation now only applies against a
+  // matching PENDING reservation, so beginInterpretation must reserve the
+  // requestId first (the same two-step seam production uses) before we can
+  // hand-build the interpretation and apply it.
+  const begin = (await t.mutation(async (ctx) =>
+    (beginInterpretation as unknown as Handler)._handler(ctx, {
+      objectiveKey: key,
+      at: now,
+    }),
+  )) as { proceed: boolean; requestId?: string; reason?: string };
+  assert.equal(begin.proceed, true, begin.reason);
   const interpreted = (await t.mutation(async (ctx) =>
     (applyInterpretation as unknown as Handler)._handler(ctx, {
       objectiveKey: key,
-      requestId: `interpret_${key}`,
+      requestId: begin.requestId!,
       rawContract: {
         intent: "deliver a relaunch recommendation",
         levels: [

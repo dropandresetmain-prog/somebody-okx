@@ -22,6 +22,7 @@ import {
 import {
   buildConvexManagementPorts,
   applyInterpretation,
+  beginInterpretation,
   applyDecision,
   runManagementPass,
   BEGIN_DECISION_CEILING,
@@ -283,10 +284,19 @@ test("production loop: interpret → decide → dispatch → verify → propose 
   const t = convexTest(schema, modules);
   const key = "obj_loop";
   const reqKey = "req_loop";
-  const requestId = "interpret_obj_loop_a1";
 
   // Phase 1: Seed objective + applyInterpretation
   await seedObjective(t, key);
+  // V7 review R3 fence: applyInterpretation now only applies against a
+  // matching PENDING reservation, so beginInterpretation must reserve the
+  // requestId first (the same two-step seam production uses) before we can
+  // hand-build the interpretation and apply it. The requestId is no longer
+  // a hardcoded literal -- it is whatever beginInterpretation reserves.
+  const begin = await t.mutation(async (ctx) =>
+    (beginInterpretation as unknown as Handler)._handler(ctx, { objectiveKey: key, at: now }),
+  ) as { proceed: boolean; requestId?: string; reason?: string };
+  assert.equal(begin.proceed, true, `beginInterpretation failed: ${begin.reason}`);
+  const requestId = begin.requestId!;
   const interpretResult = await invokeApplyInterpretation(t, {
     objectiveKey: key,
     requestId,
@@ -713,10 +723,16 @@ test("N5 garbage interpretation: applyInterpretation with rawContract null retur
   const t = convexTest(schema, modules);
   const key = "obj_n5_garbage";
   await seedObjective(t, key);
+  // V7 review R3: garbage is delivered against a REAL reservation (the fence
+  // refuses any apply without one, before touching state).
+  const begin = await t.mutation(async (ctx) =>
+    (beginInterpretation as unknown as Handler)._handler(ctx, { objectiveKey: key, at: now }),
+  ) as { proceed: boolean; requestId?: string; reason?: string };
+  assert.equal(begin.proceed, true, begin.reason);
 
   const result = await invokeApplyInterpretation(t, {
     objectiveKey: key,
-    requestId: "interpret_n5_a1",
+    requestId: begin.requestId!,
     rawContract: null,
     rawRequirements: rawRequirements("req_n5"),
     founderResolvedQuestions: [],
@@ -731,7 +747,8 @@ test("N5 garbage interpretation: applyInterpretation with rawContract null retur
 
   const obj = await readObjective(t, key);
   assert.equal(obj.management.interpretationStatus, "refused", "interpretationStatus is refused");
-  assert.equal(obj.management.interpretationAttempts, 1, "interpretationAttempts incremented");
+  // beginInterpretation counted this attempt; the refusal must not count it again (V7 R3).
+  assert.equal(obj.management.interpretationAttempts, 1, "exactly one attempt counted");
 });
 
 test("N6 result without proof: completed run with NO evidence does NOT satisfy requirement", async () => {

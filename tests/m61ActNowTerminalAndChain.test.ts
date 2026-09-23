@@ -7,6 +7,7 @@ import schema from "../convex/schema";
 import {
   applyInterpretation,
   applyDecision,
+  beginInterpretation,
   runManagementPass,
 } from "../convex/management";
 import {
@@ -486,10 +487,21 @@ test("seam coverage (not Gate-1 F): interpret → MAKE proofs → BUY release �
     });
   });
 
+  // V7 review R3 fence: applyInterpretation now only applies against the
+  // pending reservation beginInterpretation wrote, so the reservation must
+  // be taken first and its requestId reused (same two-step seam production
+  // uses; see tests/m61ProductionWholeChain.test.ts).
+  const begin = (await t.mutation(async (ctx) =>
+    (beginInterpretation as unknown as Handler)._handler(ctx, {
+      objectiveKey: key,
+      at: now,
+    }),
+  )) as { proceed: boolean; requestId?: string; reason?: string };
+  assert.equal(begin.proceed, true, begin.reason);
   const interpreted = (await t.mutation(async (ctx) =>
     (applyInterpretation as unknown as Handler)._handler(ctx, {
       objectiveKey: key,
-      requestId: `interpret_${key}`,
+      requestId: begin.requestId!,
       rawContract: {
         intent: "deliver a relaunch recommendation",
         levels: [
@@ -942,10 +954,19 @@ test("supplied-evidence variant: adequate owned evidence needs no BUY", async ()
       at: now,
     });
   });
+  // V7 review R3 fence: reserve via beginInterpretation before applying (see
+  // comment on the "seam coverage" test above for why).
+  const begin = (await t.mutation(async (ctx) =>
+    (beginInterpretation as unknown as Handler)._handler(ctx, {
+      objectiveKey: key,
+      at: now,
+    }),
+  )) as { proceed: boolean; requestId?: string; reason?: string };
+  assert.equal(begin.proceed, true, begin.reason);
   const interpreted = (await t.mutation(async (ctx) =>
     (applyInterpretation as unknown as Handler)._handler(ctx, {
       objectiveKey: key,
-      requestId: `interpret_${key}`,
+      requestId: begin.requestId!,
       rawContract: {
         intent: "deliver relaunch from owned evidence",
         levels: [
@@ -1021,10 +1042,19 @@ test("concurrent management wakes cannot create two current actions", async () =
     });
   });
 
+  // V7 review R3 fence: reserve via beginInterpretation before applying (see
+  // comment on the "seam coverage" test above for why).
+  const begin = (await t.mutation(async (ctx) =>
+    (beginInterpretation as unknown as Handler)._handler(ctx, {
+      objectiveKey: key,
+      at: now,
+    }),
+  )) as { proceed: boolean; requestId?: string; reason?: string };
+  assert.equal(begin.proceed, true, begin.reason);
   const interpreted = (await t.mutation(async (ctx) =>
     (applyInterpretation as unknown as Handler)._handler(ctx, {
       objectiveKey: key,
-      requestId: `interpret_${key}`,
+      requestId: begin.requestId!,
       rawContract: {
         intent: "produce a sourced observation",
         levels: [

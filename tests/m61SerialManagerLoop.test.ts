@@ -16,6 +16,7 @@ import {
   applyInterpretation,
   applyDecision,
   runManagementPass,
+  beginInterpretation,
 } from "../convex/management";
 import { initBudget, putContract, putIntent, putRequirement } from "../convex/internal/workforce";
 import { readWorkerObservation, updateCompanyArtifact } from "../convex/objectives";
@@ -528,11 +529,20 @@ test("production seam: serial DELIVERABLE + verified BUY → release for redecid
     (initBudget as unknown as Handler)._handler(ctx, { objectiveKey: key, at: now }),
   );
 
+  // V7 review R3 fence: applyInterpretation only applies against the CURRENT
+  // pending reservation, so it must be reserved via beginInterpretation first
+  // (production always goes beginInterpretation → proposeInterpretation →
+  // applyInterpretation).
+  const begin = (await t.mutation(async (ctx) =>
+    (beginInterpretation as unknown as Handler)._handler(ctx, { objectiveKey: key, at: now }),
+  )) as { proceed: boolean; requestId?: string };
+  assert.equal(begin.proceed, true);
+
   // Interpret with explicit deliverable kind (production parse path).
   const interpreted = (await t.mutation(async (ctx) =>
     (applyInterpretation as unknown as Handler)._handler(ctx, {
       objectiveKey: key,
-      requestId: `interpret_${key}`,
+      requestId: begin.requestId!,
       rawContract: {
         intent: "deliver a relaunch recommendation",
         levels: [
@@ -944,10 +954,16 @@ test("applyDecision against moved contract revision returns ok:false stale", asy
     (initBudget as unknown as Handler)._handler(ctx, { objectiveKey: key, at: now }),
   );
 
+  // V7 review R3 fence: reserve the interpretation before applying it.
+  const begin = (await t.mutation(async (ctx) =>
+    (beginInterpretation as unknown as Handler)._handler(ctx, { objectiveKey: key, at: now }),
+  )) as { proceed: boolean; requestId?: string };
+  assert.equal(begin.proceed, true);
+
   const interpreted = (await t.mutation(async (ctx) =>
     (applyInterpretation as unknown as Handler)._handler(ctx, {
       objectiveKey: key,
-      requestId: `interpret_${key}`,
+      requestId: begin.requestId!,
       rawContract: {
         intent: "stale revision refuse",
         levels: [{ levelKey: "goal", order: 1, statement: "goal", label: "Goal" }],
@@ -1331,10 +1347,16 @@ test("integration: founder request → interpret(m61_serial_v1) → authorize MA
     (initBudget as unknown as Handler)._handler(ctx, { objectiveKey: key, at: now }),
   );
 
+  // V7 review R3 fence: reserve the interpretation before applying it.
+  const begin = (await t.mutation(async (ctx) =>
+    (beginInterpretation as unknown as Handler)._handler(ctx, { objectiveKey: key, at: now }),
+  )) as { proceed: boolean; requestId?: string };
+  assert.equal(begin.proceed, true);
+
   const interpreted = (await t.mutation(async (ctx) =>
     (applyInterpretation as unknown as Handler)._handler(ctx, {
       objectiveKey: key,
-      requestId: `interpret_${key}`,
+      requestId: begin.requestId!,
       rawContract: {
         intent: "produce a sourced relaunch recommendation",
         levels: [

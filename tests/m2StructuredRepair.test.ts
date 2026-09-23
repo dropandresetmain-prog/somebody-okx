@@ -8,6 +8,7 @@ import { convexTest } from "convex-test";
 import schema from "../convex/schema";
 import {
   beginFinalSemanticAssessment,
+  beginInterpretation,
   BEGIN_FINAL_ASSESSMENT_CEILING,
   BEGIN_FINAL_ASSESSMENT_NONSUBSTANTIVE_CEILING,
   runManagementPass,
@@ -674,7 +675,13 @@ test("interpretation: malformed → one precise repair (legal level keys named) 
           run: null,
           result: null,
           companyArtifacts: [],
-          management: { contractId: null, interpretationStatus: "pending", interpretationAttempts: 1 },
+          // V7 review R3 fence: applyInterpretation now only applies for the
+          // CURRENT pending reservation (status "pending" + matching
+          // requestId), written by beginInterpretation. A pre-seeded
+          // "pending" cursor with no matching requestId would be rejected
+          // outright, so the reservation is obtained for real below instead
+          // of being hand-built here.
+          management: { contractId: null },
         } as never,
       });
     });
@@ -705,10 +712,20 @@ test("interpretation: malformed → one precise repair (legal level keys named) 
       reqs.push(req);
       return scenario === "repairs" && reqs.length === 2 ? good : bad;
     });
+    // V7 review R3 fence: applyInterpretation only accepts the requestId
+    // that beginInterpretation just reserved (management.interpretationStatus
+    // === "pending" && interpretationRequestId === args.requestId), so the
+    // reservation must be obtained through the real handler first — a
+    // hand-built requestId is now rejected as "no matching pending
+    // interpretation reservation".
+    const begin = (await t.mutation(async (ctx) =>
+      (beginInterpretation as unknown as Handler)._handler(ctx, { objectiveKey: key, at: now }),
+    )) as { proceed: boolean; requestId?: string; reason?: string };
+    assert.equal(begin.proceed, true, begin.reason);
     const result = (await t.action(async (ctx) =>
       (proposeInterpretation as unknown as Handler)._handler(ctx, {
         objectiveKey: key,
-        requestId: `interpret_${key}_a1`,
+        requestId: begin.requestId!,
         request: "Improve our relaunch messaging using the launch context.",
         founderResolvedQuestions: [],
       }),
