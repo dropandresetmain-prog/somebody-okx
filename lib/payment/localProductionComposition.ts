@@ -8,6 +8,7 @@ import {
 } from "./m3FounderNarrativeProduct";
 import { FileFounderConfirmationLedger, resolveFounderConfirmationLedgerPath, createSupervisedSubmit } from "./supervisedDriverAdapter";
 import { createXLayerJsonRpcTransport, readAndVerifyXLayerSettlement, XLAYER_TESTNET_NETWORK } from "./xlayerSettlement";
+import { withAcquisitionRecording } from "./acquisitionRecordReplay";
 import type { PurchaseRecord, SettlementObservation } from "./types";
 import type { M3BuyerRailDeps } from "../management/m3BuyerRail";
 import type { M3ProductionDriverDeps } from "../management/m3ProductionDriver";
@@ -126,7 +127,10 @@ export function createLocalProductionComposition(applicationRoot: string): Pick<
     // signed request; an operator can reconcile the provider out-of-band.
     async sendWithPayment() { return { success: false }; },
   };
-  const verifyResult: M3BuyerRailDeps["verifyResult"] = verifyProductionM3Result;
+  // Opt-in (M2-I): when M3_VERIFIED_ACQUISITION_RECORD_DIR is an absolute path,
+  // a verified observation is durably recorded. Disabled by default, in which
+  // case this is a pure passthrough and the rail behaves exactly as before.
+  const verifyResult: M3BuyerRailDeps["verifyResult"] = withAcquisitionRecording(verifyProductionM3Result);
   const submit = createSupervisedSubmit({ confirmations, merchantEndpoint, fetchChallenge: () => fetchChallenge(merchantEndpoint), executionAuthority: authority, settlementReaderForPurchase, paidRequestSender, verifyResult, railConfig: config });
   const railForPurchase = (purchase: PurchaseRecord): M3BuyerRailDeps => ({
     mode: "m3_available_bounded", railConfig: config, executor: { kind: "official_onchainos", async executeApprovedPayment() { throw new Error("observation rail cannot execute"); } },
