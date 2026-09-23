@@ -77,6 +77,16 @@ export function evaluateOptionEligibility(
   }
   if (primitivesClear) passed.push("primitives_governed");
 
+  if (
+    (input.kind === "internal" || input.kind === "hybrid") &&
+    (input.workerAttemptSlotsRemaining ?? null) === 0
+  ) {
+    reasons.add("budget_exceeded");
+    detail.push(
+      `worker attempt ceiling reached for ${input.requirementKey}; internal dispatch is not available`,
+    );
+  }
+
   // 2. Resource / input ownership.
   // Capability ≠ possession. A worker that can browse public pages does not
   // mean the company owns licensed/private/attested inputs the Requirement needs.

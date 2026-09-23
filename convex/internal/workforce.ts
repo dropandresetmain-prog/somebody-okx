@@ -18,6 +18,7 @@ import {
 } from "../managementValidators";
 import { canAcceptReservation } from "../workforceGuards";
 import { validateCapabilitySpec } from "../../lib/management/capability";
+import { readSomebodyExecutionMode } from "../../lib/execution/executionMode";
 import {
   createBudget,
   trySpendWorkerCreation,
@@ -446,13 +447,79 @@ export const initBudget = internalMutation({
       return (existing as BudgetRow).data;
     }
 
-    const budget = createBudget(args.objectiveKey, args.at);
+    const limits =
+      readSomebodyExecutionMode() === "testnet_demo"
+        ? { maxElapsedMs: 4 * 60 * 60_000 }
+        : {};
+    const budget = createBudget(args.objectiveKey, Date.now(), limits);
     await ctx.db.insert("objectiveBudgets", {
       objectiveKey: args.objectiveKey,
       data: budget,
     });
 
     return budget;
+  },
+});
+
+/** Renew wall-clock elapsed budget window for a long-running founder session. */
+export const resetRequirementWorkerAttempts = internalMutation({
+  args: {
+    objectiveKey: v.string(),
+    requirementKey: v.string(),
+  },
+  returns: vObjectiveBudget,
+  handler: async (ctx, args): Promise<ObjectiveBudget> => {
+    const row = await ctx.db
+      .query("objectiveBudgets")
+      .withIndex("by_objectiveKey", (q) => q.eq("objectiveKey", args.objectiveKey))
+      .unique();
+    if (!row) throw new Error("budget row missing");
+    const current = (row as BudgetRow).data;
+    const attempts = { ...current.used.attemptsByRequirement };
+    delete attempts[args.requirementKey];
+    const next: ObjectiveBudget = {
+      ...current,
+      used: { ...current.used, attemptsByRequirement: attempts },
+    };
+    await ctx.db.patch(row._id, { data: next });
+    return next;
+  },
+});
+
+export const renewContinuationBudget = internalMutation({
+  args: {
+    objectiveKey: v.string(),
+    at: v.number(),
+  },
+  returns: vObjectiveBudget,
+  handler: async (ctx, args): Promise<ObjectiveBudget> => {
+    const row = await ctx.db
+      .query("objectiveBudgets")
+      .withIndex("by_objectiveKey", (q) => q.eq("objectiveKey", args.objectiveKey))
+      .unique();
+    if (!row) {
+      const budget = createBudget(args.objectiveKey, args.at, {
+        maxElapsedMs: readSomebodyExecutionMode() === "testnet_demo" ? 4 * 60 * 60_000 : undefined,
+      });
+      await ctx.db.insert("objectiveBudgets", { objectiveKey: args.objectiveKey, data: budget });
+      return budget;
+    }
+    const current = (row as BudgetRow).data;
+    const next: ObjectiveBudget = {
+      ...current,
+      startedAt: args.at,
+      lastProgressAt: args.at,
+      limits: {
+        ...current.limits,
+        maxElapsedMs:
+          readSomebodyExecutionMode() === "testnet_demo"
+            ? 4 * 60 * 60_000
+            : current.limits.maxElapsedMs,
+      },
+      used: { ...current.used, noProgressCycles: 0 },
+    };
+    await ctx.db.patch(row._id, { data: next });
+    return next;
   },
 });
 

@@ -1661,6 +1661,75 @@ async function releaseSerialAcquisitionForReassessment(
   }
 }
 
+/** Bounded founder-session resume after maxElapsedMs or duplicate decision fingerprint. */
+export const resumeAfterElapsedBudgetStall = internalMutation({
+  args: {
+    objectiveKey: v.string(),
+    requirementKey: v.string(),
+    at: v.number(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await ctx.runMutation(internal.internal.workforce.renewContinuationBudget, {
+      objectiveKey: args.objectiveKey,
+      at: args.at,
+    });
+    const row = await ctx.db
+      .query("objectives")
+      .withIndex("by_key", (q) => q.eq("key", args.objectiveKey))
+      .unique();
+    if (!row) return null;
+    const data = (row as AnyRow).data as Record<string, unknown>;
+    if (data.state === "completed") return null;
+    const mgmt = (data.management ?? {}) as Record<string, unknown>;
+    const fingerprints = {
+      ...((mgmt.decisionInputFingerprints ?? {}) as Record<string, string>),
+    };
+    delete fingerprints[args.requirementKey];
+    const refusalMap = {
+      ...((mgmt.decisionRefusalAttempts ?? {}) as Record<string, number>),
+    };
+    delete refusalMap[args.requirementKey];
+    const contractRevision =
+      (mgmt.currentContractRevision as number | undefined) ?? 1;
+    const reqRows = await ctx.db
+      .query("requirements")
+      .withIndex("by_objectiveRequirement", (q) =>
+        q.eq("objectiveKey", args.objectiveKey).eq("requirementKey", args.requirementKey),
+      )
+      .collect();
+    const reqRow = reqRows
+      .map((r) => (r as AnyRow).data as Requirement)
+      .find((r) => r.contractRevision === contractRevision);
+    if (reqRow && reqRow.strategy !== null) {
+      await ctx.runMutation(internal.internal.workforce.putRequirement, {
+        objectiveKey: args.objectiveKey,
+        requirementKey: args.requirementKey,
+        data: { ...reqRow, strategy: null, updatedAt: args.at },
+        currentContractRevision: contractRevision,
+      });
+    }
+    await ctx.db.patch(row._id, {
+      data: {
+        ...data,
+        state: "executing",
+        management: {
+          ...mgmt,
+          contractId: (mgmt.contractId as string | null) ?? null,
+          decisionInputFingerprints: fingerprints,
+          decisionRefusalAttempts: refusalMap,
+        },
+        updatedAt: args.at,
+      },
+    } as never);
+    await ctx.scheduler.runAfter(0, internal.management.runManagementPass, {
+      objectiveKey: args.objectiveKey,
+      reason: "resume_after_elapsed_budget",
+    });
+    return null;
+  },
+});
+
 export const runManagementPass = internalMutation({
   args: {
     objectiveKey: v.string(),

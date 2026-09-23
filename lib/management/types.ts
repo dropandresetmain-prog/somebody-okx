@@ -373,6 +373,8 @@ export type EligibilityInput = {
   // Financial authority bounds (M3 boundary). M4 may not exceed them.
   spendAuthorityUsd: number | null;
   budgetRemainingUsd: number | null;
+  /** When 0, internal/hybrid worker dispatch cannot start another attempt. */
+  workerAttemptSlotsRemaining?: number | null;
 };
 
 export type EligibilityResult = OptionEligibility;

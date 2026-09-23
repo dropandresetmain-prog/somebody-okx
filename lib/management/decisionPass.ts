@@ -504,6 +504,13 @@ export async function buildDecisionPassInput(
         budgetRemainingUsd: budget
           ? budget.limits.maxExternalSpendUsd - budget.used.externalSpendCommittedUsd
           : 0,
+        workerAttemptSlotsRemaining: budget
+          ? Math.max(
+              0,
+              budget.limits.maxWorkerAttemptsPerRequirement -
+                (budget.used.attemptsByRequirement[requirement.requirementKey] ?? 0),
+            )
+          : null,
       },
       recommend,
       at: reads.at,
