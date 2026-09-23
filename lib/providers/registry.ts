@@ -10,9 +10,14 @@ import { newsliquidAdapter } from "./newsliquid";
 import { xbirdAdapter } from "./xbird";
 import { controlledTestMerchantAdapter } from "./controlledTestMerchant";
 import { M3_PRODUCT_PROVIDER_ID } from "../payment/m3FounderNarrativeProduct";
+import { NEWSLIQUID_PROVIDER_ID } from "../payment/newsliquidProduct";
 
 const ADAPTERS: Record<string, ProviderAdapter> = {
   newsliquid: newsliquidAdapter,
+  // Real live OKX x402 provider registry key ("2135") — distinct from the
+  // legacy "newsliquid" fixture key above, keyed by providerId string to
+  // match the M3 controlled-test-merchant adapter's convention.
+  [NEWSLIQUID_PROVIDER_ID]: newsliquidAdapter,
   xbird: xbirdAdapter,
   [M3_PRODUCT_PROVIDER_ID]: controlledTestMerchantAdapter,
 };

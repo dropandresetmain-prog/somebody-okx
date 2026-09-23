@@ -16,23 +16,41 @@ import {
   M3_PRODUCT_FULFILLMENT_SCOPE,
   resolveSupportedPurposeKind,
 } from "../payment/m3FounderNarrativeProduct";
+import {
+  NEWSLIQUID_PROVIDER_ID,
+  NEWSLIQUID_SERVICE_ID,
+  NEWSLIQUID_FULFILLMENT_SCOPE,
+  resolveSupportedPurposeKind as resolveNewsliquidSupportedPurposeKind,
+} from "../payment/newsliquidProduct";
 
 export type ComposedExternalExecution = {
   providerId: string;
   serviceId: string;
-  /** Physical boundary that can fulfill this service today. */
-  boundary: "m3_local_testnet_merchant";
+  /**
+   * Physical boundary that can fulfill this service today.
+   *   m3_local_testnet_merchant — the Somebody-controlled TESTNET fixture merchant.
+   *   okx_x402_live_mainnet     — a REAL third-party provider on the live OKX
+   *                               x402 rail (X Layer mainnet, eip155:196). Real
+   *                               money; this boundary alone is not a payment
+   *                               authorization — it only says a composed path exists.
+   */
+  boundary: "m3_local_testnet_merchant" | "okx_x402_live_mainnet";
 };
 
 /**
- * Services the current local M3 TESTNET composition can purchase and normalize.
- * Expand this table only when a real composed path exists — not to make demos pass.
+ * Services the current composition can purchase and normalize. Expand this
+ * table only when a real composed path exists — not to make demos pass.
  */
 export const COMPOSED_EXTERNAL_EXECUTION: readonly ComposedExternalExecution[] = [
   {
     providerId: M3_PRODUCT_PROVIDER_ID,
     serviceId: M3_PRODUCT_SERVICE_ID,
     boundary: "m3_local_testnet_merchant",
+  },
+  {
+    providerId: NEWSLIQUID_PROVIDER_ID,
+    serviceId: NEWSLIQUID_SERVICE_ID,
+    boundary: "okx_x402_live_mainnet",
   },
 ];
 
@@ -68,27 +86,54 @@ export function externalOfferingAcceptsPurpose(input: {
   purposeKind?: string | null;
   resourceClass?: string | null;
 }): boolean {
-  if (input.serviceId !== M3_PRODUCT_SERVICE_ID) return true;
-  const purposeKind =
-    typeof input.purposeKind === "string" && input.purposeKind.trim()
-      ? input.purposeKind.trim()
-      : null;
-  if (purposeKind === null) return false;
-  if (
-    !(M3_PRODUCT_FULFILLMENT_SCOPE.purposeKinds as readonly string[]).includes(purposeKind) ||
-    !input.resourceClass ||
-    !(M3_PRODUCT_FULFILLMENT_SCOPE.resourceClasses as readonly string[]).includes(input.resourceClass)
-  ) {
-    return false;
+  if (input.serviceId === M3_PRODUCT_SERVICE_ID) {
+    const purposeKind =
+      typeof input.purposeKind === "string" && input.purposeKind.trim()
+        ? input.purposeKind.trim()
+        : null;
+    if (purposeKind === null) return false;
+    if (
+      !(M3_PRODUCT_FULFILLMENT_SCOPE.purposeKinds as readonly string[]).includes(purposeKind) ||
+      !input.resourceClass ||
+      !(M3_PRODUCT_FULFILLMENT_SCOPE.resourceClasses as readonly string[]).includes(input.resourceClass)
+    ) {
+      return false;
+    }
+    const resolved = resolveSupportedPurposeKind({
+      resourceClass: input.resourceClass,
+      productId: M3_PRODUCT_SERVICE_ID,
+      serviceId: M3_PRODUCT_SERVICE_ID,
+      offeringId: null,
+      purpose: input.purpose ?? null,
+      purposeKind,
+      requestId: null,
+    });
+    return resolved.ok;
   }
-  const resolved = resolveSupportedPurposeKind({
-    resourceClass: input.resourceClass,
-    productId: M3_PRODUCT_SERVICE_ID,
-    serviceId: M3_PRODUCT_SERVICE_ID,
-    offeringId: null,
-    purpose: input.purpose ?? null,
-    purposeKind,
-    requestId: null,
-  });
-  return resolved.ok;
+
+  if (input.serviceId === NEWSLIQUID_SERVICE_ID) {
+    const purposeKind =
+      typeof input.purposeKind === "string" && input.purposeKind.trim()
+        ? input.purposeKind.trim()
+        : null;
+    if (purposeKind === null) return false;
+    if (
+      !(NEWSLIQUID_FULFILLMENT_SCOPE.purposeKinds as readonly string[]).includes(purposeKind) ||
+      !input.resourceClass ||
+      !(NEWSLIQUID_FULFILLMENT_SCOPE.resourceClasses as readonly string[]).includes(input.resourceClass)
+    ) {
+      return false;
+    }
+    const resolved = resolveNewsliquidSupportedPurposeKind({
+      resourceClass: input.resourceClass,
+      serviceId: NEWSLIQUID_SERVICE_ID,
+      offeringId: null,
+      purpose: input.purpose ?? null,
+      purposeKind,
+      requestId: null,
+    });
+    return resolved.ok;
+  }
+
+  return true;
 }

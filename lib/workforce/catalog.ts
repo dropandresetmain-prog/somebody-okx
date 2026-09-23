@@ -235,12 +235,28 @@ export type PurposeScopeDefinition = {
  */
 export const FOUNDER_MESSAGING_QUALITATIVE_PURPOSE_KIND =
   "founder_messaging_qualitative" as const;
+/**
+ * LIVE external social-platform (Twitter/X) intelligence obtained from a real
+ * third-party data provider (e.g. Newsliquid / OKX x402 live mainnet rail).
+ * Distinct from FOUNDER_MESSAGING_QUALITATIVE_PURPOSE_KIND, which is
+ * synthetic qualitative research and explicitly NOT live Twitter/NewsLiquid
+ * data (see the M3 controlled-test-merchant product's own scope notes). This
+ * kind is for current, real social-platform evidence — never synthetic.
+ */
+export const EXTERNAL_SOCIAL_INTELLIGENCE_PURPOSE_KIND =
+  "external_social_intelligence" as const;
 export const PURPOSE_SCOPES: readonly PurposeScopeDefinition[] = [
   {
     kind: FOUNDER_MESSAGING_QUALITATIVE_PURPOSE_KIND,
     resourceClasses: ["proprietary_data"],
     description:
       "Qualitative research on how founders/audiences perceive and describe a product's messaging. Not causal attribution, conversion measurement, or live platform data.",
+  },
+  {
+    kind: EXTERNAL_SOCIAL_INTELLIGENCE_PURPOSE_KIND,
+    resourceClasses: ["proprietary_data"],
+    description:
+      "Live, current social-platform (Twitter/X) intelligence obtained from a real third-party data provider. Not synthetic/simulated research and not internal company records.",
   },
 ];
 export const GOVERNED_PURPOSE_KINDS: readonly string[] = PURPOSE_SCOPES.map(

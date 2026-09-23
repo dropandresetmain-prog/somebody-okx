@@ -8,6 +8,7 @@ import type { ObjectiveRecord } from "../lib/workforce";
 import { normalizeObjectiveRequest } from "../lib/product/objectiveRequest";
 import { createArtifact } from "../lib/objective/artifact";
 import { GENERIC_OBJECTIVE_DELIVERABLE } from "../lib/objective/seedData";
+import { EXTERNAL_SOCIAL_INTELLIGENCE_PURPOSE_KIND } from "../lib/workforce/catalog";
 
 export {
   OBJECTIVE_REQUEST_MAX_CHARS,
@@ -64,7 +65,27 @@ export async function createReceivedObjective(
         at: now,
       }),
     ],
-  };
+    // Real founder `/start` path ONLY (productVisibility "visible"). Narrow,
+    // application-owned purpose-scope authority, set BEFORE interpretation
+    // runs, mirroring how setupCanonicalDemoObjective pre-seeds its own
+    // (different) policy — see CANONICAL_AUTHORIZED_PURPOSE_POLICY. This only
+    // ever binds if interpretation produces exactly one Requirement with
+    // requirementKind "deliverable" (bindAuthorizedPurposePolicy stays
+    // fail-closed otherwise, unchanged). Internal/gate/eval Objectives
+    // (productVisibility "internal", e.g. the legacy submitObjective mutation)
+    // intentionally get NO policy here and remain fail-closed as before.
+    ...(productVisibility === "visible"
+      ? {
+          management: {
+            contractId: null,
+            authorizedPurposePolicy: {
+              purposeKind: EXTERNAL_SOCIAL_INTELLIGENCE_PURPOSE_KIND,
+              targetRequirementKind: "deliverable" as const,
+            },
+          },
+        }
+      : {}),
+  } as ObjectiveRecord;
   await ctx.db.insert("objectives", { key, data: record });
   await ctx.db.insert("objectiveEvents", {
     objectiveKey: key,
