@@ -92,3 +92,69 @@ Item commits (each pushed at the item boundary):
 | H | `72329bf` | Financial/result truth in the payment seam: no reverted→pending flattening, provider results bound to the exact normalized request. The `SettlementReader` observation is now a typed four-state surface (`settled` / explicit `pending` / observed `reverted` / observed `mismatch`); legacy boolean-only readers keep their exact prior REST semantics. The production composition maps `readAndVerifyXLayerSettlement` states 1:1 (extracted as the pure, tested `mapXLayerVerificationToObservation`) — an observed revert (receipt status 0x0 = proven non-settlement) or mismatch can no longer rest forever at `submitted`; the rail records them through M3's real lifecycle (`report_failure` from submitted → `reconciliation_required`) with the revert block/mismatch reason carried verbatim into the durable detail and a `recovery_event` wake — never a settled success, never blind repayment. `verifyResult` is now `verifyProductionM3Result`: protected-result shape truth AND identity binding of `requestId`/`offeringId`/`serviceId` to THIS intent's exact normalized request (a well-formed result issued for a different purchase refuses with a `m3-result-binding-rejected` proof naming the mismatch). Tests: `m61PaymentResultTruth` (+9). Full suite 1025/1014 pass/11 fail — failing set byte-identical to base; typecheck error set identical to HEAD; convex tsconfig clean; no signing/payment/merchant/provider invocation. |
 | I | `4c2408e` | Opt-in verified external acquisition record/replay (`lib/payment/acquisitionRecordReplay.ts`). DISABLED BY DEFAULT: active only when `M3_VERIFIED_ACQUISITION_RECORD_DIR` is an absolute path (relative refused; unset means the production verifier wrapper is a byte-identical passthrough). RECORD plumbing only — no live record was obtained and no provider/merchant/network/wallet call exists in the path. Recording RECOMPUTES verification with the H production verifier (a claimed proof is never trusted): unverified or cross-bound results refuse with no file left behind; records are immutable (re-record of identical content is idempotent; different content for a requestId refuses). Replay is fail-closed at every step — disabled → loud throw; absent → throw ("will not fabricate"); content-hash drift → throw; stored payload must STILL verify bound to the REQUESTING intent/purchase identity (cross-request replay refused); success is labeled `recorded_replay`, never `live`/`simulation`. Composition wires `withAcquisitionRecording(verifyProductionM3Result)` at the rail and supervised-submit seams. Tests: `m61AcquisitionRecordReplay` (+5). Full suite 1030/1019 pass/11 fail — failing set byte-identical to base; typecheck error set identical to HEAD; convex tsconfig clean. |
 | J | `cc3a71d` | V6 preserved + bounded reads + control-note retention. `getObjectiveListV1` collected EVERY objectives row (full management state each) to render ≤20 navigation summaries; it now reads the indexed `by_updatedAt` desc window of 20 (`OBJECTIVE_LIST_WINDOW`), the same discipline as `listObjectives`. The V6 envelope/contract is untouched: same grouping (needsYou/done/inProgress), same row keys, `contractVersion: 1`, and a bounded list never restricts a full workspace read (proved for an out-of-window objective). Control-note retention focused tests: same-identity notes replace in place preserving position and advancing only `at` (a recurring state is ONE note), distinct identities append, and the 40-note ceiling evicts oldest-first while the current-state note survives ceiling pressure. Tests: `m61V6BoundedRetention` (+3); existing V6 seam/render/bounded-list suites (60) still green. Full suite 1033/1022 pass/11 fail — failing set byte-identical to base; typecheck error set identical to HEAD; convex tsconfig clean. |
+
+---
+
+## Review corrections (final-review blockers R1–R4) — branch `fix/reliability-v7-review-blockers`
+
+Reviewed base `integration/demo-replay-v6` @ `d9ea006`; reviewed candidate
+`qoder/general-session-fyws0q` @ `3ce6e76` (17 ahead / 0 behind; 5990dc8→3ce6e76
+docs-only, verified). Repair branch created from exactly `3ce6e76`. The attached
+reviewer evidence bundle was not available in this environment; the reviewer's
+probes were re-derived from the review text, run against the UNMODIFIED
+candidate (all reproduced — see manifest §R), and ported into tests that import
+the real modules.
+
+### Plan (executed in this order)
+
+1. Reproduce R1–R4 against `3ce6e76` (probes + R3 Convex tests).
+2. Shared identity/scope contract (below), then R2+R4 together, then R1 on that
+   boundary, then R3.
+3. Focused tests → dependent-seam tests → full suite once on the frozen candidate.
+
+### Shared identity / scope contract (R1, R2, R4 use ONE definition)
+
+| Element | Definition |
+| --- | --- |
+| Scope vocabulary | `PURPOSE_SCOPES` / `GOVERNED_PURPOSE_KINDS` in `lib/workforce/catalog.ts` — the ONE governed requested-scope vocabulary (currently `founder_messaging_qualitative` → `proprietary_data`). Adapter declarations must be a subset (tested). |
+| Proposed need | Worker gap may carry optional `purposeKind` (model tool enum = the governed list; same schema for every model). A proposal only. |
+| Validated scope | `validateMissingInputProposal` → `ResourceNeed.requestedScope = {purposeKind, authority:"application"}` only if governed AND applicable to the class; unknown → `unknown_purpose_scope`, inapplicable → `purpose_scope_class_mismatch` (typed refusals, nothing coerced). Absent → need without scope. Scope joins `dedupeKey` and the fingerprint need identity only when present (legacy identities unchanged). Stored rows are re-checked by `validatedRequestedPurposeKind`. |
+| Fulfillment declaration | Adapter-owned `M3_PRODUCT_FULFILLMENT_SCOPE` (unchanged). |
+| Compatibility | `externalOfferingAcceptsPurpose`: validated kind ∈ declared kinds AND class ∈ declared classes AND prose has no affirmative out-of-scope claim. No kind → incompatible. Keyword acceptance deleted (grounding and merchant). |
+| Intent | `ExecutionIntent.requestedPurposeKind` bound at dispatch from the bound need's validated scope (null otherwise). |
+| Authorized request | `m3AuthorizedRequestFromIntent` — requestId, provider, service, offering, class, kind, `normalizeM3Purpose(purpose)` (trim → 500 → trim; same function for header, merchant echo, verifier). Incomplete/undeclared authority refuses; no demo-product fallback. |
+| Purchase identity | `purchaseIdentityFromIntent` (unchanged; note `resourceNeedId` = `intent.requirementKey` by that mapping's convention). |
+
+### Acceptance criteria and status
+
+| ID | Acceptance | Status |
+| --- | --- | --- |
+| R1 | One canonical authenticated binding (intent, purchase, authorized request, strict result, contentHash, proof; HMAC-SHA256, domain-separated, dedicated `M3_VERIFIED_ACQUISITION_RECORD_KEY`); returned content = verified result content; strict runtime parse; whole-binding idempotency; exclusive create (`link` EEXIST, no overwrite); disabled default; key-less refuses; legacy v1 refuses; replay non-executing, `recorded_replay`, source provenance preserved; recording failure throws → purchase stays `result_received`, no repay/re-sign. | Done — `tests/v7ReviewR1R2Binding.test.ts` (R1 ×8), `tests/m61AcquisitionRecordReplay.test.ts` (ported ×5) |
+| R2 | Purchase ↔ intent identity; complete adapter-declared target authority; strict result shape (provider, evidence, payload, exact limitation); exact provider/service/offering/class/request/scope/normalized-purpose binding; merchant request refused before signing on incomplete authority. | Done — `tests/v7ReviewR1R2Binding.test.ts` (R2 ×9), `tests/m61PaymentResultTruth.test.ts` (H3c inverted: no demo-offering fallback) |
+| R3 | Apply only for the current pending reservation (exact accepted idempotency kept); no double count; stored deadline + one bounded re-arm; expiry hands back to `beginInterpretation` → next attempt or explicit `escalated`. | Done — `tests/v7ReviewR3InterpretationFence.test.ts` (×8) |
+| R4 | Validated structured scope through the real grounding→authorization→request→verification path; paraphrases stable; signal-word prose not eligible; missing/unknown/conflicting scope fails closed; supported acquisition still works; no forced strategy/provider. | Done — `tests/v7ReviewR4PurposeScope.test.ts` (×8, real Convex path), whole-chain asserts intent scope |
+
+### Current checkpoint
+
+- `31040a1` code + focused tests; `6ea58da` R4 fixture/twin updates; `ff2394d`
+  fence-dependent test updates = **frozen corrected code candidate and gate SHA**.
+- Gate on `ff2394d`: 1066 tests / 1056 pass / 10 fail (failing names and assertion
+  locations identical to `3ce6e76` on this machine: 1033/1023/10); root typecheck 55,
+  identical set; Convex typecheck clean; Next build compiles then fails on the identical
+  inherited 55-error type-check set. Commits after `ff2394d` are docs-only (manifest §
+  "Review corrections" has the diff proof command).
+- Status: READY FOR INDEPENDENT RE-REVIEW (not self-approved).
+
+### Findings carried (classified)
+
+| Finding | Class | Blocker | Action / revisit |
+| --- | --- | --- | --- |
+| Rich correction context loses unknowns/recommended action after reopening (rationale + locked criteria remain) | Park for Later | No | Revisit when correction-quality regressions appear in a gate run. |
+| Associated history reads unbounded within the 20-Objective list window | Park for Later | No | Revisit when list latency/IO is measured or history grows. |
+| Historical ResourceNeeds entering current-revision decision fingerprints | Investigate Now | No (not required by R1–R4; the R4 change only appends scope to need identity) | Next reliability pass. |
+| Recorded-replay ingestion and MAKE-resume integration unproven (replay has no production consumer; only recording is wired) | Investigate Now | No | Before any replay-backed demo. |
+| Worker-proposed kind is validated for vocabulary + class applicability and bounded by prose refusal, obligation/evidence validation, spend grant and M3 approval — but its semantic fit to the question is not independently verified | Investigate Now | No for this repair (no new authority; missing scope fails closed) | Revisit before adding a second scope/adapter or any non-test spend. |
+| Interpretation apply-REFUSAL (model answered unusably) still has no automatic re-begin (documented as founder-wake driven; no founder re-begin path exists) — expiry now owns its continuation | Investigate Now | No (pre-existing; R3 scope was expiry/late callbacks) | Next reliability pass. |
+| Manager-initiated BUY (no validated need) can no longer buy the purpose-scoped product | Accept (intended R4 behavior) | No | Reviewer to confirm. |
+| Pre-existing authorized intents without `requestedPurposeKind` are refused before signing | Accept (fail-closed, no fictitious migration) | No | — |
+| Inherited root typecheck/test debt | Ignore / Accept Risk | No | Regression-compared, not repaired. |

@@ -106,3 +106,96 @@ byte-identical to the base at every item checkpoint (G, H, I, J logs).
 - No merge to the integration branch, no deploy, no cloud Convex consumption.
 - No model-name branching, forced BUY, proof relaxation, financial/budget
   inflation, or canonical-demo choreography was added.
+
+---
+
+## Review corrections R1–R4 (branch `fix/reliability-v7-review-blockers`)
+
+Starting point: candidate `3ce6e76` (verified 17 ahead / 0 behind base `d9ea006`;
+`5990dc8..3ce6e76` docs-only). Full logs: `C:\Dev\somebody-okx-v7-review-evidence\`
+(outside the repo; file names below). Environment: Windows 11, Node + tsx, shared
+`node_modules` from the same lockfile (no dependency change on this branch).
+
+### §R Reproduction on the UNMODIFIED candidate `3ce6e76` (`repro_baseline.json`)
+
+Reviewer probes re-derived from the review text (the evidence bundle was not
+available here) and run against the real modules:
+
+| Probe | 3ce6e76 |
+| --- | --- |
+| R2 result with wrong `providerId` verifies | `true` (accepted) |
+| R2 purchase/result pair supplied with another intent/Objective verifies | `true` |
+| R2 intent with a wrong provider target verifies | `true` |
+| R2 result with another purpose verifies | `true` |
+| R1 protectedResult-only mutation replays | accepted |
+| R1 content + recomputed hash replays | accepted — returned `FABRICATED CONTENT` |
+| R1 provider/service/offering/proof substitution replays | accepted |
+| R1 same id under another Objective/decision replays | accepted |
+| R4 "Translate our API docs into another language" is purpose-compatible | `true` |
+| R4 "Benchmark CI workflow runtimes" is purpose-compatible | `true` |
+| R4 grounding with the app-owned purpose "saved relaunch recommendation" (no scope) | compatible (`launch` substring) |
+
+R3 (`r3_baseline.log`, `tests/v7ReviewR3InterpretationFence.test.ts` as authored
+against 3ce6e76): 7/8 failed — late VALID callback from expired A applied over
+pending B (`true !== false`); late INVALID callback flipped B to `refused`; a
+never-reserved requestId applied; contract existence validated A; refusal
+double-counted attempts (`2 !== 1`); the watchdog expired a reservation before
+any deadline; after expiry nothing re-began interpretation (only an inert
+`runManagementPass`; the reducer's contract-less branch sets `planning` → stranded).
+
+### Commits
+
+| SHA | Content |
+| --- | --- |
+| `31040a1` | R1–R4 code + focused tests (`v7ReviewR1R2Binding`, `v7ReviewR4PurposeScope`, `v7ReviewR3InterpretationFence`) + intended-contract test updates |
+| `6ea58da` | R4 fixture scope (STOP B), manager-BUY fail-closed twin (pass3), test typing |
+| `ff2394d` | Tests reserve interpretation before apply under the R3 fence (6 files) — **frozen code candidate / gate SHA** |
+
+### Focused evidence (on the repair branch before freeze)
+
+| Command | Result |
+| --- | --- |
+| `npx tsx --test tests/v7ReviewR1R2Binding.test.ts` | 17/17 pass (incl. 4-process creation race: exactly one winner, record intact) |
+| `npx tsx --test tests/v7ReviewR3InterpretationFence.test.ts tests/v7ReviewR4PurposeScope.test.ts` | 16/16 pass |
+| `npx tsx --test tests/m61AcquisitionRecordReplay.test.ts` | 5/5 |
+| `npx tsx --test tests/m61StopBRedecide.test.ts tests/m61Pass3Closure.test.ts` | 11/11 |
+| fence-dependent six files (probe, structured repair, act-now chain, whole chain, serial loop, production loop) | 58/58 |
+
+Test changes that alter a previous expectation (all intended by R1–R4, none weakened):
+`m61PaymentResultTruth` H3c (bare intent no longer bound via demo-offering fallback →
+refused), `managementGrounding` (scoped product incompatible without validated scope;
+compatible with it), `m61LiveAcquisitionBridge` B (acceptance requires the validated
+kind), `m61Pass3Closure` manager BUY (fail-closed twin), `m61AcquisitionRecordReplay`
+(v2 authenticated format; tamper now caught by authentication).
+
+### Canonical gate — run ONCE on `ff2394d` (clean detached worktree)
+
+| Check | Command | Exit | Result | Baseline `3ce6e76` (same machine) |
+| --- | --- | --- | --- | --- |
+| Suite | `npm test` (`tsx --test tests/*.test.ts`) | 1 | 1066 tests / 1056 pass / **10 fail** | 1033 / 1023 / 10 fail |
+| Failing set | name + assertion-location diff | — | **identical** names; identical 20 failing stack locations | — |
+| Root typecheck | `npx tsc --noEmit` | 1 | 55 errors, **identical set** (line-normalized) | 55 |
+| Convex typecheck | `npx tsc -p convex/tsconfig.json --noEmit` | 0 | clean | clean |
+| Next build | `npm run build` | 1 | "✓ Compiled successfully", then fails Next type-check on inherited errors (55, e.g. `scripts/gate/preflight.ts`) | identical: compiled, same 55-error set (line-normalized) |
+
+Build note: with the shared junctioned `node_modules`, Turbopack refused to build at
+all ("Symlink … points out of the filesystem root") for BOTH candidate and baseline —
+environmental; the recorded build used a local copy of the same `node_modules`
+(`build2.log`, `build2_baseline.log`; first attempt `build.log`).
+
+The 10 inherited failures (A6 ×4 `m2LegacyObligations`, CP4, F4, `managementDecision`
+×2, `managementFinishGate` ×2) are unchanged in name and failing assertion. The
+previously reported 11th (`managementRuntime` esbuild bundle) passes on this machine
+(environmental), and the previously reported 38-error typecheck set is 55 here on the
+unmodified candidate (environment/toolchain difference) — comparisons use this
+machine's baseline only.
+
+### Explicit non-claims
+
+- No merchant, provider, wallet, signing, payment, deployment or live model call; no
+  live Objective. The environment has no model credentials (only `.env.example`).
+- No genuine verified replay record exists; none was created or migrated. Every record
+  in tests is a test-key fixture over a locally built result.
+- Replay remains disabled by default; no replay CLI, snapshot playback, ingestion
+  path or demo workflow was added.
+- No merge into `integration/demo-replay-v6`; no approval of promotion claimed.
