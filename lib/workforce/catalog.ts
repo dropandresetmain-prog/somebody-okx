@@ -270,6 +270,15 @@ export function purposeKindAppliesToClass(kind: string, resourceClass: string): 
   const scope = PURPOSE_SCOPES.find((entry) => entry.kind === kind);
   return !!scope && scope.resourceClasses.includes(resourceClass as ResourceClass);
 }
+/**
+ * The external resource classes a governed purpose kind may be sourced as —
+ * read from PURPOSE_SCOPES, the single owner of that relationship. Empty for
+ * an ungoverned kind (fail closed); callers decide how to treat >1 classes.
+ */
+export function externalResourceClassesForPurposeKind(kind: string): ResourceClass[] {
+  const scope = PURPOSE_SCOPES.find((entry) => entry.kind === kind);
+  return scope ? [...scope.resourceClasses] : [];
+}
 // Models may propose capability keys; only controlled keys survive.
 export function validateCapabilityKeys(proposed: readonly string[]): {
   accepted: CapabilityKey[];

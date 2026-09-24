@@ -215,32 +215,38 @@ test("I3: MAKE, desiredCapabilities ['public_information_research'], needsExtern
 
 // ── 5. I3 BUY ────────────────────────────────────────────────────────────────
 
-test("I3: BUY with needsExternalResourceClass 'proprietary_data' → genuine BUY is reachable via snapshot discovery", async () => {
-  // FIXED during CP-4: buildDecisionPassInput validates the model-proposed
-  // external class against the FULL catalog union (RESOURCE_CLASSES), not the
-  // capability-derived RESOURCE_CLASS_VALUES. No controlled capability requires
-  // an external class, so validating against capability requirements would make
-  // every genuine BUY unreachable — exactly the I3 defect this test pins shut.
-  // The snapshot registry carries proprietary_data offerings (X/Twitter social
-  // intelligence), keyword-matched against the requirement text.
-  const reads = makeReads({
-    requirement: makeRequirement(OBJ, "Live narrative intelligence", "current narrative data from X is recorded"),
-  });
+test("I3: BUY with needsExternalResourceClass 'proprietary_data' → market is visible but only a governed sourcing context makes it compatible", async () => {
+  // Sourcing correction: a model-proposed external class is an awareness hint
+  // (which listings to show), never the external fulfillment class. Genuine BUY
+  // stays reachable, but only through a governed external sourcing context —
+  // here the Objective-owned sourcing policy, mapped by the catalogue.
+  const requirement = makeRequirement(OBJ, "Live narrative intelligence", "current narrative data from X is recorded");
   const proposal = {
     strategy: "BUY",
     desiredCapabilities: ["public_information_research"],
     needsExternalResourceClass: "proprietary_data",
   };
 
-  const result = await buildDecisionPassInput(reads, proposal, noopRecommend);
-  assert.equal(result.ok, true);
-  if (!result.ok) throw new Error("expected ok");
+  const bare = await buildDecisionPassInput(makeReads({ requirement }), proposal, noopRecommend);
+  assert.equal(bare.ok, true);
+  if (!bare.ok) throw new Error("expected ok");
+  assert.ok(bare.input.grounding.discovered.length > 0, "market awareness still surfaces listings");
+  for (const offering of bare.input.grounding.discovered) {
+    assert.equal(offering.compatibleResourceClass, false, `${offering.offeringId}: model proposal alone grants no compatibility`);
+  }
 
-  assert.ok(
-    result.input.grounding.discovered.length > 0,
-    "proprietary_data is a known resource class → snapshot discovery must surface offerings, so BUY is reachable",
+  const governed = await buildDecisionPassInput(
+    makeReads({
+      requirement,
+      objectiveSourcingPolicy: { purposeKind: "external_social_intelligence", targetRequirementKind: "deliverable" },
+    }),
+    proposal,
+    noopRecommend,
   );
-  for (const offering of result.input.grounding.discovered) {
+  assert.equal(governed.ok, true);
+  if (!governed.ok) throw new Error("expected ok");
+  assert.ok(governed.input.grounding.discovered.length > 0);
+  for (const offering of governed.input.grounding.discovered) {
     assert.equal(offering.resourceClass, "proprietary_data");
     assert.equal(offering.registryVerified, true, `${offering.offeringId} must be registry-verified`);
     assert.equal(offering.compatibleResourceClass, true);

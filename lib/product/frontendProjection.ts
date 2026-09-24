@@ -375,9 +375,41 @@ type DecodedOption = {
   eligible: boolean | null;
   /** Persisted ineligibility detail — never inferred from reasons alone. */
   ineligibilityDetail: string | null;
+  /** Founder-facing compact ineligibility (raw detail stays in source truth). */
+  unsuitability: FounderUnsuitability | null;
   providerLabel: string | null;
   amount: { amount: string; currency: string } | null;
 };
+
+type FounderUnsuitability = { kind: "not_suitable" | "not_available"; reason: string | null };
+
+/**
+ * Compact founder copy for an ineligible sourcing option, derived from the
+ * persisted STRUCTURED eligibility facts (never by parsing the raw detail).
+ * The raw implementation sentence remains in the persisted decision row for
+ * debugging/evidence; it is simply not the founder-facing copy.
+ */
+function founderUnsuitability(raw: Record<string, unknown>): FounderUnsuitability {
+  const eligibility = raw.eligibility as { reasons?: unknown } | null | undefined;
+  const reasons = new Set(Array.isArray(eligibility?.reasons) ? eligibility!.reasons.map(String) : []);
+  const external = raw.external as
+    | {
+        registryVerified?: unknown;
+        compatibleResourceClass?: unknown;
+        executionPathConfigured?: unknown;
+        purposeScopeCompatible?: unknown;
+      }
+    | null
+    | undefined;
+  if (external) {
+    if (external.compatibleResourceClass === false) return { kind: "not_suitable", reason: "Different resource type" };
+    if (external.purposeScopeCompatible === false) return { kind: "not_suitable", reason: "Different purpose" };
+    if (reasons.has("budget_exceeded")) return { kind: "not_suitable", reason: "Over budget" };
+    return { kind: "not_available", reason: null };
+  }
+  if (reasons.has("input_not_owned")) return { kind: "not_suitable", reason: "Needs inputs we don't have" };
+  return { kind: "not_available", reason: null };
+}
 
 const FACTUAL_PRICE_SOURCES: ReadonlySet<string> = new Set(["measured", "provider_quote", "persisted_evidence", "registry_data"]);
 
@@ -410,6 +442,7 @@ function decodeOptions(summary: string): DecodedOption[] {
         label: label ? String(label) : null,
         eligible,
         ineligibilityDetail,
+        unsuitability: eligible === false ? founderUnsuitability(raw) : null,
         providerLabel,
         amount: hasFactualPrice ? toMoney(external!.priceUsd as number) : null,
       };
@@ -1607,7 +1640,12 @@ export function projectActivity(source: ProductSource, facts: ObjectiveFacts, no
             approach: opt.approach,
             label: clip(opt.label ?? reqTitle(decision.requirementKey, decision.contractRevision), 160),
             status: opt.eligible === false ? "ineligible" : "eligible",
-            ...(opt.eligible === false && opt.ineligibilityDetail ? { reason: clip(opt.ineligibilityDetail, 200) } : {}),
+            ...(opt.unsuitability
+              ? {
+                  unsuitability: opt.unsuitability.kind,
+                  ...(opt.unsuitability.reason ? { reason: opt.unsuitability.reason } : {}),
+                }
+              : {}),
             ...(opt.providerLabel ? { providerLabel: clip(opt.providerLabel, 80) } : {}),
             ...(opt.amount ? { amount: opt.amount } : {}),
           }))

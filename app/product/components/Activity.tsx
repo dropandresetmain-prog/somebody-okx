@@ -522,6 +522,12 @@ function DecisionOption({
   );
 }
 
+function consideredStatusText(option: ManagerDecisionConsideredOption): string {
+  if (option.status === "eligible") return "Eligible";
+  if (option.unsuitability === "not_available") return "Not available for this task";
+  return option.reason ? `Not suitable — ${option.reason}` : "Not suitable";
+}
+
 // Every persisted option Somebody weighed — eligible and ineligible alike, so
 // the founder can see the marketplace was actually checked, not just the pick.
 function ConsideredOptions({
@@ -535,7 +541,6 @@ function ConsideredOptions({
     <ul className="v6-considered-list">
       {considered.map((option, index) => {
         const isSelected = Boolean(selectedOptionId) && option.optionId === selectedOptionId;
-        const eligible = option.status === "eligible";
         return (
           <li
             key={option.optionId || index}
@@ -551,7 +556,7 @@ function ConsideredOptions({
               </span>
             ) : null}
             <span className="v6-considered-status">
-              {eligible ? "Eligible" : option.reason ? `Not suitable — ${option.reason}` : "Not suitable"}
+              {consideredStatusText(option)}
             </span>
           </li>
         );

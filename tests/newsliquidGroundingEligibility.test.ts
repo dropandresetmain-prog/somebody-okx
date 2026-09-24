@@ -192,7 +192,11 @@ test("Newsliquid: OLD behavior preserved — generic objectives with no authoriz
   }
 });
 
-test("Newsliquid: authorized Requirement but worker proposes NO purposeKind — no scope invented, offering not compatible", async () => {
+test("Newsliquid: authorized Requirement but worker proposes NO purposeKind — no scope invented on the need; the application-owned scope supplies purpose", async () => {
+  // Sourcing correction: the worker is not forced to reproduce application
+  // authority it does not own. The validated need still carries no scope, but
+  // the Requirement's application-bound purpose scope (from the Objective
+  // sourcing policy) provides the purpose context for grounding.
   const t = convexTest(schema, modules);
   const key = "obj_newsliquid_authorized_no_kind";
   const ids = await seed(t, key, [SUPPORTED]);
@@ -201,8 +205,7 @@ test("Newsliquid: authorized Requirement but worker proposes NO purposeKind — 
   const [need] = await storedNeeds(t, key);
   assert.equal(need!.requestedScope, undefined, "no scope is invented for the need");
   const option = newsliquidOption((await ground(t, key)).options);
-  assert.equal(option?.external?.purposeScopeCompatible, false);
-  assert.equal(option?.eligibility.eligible, false);
+  assert.equal(option?.external?.purposeScopeCompatible, true);
 });
 
 test("Newsliquid: the M3 synthetic purpose kind never authorizes the live Newsliquid product (cross-contamination check)", async () => {

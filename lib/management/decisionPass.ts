@@ -45,7 +45,9 @@ import { CURRENT_RESOURCE_INVENTORY } from "../objective/policy";
 import { RESOURCE_CLASSES } from "../workforce/catalog";
 import type { ResourceClass } from "../workforce/types";
 import type { DecisionPassInput } from "./decision";
+import { deriveExternalSourcingContext } from "./externalSourcing";
 import type {
+  AuthorizedPurposePolicy,
   EconomicFacts,
   ObjectiveBudget,
   OutcomeContract,
@@ -87,6 +89,13 @@ export type DecisionPassReads = {
    * Requirement+revision. Never promotes a class into global owned inventory.
    */
   scopedCoveredResourceClasses?: readonly string[];
+  /**
+   * Objective-owned external sourcing policy (management.authorizedPurposePolicy).
+   * A sourcing ENVELOPE: any causally-ready Requirement of this Objective may
+   * CONSIDER external services serving this governed purpose. Read/selection
+   * authority only — never spend, signing, payment or satisfaction.
+   */
+  objectiveSourcingPolicy?: AuthorizedPurposePolicy | null;
   at: number;
   // Deterministic, stable per (objective, requirement, revision, attempt) so a
   // replay rebuilds the same decision row identity.
@@ -297,6 +306,11 @@ export type OpenResourceNeedFact = {
    * (ResourceNeed.requestedScope). Null = no validated scope.
    */
   requestedPurposeKind?: string | null;
+  /**
+   * True when the need carried a requested scope that did NOT validate. Such a
+   * need is never re-scoped by the Objective sourcing policy (fails closed).
+   */
+  requestedScopeRejected?: boolean;
 };
 
 export type PrerequisiteResultFact = {
@@ -377,72 +391,60 @@ export async function buildDecisionPassInput(
     (reads.scopedCoveredResourceClasses ?? []).map((value) => value.toLowerCase()),
   );
 
-  // Discover for the validated gap first. Do not let an unrelated model-selected
-  // needsExternalResourceClass override a validated gap. Proposed-only needs
-  // never drive discovery. Verified scoped acquisitions also remove covered
-  // classes from "missing" without declaring them globally owned.
-  //
-  // Sourcing patch: under testnet_demo Somebody always inspects the controlled
-  // market (application-owned awareness). A free model must not be the only
-  // source of whether BUY candidates exist.
+  // External sourcing is a SEPARATE axis from the MAKE inputs above: the
+  // Requirement's requiredResourceClasses say what our own worker needs and are
+  // never reinterpreted as what a merchant must supply. The external class +
+  // purpose come ONLY from a validated ResourceNeed or the Objective-owned
+  // sourcing policy (via the governed catalogue). No context ⇒ no merchant can
+  // become compatible. Read/selection context only — never spend authority.
+  const sourcing = deriveExternalSourcingContext({
+    openResourceNeeds: validatedNeeds,
+    controlledResourceClasses,
+    scopedCoveredResourceClasses: [...scopedCovered],
+    objectivePolicy: reads.objectiveSourcingPolicy ?? null,
+    requirementAuthorizedPurposeKinds: requirement.authorizedPurposeKinds ?? null,
+  });
+  const externalClass: ResourceClass | null = sourcing?.resourceClass ?? null;
+  // Unowned, not-yet-acquired MAKE inputs — used below only as an awareness
+  // hint for which listings to show, never as an external fulfillment class.
   const missing = requiredResourceClasses.filter(
     (resource) =>
       !controlledResourceClasses.includes(resource) &&
       !scopedCovered.has(resource.toLowerCase()),
   );
-  const validatedGapClass = validatedNeeds
-    .map((need) => need.resourceClass)
-    .find((value) => isKnownResourceClass(value) && missing.includes(value as ResourceClass));
-  const proposedExternal = parsedProposal.value.needsExternalResourceClass;
-  const requirementDeclared = (requirement.requiredResourceClasses ?? []).find(
-    (value) => isKnownResourceClass(value),
-  );
   const testnetDemo = readSomebodyExecutionMode() === "testnet_demo";
-  const externalClass: ResourceClass | null = isKnownResourceClass(validatedGapClass ?? null)
-    ? (validatedGapClass as ResourceClass)
-    : missing.length > 0
-      ? (missing[0] as ResourceClass)
-      : isKnownResourceClass(requirementDeclared ?? null)
-        ? (requirementDeclared as ResourceClass)
-        : // Model proposal is NEVER the primary gate when Requirement/application
-          // facts already establish an external class. Under testnet_demo, fall
-          // back to proprietary_data so the controlled market is still inspected.
-          testnetDemo
-          ? ("proprietary_data" as ResourceClass)
-          : validatedNeeds.length === 0 &&
-              missing.length === 0 &&
-              isKnownResourceClass(proposedExternal)
-            ? (proposedExternal as ResourceClass)
-            : null;
 
-  // Discovery task text prefers the validated gap's bounded purpose/scope.
-  const drivingNeed =
-    validatedNeeds.find((need) => need.resourceClass === externalClass) ?? null;
+  // Discovery task text prefers the validated gap's bounded purpose; the
+  // purpose kind is the context's governed kind — never inferred from prose.
   const discoveryPurpose =
-    drivingNeed?.purpose ??
+    sourcing?.needPurpose ??
     `${requirement.title} ${requirement.mustBeTrue}`;
-  // V7 review R4 + sourcing patch:
-  // - When a validated ResourceNeed drives discovery, ONLY its requested
-  //   scope may authorize purpose-scoped offerings (never invent from the
-  //   Requirement if the need carried no scope).
-  // - When no ResourceNeed drives (Testnet market awareness without a worker
-  //   gap), the Requirement's application-bound authorizedPurposeKinds may
-  //   supply purpose — still never inferred from free-text keywords.
-  const requestedPurposeKind =
-    drivingNeed != null
-      ? (drivingNeed.requestedPurposeKind ?? null)
-      : (requirement.authorizedPurposeKinds?.[0] ?? null);
-  const boundNeedDedupeKey = drivingNeed?.dedupeKey ?? null;
-  const boundResourceNeedId = drivingNeed?.needId ?? null;
+  const requestedPurposeKind = sourcing?.purposeKind ?? null;
+  const boundNeedDedupeKey = sourcing?.needDedupeKey ?? null;
+  const boundResourceNeedId = sourcing?.resourceNeedId ?? null;
 
   // ── I3: grounding from the deterministic decision discovery — zero network ─
   // testnet_demo → controlled 3-offering Testnet marketplace (full market)
   // otherwise → SNAPSHOT_OFFERINGS + VERIFIED_SERVICE_REGISTRY
   // Never spawns the onchainos binary; that is createOkxDiscovery()'s path.
-  const shouldDiscover = testnetDemo || externalClass !== null;
+  // Under testnet_demo the controlled market is always inspected (application-
+  // owned awareness); without a sourcing context every offering grounds as
+  // incompatible (requiredResourceClass null), so awareness never becomes
+  // eligibility.
+  //
+  // Awareness-only hints (an unowned Requirement input, a model-proposed
+  // class) may choose WHICH listings are shown, never whether any is
+  // compatible: grounding below receives only the governed externalClass.
+  const proposedExternal = parsedProposal.value.needsExternalResourceClass;
+  const awarenessClass: ResourceClass | null =
+    externalClass ??
+    (missing[0] as ResourceClass | undefined) ??
+    (isKnownResourceClass(proposedExternal) ? proposedExternal : null) ??
+    (testnetDemo ? ("proprietary_data" as ResourceClass) : null);
+  const shouldDiscover = awarenessClass !== null;
   const discoveredOfferings = shouldDiscover
     ? await createDecisionMarketDiscovery().discover({
-        resourceClass: externalClass ?? ("proprietary_data" as ResourceClass),
+        resourceClass: awarenessClass,
         taskDescription: discoveryPurpose.slice(0, 400),
       })
     : [];
@@ -450,7 +452,7 @@ export async function buildDecisionPassInput(
     ? buildGroundingContext({
         registry: VERIFIED_SERVICE_REGISTRY,
         discovered: discoveredOfferings,
-        requiredResourceClass: externalClass ?? ("proprietary_data" as ResourceClass),
+        requiredResourceClass: externalClass,
         at: reads.at,
         purpose: discoveryPurpose,
         purposeKind: requestedPurposeKind,

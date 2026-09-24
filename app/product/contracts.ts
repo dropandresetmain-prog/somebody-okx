@@ -192,7 +192,10 @@ export type ManagerDecisionConsideredOption = {
   approach: ProductApproach | null;
   label: string;
   status: "eligible" | "ineligible";
+  /** Compact founder copy, e.g. "Different purpose" — never a raw eligibility sentence. */
   reason?: string;
+  /** not_available = provider/path cannot serve this task at all. */
+  unsuitability?: "not_suitable" | "not_available";
   providerLabel?: string;
   amount?: MoneyView;
 };

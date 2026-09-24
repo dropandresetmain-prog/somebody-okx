@@ -37,8 +37,10 @@ export type GroundRegistryOfferingsInput = {
   // Offerings actually discovered for this need (from discovery/snapshot).
   // Empty array is valid: "nothing comparable found".
   discovered: readonly MarketOffering[];
-  // The resource class the requirement needs.
-  requiredResourceClass: ResourceClass;
+  // The EXTERNAL resource class a merchant must supply (from the governed
+  // external sourcing context). Null = no governed sourcing context: offerings
+  // may still be listed (market awareness) but none is compatible.
+  requiredResourceClass: ResourceClass | null;
   // Observation timestamp passed in (no Date.now() reads).
   at: number;
   /**
@@ -80,7 +82,8 @@ export function groundRegistryOfferings(
     const compatibleClasses = registryEntry
       ? resolveCompatibleClasses(offering, registry)
       : [];
-    const compatibleResourceClass = compatibleClasses.includes(requiredResourceClass);
+    const compatibleResourceClass =
+      requiredResourceClass !== null && compatibleClasses.includes(requiredResourceClass);
 
     // Runtime executability is independent of registry membership: a verified
     // registry row is not automatically an executable BUY path.
@@ -91,17 +94,19 @@ export function groundRegistryOfferings(
     // Authority = validated requested scope ∩ the adapter's declared
     // fulfillment scope. Prose can only REFUSE (affirmative out-of-scope
     // claims); it can never make an offering compatible.
-    const purposeScopeCompatible = externalOfferingAcceptsPurpose({
-      serviceId: offering.serviceId,
-      purpose,
-      purposeKind: purposeKind ?? null,
-      resourceClass: requiredResourceClass,
-    });
+    const purposeScopeCompatible =
+      requiredResourceClass !== null &&
+      externalOfferingAcceptsPurpose({
+        serviceId: offering.serviceId,
+        purpose,
+        purposeKind: purposeKind ?? null,
+        resourceClass: requiredResourceClass,
+      });
 
     // The single resource class this offering supplies for the need. When the
     // registry declares multiple classes we pick the one matching the need;
     // otherwise the first declared class (the offering's primary identity).
-    const resourceClass = compatibleClasses.includes(requiredResourceClass)
+    const resourceClass = compatibleResourceClass && requiredResourceClass !== null
       ? requiredResourceClass
       : compatibleClasses.length > 0
         ? compatibleClasses[0]

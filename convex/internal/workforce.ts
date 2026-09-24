@@ -803,6 +803,15 @@ type AnyDecisionData = {
 // authority). Both callers cast this into lib/management/decisionPass's
 // DecisionPassReads; keeping the reads in ONE query is what makes the action's
 // eligible-option preview and the mutation's reauthorization agree.
+function readObjectiveSourcingPolicy(
+  raw: { purposeKind?: unknown; targetRequirementKind?: unknown } | null | undefined,
+): { purposeKind: string; targetRequirementKind: "deliverable" | "input" } | null {
+  if (!raw || typeof raw.purposeKind !== "string") return null;
+  const target = raw.targetRequirementKind;
+  if (target !== "deliverable" && target !== "input") return null;
+  return { purposeKind: raw.purposeKind, targetRequirementKind: target };
+}
+
 export const readDecisionContext = internalQuery({
   args: { objectiveKey: v.string(), requirementKey: v.string() },
   returns: v.any(),
@@ -855,6 +864,10 @@ export const readDecisionContext = internalQuery({
           management?: {
             executionProtocol?: string | null;
             lastFinalAssessmentCritique?: string;
+            authorizedPurposePolicy?: {
+              purposeKind?: unknown;
+              targetRequirementKind?: unknown;
+            } | null;
           };
           result?: {
             summary?: string;
@@ -961,6 +974,11 @@ export const readDecisionContext = internalQuery({
           // V7 review R4: only an application-validated requested scope
           // travels to grounding; anything else is "no scope" (fail closed).
           requestedPurposeKind: validatedRequestedPurposeKind(need),
+          // A scope was stored but did not validate (non-governed, wrong
+          // authority, class mismatch). Such a need is never re-scoped by the
+          // Objective sourcing policy — it fails closed on purpose.
+          requestedScopeRejected:
+            need.requestedScope != null && validatedRequestedPurposeKind(need) === null,
         };
       })
       .filter((need) => need.needId && need.resourceClass);
@@ -1167,6 +1185,12 @@ export const readDecisionContext = internalQuery({
       scopedCoveredResourceClasses: scopedCovered,
       serialManagerProtocol:
         objectiveData?.management?.executionProtocol === "m61_serial_v1",
+      // Objective-owned external sourcing envelope (read/selection only). The
+      // purpose kind is re-validated against the governed catalogue inside
+      // deriveExternalSourcingContext; anything malformed fails closed.
+      objectiveSourcingPolicy: readObjectiveSourcingPolicy(
+        objectiveData?.management?.authorizedPurposePolicy,
+      ),
       managerResultPackage,
     };
   },
