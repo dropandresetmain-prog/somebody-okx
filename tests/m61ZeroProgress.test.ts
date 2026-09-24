@@ -66,8 +66,8 @@ function message(text: string) {
   };
 }
 
-test("turn and duplicate bounds remain 8 and 2", () => {
-  assert.equal(MAX_TURNS, 8);
+test("turn and duplicate bounds remain 16 and 2", () => {
+  assert.equal(MAX_TURNS, 16);
   assert.equal(MAX_DUPLICATE_FAILURES, 2);
 });
 

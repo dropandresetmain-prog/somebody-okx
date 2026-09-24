@@ -365,30 +365,39 @@ export function ungovernedCapabilityKeys(proposed: readonly string[]): string[] 
 // and, where the runtime knows a closed set, which values are legal.
 
 
-/** Interpretation: contract + requirements must both parse. */
-export function validateInterpretationStructure(
-  normalized: { contract: unknown; requirements: unknown },
-): StructuralValidation<{ contract: unknown; requirements: unknown }> {
+/** Call 1 — Outcome Contract only. */
+export function validateOutcomeContractStructure(
+  raw: unknown,
+): StructuralValidation<unknown> {
   const issues: StructuralIssue[] = [];
-  const contract = parseOutcomeContractProposal(normalized.contract);
+  const contract = parseOutcomeContractProposal(raw);
   if (!contract.ok) {
     const levelKeys =
-      typeof normalized.contract === "object" && normalized.contract !== null
-        ? declaredLevelKeys(normalized.contract as Record<string, unknown>)
+      typeof raw === "object" && raw !== null
+        ? declaredLevelKeys(raw as Record<string, unknown>)
         : [];
     for (const error of contract.errors) {
       const isBar = /minimum completion bar/.test(error);
       issues.push({
-        field: isBar ? "contract.minimumCompletionBar" : "contract",
+        field: isBar ? "minimumCompletionBar" : "contract",
         reason: error,
         ...(isBar && levelKeys.length ? { legalValues: levelKeys } : {}),
       });
     }
   }
-  const requirements = parseRequirementProposals(normalized.requirements);
+  if (issues.length) return { ok: false, issues };
+  return { ok: true, value: raw };
+}
+
+/** Call 2 — Requirements only (against a validated contract supplied in prompt). */
+export function validateRequirementsStructure(
+  raw: unknown,
+): StructuralValidation<unknown> {
+  const issues: StructuralIssue[] = [];
+  const requirements = parseRequirementProposals(raw);
   if (!requirements.ok) {
-    const keys = Array.isArray(normalized.requirements)
-      ? (normalized.requirements as unknown[])
+    const keys = Array.isArray(raw)
+      ? (raw as unknown[])
           .map((entry) =>
             typeof entry === "object" && entry !== null
               ? String((entry as Record<string, unknown>).requirementKey ?? "")
@@ -405,6 +414,19 @@ export function validateInterpretationStructure(
       });
     }
   }
+  if (issues.length) return { ok: false, issues };
+  return { ok: true, value: raw };
+}
+
+/** Legacy combined shape (contract + requirements). Prefer staged validators. */
+export function validateInterpretationStructure(
+  normalized: { contract: unknown; requirements: unknown },
+): StructuralValidation<{ contract: unknown; requirements: unknown }> {
+  const issues: StructuralIssue[] = [];
+  const contract = validateOutcomeContractStructure(normalized.contract);
+  if (!contract.ok) issues.push(...contract.issues);
+  const requirements = validateRequirementsStructure(normalized.requirements);
+  if (!requirements.ok) issues.push(...requirements.issues);
   if (issues.length) return { ok: false, issues };
   return { ok: true, value: normalized };
 }

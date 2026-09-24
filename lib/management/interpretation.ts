@@ -1,22 +1,11 @@
 // R3 A1 — Objective → Outcome Contract → Requirements: the ENTRY the engine
 // never had.
 //
-// Before CP8, `submitObjective` produced an M2 plan and no production path ever
-// created an Outcome Contract, persisted Requirements, or set
-// `management.contractId`. Everything downstream (grounding, staffing, dispatch,
-// verification, the completion gate) was therefore unreachable from the real
-// entry point: the kernels were proven in isolation but the loop was open.
-//
-// This module is the pure, deterministic half of closing it. It takes an
-// UNTRUSTED model proposal and produces the business rows the application owns:
-//
-//   parseOutcomeContractProposal  → bounded, fail-closed parse (proposals.ts)
-//   buildOutcomeContract          → the ONLY thing that can create a Contract;
-//                                   a bar that isn't a declared level is refused
-//   parseRequirementProposals     → semantic requirements, priority fail-safe to
-//                                   "required" (downgrading a gate is the exact
-//                                   false-completion move)
-//   buildSemanticRequirement      → proof-less, strategy-less row (contract.ts)
+// Staged cognition (sourcing patch):
+//   Call 1 — Outcome Contract only (intent / levels / bar / ambiguities)
+//   Application validation (buildOutcomeContract owns ids/timestamps)
+//   Call 2 — Requirement decomposition (semantic rows only)
+//   Application semantic audit (+ optional ONE Requirements-only repair)
 //
 // Deliberately absent here: any authority over permissions, spend, or
 // completion. The model names WHAT must be true; stage-4 authorization names how
@@ -31,6 +20,11 @@ import {
   buildOutcomeContract,
   buildSemanticRequirement,
 } from "./contract";
+import { assignApplicationRequirementKeys } from "./requirementIdentity";
+import {
+  auditRequirementSemantics,
+  formatSemanticAuditFailure,
+} from "./requirementSemanticAudit";
 import {
   parseOutcomeContractProposal,
   parseRequirementProposals,
@@ -96,7 +90,12 @@ export type InterpretationResult =
       // ambiguity Somebody resolved itself.
       notes: string[];
     }
-  | { ok: false; errors: string[] };
+  | {
+      ok: false;
+      errors: string[];
+      /** When set, Call 2 may be repaired once without re-running Call 1. */
+      repairableSemanticFailure?: string;
+    };
 
 export function contractIdFor(requestId: string): string {
   // Bounded identifier, stable for a given request. Not a hash of meaning: the
@@ -109,10 +108,23 @@ export function contractIdFor(requestId: string): string {
   return `contract_${base}`.slice(0, 80).replace(/_+$/g, "");
 }
 
-export function interpretObjective(input: InterpretationInput): InterpretationResult {
-  const errors: string[] = [];
+/**
+ * Call-1 only: parse + build the Outcome Contract. Application owns identity.
+ * Does not touch Requirements.
+ */
+export function interpretOutcomeContract(input: {
+  objectiveKey: string;
+  requestId: string;
+  rawContract: unknown;
+  founderResolvedQuestions: readonly string[];
+  at: number;
+  spendGrantPresent?: boolean;
+  spendLimitUsd?: number | null;
+  serialManagerProtocol?: boolean;
+}):
+  | { ok: true; contract: OutcomeContract; notes: string[] }
+  | { ok: false; errors: string[] } {
   const notes: string[] = [];
-
   const parsedContract = parseOutcomeContractProposal(input.rawContract);
   if (!parsedContract.ok)
     return { ok: false, errors: parsedContract.errors.map((e) => `contract: ${e}`) };
@@ -131,8 +143,6 @@ export function interpretObjective(input: InterpretationInput): InterpretationRe
   let contract = contractResult.contract;
 
   if (input.spendGrantPresent) {
-    // Serial: spend bound is disclosed as factual context upstream; do not
-    // keyword-demote material ambiguities here. Legacy keeps demotion.
     if (input.serialManagerProtocol !== true) {
       let demoted = 0;
       const ambiguities = contract.ambiguities.map((ambiguity) => {
@@ -167,20 +177,34 @@ export function interpretObjective(input: InterpretationInput): InterpretationRe
     }
   }
 
+  return { ok: true, contract, notes };
+}
+
+/**
+ * Call-2 only: parse Requirements against a VALIDATED contract, assign
+ * application-owned keys, audit semantics, bind purpose policy.
+ */
+export function interpretRequirements(input: {
+  objectiveKey: string;
+  contract: OutcomeContract;
+  rawRequirements: unknown;
+  at: number;
+  authorizedPurposePolicy?: AuthorizedPurposePolicy | null;
+}): InterpretationResult {
+  const errors: string[] = [];
+  const notes: string[] = [];
+
   const parsedRequirements = parseRequirementProposals(input.rawRequirements);
   if (!parsedRequirements.ok)
     return { ok: false, errors: parsedRequirements.errors.map((e) => `requirements: ${e}`) };
 
-  // Semantic rows only: no proofs and no strategy yet, because neither is known
-  // at interpretation time. The decision pass attaches governed proofs for the
-  // strategy it authorizes, and only requirements.ts/completion.ts can ever call
-  // a proof-less row unsatisfied — which it does, so an unpersisted strategy is
-  // "not yet resolvable", never "free to complete".
+  const keyed = assignApplicationRequirementKeys(parsedRequirements.value);
+
   let requirements: Requirement[] = [];
-  for (const proposed of parsedRequirements.value) {
+  for (const proposed of keyed) {
     const built = buildSemanticRequirement({
       objectiveKey: input.objectiveKey,
-      contract,
+      contract: input.contract,
       proposed,
       at: input.at,
     });
@@ -191,7 +215,24 @@ export function interpretObjective(input: InterpretationInput): InterpretationRe
     requirements.push(built.requirement);
   }
   if (errors.length) return { ok: false, errors };
-  requirements = bindAuthorizedPurposePolicy(requirements, input.authorizedPurposePolicy);
+
+  const audit = auditRequirementSemantics({
+    requirements,
+    authorizedPurposePolicy: input.authorizedPurposePolicy,
+  });
+  if (!audit.ok) {
+    const detail = formatSemanticAuditFailure(audit.issues);
+    return {
+      ok: false,
+      errors: audit.issues.map((issue) => `semantic: ${issue.code}: ${issue.detail}`),
+      repairableSemanticFailure: detail,
+    };
+  }
+
+  requirements = bindAuthorizedPurposePolicy(
+    requirements,
+    input.authorizedPurposePolicy,
+  );
 
   const required = requirements.filter((requirement) => requirement.priority === "required");
   if (required.length === 0)
@@ -200,13 +241,7 @@ export function interpretObjective(input: InterpretationInput): InterpretationRe
       errors: ["interpretation produced no required requirement; an objective needs a gate"],
     };
 
-  // The bar must be claimed by something: at least one REQUIRED requirement must
-  // reference the bar level, else the level is decorative. The parser cannot
-  // enforce this alone because semantics live in the statements, so the guard
-  // here is structural: a required requirement whose mustBeTrue is empty is
-  // already refused by the parser; a bar with no required requirement at all
-  // cannot exist because `required.length === 0` is refused above.
-  const unresolvedMaterial = contract.ambiguities.filter(
+  const unresolvedMaterial = input.contract.ambiguities.filter(
     (ambiguity) => ambiguity.materiality === "material" && ambiguity.requiresFounderApproval,
   );
   if (unresolvedMaterial.length)
@@ -214,7 +249,37 @@ export function interpretObjective(input: InterpretationInput): InterpretationRe
       `${unresolvedMaterial.length} material ambiguity/ambiguities left for the founder; the engine will not act on them`,
     );
 
-  return { ok: true, contract, requirements, notes };
+  return { ok: true, contract: input.contract, requirements, notes };
+}
+
+export function interpretObjective(input: InterpretationInput): InterpretationResult {
+  const contractResult = interpretOutcomeContract({
+    objectiveKey: input.objectiveKey,
+    requestId: input.requestId,
+    rawContract: input.rawContract,
+    founderResolvedQuestions: input.founderResolvedQuestions,
+    at: input.at,
+    spendGrantPresent: input.spendGrantPresent,
+    spendLimitUsd: input.spendLimitUsd,
+    serialManagerProtocol: input.serialManagerProtocol,
+  });
+  if (!contractResult.ok) return contractResult;
+
+  const reqResult = interpretRequirements({
+    objectiveKey: input.objectiveKey,
+    contract: contractResult.contract,
+    rawRequirements: input.rawRequirements,
+    at: input.at,
+    authorizedPurposePolicy: input.authorizedPurposePolicy,
+  });
+  if (!reqResult.ok) return reqResult;
+
+  return {
+    ok: true,
+    contract: contractResult.contract,
+    requirements: reqResult.requirements,
+    notes: [...contractResult.notes, ...reqResult.notes],
+  };
 }
 
 // The durable wake identity for "this objective now has a contract" — used by

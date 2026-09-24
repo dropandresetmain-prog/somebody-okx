@@ -373,6 +373,10 @@ export async function buildDecisionPassInput(
   // needsExternalResourceClass override a validated gap. Proposed-only needs
   // never drive discovery. Verified scoped acquisitions also remove covered
   // classes from "missing" without declaring them globally owned.
+  //
+  // Sourcing patch: under testnet_demo Somebody always inspects the controlled
+  // market (application-owned awareness). A free model must not be the only
+  // source of whether BUY candidates exist.
   const missing = requiredResourceClasses.filter(
     (resource) =>
       !controlledResourceClasses.includes(resource) &&
@@ -382,14 +386,26 @@ export async function buildDecisionPassInput(
     .map((need) => need.resourceClass)
     .find((value) => isKnownResourceClass(value) && missing.includes(value as ResourceClass));
   const proposedExternal = parsedProposal.value.needsExternalResourceClass;
+  const requirementDeclared = (requirement.requiredResourceClasses ?? []).find(
+    (value) => isKnownResourceClass(value),
+  );
+  const testnetDemo = readSomebodyExecutionMode() === "testnet_demo";
   const externalClass: ResourceClass | null = isKnownResourceClass(validatedGapClass ?? null)
     ? (validatedGapClass as ResourceClass)
-    : validatedGapClass == null && missing.length > 0
+    : missing.length > 0
       ? (missing[0] as ResourceClass)
-      : // Only fall back to model proposal when no validated/declared gap exists.
-        validatedNeeds.length === 0 && missing.length === 0 && isKnownResourceClass(proposedExternal)
-        ? (proposedExternal as ResourceClass)
-        : null;
+      : isKnownResourceClass(requirementDeclared ?? null)
+        ? (requirementDeclared as ResourceClass)
+        : // Model proposal is NEVER the primary gate when Requirement/application
+          // facts already establish an external class. Under testnet_demo, fall
+          // back to proprietary_data so the controlled market is still inspected.
+          testnetDemo
+          ? ("proprietary_data" as ResourceClass)
+          : validatedNeeds.length === 0 &&
+              missing.length === 0 &&
+              isKnownResourceClass(proposedExternal)
+            ? (proposedExternal as ResourceClass)
+            : null;
 
   // Discovery task text prefers the validated gap's bounded purpose/scope.
   const drivingNeed =
@@ -397,26 +413,33 @@ export async function buildDecisionPassInput(
   const discoveryPurpose =
     drivingNeed?.purpose ??
     `${requirement.title} ${requirement.mustBeTrue}`;
-  // V7 review R4: the ONLY structured scope grounding may use is the driving
-  // need's application-validated requested scope. The prose above (including
-  // the requirement-title fallback) stays descriptive discovery context and
-  // can never make a purpose-scoped offering compatible.
-  const requestedPurposeKind = drivingNeed?.requestedPurposeKind ?? null;
+  // V7 review R4 + sourcing patch:
+  // - When a validated ResourceNeed drives discovery, ONLY its requested
+  //   scope may authorize purpose-scoped offerings (never invent from the
+  //   Requirement if the need carried no scope).
+  // - When no ResourceNeed drives (Testnet market awareness without a worker
+  //   gap), the Requirement's application-bound authorizedPurposeKinds may
+  //   supply purpose — still never inferred from free-text keywords.
+  const requestedPurposeKind =
+    drivingNeed != null
+      ? (drivingNeed.requestedPurposeKind ?? null)
+      : (requirement.authorizedPurposeKinds?.[0] ?? null);
   const boundNeedDedupeKey = drivingNeed?.dedupeKey ?? null;
   const boundResourceNeedId = drivingNeed?.needId ?? null;
 
   // ── I3: grounding from the deterministic decision discovery — zero network ─
-  // testnet_demo → controlled 3-offering Testnet marketplace
+  // testnet_demo → controlled 3-offering Testnet marketplace (full market)
   // otherwise → SNAPSHOT_OFFERINGS + VERIFIED_SERVICE_REGISTRY
   // Never spawns the onchainos binary; that is createOkxDiscovery()'s path.
-  const grounding = externalClass
+  const shouldDiscover = testnetDemo || externalClass !== null;
+  const grounding = shouldDiscover
     ? buildGroundingContext({
         registry: VERIFIED_SERVICE_REGISTRY,
         discovered: await createDecisionMarketDiscovery().discover({
-          resourceClass: externalClass,
+          resourceClass: externalClass ?? ("proprietary_data" as ResourceClass),
           taskDescription: discoveryPurpose.slice(0, 400),
         }),
-        requiredResourceClass: externalClass,
+        requiredResourceClass: externalClass ?? ("proprietary_data" as ResourceClass),
         at: reads.at,
         purpose: discoveryPurpose,
         purposeKind: requestedPurposeKind,

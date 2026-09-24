@@ -88,12 +88,15 @@ export const TESTNET_DEMO_OFFERINGS: readonly MarketOffering[] = [
 
 /**
  * Deterministic MarketDiscovery for the Testnet demo marketplace.
- * Returns registry-validated class-compatible offerings from the fixed set of 3.
+ *
+ * Returns the FULL controlled set of 3 offerings. Class/purpose compatibility
+ * is Stage-2 hard eligibility — do not pre-filter merchants out of market
+ * awareness before grounding.
  */
 export function createTestnetDemoDiscovery(): MarketDiscovery {
   return {
-    async discover(input: MarketDiscoveryInput): Promise<MarketOffering[]> {
-      const validated = TESTNET_DEMO_OFFERINGS.map((o) => ({
+    async discover(_input: MarketDiscoveryInput): Promise<MarketOffering[]> {
+      return TESTNET_DEMO_OFFERINGS.map((o) => ({
         ...o,
         compatibleResourceClasses: resolveCompatibleClasses(
           o,
@@ -104,9 +107,6 @@ export function createTestnetDemoDiscovery(): MarketDiscovery {
           retrievedAt: o.source.retrievedAt,
         },
       }));
-      return validated.filter((o) =>
-        o.compatibleResourceClasses.includes(input.resourceClass),
-      );
     },
   };
 }

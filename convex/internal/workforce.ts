@@ -19,6 +19,7 @@ import {
 import { canAcceptReservation } from "../workforceGuards";
 import { validateCapabilitySpec } from "../../lib/management/capability";
 import { readSomebodyExecutionMode } from "../../lib/execution/executionMode";
+import { resolveExperimentMaxElapsedMs } from "../../lib/management/experimentBudget";
 import {
   createBudget,
   trySpendWorkerCreation,
@@ -447,10 +448,9 @@ export const initBudget = internalMutation({
       return (existing as BudgetRow).data;
     }
 
+    const experimentElapsed = resolveExperimentMaxElapsedMs();
     const limits =
-      readSomebodyExecutionMode() === "testnet_demo"
-        ? { maxElapsedMs: 4 * 60 * 60_000 }
-        : {};
+      experimentElapsed != null ? { maxElapsedMs: experimentElapsed } : {};
     const budget = createBudget(args.objectiveKey, Date.now(), limits);
     await ctx.db.insert("objectiveBudgets", {
       objectiveKey: args.objectiveKey,
@@ -498,13 +498,15 @@ export const renewContinuationBudget = internalMutation({
       .withIndex("by_objectiveKey", (q) => q.eq("objectiveKey", args.objectiveKey))
       .unique();
     if (!row) {
+      const experimentElapsed = resolveExperimentMaxElapsedMs();
       const budget = createBudget(args.objectiveKey, args.at, {
-        maxElapsedMs: readSomebodyExecutionMode() === "testnet_demo" ? 4 * 60 * 60_000 : undefined,
+        ...(experimentElapsed != null ? { maxElapsedMs: experimentElapsed } : {}),
       });
       await ctx.db.insert("objectiveBudgets", { objectiveKey: args.objectiveKey, data: budget });
       return budget;
     }
     const current = (row as BudgetRow).data;
+    const experimentElapsed = resolveExperimentMaxElapsedMs();
     const next: ObjectiveBudget = {
       ...current,
       startedAt: args.at,
@@ -512,8 +514,8 @@ export const renewContinuationBudget = internalMutation({
       limits: {
         ...current.limits,
         maxElapsedMs:
-          readSomebodyExecutionMode() === "testnet_demo"
-            ? 4 * 60 * 60_000
+          experimentElapsed != null
+            ? experimentElapsed
             : current.limits.maxElapsedMs,
       },
       used: { ...current.used, noProgressCycles: 0 },

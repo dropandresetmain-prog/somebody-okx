@@ -25,6 +25,8 @@
 
 export type StructuredChatKind =
   | "interpretation"
+  | "outcome_contract"
+  | "requirements"
   | "strategy"
   | "recommendation"
   | "final_assessment";

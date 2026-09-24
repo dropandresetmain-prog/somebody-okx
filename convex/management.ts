@@ -1247,6 +1247,7 @@ async function persistDecisionRow(
   ctx: MutationCtx,
   result: DecisionPassResult,
   at: number,
+  sourcingDecision?: import("../lib/management/sourcingDecision").SourcingDecisionExtra | null,
 ): Promise<void> {
   const { decision, boundRequirement, options, recommendation } = result;
 
@@ -1258,6 +1259,7 @@ async function persistDecisionRow(
     recommendation,
     boundNeedDedupeKey: result.boundNeedDedupeKey ?? null,
     boundResourceNeedId: result.boundResourceNeedId ?? null,
+    ...(sourcingDecision ? { sourcingDecision } : {}),
   };
   const decisionData = {
     ...decision,
@@ -2198,6 +2200,25 @@ export const applyDecision = internalMutation({
     rawStrategyProposal: v.any(),
     rawRecommendation: v.any(),
     at: v.number(),
+    sourcingDecision: v.optional(
+      v.object({
+        selectionSource: v.union(
+          v.literal("jev"),
+          v.literal("sole_eligible"),
+          v.literal("incumbent_fallback"),
+        ),
+        trigger: v.union(
+          v.literal("requirement_ready"),
+          v.literal("needs_input"),
+          v.literal("make_failed"),
+          v.literal("attempts_exhausted"),
+          v.literal("acquisition_verified"),
+          v.literal("review_reopen"),
+        ),
+        sourcingFingerprint: v.optional(v.string()),
+        telemetry: v.optional(v.any()),
+      }),
+    ),
   },
   returns: v.union(
     v.object({
@@ -2320,7 +2341,13 @@ export const applyDecision = internalMutation({
     }
 
     const result = await runManagerialDecisionPass(built.input);
-    await persistDecisionRow(ctx, result, args.at);
+    await persistDecisionRow(
+      ctx,
+      result,
+      args.at,
+      (args.sourcingDecision as import("../lib/management/sourcingDecision").SourcingDecisionExtra | undefined) ??
+        null,
+    );
 
     const authorized = result.authorization.kind === "authorized";
 

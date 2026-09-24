@@ -506,6 +506,15 @@ export function validateMissingInputProposal(
     0,
     16,
   );
+  // When the model omits evidence ids, derive a unique same-run observation if
+  // unambiguous. Ambiguous/empty sets still fail closed below.
+  if (supportingIds.length === 0) {
+    const sameRunObs = ctx.evidence
+      .filter((item) => item.runId === ctx.runId && item.origin === PROOF_ORIGIN)
+      .map((item) => item.id);
+    const unique = [...new Set(sameRunObs)];
+    if (unique.length === 1) supportingIds.push(unique[0]!);
+  }
   if (supportingIds.length === 0)
     return refuse(
       "missing_supporting_evidence",
@@ -974,10 +983,11 @@ export function decisionFingerprintFacts(input: {
     acquisitions,
     intents,
     assignments,
-    spendAuthorityUsd,
+    spendAuthorityUsd: _spendAuthorityUsd,
     budget,
     workerAvailability,
   } = input;
+  void _spendAuthorityUsd;
   const validatedMissingClasses = validatedMissingClassesAfterAcquisitions(
     resourceNeeds,
     requirement.requirementKey,
@@ -1037,7 +1047,9 @@ export function decisionFingerprintFacts(input: {
     needIdentity,
     acquisitionIdentity,
     externalTerminalOutcomes,
-    spendAuthorityUsd,
+    // Founder spend grant / approval must NOT reopen sourcing for an already
+    // selected BUY (sourcing patch J). Payment mid-flight is gated below.
+    spendAuthorityUsd: null,
     budgetRemainingUsd,
     workerAvailability,
     terminalDeliveryCount,

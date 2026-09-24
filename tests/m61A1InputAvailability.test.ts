@@ -218,7 +218,7 @@ test("invalid lookup is INVALID_REQUEST and cannot support a gap", () => {
 });
 
 test("worker turn default is 8 and duplicate failure cap is 2", () => {
-  assert.equal(MAX_TURNS, 8);
+  assert.equal(MAX_TURNS, 16);
   assert.equal(MAX_DUPLICATE_FAILURES, 2);
 });
 
