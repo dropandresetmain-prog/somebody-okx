@@ -22,6 +22,7 @@ import type {
   AcquisitionProductStatus,
   AcquisitionView,
   ActivityActor,
+  ActivityImportance,
   ActivityItem,
   AttentionActionView,
   AttentionState,
@@ -34,8 +35,12 @@ import type {
   DeliverableView,
   EvidenceRefView,
   ExternalProvenance,
+  IntegrationActivityPayload,
+  IntegrationIdentity,
   InternState,
   InternView,
+  ManagerDecisionConsideredOption,
+  MoneyView,
   ObjectiveListView,
   ObjectiveLivenessView,
   ObjectiveProductStatus,
@@ -229,9 +234,62 @@ export type StatusSource = {
   intents: ProductIntent[];
 };
 
+/**
+ * Normalized OKX / X Layer infrastructure fact — the adapter seam a future
+ * backend integration lane fills in. ONE shape for every approved identity
+ * (§4): infrastructure identity lives in `integration`, never in a bespoke
+ * per-integration row type.
+ *
+ * MISSING BACKEND FACTS (§16) — Convex persists NONE of these rows today
+ * (confirmed: no okx/x402/xlayer tables in convex/schema.ts). Each is a
+ * separate durable fact this projection can only surface once the backend
+ * integration lane persists it; until then `integrationEvents` is omitted
+ * by every caller and this whole projection step is a no-op:
+ *   1. OKX Marketplace search  — a durable record of a market_search event
+ *      (in-progress vs completed tense, the Need, and the candidate list
+ *      actually returned) keyed to the objective/requirement.
+ *   2. OKX Agentic Wallet preparation — a durable "payment preparing" fact
+ *      (merchant, amount, network) recorded when the wallet flow starts;
+ *      must NOT be inferred from "a BUY decision exists".
+ *   3. OKX x402 verification (optional) — only if the facilitator emits a
+ *      distinct durable verification/acceptance fact separate from wallet
+ *      preparation and from X Layer submission.
+ *   4. X Layer Testnet — transaction submitted — a durable `submitted` tx
+ *      fact (txHash, amount, merchant); must NOT be inferred from an
+ *      intent/decision existing, and must NOT reuse "prepared" or
+ *      "handed off" as if it were "submitted".
+ *   5. X Layer Testnet — settlement confirmed — a SEPARATE durable
+ *      confirmation fact; must NOT be inferred from the submitted fact.
+ */
+export type ProductIntegrationEvent = {
+  id: string;
+  occurredAt: number;
+  integration: IntegrationIdentity;
+  action: IntegrationActivityPayload["action"];
+  headline: string;
+  detail?: string;
+  resourceNeed?: string;
+  candidateCount?: number;
+  candidates?: Array<{ label: string; status?: string }>;
+  merchantLabel?: string;
+  amount?: MoneyView;
+  networkLabel?: string;
+  txHash?: string;
+  explorerUrl?: string;
+  importance?: ActivityImportance;
+};
+
 export type ProductSource = StatusSource & {
   workers: ProductWorker[];
   evidence: ProductEvidence[];
+  /**
+   * OKX / X Layer infrastructure facts, already normalized by the backend
+   * integration lane. Omitted (or empty) today because no such backend rows
+   * exist yet — see the missing-facts list on ProductIntegrationEvent above.
+   * When absent, projectActivity emits zero integration_activity items and
+   * every other Activity type renders exactly as before (§17 legacy compat).
+   */
+  integrationEvents?: ProductIntegrationEvent[];
 };
 
 export type ProjectionOptions = {
@@ -309,23 +367,77 @@ function toApproach(strategy: string | null): ProductApproach | null {
   }
 }
 
-type DecodedOption = { optionId: string; approach: ProductApproach | null; label: string | null };
+type DecodedOption = {
+  optionId: string;
+  approach: ProductApproach | null;
+  label: string | null;
+  /** null only when the persisted option carries no eligibility verdict (legacy rows). */
+  eligible: boolean | null;
+  /** Persisted ineligibility detail — never inferred from reasons alone. */
+  ineligibilityDetail: string | null;
+  providerLabel: string | null;
+  amount: { amount: string; currency: string } | null;
+};
+
+const FACTUAL_PRICE_SOURCES: ReadonlySet<string> = new Set(["measured", "provider_quote", "persisted_evidence", "registry_data"]);
 
 function decodeOptions(summary: string): DecodedOption[] {
   try {
     const parsed = JSON.parse(summary) as { extra?: { options?: Array<Record<string, unknown>> } };
     return (parsed.extra?.options ?? []).map((raw) => {
       const internal = raw.internal as { responsibility?: string } | null | undefined;
-      const external = raw.external as { offeringId?: string | null; providerId?: string | null } | null | undefined;
-      const label = internal?.responsibility ?? external?.offeringId ?? external?.providerId ?? null;
+      const external = raw.external as
+        | {
+            offeringId?: string | null;
+            providerId?: string | null;
+            serviceId?: string | null;
+            resourceClass?: string | null;
+            priceUsd?: number | null;
+            priceSource?: string;
+          }
+        | null
+        | undefined;
+      const label = internal?.responsibility ?? external?.offeringId ?? external?.serviceId ?? external?.resourceClass ?? external?.providerId ?? null;
+      const providerLabel = external?.providerId ? String(external.providerId) : null;
+      const hasFactualPrice =
+        Boolean(external) && typeof external?.priceUsd === "number" && typeof external?.priceSource === "string" && FACTUAL_PRICE_SOURCES.has(external.priceSource);
+      const eligibility = raw.eligibility as { eligible?: unknown; detail?: unknown } | null | undefined;
+      const eligible = typeof eligibility?.eligible === "boolean" ? eligibility.eligible : null;
+      const ineligibilityDetail = eligible === false && typeof eligibility?.detail === "string" ? eligibility.detail : null;
       return {
         optionId: String(raw.optionId ?? ""),
         approach: toApproach(typeof raw.strategy === "string" ? raw.strategy : null),
         label: label ? String(label) : null,
+        eligible,
+        ineligibilityDetail,
+        providerLabel,
+        amount: hasFactualPrice ? toMoney(external!.priceUsd as number) : null,
       };
     });
   } catch {
     return [];
+  }
+}
+
+type DecodedSourcingDecision = {
+  selectionSource?: "jev" | "sole_eligible" | "incumbent_fallback";
+  trigger?: string;
+};
+
+function decodeSourcingDecision(summary: string): DecodedSourcingDecision | null {
+  try {
+    const parsed = JSON.parse(summary) as {
+      extra?: { sourcingDecision?: { selectionSource?: unknown; trigger?: unknown } };
+    };
+    const raw = parsed.extra?.sourcingDecision;
+    if (!raw) return null;
+    const selectionSource =
+      raw.selectionSource === "jev" || raw.selectionSource === "sole_eligible" || raw.selectionSource === "incumbent_fallback" ? raw.selectionSource : undefined;
+    const trigger = typeof raw.trigger === "string" ? raw.trigger : undefined;
+    if (!selectionSource && !trigger) return null;
+    return { ...(selectionSource ? { selectionSource } : {}), ...(trigger ? { trigger } : {}) };
+  } catch {
+    return null;
   }
 }
 
@@ -1487,6 +1599,19 @@ export function projectActivity(source: ProductSource, facts: ObjectiveFacts, no
     const selectedOption = options.find((row) => row.optionId === decision.optionId);
     const label = selectedOption?.label ?? reqTitle(decision.requirementKey, decision.contractRevision);
     const alt = decision.strongestAlternativeId ? options.find((row) => row.optionId === decision.strongestAlternativeId) : undefined;
+    const sourcing = decodeSourcingDecision(decision.coarsePlanSummary);
+    const considered: ManagerDecisionConsideredOption[] | undefined =
+      options.length > 0
+        ? options.map((opt) => ({
+            optionId: opt.optionId,
+            approach: opt.approach,
+            label: clip(opt.label ?? reqTitle(decision.requirementKey, decision.contractRevision), 160),
+            status: opt.eligible === false ? "ineligible" : "eligible",
+            ...(opt.eligible === false && opt.ineligibilityDetail ? { reason: clip(opt.ineligibilityDetail, 200) } : {}),
+            ...(opt.providerLabel ? { providerLabel: clip(opt.providerLabel, 80) } : {}),
+            ...(opt.amount ? { amount: opt.amount } : {}),
+          }))
+        : undefined;
     items.push({
       id: `activity:manager_decision:${decision.decisionId}`,
       type: "manager_decision",
@@ -1498,7 +1623,11 @@ export function projectActivity(source: ProductSource, facts: ObjectiveFacts, no
           : `Somebody chose to ${approach === "MAKE" ? "make" : approach === "BUY" ? "buy" : approach === "WAIT" ? "wait" : "ask"}: ${clip(label, 80)}`,
       importance: "major",
       payload: {
-        selected: { approach, label: clip(label, 160) },
+        decisionType: "sourcing",
+        selected: { ...(decision.optionId ? { optionId: decision.optionId } : {}), approach, label: clip(label, 160) },
+        ...(considered ? { considered } : {}),
+        ...(sourcing?.selectionSource ? { selectionSource: sourcing.selectionSource } : {}),
+        ...(sourcing?.trigger ? { trigger: sourcing.trigger } : {}),
         ...(alt && alt.approach && alt.label ? { alternative: { approach: alt.approach, label: clip(alt.label, 160) } } : {}),
         ...(decision.rationale ? { reason: clip(decision.rationale, 300) } : {}),
       },
@@ -1600,6 +1729,39 @@ export function projectActivity(source: ProductSource, facts: ObjectiveFacts, no
       title: "Objective blocked",
       ...(facts.blockerNote ? { detail: facts.blockerNote } : {}),
       importance: "major",
+    });
+  }
+
+  // integration_activity — OKX / X Layer infrastructure moments (§16). Purely
+  // additive: only fires when a future backend adapter has populated
+  // source.integrationEvents with a normalized, persisted fact. Never
+  // inferred from a sourcing decision, an intent, or any other row — a
+  // missing/incomplete row is omitted rather than guessed at.
+  for (const row of source.integrationEvents ?? []) {
+    if (!row.id || !row.integration || !row.action || !row.headline) continue;
+    const payload: IntegrationActivityPayload = {
+      integration: row.integration,
+      action: row.action,
+      headline: row.headline,
+      ...(row.detail ? { detail: row.detail } : {}),
+      ...(row.resourceNeed ? { resourceNeed: row.resourceNeed } : {}),
+      ...(row.candidateCount !== undefined ? { candidateCount: row.candidateCount } : {}),
+      ...(row.candidates ? { candidates: row.candidates } : {}),
+      ...(row.merchantLabel ? { merchantLabel: row.merchantLabel } : {}),
+      ...(row.amount ? { amount: row.amount } : {}),
+      ...(row.networkLabel ? { networkLabel: row.networkLabel } : {}),
+      ...(row.txHash ? { txHash: row.txHash } : {}),
+      ...(row.explorerUrl ? { explorerUrl: row.explorerUrl } : {}),
+    };
+    items.push({
+      id: `activity:integration_activity:${row.id}`,
+      type: "integration_activity",
+      occurredAt: row.occurredAt,
+      actor: { kind: "external", id: row.integration.id, label: row.integration.label },
+      title: row.headline,
+      ...(row.detail ? { detail: row.detail } : {}),
+      importance: row.importance ?? "standard",
+      payload,
     });
   }
 

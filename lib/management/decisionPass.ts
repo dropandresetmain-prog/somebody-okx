@@ -37,6 +37,7 @@ import {
 import { EMPTY_FACTS } from "./options";
 import { createSnapshotDiscovery } from "../market/snapshotDiscovery";
 import { createTestnetDemoDiscovery } from "../market/testnetDemoMarket";
+import { founderMerchantLabelFromOfferingName } from "../integration/persistedEvents";
 import { readSomebodyExecutionMode } from "../execution/executionMode";
 import type { MarketDiscovery } from "../market/discovery";
 import { VERIFIED_SERVICE_REGISTRY } from "../market/registryData";
@@ -306,8 +307,15 @@ export type PrerequisiteResultFact = {
   unknowns: string[];
 };
 
+export type MarketDiscoveryWitness = {
+  requirementKey: string;
+  epochKey: string;
+  resourceNeed: string;
+  offeringNames: string[];
+};
+
 export type BuildDecisionPassInputResult =
-  | { ok: true; input: DecisionPassInput }
+  | { ok: true; input: DecisionPassInput; marketDiscovery?: MarketDiscoveryWitness | null }
   // A raw strategy proposal that does not parse is a typed refusal BEFORE the
   // kernel runs: no capabilities, no options, no model recommendation. The
   // caller (the action) forwards this to applyDecision so the mutation persists
@@ -432,13 +440,16 @@ export async function buildDecisionPassInput(
   // otherwise → SNAPSHOT_OFFERINGS + VERIFIED_SERVICE_REGISTRY
   // Never spawns the onchainos binary; that is createOkxDiscovery()'s path.
   const shouldDiscover = testnetDemo || externalClass !== null;
+  const discoveredOfferings = shouldDiscover
+    ? await createDecisionMarketDiscovery().discover({
+        resourceClass: externalClass ?? ("proprietary_data" as ResourceClass),
+        taskDescription: discoveryPurpose.slice(0, 400),
+      })
+    : [];
   const grounding = shouldDiscover
     ? buildGroundingContext({
         registry: VERIFIED_SERVICE_REGISTRY,
-        discovered: await createDecisionMarketDiscovery().discover({
-          resourceClass: externalClass ?? ("proprietary_data" as ResourceClass),
-          taskDescription: discoveryPurpose.slice(0, 400),
-        }),
+        discovered: discoveredOfferings,
         requiredResourceClass: externalClass ?? ("proprietary_data" as ResourceClass),
         at: reads.at,
         purpose: discoveryPurpose,
@@ -471,8 +482,21 @@ export async function buildDecisionPassInput(
   const grant = reads.grant;
   const budget = reads.budget;
 
+  const marketDiscovery: MarketDiscoveryWitness | null =
+    discoveredOfferings.length > 0
+      ? {
+          requirementKey: requirement.requirementKey,
+          epochKey: reads.decisionId,
+          resourceNeed: discoveryPurpose.slice(0, 400),
+          offeringNames: discoveredOfferings.map((offering) =>
+            founderMerchantLabelFromOfferingName(offering.name),
+          ),
+        }
+      : null;
+
   return {
     ok: true,
+    marketDiscovery,
     input: {
       objectiveKey: contract.objectiveKey,
       contract,

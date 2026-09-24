@@ -8,6 +8,8 @@
  * @module
  */
 
+import type * as integrationEventsDriver from "../integrationEventsDriver.js";
+import type * as internal_integrationEvents from "../internal/integrationEvents.js";
 import type * as internal_workforce from "../internal/workforce.js";
 import type * as m3Driver from "../m3Driver.js";
 import type * as m5Workspace from "../m5Workspace.js";
@@ -30,6 +32,8 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  integrationEventsDriver: typeof integrationEventsDriver;
+  "internal/integrationEvents": typeof internal_integrationEvents;
   "internal/workforce": typeof internal_workforce;
   m3Driver: typeof m3Driver;
   m5Workspace: typeof m5Workspace;

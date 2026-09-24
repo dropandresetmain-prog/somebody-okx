@@ -185,6 +185,7 @@ export const objectiveRecord = v.object({
   // M6.1 — persisted verified external acquisition results. Storage only; the
   // truth a result carries is whatever its execution intent verified.
   acquisitionResults: v.optional(v.array(v.any())),
+  integrationEvents: v.optional(v.array(v.any())),
   // Application-owned input-diagnosis diagnostics (never bind eligibility).
   unconfirmedInputFindings: v.optional(v.array(v.any())),
   // Typed delivery outcome for redecision: INPUT_BLOCKED vs EXECUTION_FAILED.

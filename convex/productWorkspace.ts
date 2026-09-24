@@ -39,6 +39,7 @@ import {
   normalizeRequirement,
   normalizeWorker,
 } from "../lib/product/sourceAdapter";
+import { normalizeIntegrationEventsForProduct } from "../lib/integration/productProjection";
 
 type AnyRow = { _id: unknown; [k: string]: unknown };
 type Loose = Record<string, unknown>;
@@ -170,10 +171,12 @@ export const getObjectiveWorkspaceV1 = query({
       ),
     );
 
+    const objectiveData = dataOf(objectiveRow);
     const source: ProductSource = {
       ...base,
       workers: workerRows.filter((row): row is NonNullable<typeof row> => row !== null).map((row) => normalizeWorker(dataOf(row))),
       evidence: evidenceRows.map((row) => normalizeEvidence({ evidenceId: row.evidenceId, data: row.data })),
+      integrationEvents: normalizeIntegrationEventsForProduct(objectiveData.integrationEvents),
     };
     // Convex holds no M3 rows, so transaction facts are not joined: `transaction`
     // is omitted rather than inferred from M4 intent state (contract §36).

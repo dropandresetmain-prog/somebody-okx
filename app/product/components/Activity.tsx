@@ -5,17 +5,22 @@ import type {
   ActivityItem,
   ArtifactChangedPayload,
   FindingPayload,
+  IntegrationActivityPayload,
   InternAssignedPayload,
+  ManagerDecisionConsideredOption,
   ManagerDecisionPayload,
   VerificationPayload,
   WorkSummaryPayload,
 } from "../contracts";
+import { INTEGRATION_LOGO_ALT, INTEGRATION_LOGO_SRC, INTEGRATION_LOGO_TREATMENT } from "../integrations";
 import {
   actorName,
+  decisionAttributionLabel,
   humanizeKey,
   internName,
   internRole,
   presentActivity,
+  presentConsideredLabel,
   presentEvidenceLabel,
   presentOption,
 } from "../humanize";
@@ -115,6 +120,7 @@ function ActivityEvent({
     activityEventClass(item.importance),
     causal ? "v6-event--causal" : "",
     verificationPassed(item) ? "v6-event--done" : "",
+    item.type === "integration_activity" ? "v6-event--integration" : "",
   ]
     .filter(Boolean)
     .join(" ");
@@ -175,6 +181,8 @@ function EventBody({
     case "verification_completed":
     case "objective_completed":
       return <VerificationEvent item={item} />;
+    case "integration_activity":
+      return <IntegrationActivityEvent item={item} />;
     case "objective_interpreted":
     default:
       return <SomebodyEvent item={item} />;
@@ -195,6 +203,107 @@ function SomebodyEvent({ item }: { item: ActivityItem }) {
       ) : null}
     </div>
   );
+}
+
+// Dedicated visual treatment for an infrastructure moment (OKX Marketplace,
+// OKX Agentic Wallet, OKX x402, X Layer Testnet). Renders ONLY what the
+// backend supplied on the payload — never invents merchants, amounts, tx
+// hashes, or a stronger lifecycle claim than the persisted fact. Required
+// hierarchy (spec §5): [LOGO] Integration name / what it's doing / factual
+// details.
+function IntegrationActivityEvent({ item }: { item: ActivityItem }) {
+  const payload = isIntegrationActivity(item.payload) ? item.payload : null;
+  if (!payload) return <SomebodyEvent item={item} />;
+  const { integration } = payload;
+  const chip = INTEGRATION_LOGO_TREATMENT[integration.logoKey] === "chip-dark";
+  return (
+    <div className="v6-event-card v6-integration" data-integration-id={integration.id} data-integration-action={payload.action}>
+      <div className="v6-integration-header">
+        {chip ? (
+          <span className="v6-integration-logo-chip">
+            <img
+              className="v6-integration-logo v6-integration-logo--on-chip"
+              src={INTEGRATION_LOGO_SRC[integration.logoKey]}
+              alt={INTEGRATION_LOGO_ALT[integration.logoKey]}
+            />
+          </span>
+        ) : (
+          <img
+            className="v6-integration-logo"
+            src={INTEGRATION_LOGO_SRC[integration.logoKey]}
+            alt={INTEGRATION_LOGO_ALT[integration.logoKey]}
+          />
+        )}
+        <div>
+          <p className="v6-integration-name">{integration.label}</p>
+          <p className="v6-integration-action">{payload.headline}</p>
+        </div>
+      </div>
+      {payload.detail ? <p className="v6-event-desc v6-integration-detail">{payload.detail}</p> : null}
+      {payload.resourceNeed ? (
+        <div className="v6-integration-field">
+          <span>Need</span>
+          <strong>{payload.resourceNeed}</strong>
+        </div>
+      ) : null}
+      {payload.candidates && payload.candidates.length > 0 ? (
+        <div className="v6-integration-candidates">
+          <p className="v6-integration-candidates-count">
+            {payload.candidateCount ?? payload.candidates.length} Testnet service
+            {(payload.candidateCount ?? payload.candidates.length) === 1 ? "" : "s"} considered
+          </p>
+          <ul>
+            {payload.candidates.map((candidate, index) => (
+              <li key={`${candidate.label}:${index}`}>
+                {candidate.label}
+                {candidate.status ? <span className="v6-integration-candidate-status">{candidate.status}</span> : null}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      {payload.merchantLabel || payload.amount || payload.networkLabel ? (
+        <div className="v6-integration-fields">
+          {payload.merchantLabel ? (
+            <div className="v6-integration-field">
+              <span>Merchant</span>
+              <strong>{payload.merchantLabel}</strong>
+            </div>
+          ) : null}
+          {payload.amount ? (
+            <div className="v6-integration-field">
+              <span>Amount</span>
+              <strong>
+                {payload.amount.amount} {payload.amount.currency}
+              </strong>
+            </div>
+          ) : null}
+          {payload.networkLabel ? (
+            <div className="v6-integration-field">
+              <span>Network</span>
+              <strong>{payload.networkLabel}</strong>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+      {payload.txHash ? (
+        <div className="v6-integration-field v6-integration-tx">
+          <span>Transaction</span>
+          {payload.explorerUrl ? (
+            <a href={payload.explorerUrl} target="_blank" rel="noreferrer noopener">
+              {shortenTxHash(payload.txHash)}
+            </a>
+          ) : (
+            <strong>{shortenTxHash(payload.txHash)}</strong>
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function shortenTxHash(hash: string): string {
+  return hash.length <= 14 ? hash : `${hash.slice(0, 6)}…${hash.slice(-4)}`;
 }
 
 function DelegationEvent({ item }: { item: ActivityItem }) {
@@ -354,6 +463,11 @@ function EvidenceGapEvent({ item }: { item: ActivityItem }) {
 function DecisionEvent({ item }: { item: ActivityItem }) {
   const payload = isDecision(item.payload) ? item.payload : null;
   const display = presentActivity(item);
+  // A real sourcing comparison (more than one persisted option) gets the full
+  // considered-market list + a separate Selected line; a single-option or
+  // legacy decision keeps the original two-up grid unchanged.
+  const isComparison = (payload?.considered?.length ?? 0) > 1;
+  const attribution = payload ? decisionAttributionLabel(payload.selectionSource) : null;
   return (
     <div className="v6-event-card v6-decision">
       <p className="v6-event-type">{activityTypeLabel(item.type)}</p>
@@ -361,10 +475,23 @@ function DecisionEvent({ item }: { item: ActivityItem }) {
       {display.detail ? <p className="v6-event-desc v6-activity-detail">{display.detail}</p> : null}
       {payload ? (
         <>
-          <div className="v6-decision-grid">
-            {payload.alternative ? <DecisionOption option={payload.alternative} /> : null}
-            <DecisionOption option={payload.selected} selected />
-          </div>
+          {isComparison ? (
+            <>
+              <ConsideredOptions considered={payload.considered!} selectedOptionId={payload.selected.optionId} />
+              <div className="v6-decision-selected-line">
+                <span className="v6-decision-selected-label">Selected</span>
+                <strong>
+                  {APPROACH_LABEL[payload.selected.approach]} · {presentConsideredLabel(payload.selected)}
+                </strong>
+              </div>
+            </>
+          ) : (
+            <div className="v6-decision-grid">
+              {payload.alternative ? <DecisionOption option={payload.alternative} /> : null}
+              <DecisionOption option={payload.selected} selected />
+            </div>
+          )}
+          {attribution ? <p className="v6-decision-attribution">{attribution}</p> : null}
           {payload.reason ? (
             <details className="v6-decision-why">
               <summary>Why</summary>
@@ -392,6 +519,44 @@ function DecisionOption({
       <strong>{display.label}</strong>
       {display.source ? <span className="v6-option-source">from {display.source}</span> : null}
     </div>
+  );
+}
+
+// Every persisted option Somebody weighed — eligible and ineligible alike, so
+// the founder can see the marketplace was actually checked, not just the pick.
+function ConsideredOptions({
+  considered,
+  selectedOptionId,
+}: {
+  considered: ManagerDecisionConsideredOption[];
+  selectedOptionId?: string;
+}) {
+  return (
+    <ul className="v6-considered-list">
+      {considered.map((option, index) => {
+        const isSelected = Boolean(selectedOptionId) && option.optionId === selectedOptionId;
+        const eligible = option.status === "eligible";
+        return (
+          <li
+            key={option.optionId || index}
+            className={`v6-considered-option v6-considered-option--${option.status}${isSelected ? " is-selected" : ""}`}
+          >
+            {isSelected ? <span className="v6-selected-ribbon">Selected</span> : null}
+            <p className="v6-option-label">{option.approach ? APPROACH_LABEL[option.approach] : "Option"}</p>
+            <strong>{presentConsideredLabel(option)}</strong>
+            {option.providerLabel ? <span className="v6-option-source">{humanizeKey(option.providerLabel)}</span> : null}
+            {option.amount ? (
+              <span className="v6-considered-amount">
+                {option.amount.amount} {option.amount.currency}
+              </span>
+            ) : null}
+            <span className="v6-considered-status">
+              {eligible ? "Eligible" : option.reason ? `Not suitable — ${option.reason}` : "Not suitable"}
+            </span>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 
@@ -642,4 +807,8 @@ function isArtifactChanged(payload: ActivityItem["payload"]): payload is Artifac
 
 function isVerification(payload: ActivityItem["payload"]): payload is VerificationPayload {
   return Boolean(payload && "checks" in payload);
+}
+
+function isIntegrationActivity(payload: ActivityItem["payload"]): payload is IntegrationActivityPayload {
+  return Boolean(payload && "integration" in payload && "action" in payload);
 }

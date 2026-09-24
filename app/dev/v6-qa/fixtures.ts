@@ -4,10 +4,12 @@
 import type {
   ActivityItem,
   AttentionState,
+  IntegrationIdentity,
   ObjectiveListView,
   ObjectiveWorkspaceView,
   StartCapabilitiesView,
 } from "../../product/contracts";
+import { INTEGRATION_IDENTITIES } from "../../product/integrations";
 
 const NOW = 1_820_000_000_000;
 
@@ -295,6 +297,187 @@ export function needsYouWorkspace(): ObjectiveWorkspaceView {
         { id: "c1", label: "Diagnose what isn’t working", state: "complete" },
         { id: "c2", label: "Ground the direction in evidence", state: "blocked", detail: "Waiting on founder authority" },
         { id: "c3", label: "Produce and verify the recommendation", state: "pending" },
+      ],
+    },
+  };
+}
+
+// ── OKX / X Layer infrastructure story (dev-only visual QA, spec §19) ──────
+// Founder-facing narrative: Somebody → OKX Marketplace → MAKE vs BUY / Jev →
+// OKX Agentic Wallet / x402 → X Layer Testnet → merchant → Somebody resumes.
+// Contract-shaped fixture only — never a real Objective/Luna/Nex run.
+
+const OKX_MARKETPLACE: IntegrationIdentity = INTEGRATION_IDENTITIES.okx_marketplace;
+const OKX_WALLET: IntegrationIdentity = INTEGRATION_IDENTITIES.okx_agentic_wallet;
+const X_LAYER: IntegrationIdentity = INTEGRATION_IDENTITIES.x_layer_testnet;
+
+const OKX_ACTIVITY: ActivityItem[] = [
+  act({
+    id: "okx_resumed",
+    type: "work_resumed",
+    occurredAt: NOW - 10_000,
+    actor: { kind: "intern", id: "w1", label: "Rae" },
+    title: "Rae resumed with the acquired result",
+    importance: "standard",
+  }),
+  act({
+    id: "okx_somebody_verified",
+    type: "external_result_verified",
+    occurredAt: NOW - 20_000,
+    actor: { kind: "somebody", label: "Somebody" },
+    title: "Verified the result for cross-platform social intelligence",
+    detail: "The receipt is verified as the result of this acquisition.",
+    importance: "major",
+  }),
+  act({
+    id: "okx_merchant_result",
+    type: "external_result_received",
+    occurredAt: NOW - 30_000,
+    actor: { kind: "external", id: "social_media_guru", label: "Social Media Guru" },
+    title: "Received a result for cross-platform social intelligence",
+    detail: "Received is not verified; verification is a separate step.",
+    importance: "standard",
+  }),
+  act({
+    id: "okx_xlayer_confirmed",
+    type: "integration_activity",
+    occurredAt: NOW - 40_000,
+    actor: { kind: "external", id: "x_layer_testnet", label: "X Layer Testnet" },
+    title: "Settlement confirmed",
+    importance: "standard",
+    payload: {
+      integration: X_LAYER,
+      action: "settlement_confirmed",
+      headline: "Settlement confirmed",
+      detail: "Payment settlement verified",
+      amount: { amount: "0.01", currency: "USD₮0" },
+      txHash: "0x72af1e9c8b4d3f0a5e6d7c8b9a0f1e2d3c4b5a6972af91e",
+    },
+  }),
+  act({
+    id: "okx_xlayer_submitted",
+    type: "integration_activity",
+    occurredAt: NOW - 50_000,
+    actor: { kind: "external", id: "x_layer_testnet", label: "X Layer Testnet" },
+    title: "Transaction submitted",
+    importance: "standard",
+    payload: {
+      integration: X_LAYER,
+      action: "transaction_submitted",
+      headline: "Transaction submitted",
+      merchantLabel: "Social Media Guru",
+      amount: { amount: "0.01", currency: "USD₮0" },
+      txHash: "0x72af1e9c8b4d3f0a5e6d7c8b9a0f1e2d3c4b5a6972af91e",
+    },
+  }),
+  act({
+    id: "okx_wallet_prep",
+    type: "integration_activity",
+    occurredAt: NOW - 60_000,
+    actor: { kind: "external", id: "okx_agentic_wallet", label: "OKX Agentic Wallet" },
+    title: "Preparing x402 payment",
+    importance: "standard",
+    payload: {
+      integration: OKX_WALLET,
+      action: "payment_preparing",
+      headline: "Preparing x402 payment",
+      merchantLabel: "Social Media Guru",
+      amount: { amount: "0.01", currency: "USD₮0" },
+      networkLabel: "X Layer Testnet",
+    },
+  }),
+  act({
+    id: "okx_needs_you",
+    type: "founder_action_required",
+    occurredAt: NOW - 75_000,
+    actor: { kind: "somebody", label: "Somebody" },
+    title: "Somebody needs your approval",
+    detail: "A $0.01 purchase from Social Media Guru is waiting on your approval.",
+    importance: "major",
+  }),
+  act({
+    id: "okx_jev_decision",
+    type: "manager_decision",
+    occurredAt: NOW - 80_000,
+    actor: { kind: "somebody", label: "Somebody" },
+    title: "Somebody chose to buy: Social Media Guru",
+    importance: "major",
+    payload: {
+      decisionType: "sourcing",
+      selected: { optionId: "opt_buy", approach: "BUY", label: "Social Media Guru" },
+      considered: [
+        { optionId: "opt_make", approach: "MAKE", label: "Growth Intern", status: "ineligible", reason: "Not suitable for others" },
+        { optionId: "opt_buy", approach: "BUY", label: "Social Media Guru", status: "eligible", amount: { amount: "0.01", currency: "USD₮0" } },
+      ],
+      selectionSource: "jev",
+    },
+  }),
+  act({
+    id: "okx_market_search",
+    type: "integration_activity",
+    occurredAt: NOW - 90_000,
+    actor: { kind: "external", id: "okx_marketplace", label: "OKX Marketplace" },
+    title: "Searched for external services",
+    importance: "standard",
+    payload: {
+      integration: OKX_MARKETPLACE,
+      action: "market_search",
+      headline: "Searched for external services",
+      resourceNeed: "Cross-platform social intelligence",
+      candidateCount: 3,
+      candidates: [
+        { label: "Social Media Guru" },
+        { label: "Token Market Intelligence" },
+        { label: "Wallet / Onchain Risk Intelligence" },
+      ],
+    },
+  }),
+  act({
+    id: "okx_outcome",
+    type: "objective_interpreted",
+    occurredAt: NOW - 100_000,
+    actor: { kind: "somebody", label: "Somebody" },
+    title: "Somebody defined the outcome",
+    detail: "Get cross-platform social intelligence for the launch.",
+    importance: "major",
+  }),
+];
+
+export function okxIntegrationWorkspace(): ObjectiveWorkspaceView {
+  return {
+    ...BASE_WORKSPACE,
+    objective: {
+      ...BASE_WORKSPACE.objective,
+      id: "obj_okx",
+      title: "Get cross-platform social intelligence",
+      request: "Get cross-platform social intelligence for the launch.",
+      status: "working",
+    },
+    somebodyNow: {
+      state: "working",
+      headline: "Working on cross-platform social intelligence",
+      detail: "Somebody bought outside help through OKX Marketplace and is verifying what came back.",
+      updatedAt: NOW,
+    },
+    currentWork: null,
+    activity: OKX_ACTIVITY,
+    acquisitions: [
+      {
+        id: "acq_okx",
+        resourceLabel: "Cross-platform social intelligence",
+        providerLabel: "Social Media Guru",
+        amount: { amount: "0.01", currency: "USD₮0" },
+        status: "verified",
+        resultSummary: "Cross-platform social intelligence delivered and verified.",
+        updatedAt: NOW - 20_000,
+      },
+    ],
+    attention: null,
+    progress: {
+      currentPhase: "Verifying the acquired result",
+      checkpoints: [
+        { id: "c1", label: "Source cross-platform social intelligence", state: "complete" },
+        { id: "c2", label: "Verify the acquired result", state: "active" },
       ],
     },
   };

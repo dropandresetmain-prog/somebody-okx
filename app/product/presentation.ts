@@ -192,6 +192,8 @@ export function activityTypeLabel(type: ActivityType): string {
       return "Done";
     case "objective_blocked":
       return "Stopped";
+    case "integration_activity":
+      return "Infrastructure";
   }
 }
 
@@ -263,6 +265,7 @@ const ACTIVITY_ICON: Record<ActivityType, IconName> = {
   verification_completed: "stamp",
   objective_completed: "stamp",
   objective_blocked: "stop",
+  integration_activity: "globe",
 };
 
 export function activityIcon(type: ActivityType): IconName {

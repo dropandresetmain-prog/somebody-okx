@@ -9,6 +9,7 @@ import {
   QA_LIST,
   completedWorkspace,
   needsYouWorkspace,
+  okxIntegrationWorkspace,
   workingWorkspace,
 } from "./fixtures";
 import { lunaRelaunchScenario } from "../../../lib/demo/scenarios/lunaRelaunch";
@@ -48,9 +49,21 @@ function V6QaInner() {
   }
 
   const view =
-    scene === "needs_you" ? needsYouWorkspace() : scene === "complete" ? completedWorkspace() : workingWorkspace();
+    scene === "needs_you"
+      ? needsYouWorkspace()
+      : scene === "complete"
+        ? completedWorkspace()
+        : scene === "okx"
+          ? okxIntegrationWorkspace()
+          : workingWorkspace();
   const selectedId =
-    scene === "needs_you" ? "obj_needs_you" : scene === "complete" ? "obj_done" : "obj_working";
+    scene === "needs_you"
+      ? "obj_needs_you"
+      : scene === "complete"
+        ? "obj_done"
+        : scene === "okx"
+          ? "obj_okx"
+          : "obj_working";
 
   return (
     <V6WorkspaceView

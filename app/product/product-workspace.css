@@ -1111,6 +1111,75 @@
   color: var(--ink-2);
 }
 
+.v6-considered-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 9px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.v6-considered-option {
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 12px;
+  background: var(--v6-surface2);
+  position: relative;
+}
+
+.v6-considered-option--ineligible {
+  opacity: 0.72;
+}
+
+.v6-considered-option.is-selected {
+  border: 2px solid var(--somebody);
+  background: #fff8f3;
+  padding: 11px;
+  opacity: 1;
+}
+
+.v6-considered-amount {
+  display: block;
+  margin-top: 3px;
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+.v6-considered-status {
+  display: block;
+  margin-top: 6px;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--verified);
+}
+
+.v6-considered-option--ineligible .v6-considered-status {
+  color: var(--ineligible-ink);
+}
+
+.v6-decision-selected-line {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  margin-top: 12px;
+  font-size: 13px;
+}
+
+.v6-decision-selected-label {
+  font-weight: 900;
+  font-size: 10px;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.v6-decision-attribution {
+  margin: 9px 0 0;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ink-3);
+}
+
 .v6-interrupt {
   border: 2px solid #e1bb22;
   background: linear-gradient(120deg, #fff9da, #fffdf9);
@@ -1209,6 +1278,143 @@
   font-size: 8px;
   color: var(--ink-3);
   font-weight: 700;
+}
+
+/* OKX / X Layer infrastructure moment (spec: IntegrationActivityEvent).
+   Subtle modifier only — reuses existing tokens, no new color system. */
+.v6-event--integration .v6-event-node {
+  background: var(--ink-3);
+}
+
+.v6-integration {
+  border-left: 3px solid var(--line-strong);
+  padding: 16px 18px;
+}
+
+.v6-integration-header {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.v6-integration-logo {
+  height: 26px;
+  width: auto;
+  max-width: 72px;
+  object-fit: contain;
+  flex: none;
+}
+
+/* OKX's own site hosts only a white/transparent wordmark (no dark variant).
+   Per spec (no recoloring/redrawing the asset itself), the untouched PNG is
+   shown on a small dark rounded chip — a standard reversed-logo lockup. */
+.v6-integration-logo-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 7px;
+  background: #0a0a0a;
+}
+
+.v6-integration-logo--on-chip {
+  height: 16px;
+  max-width: 60px;
+}
+
+.v6-integration-name {
+  font-family: var(--font-display-stack);
+  font-size: 14px;
+  font-weight: 700;
+  margin: 0;
+}
+
+.v6-integration-action {
+  font-size: 12px;
+  color: var(--ink-3);
+  margin: 2px 0 0;
+}
+
+.v6-integration-detail {
+  margin-top: 8px;
+}
+
+.v6-integration-field {
+  padding: 6px 0;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.v6-integration-field span {
+  display: block;
+  color: var(--ink-3);
+  font-size: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: 3px;
+}
+
+.v6-integration-fields {
+  border-top: 1px solid var(--line);
+  margin-top: 12px;
+  padding-top: 4px;
+}
+
+.v6-integration-fields .v6-integration-field {
+  border-bottom: 1px solid var(--line);
+}
+
+.v6-integration-fields .v6-integration-field:last-child {
+  border-bottom: 0;
+}
+
+.v6-integration-candidates {
+  border-top: 1px solid var(--line);
+  margin-top: 12px;
+  padding-top: 10px;
+}
+
+.v6-integration-candidates-count {
+  font-size: 11px;
+  font-weight: 700;
+  margin: 0 0 6px;
+}
+
+.v6-integration-candidates ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.v6-integration-candidates li {
+  font-size: 12px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.v6-integration-candidates li:last-child {
+  border-bottom: 0;
+}
+
+.v6-integration-candidate-status {
+  font-size: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-3);
+}
+
+.v6-integration-tx a,
+.v6-integration-tx strong {
+  font-family: var(--font-mono-stack, monospace);
 }
 
 .v6-diff {
@@ -2160,6 +2366,7 @@
   .v6-interrupt-grid,
   .v6-now-intern,
   .v6-decision-grid,
+  .v6-considered-list,
   .v6-diff-grid,
   .v6-artifact-diff,
   .v6-verify-wrap {
@@ -2181,6 +2388,7 @@
   .v6-intern-moment-art img,
   .v6-finding-quote,
   .v6-option.is-selected,
+  .v6-considered-option.is-selected,
   .v6-selected-ribbon,
   .v6-interrupt,
   .v6-interrupt-intern img,

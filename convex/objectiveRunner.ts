@@ -2011,6 +2011,17 @@ export const proposeDecision = internalAction({
       },
     );
 
+    if (preview.ok && preview.marketDiscovery) {
+      await ctx.runMutation(internal.internal.integrationEvents.recordMarketSearch, {
+        objectiveKey: args.objectiveKey,
+        requirementKey: preview.marketDiscovery.requirementKey,
+        epochKey: args.requestId,
+        resourceNeed: preview.marketDiscovery.resourceNeed,
+        offeringNames: preview.marketDiscovery.offeringNames,
+        at,
+      });
+    }
+
     if (preview.ok) {
       // Running the kernel here surfaces a malformed proposal as the SAME typed
       // refusal the mutation would produce and populates rawRecommendation via

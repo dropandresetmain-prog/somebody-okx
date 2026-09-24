@@ -20,6 +20,9 @@ import { prepareFounderVisiblePreview } from "../lib/payment/supervisedPreparati
 import { persistFounderConfirmation } from "../lib/payment/supervisedDriverAdapter";
 import { canonicalM3DriverFact, type M3DriverFact } from "../lib/management/m3DriverFacts";
 import type { M3BuyerRailDeps } from "../lib/management/m3BuyerRail";
+import { founderMerchantLabelFromOfferingName } from "../lib/integration/persistedEvents";
+import { TESTNET_DEMO_OFFERINGS } from "../lib/market/testnetDemoMarket";
+import { XLAYER_TESTNET_NETWORK } from "../lib/payment/xlayerSettlement";
 
 const modes = new Set<DriverMode>(["inspect", "prepare", "execute", "observe", "reconcile"]);
 type CliMode = DriverMode | "preview" | "confirm";
@@ -77,7 +80,24 @@ async function main() {
   // before that deploy-time generation step.
   const bridge = client as unknown as {
     query(name: "m3Driver:snapshot", args: { intentId: string; driverToken: string }): Promise<unknown>;
-    mutation(name: "m3Driver:apply", args: Record<string, unknown>): Promise<unknown>;
+    mutation(name: string, args: Record<string, unknown>): Promise<unknown>;
+  };
+  const recordWalletPreparing = async (intent: import("../lib/management/types").ExecutionIntent, purchase: import("../lib/payment/types").PurchaseRecord, at: number) => {
+    const offering = TESTNET_DEMO_OFFERINGS.find((row) => row.serviceId === intent.target.serviceId);
+    const merchantLabel = offering
+      ? founderMerchantLabelFromOfferingName(offering.name)
+      : intent.target.serviceId ?? "External merchant";
+    const amount = purchase.boundTerms?.maxAmountRequired ?? String(intent.terms.priceUsd ?? "");
+    const asset = purchase.boundTerms?.asset ?? "USDT";
+    await bridge.mutation("integrationEventsDriver:recordPaymentPreparingFromDriver", {
+      driverToken,
+      objectiveKey: intent.objectiveKey,
+      intentId: intent.intentId,
+      merchantLabel,
+      amount: { amount, currency: asset === "USDT" ? "USD₮0" : asset },
+      networkLabel: "X Layer Testnet",
+      at,
+    });
   };
   const store: M3DriverStore = {
     read: (id) => bridge.query("m3Driver:snapshot", { intentId: id, driverToken }) as never,
@@ -154,6 +174,7 @@ async function main() {
         at: Date.now(),
       });
       purchases.put(outcome.purchase);
+      await recordWalletPreparing(snapshot.intent, outcome.purchase, Date.now());
       console.log(JSON.stringify({ mode, intentId, purchaseState: outcome.purchase.state, preview: outcome.preview, changed: true, detail: "safe founder-visible preview bound to one durable M3 purchase; no signing or submission occurred" }, null, 2));
       return;
     }
@@ -185,6 +206,23 @@ async function main() {
     railForPurchase: supplied.railForPurchase,
     executionAuthorized: supplied.executionAuthorized === true,
     supervisedSubmit: supplied.supervisedSubmit,
+    onPurchaseSettled: async ({ intent, purchase, at }) => {
+      const txHash = purchase.receipt?.transactionHash;
+      if (!txHash || purchase.boundTerms?.network !== XLAYER_TESTNET_NETWORK) return;
+      await bridge.mutation("integrationEventsDriver:recordSettlementFromDriver", {
+        driverToken,
+        objectiveKey: intent.objectiveKey,
+        intentId: intent.intentId,
+        txHash,
+        amount: purchase.boundTerms
+          ? {
+              amount: purchase.boundTerms.maxAmountRequired,
+              currency: purchase.boundTerms.asset === "USDT" ? "USD₮0" : purchase.boundTerms.asset,
+            }
+          : undefined,
+        at,
+      });
+    },
   });
   // Deliberately safe summary: it contains no authorization, signature, token,
   // challenge body, raw provider result, or wallet material.

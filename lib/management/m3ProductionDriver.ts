@@ -64,6 +64,12 @@ export type M3ProductionDriverDeps = {
     purchase: PurchaseRecord;
     persistPaymentAttempt: (purchase: PurchaseRecord) => Promise<void>;
   }) => Promise<SeamResult>;
+  /** Optional hook when M3 observes settlement without an M4 writeback. */
+  onPurchaseSettled?: (input: {
+    intent: ExecutionIntent;
+    purchase: PurchaseRecord;
+    at: number;
+  }) => Promise<void>;
 };
 
 export type M3ProductionDriverResult = {
@@ -144,6 +150,7 @@ async function persist(
   deps: M3ProductionDriverDeps,
   expectedIntent: ExecutionIntent,
   result: SeamResult,
+  previousPurchase?: PurchaseRecord | null,
 ): Promise<void> {
   const needsM4Write = result.intent !== expectedIntent || result.events.length > 0;
   // The M4 kernel, not the caller's pre-observation clock, owns the transition
@@ -178,6 +185,19 @@ async function persist(
     // A crash before this clear is harmless: the restart recognizes the exact
     // already-written intent and clears it without generating a new fact.
     if (result.purchase) deps.purchases.put(withoutPendingSync({ ...result.purchase, pendingM4Sync: pending }));
+  }
+  if (
+    deps.onPurchaseSettled &&
+    result.purchase &&
+    previousPurchase?.state === "submitted" &&
+    result.purchase.state === "settled" &&
+    result.purchase.receipt?.transactionHash
+  ) {
+    await deps.onPurchaseSettled({
+      intent: result.intent,
+      purchase: result.purchase,
+      at: result.purchase.updatedAt,
+    });
   }
 }
 
@@ -271,12 +291,12 @@ export async function runM3ProductionDriver(
           });
         })()
       : handoffIntentToM3(intent, deps.rail));
-    await persist(deps, intent, result);
+    await persist(deps, intent, result, existing);
     return { mode, intent: result.intent, purchase: result.purchase, events: result.events, changed: true, stale, reconciliationRequired: result.reconciliationRequired, detail: result.detail };
   }
 
   if (!existing) throw new Error("refusing observation: no durable M3 purchase exists; use prepare or a separately authorized execute pass");
   const result = await observePurchase(intent, existing, deps.railForPurchase?.(existing) ?? deps.rail);
-  await persist(deps, intent, result);
+  await persist(deps, intent, result, existing);
   return { mode, intent: result.intent, purchase: result.purchase, events: result.events, changed: result.purchase !== existing || result.intent !== intent || result.events.length > 0, stale, reconciliationRequired: result.reconciliationRequired, detail: result.detail };
 }

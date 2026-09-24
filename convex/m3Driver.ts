@@ -13,6 +13,8 @@ import {
 } from "../lib/objective/seedData";
 import type { ExternalAcquisitionResult } from "../lib/objective/types";
 import { assertAttestedLiveAcquisitionContent } from "../lib/payment/liveAcquisitionContent";
+import { founderMerchantLabelFromOfferingName, parseSubmittedTxHash } from "../lib/integration/persistedEvents";
+import { TESTNET_DEMO_OFFERINGS } from "../lib/market/testnetDemoMarket";
 import { vExecutionIntent } from "./managementValidators";
 import type { ExecutionIntent, WakeEvent, WakeReason } from "../lib/management/types";
 import type { FounderSpendGrant } from "./internal/workforce";
@@ -242,6 +244,30 @@ export const apply = mutation({
       throw new Error(moved.reason);
     }
     await ctx.db.patch(row._id, { data: moved.intent });
+
+    if (args.eventKind === "submitted") {
+      const txHash = parseSubmittedTxHash(args.note);
+      if (txHash) {
+        const offering = TESTNET_DEMO_OFFERINGS.find(
+          (entry) => entry.serviceId === intent.target.serviceId,
+        );
+        const merchantLabel = offering
+          ? founderMerchantLabelFromOfferingName(offering.name)
+          : intent.target.serviceId ?? intent.target.offeringId ?? "External merchant";
+        await ctx.runMutation(internal.internal.integrationEvents.recordXLayerFact, {
+          objectiveKey: intent.objectiveKey,
+          intentId: intent.intentId,
+          action: "transaction_submitted",
+          txHash,
+          merchantLabel,
+          amount: {
+            amount: String(intent.terms.priceUsd),
+            currency: "USD₮0",
+          },
+          at: args.at,
+        });
+      }
+    }
 
     // Live acquisition writeback: only after independent verification_passed,
     // with attested content hash. Submission / provider_result alone never
