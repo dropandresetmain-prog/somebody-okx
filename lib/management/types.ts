@@ -124,6 +124,16 @@ export type AuthorizedPurposePolicy = {
   purposeKind: string;
   /** The ONE structurally-targeted Requirement kind this policy authorizes. */
   targetRequirementKind: RequirementKind;
+  /**
+   * Additive, APPLICATION-OWNED resource-class need bound onto the SAME
+   * structurally-targeted Requirement as purposeKind, by
+   * bindAuthorizedPurposePolicy. This states a business fact (the deliverable
+   * genuinely needs this input), never a strategy choice — MAKE/BUY selection
+   * still runs through the normal eligibility/Jev pipeline. Governed
+   * ResourceClass values only; re-validated at bind time. Absent/empty = no
+   * resource-class need added (unchanged fail-closed default).
+   */
+  requiredResourceClasses?: readonly string[];
 };
 
 // CRITICAL: provider-candidate rejection ≠ satisfaction; MAKE decision ≠

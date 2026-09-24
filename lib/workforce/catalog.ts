@@ -234,6 +234,13 @@ export function isOwnedResourceClass(resource: string): boolean {
 export const GOVERNED_RESOURCE_CLASSES: readonly ResourceClass[] =
   RESOURCE_CLASSES.map((resource) => resource.class);
 
+export function isGovernedResourceClass(value: unknown): value is ResourceClass {
+  return (
+    typeof value === "string" &&
+    (GOVERNED_RESOURCE_CLASSES as readonly string[]).includes(value)
+  );
+}
+
 /**
  * V7 review R4 — the ONE governed requested-purpose-scope vocabulary.
  *
