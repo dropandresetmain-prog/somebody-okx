@@ -69,7 +69,7 @@ if (source.M4_M3_DRIVER_TOKEN === source.M4_M3_FACT_ATTESTATION_KEY) {
 const desired = {
   LIVE_AI_ENABLED: "true",
   AI_PROVIDER: "openrouter",
-  AI_MODEL: "nex-agi/nex-n2.5-mini:free",
+  AI_MODEL: "openai/gpt-6-luna",
   JEV_OPTION_SELECTION_ENABLED: "true",
   SOMEBODY_EXECUTION_MODE: "testnet_demo",
   M4_M3_EXECUTION_ENABLED: "true",
@@ -135,7 +135,7 @@ console.log("[okx-prepare] Convex runtime:");
 console.log("  SOMEBODY_EXECUTION_MODE=testnet_demo");
 console.log("  JEV_OPTION_SELECTION_ENABLED=true");
 console.log("  AI_PROVIDER=openrouter");
-console.log("  AI_MODEL=nex-agi/nex-n2.5-mini:free");
+console.log("  AI_MODEL=openai/gpt-6-luna");
 console.log("  LIVE_AI_ENABLED=true");
 console.log("  M4_M3_EXECUTION_ENABLED=true");
 console.log("  OPENROUTER_API_KEY=present");
