@@ -1280,6 +1280,124 @@
   font-weight: 700;
 }
 
+/* OKX / X Layer infrastructure moment (spec: IntegrationActivityEvent).
+   Subtle modifier only — reuses existing tokens, no new color system. */
+.v6-event--integration .v6-event-node {
+  background: var(--ink-3);
+}
+
+.v6-integration {
+  border-left: 3px solid var(--line-strong);
+  padding: 16px 18px;
+}
+
+.v6-integration-header {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.v6-integration-logo {
+  height: 26px;
+  width: auto;
+  max-width: 72px;
+  object-fit: contain;
+  flex: none;
+}
+
+.v6-integration-name {
+  font-family: var(--font-display-stack);
+  font-size: 14px;
+  font-weight: 700;
+  margin: 0;
+}
+
+.v6-integration-action {
+  font-size: 12px;
+  color: var(--ink-3);
+  margin: 2px 0 0;
+}
+
+.v6-integration-detail {
+  margin-top: 8px;
+}
+
+.v6-integration-field {
+  padding: 6px 0;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.v6-integration-field span {
+  display: block;
+  color: var(--ink-3);
+  font-size: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: 3px;
+}
+
+.v6-integration-fields {
+  border-top: 1px solid var(--line);
+  margin-top: 12px;
+  padding-top: 4px;
+}
+
+.v6-integration-fields .v6-integration-field {
+  border-bottom: 1px solid var(--line);
+}
+
+.v6-integration-fields .v6-integration-field:last-child {
+  border-bottom: 0;
+}
+
+.v6-integration-candidates {
+  border-top: 1px solid var(--line);
+  margin-top: 12px;
+  padding-top: 10px;
+}
+
+.v6-integration-candidates-count {
+  font-size: 11px;
+  font-weight: 700;
+  margin: 0 0 6px;
+}
+
+.v6-integration-candidates ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.v6-integration-candidates li {
+  font-size: 12px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.v6-integration-candidates li:last-child {
+  border-bottom: 0;
+}
+
+.v6-integration-candidate-status {
+  font-size: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-3);
+}
+
+.v6-integration-tx a,
+.v6-integration-tx strong {
+  font-family: var(--font-mono-stack, monospace);
+}
+
 .v6-diff {
   border-left: 4px solid var(--somebody);
   padding: 18px;

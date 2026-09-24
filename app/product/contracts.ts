@@ -160,7 +160,8 @@ export type ActivityType =
   | "verification_started"
   | "verification_completed"
   | "objective_completed"
-  | "objective_blocked";
+  | "objective_blocked"
+  | "integration_activity";
 
 export type ActivityActor =
   | { kind: "somebody"; label: "Somebody" }
@@ -226,13 +227,52 @@ export type VerificationPayload = {
   remainingUnknowns?: string[];
 };
 
+// ── Integration identity (OKX / X Layer) ─────────────────────────────────────
+//
+// Governed frontend identity vocabulary. These are the ONLY approved
+// infrastructure identities the founder-facing Activity feed may brand.
+// Labels are canonical and must not be renamed to vague equivalents (e.g.
+// "External market", "Wallet", "Blockchain", "Payment rail").
+// See app/product/integrations.ts for the canonical label/logo table.
+
+export type IntegrationIdentityId = "okx_marketplace" | "okx_agentic_wallet" | "okx_x402" | "x_layer_testnet";
+
+export type IntegrationIdentity = {
+  id: IntegrationIdentityId;
+  label: string;
+  logoKey: "okx" | "x_layer";
+};
+
+/**
+ * Generic infrastructure-moment payload. ONE Activity type (`integration_activity`)
+ * carries every approved integration identity — never a separate React event type
+ * per integration. Every field beyond `integration`/`action`/`headline` is
+ * optional and MUST be omitted rather than fabricated when the backend has not
+ * persisted the corresponding fact (never show private keys/signatures/secrets).
+ */
+export type IntegrationActivityPayload = {
+  integration: IntegrationIdentity;
+  action: "market_search" | "payment_preparing" | "payment_verifying" | "transaction_submitted" | "settlement_confirmed";
+  headline: string;
+  detail?: string;
+  resourceNeed?: string;
+  candidateCount?: number;
+  candidates?: Array<{ label: string; status?: string }>;
+  merchantLabel?: string;
+  amount?: MoneyView;
+  networkLabel?: string;
+  txHash?: string;
+  explorerUrl?: string;
+};
+
 export type ActivityPayload =
   | InternAssignedPayload
   | FindingPayload
   | ManagerDecisionPayload
   | WorkSummaryPayload
   | ArtifactChangedPayload
-  | VerificationPayload;
+  | VerificationPayload
+  | IntegrationActivityPayload;
 
 export type ActivityItem = {
   id: string;

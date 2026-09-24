@@ -22,6 +22,7 @@ import type {
   AcquisitionProductStatus,
   AcquisitionView,
   ActivityActor,
+  ActivityImportance,
   ActivityItem,
   AttentionActionView,
   AttentionState,
@@ -34,9 +35,12 @@ import type {
   DeliverableView,
   EvidenceRefView,
   ExternalProvenance,
+  IntegrationActivityPayload,
+  IntegrationIdentity,
   InternState,
   InternView,
   ManagerDecisionConsideredOption,
+  MoneyView,
   ObjectiveListView,
   ObjectiveLivenessView,
   ObjectiveProductStatus,
@@ -230,9 +234,62 @@ export type StatusSource = {
   intents: ProductIntent[];
 };
 
+/**
+ * Normalized OKX / X Layer infrastructure fact — the adapter seam a future
+ * backend integration lane fills in. ONE shape for every approved identity
+ * (§4): infrastructure identity lives in `integration`, never in a bespoke
+ * per-integration row type.
+ *
+ * MISSING BACKEND FACTS (§16) — Convex persists NONE of these rows today
+ * (confirmed: no okx/x402/xlayer tables in convex/schema.ts). Each is a
+ * separate durable fact this projection can only surface once the backend
+ * integration lane persists it; until then `integrationEvents` is omitted
+ * by every caller and this whole projection step is a no-op:
+ *   1. OKX Marketplace search  — a durable record of a market_search event
+ *      (in-progress vs completed tense, the Need, and the candidate list
+ *      actually returned) keyed to the objective/requirement.
+ *   2. OKX Agentic Wallet preparation — a durable "payment preparing" fact
+ *      (merchant, amount, network) recorded when the wallet flow starts;
+ *      must NOT be inferred from "a BUY decision exists".
+ *   3. OKX x402 verification (optional) — only if the facilitator emits a
+ *      distinct durable verification/acceptance fact separate from wallet
+ *      preparation and from X Layer submission.
+ *   4. X Layer Testnet — transaction submitted — a durable `submitted` tx
+ *      fact (txHash, amount, merchant); must NOT be inferred from an
+ *      intent/decision existing, and must NOT reuse "prepared" or
+ *      "handed off" as if it were "submitted".
+ *   5. X Layer Testnet — settlement confirmed — a SEPARATE durable
+ *      confirmation fact; must NOT be inferred from the submitted fact.
+ */
+export type ProductIntegrationEvent = {
+  id: string;
+  occurredAt: number;
+  integration: IntegrationIdentity;
+  action: IntegrationActivityPayload["action"];
+  headline: string;
+  detail?: string;
+  resourceNeed?: string;
+  candidateCount?: number;
+  candidates?: Array<{ label: string; status?: string }>;
+  merchantLabel?: string;
+  amount?: MoneyView;
+  networkLabel?: string;
+  txHash?: string;
+  explorerUrl?: string;
+  importance?: ActivityImportance;
+};
+
 export type ProductSource = StatusSource & {
   workers: ProductWorker[];
   evidence: ProductEvidence[];
+  /**
+   * OKX / X Layer infrastructure facts, already normalized by the backend
+   * integration lane. Omitted (or empty) today because no such backend rows
+   * exist yet — see the missing-facts list on ProductIntegrationEvent above.
+   * When absent, projectActivity emits zero integration_activity items and
+   * every other Activity type renders exactly as before (§17 legacy compat).
+   */
+  integrationEvents?: ProductIntegrationEvent[];
 };
 
 export type ProjectionOptions = {
@@ -1672,6 +1729,39 @@ export function projectActivity(source: ProductSource, facts: ObjectiveFacts, no
       title: "Objective blocked",
       ...(facts.blockerNote ? { detail: facts.blockerNote } : {}),
       importance: "major",
+    });
+  }
+
+  // integration_activity — OKX / X Layer infrastructure moments (§16). Purely
+  // additive: only fires when a future backend adapter has populated
+  // source.integrationEvents with a normalized, persisted fact. Never
+  // inferred from a sourcing decision, an intent, or any other row — a
+  // missing/incomplete row is omitted rather than guessed at.
+  for (const row of source.integrationEvents ?? []) {
+    if (!row.id || !row.integration || !row.action || !row.headline) continue;
+    const payload: IntegrationActivityPayload = {
+      integration: row.integration,
+      action: row.action,
+      headline: row.headline,
+      ...(row.detail ? { detail: row.detail } : {}),
+      ...(row.resourceNeed ? { resourceNeed: row.resourceNeed } : {}),
+      ...(row.candidateCount !== undefined ? { candidateCount: row.candidateCount } : {}),
+      ...(row.candidates ? { candidates: row.candidates } : {}),
+      ...(row.merchantLabel ? { merchantLabel: row.merchantLabel } : {}),
+      ...(row.amount ? { amount: row.amount } : {}),
+      ...(row.networkLabel ? { networkLabel: row.networkLabel } : {}),
+      ...(row.txHash ? { txHash: row.txHash } : {}),
+      ...(row.explorerUrl ? { explorerUrl: row.explorerUrl } : {}),
+    };
+    items.push({
+      id: `activity:integration_activity:${row.id}`,
+      type: "integration_activity",
+      occurredAt: row.occurredAt,
+      actor: { kind: "external", id: row.integration.id, label: row.integration.label },
+      title: row.headline,
+      ...(row.detail ? { detail: row.detail } : {}),
+      importance: row.importance ?? "standard",
+      payload,
     });
   }
 

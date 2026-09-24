@@ -1,0 +1,16 @@
+<!--
+  PLACEHOLDER ASSET — NOT THE OFFICIAL X LAYER SYMBOL.
+  Do not ship this file publicly / to the hackathon demo as-is.
+
+  Replace with: the official standalone X Layer symbol (compact mark, for
+  inline Activity use beside the "X Layer Testnet" text label), sourced from
+  X Layer's / OKX's official brand or documentation site (verify current URL
+  at time of replacement; do not redraw, recolor, or approximate the mark).
+  Keep the same file name (x-layer.svg) and roughly the same aspect ratio so
+  no other code needs to change, or update app/product/integrations.ts if the
+  replacement uses a different path/extension.
+-->
+<svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="X Layer (placeholder logo)">
+  <rect x="0.5" y="0.5" width="23" height="23" rx="4" fill="none" stroke="#111111" stroke-width="1" stroke-dasharray="3 2"/>
+  <text x="12" y="16" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="700" font-size="11" fill="#111111">XL</text>
+</svg>

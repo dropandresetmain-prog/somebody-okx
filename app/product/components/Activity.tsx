@@ -5,12 +5,14 @@ import type {
   ActivityItem,
   ArtifactChangedPayload,
   FindingPayload,
+  IntegrationActivityPayload,
   InternAssignedPayload,
   ManagerDecisionConsideredOption,
   ManagerDecisionPayload,
   VerificationPayload,
   WorkSummaryPayload,
 } from "../contracts";
+import { INTEGRATION_LOGO_ALT, INTEGRATION_LOGO_SRC } from "../integrations";
 import {
   actorName,
   decisionAttributionLabel,
@@ -118,6 +120,7 @@ function ActivityEvent({
     activityEventClass(item.importance),
     causal ? "v6-event--causal" : "",
     verificationPassed(item) ? "v6-event--done" : "",
+    item.type === "integration_activity" ? "v6-event--integration" : "",
   ]
     .filter(Boolean)
     .join(" ");
@@ -178,6 +181,8 @@ function EventBody({
     case "verification_completed":
     case "objective_completed":
       return <VerificationEvent item={item} />;
+    case "integration_activity":
+      return <IntegrationActivityEvent item={item} />;
     case "objective_interpreted":
     default:
       return <SomebodyEvent item={item} />;
@@ -198,6 +203,96 @@ function SomebodyEvent({ item }: { item: ActivityItem }) {
       ) : null}
     </div>
   );
+}
+
+// Dedicated visual treatment for an infrastructure moment (OKX Marketplace,
+// OKX Agentic Wallet, OKX x402, X Layer Testnet). Renders ONLY what the
+// backend supplied on the payload — never invents merchants, amounts, tx
+// hashes, or a stronger lifecycle claim than the persisted fact. Required
+// hierarchy (spec §5): [LOGO] Integration name / what it's doing / factual
+// details.
+function IntegrationActivityEvent({ item }: { item: ActivityItem }) {
+  const payload = isIntegrationActivity(item.payload) ? item.payload : null;
+  if (!payload) return <SomebodyEvent item={item} />;
+  const { integration } = payload;
+  return (
+    <div className="v6-event-card v6-integration" data-integration-id={integration.id} data-integration-action={payload.action}>
+      <div className="v6-integration-header">
+        <img
+          className="v6-integration-logo"
+          src={INTEGRATION_LOGO_SRC[integration.logoKey]}
+          alt={INTEGRATION_LOGO_ALT[integration.logoKey]}
+        />
+        <div>
+          <p className="v6-integration-name">{integration.label}</p>
+          <p className="v6-integration-action">{payload.headline}</p>
+        </div>
+      </div>
+      {payload.detail ? <p className="v6-event-desc v6-integration-detail">{payload.detail}</p> : null}
+      {payload.resourceNeed ? (
+        <div className="v6-integration-field">
+          <span>Need</span>
+          <strong>{payload.resourceNeed}</strong>
+        </div>
+      ) : null}
+      {payload.candidates && payload.candidates.length > 0 ? (
+        <div className="v6-integration-candidates">
+          <p className="v6-integration-candidates-count">
+            {payload.candidateCount ?? payload.candidates.length} Testnet service
+            {(payload.candidateCount ?? payload.candidates.length) === 1 ? "" : "s"} considered
+          </p>
+          <ul>
+            {payload.candidates.map((candidate, index) => (
+              <li key={`${candidate.label}:${index}`}>
+                {candidate.label}
+                {candidate.status ? <span className="v6-integration-candidate-status">{candidate.status}</span> : null}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      {payload.merchantLabel || payload.amount || payload.networkLabel ? (
+        <div className="v6-integration-fields">
+          {payload.merchantLabel ? (
+            <div className="v6-integration-field">
+              <span>Merchant</span>
+              <strong>{payload.merchantLabel}</strong>
+            </div>
+          ) : null}
+          {payload.amount ? (
+            <div className="v6-integration-field">
+              <span>Amount</span>
+              <strong>
+                {payload.amount.amount} {payload.amount.currency}
+              </strong>
+            </div>
+          ) : null}
+          {payload.networkLabel ? (
+            <div className="v6-integration-field">
+              <span>Network</span>
+              <strong>{payload.networkLabel}</strong>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+      {payload.txHash ? (
+        <div className="v6-integration-field v6-integration-tx">
+          <span>Transaction</span>
+          {payload.explorerUrl ? (
+            <a href={payload.explorerUrl} target="_blank" rel="noreferrer noopener">
+              {shortenTxHash(payload.txHash)}
+            </a>
+          ) : (
+            <strong>{shortenTxHash(payload.txHash)}</strong>
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function shortenTxHash(hash: string): string {
+  return hash.length <= 14 ? hash : `${hash.slice(0, 6)}…${hash.slice(-4)}`;
 }
 
 function DelegationEvent({ item }: { item: ActivityItem }) {
@@ -701,4 +796,8 @@ function isArtifactChanged(payload: ActivityItem["payload"]): payload is Artifac
 
 function isVerification(payload: ActivityItem["payload"]): payload is VerificationPayload {
   return Boolean(payload && "checks" in payload);
+}
+
+function isIntegrationActivity(payload: ActivityItem["payload"]): payload is IntegrationActivityPayload {
+  return Boolean(payload && "integration" in payload && "action" in payload);
 }
