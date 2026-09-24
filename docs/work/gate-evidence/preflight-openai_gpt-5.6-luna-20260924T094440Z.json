@@ -1,0 +1,139 @@
+{
+  "summary": {
+    "slug": "openai/gpt-5.6-luna",
+    "dryRun": false,
+    "startedAtUtc": "2026-09-24T09:44:40.850Z",
+    "finishedAtUtc": "2026-09-24T09:44:51.204Z",
+    "allBoundariesOk": false,
+    "classificationCounts": {
+      "unsupported_route": 1
+    },
+    "totalHttpCalls": 2,
+    "totalCostUsd": 0.000924,
+    "costReportedByProvider": true,
+    "costCapUsd": 0.15,
+    "aborted": "fatal",
+    "suppressedConvexScheduledTimers": 4
+  },
+  "boundaries": [
+    {
+      "boundary": 1,
+      "name": "interpretation structured output",
+      "productionEntry": "proposeInterpretation (convex/objectiveRunner.ts) via beginInterpretation",
+      "seeding": "production setupCanonicalDemoObjective (canonical founder request, seed artifact, spend grant) + beginInterpretation reservation",
+      "classification": "unsupported_route",
+      "classificationReason": "HTTP 400: Provider returned error",
+      "schemaAccepted": true,
+      "parseSuccess": true,
+      "applicationValidation": true,
+      "repairInvoked": false,
+      "repairSucceeded": null,
+      "providerFailureClass": null,
+      "logicalCalls": 2,
+      "httpCalls": 2,
+      "requestModel": "openai/gpt-5.6-luna",
+      "resolvedModel": "openai/gpt-5.6-luna",
+      "resolvedProvider": "OpenAI",
+      "finishReasons": [
+        "stop"
+      ],
+      "promptTokens": 514,
+      "completionTokens": 684,
+      "costUsd": 0.0009236,
+      "elapsedMs": 10252,
+      "http": [
+        {
+          "seq": 1,
+          "tag": "b1",
+          "schemaName": "outcome_contract",
+          "hasResponseFormatJsonSchema": true,
+          "hasStrict": true,
+          "hasTools": false,
+          "hasToolChoice": false,
+          "toolChoice": null,
+          "requireParameters": true,
+          "requestModel": "openai/gpt-5.6-luna",
+          "hasToolResultMessage": false,
+          "isRepairRequest": false,
+          "afterFailure": false,
+          "status": 200,
+          "elapsedMs": 8687,
+          "resolvedModel": "openai/gpt-5.6-luna",
+          "resolvedProvider": "OpenAI",
+          "finishReason": "stop",
+          "promptTokens": 514,
+          "completionTokens": 684,
+          "costUsd": 0.0009236,
+          "hasToolCalls": false,
+          "toolCallNames": [],
+          "contentEmpty": false,
+          "jsonParses": true,
+          "appValid": true,
+          "appIssues": [],
+          "errorSnippet": null,
+          "answerSnippet": "{\"intent\":\"Diagnose why the current launch messaging is underperforming and produce a stronger, evidence-grounded relaunch message ready for use in the controlled launch/page-message artifact.\",\"level",
+          "transportError": null
+        },
+        {
+          "seq": 2,
+          "tag": "b1",
+          "schemaName": "requirements_decomposition",
+          "hasResponseFormatJsonSchema": true,
+          "hasStrict": true,
+          "hasTools": false,
+          "hasToolChoice": false,
+          "toolChoice": null,
+          "requireParameters": true,
+          "requestModel": "openai/gpt-5.6-luna",
+          "hasToolResultMessage": false,
+          "isRepairRequest": false,
+          "afterFailure": false,
+          "status": 400,
+          "elapsedMs": 1565,
+          "resolvedModel": null,
+          "resolvedProvider": null,
+          "finishReason": null,
+          "promptTokens": null,
+          "completionTokens": null,
+          "costUsd": null,
+          "hasToolCalls": false,
+          "toolCallNames": [],
+          "contentEmpty": false,
+          "jsonParses": null,
+          "appValid": null,
+          "appIssues": [],
+          "errorSnippet": "Provider returned error",
+          "answerSnippet": null,
+          "transportError": null
+        }
+      ],
+      "outcome": {
+        "actionResult": {
+          "ok": false,
+          "detail": "model unavailable at requirements (other): 400 Provider returned error"
+        },
+        "interpretationStatus": "refused",
+        "contractPersisted": false,
+        "interpretationDetail": "model unavailable at requirements (other): 400 Provider returned error; requirements: requirement proposals are not an array"
+      },
+      "notes": [
+        "repair re-asks visible in HTTP: 0"
+      ]
+    }
+  ],
+  "runNotes": [
+    "fatal: Error: canned interpretation refused: no matching pending interpretation reservation (stale, expired, superseded or foreign request) |     at cannedInterpret (C:\\Dev\\somebody-okx\\scripts\\gate\\preflight.ts:510:20) |     at process.processTicksAndRejections (node:internal/process/task_queues:104:5) |     at async main (C:\\Dev\\somebody-okx\\scripts\\gate\\preflight.ts:867:7)"
+  ],
+  "warnings": [],
+  "modelCallLogs": [
+    {
+      "kind": "interpretation",
+      "repairAttempt": 0,
+      "requestedModel": "openai/gpt-5.6-luna",
+      "resolvedModel": "openai/gpt-5.6-luna",
+      "finishReason": "stop",
+      "elapsedMs": 8698,
+      "tag": "b1"
+    }
+  ]
+}
