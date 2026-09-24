@@ -48,11 +48,11 @@ export const GENERIC_OBJECTIVE_DELIVERABLE = {
   key: "objective/deliverable",
   label: "Objective deliverable",
   provenanceRunId: "seed/system",
-  initialContent: `Objective deliverable
-
-This is the governed workspace for this Objective's produced output.
-It starts empty of worker-authored content.
-Status: Draft seed — awaiting a real worker update.`,
+  // Deliberately empty of business content and obviously an application
+  // placeholder, never mistaken for founder-facing report prose. Version 1
+  // with provenanceRunId "seed/system" still does not count as worker-authored
+  // completion proof (see artifactVersionsAuthoredByRuns) — keep it that way.
+  initialContent: `[APPLICATION PLACEHOLDER — no worker output yet.]`,
 } as const;
 
 // Business context for the canonical demo. These records are written as normal

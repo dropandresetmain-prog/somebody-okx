@@ -72,15 +72,25 @@ export function buildFinalReportPresentation(args: BuildFinalReportPresentationA
     throw new Error("Verified deliverable has no stored content to present.");
   }
   const content = deliverable.content;
+  const blocks = parseArtifactBlocks(content);
+  // Presentation-only string parsing: if the verified artifact opens with a
+  // real Markdown heading, use it as the report title — it is the author's
+  // own stated title for the deliverable. Falls back to the artifact label.
+  // No LLM/model call; purely structural.
+  const firstHeading = blocks.find(
+    (block): block is Extract<FinalReportBlock, { kind: "heading" }> =>
+      block.kind === "heading" && block.text.trim().length > 0,
+  );
+  const artifactTitle = firstHeading?.text.trim() || deliverable.title;
   return {
     brand: "Somebody × OKX",
     reportLabel: "Final Report",
     objectiveTitle: objective.title,
     artifactId: deliverable.id,
     artifactVersion: String(deliverable.version),
-    artifactTitle: deliverable.title,
+    artifactTitle,
     content,
-    blocks: parseArtifactBlocks(content),
+    blocks,
     presentedAtIso: new Date(nowMs).toISOString(),
     presentationNote: "Presentation of the verified final deliverable. Not a new assessment or source of truth.",
   };
