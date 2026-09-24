@@ -122,7 +122,12 @@ export type RequirementKind = "deliverable" | "input";
 export type AuthorizedPurposePolicy = {
   /** Governed PURPOSE_SCOPES kind; re-validated at bind time, never trusted blindly. */
   purposeKind: string;
-  /** The ONE structurally-targeted Requirement kind this policy authorizes. */
+  /**
+   * The Requirement kind this policy targets. Several Requirements may share
+   * the kind; resolvePurposePolicyTarget picks the ONE structural target (the
+   * unique match, or for `deliverable` the unique terminal match in the
+   * dependency graph) and fails closed otherwise.
+   */
   targetRequirementKind: RequirementKind;
   /**
    * Additive, APPLICATION-OWNED resource-class need bound onto the SAME

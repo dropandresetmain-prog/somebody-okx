@@ -2,14 +2,34 @@
 // DATA only — never grants BUY/provider/payment authority to the interpreter.
 
 import { CURRENT_RESOURCE_INVENTORY } from "../objective/policy";
+import { externalResourceClassesForPurposeKind, isGovernedPurposeKind } from "../workforce/catalog";
 import type { CompanyArtifact } from "../objective/artifact";
+import type { AuthorizedPurposePolicy, RequirementKind } from "./types";
 
 export type InterpretationCompanyContext = {
   ownedResourceClasses: readonly string[];
   controlledArtifactKeys: readonly string[];
   materialConstraints: readonly string[];
   notCurrentlyOwned: readonly string[];
+  /** Structural kind the application-owned purpose policy targets (context only). */
+  purposePolicyTargetKind?: RequirementKind | null;
 };
+
+/**
+ * Inventory truth for the Objective's application-owned purpose policy: the
+ * governed resource classes of its purpose kind (PURPOSE_SCOPES) that the
+ * company does NOT control today (CURRENT_RESOURCE_INVENTORY). A fact only —
+ * it creates no Requirement, ResourceNeed, strategy, provider choice or spend.
+ */
+export function policyNotOwnedResourceClasses(
+  policy: AuthorizedPurposePolicy | null | undefined,
+): string[] {
+  if (!policy || !isGovernedPurposeKind(policy.purposeKind)) return [];
+  const owned = new Set<string>(CURRENT_RESOURCE_INVENTORY);
+  return externalResourceClassesForPurposeKind(policy.purposeKind).filter(
+    (resourceClass) => !owned.has(resourceClass),
+  );
+}
 
 export function buildInterpretationCompanyContext(input: {
   companyArtifacts?: readonly CompanyArtifact[] | null;
@@ -17,6 +37,8 @@ export function buildInterpretationCompanyContext(input: {
   /** Serial: disclose the actual bounded founder spend limit as factual context. */
   spendLimitUsd?: number | null;
   notOwnedHints?: readonly string[] | null;
+  /** Objective-owned policy; contributes inventory truth + target kind only. */
+  authorizedPurposePolicy?: AuthorizedPurposePolicy | null;
 }): InterpretationCompanyContext {
   const artifacts = input.companyArtifacts ?? [];
   const controlledArtifactKeys = artifacts
@@ -25,8 +47,9 @@ export function buildInterpretationCompanyContext(input: {
     .slice(0, 8);
   const materialConstraints: string[] = [];
   if (input.spendGrantPresent === false) {
+    // Describes the existing control flow; grants nothing.
     materialConstraints.push(
-      "No founder spend grant is currently bound to this objective.",
+      "No founder spend grant is currently bound to this objective. That does not block planning or work from owned/public resources. If a later, grounded external acquisition needs money, the runtime asks the founder for explicit approval at that point, before any payment or external effect. Do not raise a material ambiguity asking the founder to pre-authorize hypothetical spend just to define outcomes or Requirements.",
     );
   } else if (
     input.spendGrantPresent === true &&
@@ -45,7 +68,10 @@ export function buildInterpretationCompanyContext(input: {
   }
   const notCurrentlyOwned = [
     ...new Set(
-      (input.notOwnedHints ?? []).filter((hint) => hint.trim().length > 0),
+      [
+        ...policyNotOwnedResourceClasses(input.authorizedPurposePolicy),
+        ...(input.notOwnedHints ?? []),
+      ].filter((hint) => hint.trim().length > 0),
     ),
   ].slice(0, 8);
   return {
@@ -53,6 +79,11 @@ export function buildInterpretationCompanyContext(input: {
     controlledArtifactKeys,
     materialConstraints,
     notCurrentlyOwned,
+    purposePolicyTargetKind:
+      input.authorizedPurposePolicy &&
+      isGovernedPurposeKind(input.authorizedPurposePolicy.purposeKind)
+        ? input.authorizedPurposePolicy.targetRequirementKind
+        : null,
   };
 }
 
@@ -70,11 +101,20 @@ export function formatInterpretationContextBlock(
   }
   if (context.notCurrentlyOwned.length) {
     lines.push(
-      `- Not currently owned/controlled (when known): ${context.notCurrentlyOwned.join("; ")}`,
+      `- Not currently owned/controlled resource classes (inventory fact; the company has no company-controlled records or access for these): ${context.notCurrentlyOwned.join("; ")}`,
+    );
+  }
+  if (context.purposePolicyTargetKind === "deliverable") {
+    lines.push(
+      "- Application policy target (structural context, grants nothing): the final founder-facing deliverable, i.e. the one deliverable Requirement no other Requirement depends on.",
+    );
+  } else if (context.purposePolicyTargetKind === "input") {
+    lines.push(
+      "- Application policy target (structural context, grants nothing): the one input Requirement.",
     );
   }
   lines.push(
-    "Name required truths only. If a required input is externally controlled and not owned, declare that as its own required truth BEFORE dependent artifact work. Never choose MAKE/BUY/provider/payment.",
+    "Name required truths only. If the objective needs an input the company does not own or control, declare it as its own required truth (with that resource class) BEFORE dependent artifact work; do not declare a not-owned class the objective does not actually need. Never choose MAKE/BUY/provider/payment.",
   );
   return lines.join("\n");
 }

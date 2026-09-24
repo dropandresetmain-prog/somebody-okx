@@ -9,6 +9,7 @@
 
 import { validateCapabilitySpec } from "./capability";
 import { isSatisfactionStrategy } from "./types";
+import { resolvePurposePolicyTarget } from "./purposePolicyTarget";
 import { isGovernedPurposeKind, isGovernedResourceClass } from "../workforce/catalog";
 import type { ProofFacts } from "./requirements";
 import type { ParsedOutcomeContract, ParsedRequirementProposal } from "./proposals";
@@ -182,22 +183,27 @@ export function buildSemanticRequirement(input: {
 /**
  * V7 review R4 final scope-origin correction — binds an APPLICATION-OWNED
  * purpose-scope policy onto the ONE newly-interpreted Requirement it
- * structurally targets.
+ * structurally targets (resolvePurposePolicyTarget — shared with the
+ * semantic audit).
  *
  * The policy pre-exists interpretation (written only by Objective setup, e.g.
  * setupCanonicalDemoObjective) and is NEVER derived from interpretation/model
  * output, Requirement prose, or a worker's proposed purposeKind. Matching
  * uses only `requirementKind` — a value interpretation itself coerces into a
- * small governed enum (parseRequirementProposals), never free text.
+ * small governed enum (parseRequirementProposals), never free text — plus,
+ * when several deliverables exist, the dependency graph (the unique terminal
+ * deliverable).
  *
- * Fails closed: an ungoverned purposeKind, or zero / more than one
- * structurally-matching Requirement in this interpretation batch, grants
- * nothing rather than guessing which row was meant.
+ * Fails closed: an ungoverned purposeKind, zero matches, or no unique
+ * structural target in this interpretation batch grants nothing rather than
+ * guessing which row was meant.
  *
  * The same policy may also carry `requiredResourceClasses` — an additive,
  * APPLICATION-OWNED statement that the targeted Requirement genuinely needs
  * those inputs. (The Testnet submission policy deliberately does not use it:
- * its `proprietary_data` gap must be discovered at runtime, not pre-declared.)
+ * the policy alone must never manufacture a `proprietary_data` gap. That gap
+ * exists only when interpretation declares it from the founder objective or
+ * MAKE discovers it as an application-validated ResourceNeed.)
  * This only ADDS to `Requirement.requiredResourceClasses`; it never removes
  * an already-declared need, and ungoverned classes are dropped rather than
  * grants being widened silently. It does not choose MAKE or BUY — the normal
@@ -210,11 +216,9 @@ export function bindAuthorizedPurposePolicy(
 ): Requirement[] {
   if (!policy) return [...requirements];
   if (!isGovernedPurposeKind(policy.purposeKind)) return [...requirements];
-  const matches = requirements.filter(
-    (requirement) => requirement.requirementKind === policy.targetRequirementKind,
-  );
-  if (matches.length !== 1) return [...requirements];
-  const target = matches[0]!;
+  const resolved = resolvePurposePolicyTarget(requirements, policy.targetRequirementKind);
+  if (!resolved.ok) return [...requirements];
+  const target = resolved.target;
   const additionalResourceClasses = [
     ...new Set((policy.requiredResourceClasses ?? []).filter(isGovernedResourceClass)),
   ];

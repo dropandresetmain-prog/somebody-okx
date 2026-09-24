@@ -13,6 +13,7 @@
 
 import { isGovernedPurposeKind } from "../workforce/catalog";
 import { KNOWN_RESOURCE_CLASSES } from "../sourcing/policy";
+import { resolvePurposePolicyTarget } from "./purposePolicyTarget";
 import type {
   AuthorizedPurposePolicy,
   Requirement,
@@ -105,21 +106,24 @@ export function auditRequirementSemantics(input: {
         detail: `authorized purpose policy purposeKind ${policy.purposeKind} is not governed`,
       });
     } else {
-      const matches = requirements.filter(
-        (requirement) =>
-          requirement.requirementKind === policy.targetRequirementKind,
+      // Same structural resolver as bindAuthorizedPurposePolicy: several
+      // deliverables are legitimate when exactly one is terminal.
+      const target = resolvePurposePolicyTarget(
+        requirements,
+        policy.targetRequirementKind,
       );
-      if (matches.length === 0) {
+      if (!target.ok && target.reason === "unbound") {
         issues.push({
           code: "purpose_policy_unbound",
           detail: `authorized purpose policy targetRequirementKind=${policy.targetRequirementKind} matched zero Requirements`,
         });
-      } else if (matches.length > 1) {
+      } else if (!target.ok) {
         issues.push({
           code: "purpose_policy_ambiguous",
-          detail: `authorized purpose policy targetRequirementKind=${policy.targetRequirementKind} matched ${matches.length} Requirements (${matches
-            .map((m) => m.requirementKey)
-            .join(", ")}); exactly one structural target is required`,
+          detail:
+            policy.targetRequirementKind === "deliverable"
+              ? `authorized purpose policy targetRequirementKind=deliverable matched ${target.matchKeys.length} Requirements (${target.matchKeys.join(", ")}) with ${target.terminalKeys.length} terminal deliverables (${target.terminalKeys.join(", ") || "none"}); exactly one terminal deliverable (one no other Requirement depends on) is required`
+              : `authorized purpose policy targetRequirementKind=${policy.targetRequirementKind} matched ${target.matchKeys.length} Requirements (${target.matchKeys.join(", ")}); exactly one structural target is required`,
         });
       }
     }

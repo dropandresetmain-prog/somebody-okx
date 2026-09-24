@@ -163,11 +163,13 @@ export const CANONICAL_AUTHORIZED_PURPOSE_POLICY: AuthorizedPurposePolicy = {
  * absent).
  *
  * This policy only AUTHORIZES the governed external purpose on the targeted
- * deliverable Requirement. It deliberately does NOT pre-declare
- * `requiredResourceClasses`: the `proprietary_data` gap must be discovered at
- * runtime by the worker (validated into a ResourceNeed by the application),
- * which the decision pass then merges into MAKE's required inputs. Declaring
- * it here would manufacture the scarcity that forces BUY.
+ * (terminal) deliverable Requirement. It deliberately does NOT pre-declare
+ * `requiredResourceClasses`: the policy alone must never manufacture the
+ * scarcity that forces BUY. A `proprietary_data` gap exists only when
+ * interpretation declares it on a Requirement because the founder objective
+ * needs it, or when MAKE discovers it (an application-validated ResourceNeed
+ * merged into MAKE's required inputs). Both reach BUY only through the same
+ * ownership, eligibility, market, purpose and spend checks.
  */
 export const SUBMISSION_EXTERNAL_SOCIAL_PURPOSE_POLICY: AuthorizedPurposePolicy =
   {

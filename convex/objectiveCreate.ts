@@ -127,7 +127,7 @@ export async function createReceivedObjective(
     ],
     // Purpose policy is Objective-bound structured application data only.
     // bindAuthorizedPurposePolicy still fail-closes unless interpretation
-    // produces exactly one Requirement matching targetRequirementKind.
+    // yields one structural target (resolvePurposePolicyTarget).
     ...(authorizedPurposePolicy
       ? {
           management: {

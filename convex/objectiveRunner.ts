@@ -1412,10 +1412,22 @@ export const proposeInterpretation = internalAction({
     const grant = (await ctx.runQuery(internal.internal.workforce.activeSpendGrant, {
       objectiveKey: args.objectiveKey,
     })) as { limitUsd: number; approvalId: string } | null;
+    // Application-owned purpose policy (set only by Objective setup). Read
+    // once: it feeds the factual context (policy-relevant not-owned inventory
+    // + structural target kind) and the semantic audit/binder below.
+    const managementForPolicy = (
+      objectiveRow?.data as { management?: { authorizedPurposePolicy?: unknown } } | undefined
+    )?.management;
+    const authorizedPurposePolicy =
+      (managementForPolicy?.authorizedPurposePolicy as
+        | import("../lib/management/types").AuthorizedPurposePolicy
+        | null
+        | undefined) ?? null;
     const companyContext = buildInterpretationCompanyContext({
       companyArtifacts: objectiveRow?.data.companyArtifacts,
       spendGrantPresent: grant != null,
       spendLimitUsd: grant?.limitUsd ?? null,
+      authorizedPurposePolicy,
     });
     const contextBlock = formatInterpretationContextBlock(companyContext);
 
@@ -1609,14 +1621,6 @@ export const proposeInterpretation = internalAction({
 
     // Semantic audit (+ optional ONE Requirements-only repair). Does not re-run
     // Outcome Contract interpretation.
-    const managementForPolicy = (
-      objectiveRow?.data as { management?: { authorizedPurposePolicy?: unknown } } | undefined
-    )?.management;
-    const authorizedPurposePolicy =
-      (managementForPolicy?.authorizedPurposePolicy as
-        | import("../lib/management/types").AuthorizedPurposePolicy
-        | null
-        | undefined) ?? null;
 
     let semantic = interpretRequirements({
       objectiveKey,
