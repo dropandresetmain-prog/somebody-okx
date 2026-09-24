@@ -467,6 +467,20 @@ export const vAssignment = v.object({
   idempotencyScope: v.string(),
   createdAt: v.number(),
   updatedAt: v.number(),
+  acceptedOutput: v.optional(
+    v.union(
+      v.object({
+        runId: v.string(),
+        terminal: v.literal("DELIVERED"),
+        summary: v.string(),
+        fit: v.string(),
+        unknowns: v.array(v.string()),
+        recommendedNextAction: v.string(),
+        acceptedAt: v.number(),
+      }),
+      v.null(),
+    ),
+  ),
 });
 
 // ── Execution intents ────────────────────────────────────────────────────────

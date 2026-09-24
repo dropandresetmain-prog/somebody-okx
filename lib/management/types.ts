@@ -560,6 +560,22 @@ export type Assignment = {
   idempotencyScope: string;
   createdAt: number;
   updatedAt: number;
+  /**
+   * Durable snapshot of this assignment's application-accepted worker output,
+   * written ONLY when the assignment moves to "verified" (an application-
+   * accepted DELIVERED terminal for THIS assignment's runId). Read-only DATA
+   * a dependent Requirement's worker may see as a prerequisite conclusion —
+   * never re-derived from prose, UI events, or another run's result.
+   */
+  acceptedOutput?: {
+    runId: string;
+    terminal: "DELIVERED";
+    summary: string;
+    fit: string;
+    unknowns: string[];
+    recommendedNextAction: string;
+    acceptedAt: number;
+  } | null;
 };
 
 // ── External acquisition / effect seam (M3 boundary) ─────────────────────────

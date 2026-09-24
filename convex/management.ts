@@ -32,7 +32,7 @@ import {
   isSerialInputRequirement,
   isSerialManagerProtocol,
 } from "../lib/management/executionProtocol";
-import { buildDecisionPassInput } from "../lib/management/decisionPass";
+import { buildDecisionPassInput, projectAcceptedOutputSnapshot } from "../lib/management/decisionPass";
 import type { DecisionPassReads } from "../lib/management/decisionPass";
 import type { DecisionPassResult } from "../lib/management/decision";
 import type { FounderSpendGrant } from "./internal/workforce";
@@ -686,11 +686,43 @@ export function buildConvexManagementPorts(ctx: MutationCtx): ManagementPorts {
         // the worker returns to the shelf, and the active-assignment slot is
         // released. A replay finds `verified` and the kernel no-ops.
         if (submittedAssignment) {
+          // Snapshot the application-accepted worker output onto this
+          // assignment so a dependent Requirement can later see what this
+          // prerequisite actually concluded (never re-derived after the
+          // objective's single rolling result/acceptedTerminal slot is
+          // overwritten by a later Requirement's run).
+          const objectiveRowForAccept = await ctx.db
+            .query("objectives")
+            .withIndex("by_key", (q) => q.eq("key", state.objectiveKey))
+            .unique();
+          const objectiveDataForAccept = objectiveRowForAccept?.data as
+            | {
+                result?: {
+                  runId?: string;
+                  summary?: string;
+                  fit?: string;
+                  recommendedNextAction?: string;
+                  unknowns?: string[];
+                } | null;
+                acceptedTerminal?: import("../lib/objective/types").ObjectiveRecord["acceptedTerminal"];
+                management?: { executionProtocol?: string | null };
+              }
+            | undefined;
+          const acceptedOutput = projectAcceptedOutputSnapshot({
+            runId: submittedAssignment.runId,
+            serialProtocol:
+              objectiveDataForAccept?.management?.executionProtocol === "m61_serial_v1",
+            result: objectiveDataForAccept?.result ?? null,
+            acceptedTerminal: objectiveDataForAccept?.acceptedTerminal ?? null,
+          });
           const moved = advanceAssignment(
             submittedAssignment,
             "verified",
             at,
-            { resultSummary: "application-verified against the current revision's proof obligations" },
+            {
+              resultSummary: "application-verified against the current revision's proof obligations",
+              acceptedOutput,
+            },
           );
           if (moved.ok) {
             await ctx.runMutation(internal.internal.workforce.putAssignment, {

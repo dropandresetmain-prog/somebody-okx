@@ -213,6 +213,18 @@ export type WorkerObservation = {
       resourceClass: string | null;
       purpose: string;
     }>;
+    /**
+     * Bounded accepted results from satisfied prerequisite Requirements
+     * (dependsOnRequirementKeys), read-only DATA. Never authority; the
+     * worker still owns the semantic choice of what to do with it.
+     */
+    priorRequirementResults?: Array<{
+      requirementKey: string;
+      summary: string;
+      fit: string;
+      unknowns: string[];
+      recommendedNextAction: string;
+    }>;
   };
   unmetCompletionRequirements: string[];
   /** When set, the worker must stop — application accepted an input gap. */

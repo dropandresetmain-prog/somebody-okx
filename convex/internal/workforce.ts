@@ -34,7 +34,7 @@ import {
   recordProgress,
 } from "../../lib/management/budget";
 import type { WorkerRecord, ObjectiveBudget, WakeEvent } from "../../lib/management/types";
-import { projectWorkerOutput } from "../../lib/management/decisionPass";
+import { projectWorkerOutput, projectPrerequisiteResults } from "../../lib/management/decisionPass";
 import { verifiedAcquisitionCoversNeed } from "../../lib/objective/inputDiagnosis";
 import { scopedCoveredResourceClasses } from "../../lib/objective/inputAvailability";
 import { validatedRequestedPurposeKind, type ResourceNeed } from "../../lib/objective/resourceNeed";
@@ -1015,45 +1015,46 @@ export const readDecisionContext = internalQuery({
       );
     });
 
-    // Accepted prerequisite results: satisfied/waived dependsOn keys with
-    // bounded proof refs + any current objective result unknowns (DATA).
-    const prerequisiteResults: Array<{
-      requirementKey: string;
-      state: string;
-      proofRefs: string[];
-      findings: string[];
-      unknowns: string[];
-    }> = [];
+    // Accepted prerequisite results: the SAME canonical projection the
+    // dependent worker's loadedInputPackage.priorRequirementResults uses
+    // (projectPrerequisiteResults), so manager and worker never diverge on
+    // what a satisfied dependency actually concluded.
+    let prerequisiteResults: ReturnType<typeof projectPrerequisiteResults> = [];
     if (dependsOn.length) {
       const allReqRows = await ctx.db
         .query("requirements")
         .withIndex("by_objectiveKey", (q) => q.eq("objectiveKey", args.objectiveKey))
         .collect();
-      for (const depKey of dependsOn.slice(0, 8)) {
-        const dep =
-          allReqRows
-            .map((row) => (row as { data: Record<string, unknown> }).data)
-            .find(
-              (data) =>
-                data.requirementKey === depKey &&
-                data.contractRevision === currentContractRevision,
-            ) ?? null;
-        if (!dep) continue;
-        const state = String(dep.state ?? "");
-        if (state !== "satisfied" && state !== "waived") continue;
-        const resolution = dep.resolution as { proofRefs?: string[] } | null;
-        prerequisiteResults.push({
-          requirementKey: depKey,
-          state,
-          proofRefs: Array.isArray(resolution?.proofRefs)
-            ? resolution!.proofRefs!.slice(0, 8).map(String)
-            : [],
-          findings: [],
-          unknowns: Array.isArray(objectiveData?.result?.unknowns)
-            ? objectiveData!.result!.unknowns!.slice(0, 6).map(String)
-            : [],
-        });
-      }
+      const allAssignmentRows = await ctx.db
+        .query("assignments")
+        .withIndex("by_objective", (q) => q.eq("objectiveKey", args.objectiveKey))
+        .collect();
+      prerequisiteResults = projectPrerequisiteResults({
+        dependsOnRequirementKeys: dependsOn,
+        currentContractRevision,
+        requirementRows: allReqRows.map(
+          (row) =>
+            (row as {
+              data: {
+                requirementKey: string;
+                contractRevision: number;
+                state: string;
+                resolution?: { proofRefs?: string[] } | null;
+              };
+            }).data,
+        ),
+        assignmentRows: allAssignmentRows.map(
+          (row) =>
+            (row as {
+              data: {
+                requirementKey: string;
+                contractRevision: number;
+                state: string;
+                acceptedOutput?: import("../../lib/management/decisionPass").AcceptedOutputSnapshot | null;
+              };
+            }).data,
+        ),
+      });
     }
 
     const TEXT_CAP = 1500;

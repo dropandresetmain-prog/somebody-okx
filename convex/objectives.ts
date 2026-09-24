@@ -63,6 +63,8 @@ import {
   CANONICAL_OBJECTIVE_REQUEST,
 } from "../lib/objective/seedData";
 import { createArtifact, applyArtifactChange, MAX_CONTENT_CHARS as MAX_ARTIFACT_CONTENT_CHARS } from "../lib/objective/artifact";
+import { projectPrerequisiteResults } from "../lib/management/decisionPass";
+import type { AcceptedOutputSnapshot } from "../lib/management/decisionPass";
 import {
   createReceivedObjective,
   normalizeObjectiveRequest,
@@ -1235,6 +1237,18 @@ export const readWorkerObservation = internalQuery({
             purpose: v.string(),
           }),
         ),
+        // Bounded accepted results from satisfied prerequisite Requirements
+        // (DATA, read-only) — the same canonical projection the manager's
+        // prerequisiteResults uses.
+        priorRequirementResults: v.array(
+          v.object({
+            requirementKey: v.string(),
+            summary: v.string(),
+            fit: v.string(),
+            unknowns: v.array(v.string()),
+            recommendedNextAction: v.string(),
+          }),
+        ),
       }),
     ),
     unmetCompletionRequirements: v.array(v.string()),
@@ -1311,6 +1325,19 @@ export const readWorkerObservation = internalQuery({
           expectedOutput: lockedCriteria?.expectedOutput ?? null,
         })
       : [];
+    // Same canonical projection the manager's prerequisiteResults uses
+    // (projectPrerequisiteResults) — so the dependent worker sees what a
+    // satisfied prerequisite Requirement actually concluded, never a
+    // contradictory second interpretation.
+    const priorRequirementResults =
+      serial && lockedCriteria && lockedCriteria.dependsOnRequirementKeys.length
+        ? await loadPriorRequirementResults(
+            ctx.db,
+            args.objectiveKey,
+            lockedCriteria.dependsOnRequirementKeys,
+            lockedCriteria.contractRevision,
+          )
+        : [];
     const loadedInputPackage = serial
       ? buildLoadedInputPackage({
           contract,
@@ -1320,6 +1347,7 @@ export const readWorkerObservation = internalQuery({
           artifactCap: MAX_ARTIFACT_CONTENT_CHARS,
           lockedCriteria,
           acceptedInputChecks,
+          priorRequirementResults,
         })
       : undefined;
 
@@ -1380,9 +1408,30 @@ function buildLoadedInputPackage(input: {
    * read-only so the model does not have to guess before its first call.
    */
   acceptedInputChecks: InputObligation[];
+  /**
+   * Bounded accepted results from satisfied prerequisite Requirements (DATA),
+   * from the same canonical projectPrerequisiteResults the manager's
+   * prerequisiteResults uses. Read-only — never authority, never a
+   * ResourceNeed, never widened.
+   */
+  priorRequirementResults: Array<{
+    requirementKey: string;
+    summary: string;
+    fit: string;
+    unknowns: string[];
+    recommendedNextAction: string;
+  }>;
 }) {
-  const { contract, record, acquiredInputs, textCap, artifactCap, lockedCriteria, acceptedInputChecks } =
-    input;
+  const {
+    contract,
+    record,
+    acquiredInputs,
+    textCap,
+    artifactCap,
+    lockedCriteria,
+    acceptedInputChecks,
+    priorRequirementResults,
+  } = input;
   const canReadCompany = contract.allowedToolPermissions.includes(
     "read_company_record",
   );
@@ -1559,6 +1608,7 @@ function buildLoadedInputPackage(input: {
       : {}),
     ...(correction ? { correction } : {}),
     acceptedInputChecks,
+    priorRequirementResults,
   };
 }
 
@@ -1581,6 +1631,8 @@ async function loadLockedCriteriaForRun(
   contractRevision: number;
   /** Same Requirement row's declared classes — feeds listInputObligations. */
   requiredResourceClasses: string[];
+  /** Same Requirement row's declared dependencies — feeds priorRequirementResults. */
+  dependsOnRequirementKeys: string[];
 } | null> {
   const workItemId = workItem?.id;
   if (!workItemId?.startsWith("wi:")) return null;
@@ -1622,6 +1674,7 @@ async function loadLockedCriteriaForRun(
       mustBeTrue?: string;
       expectedOutput?: string | null;
       requiredResourceClasses?: string[];
+      dependsOnRequirementKeys?: string[];
     };
   }).data;
   const contractRows = await db
@@ -1645,7 +1698,74 @@ async function loadLockedCriteriaForRun(
     requiredResourceClasses: Array.isArray(data.requiredResourceClasses)
       ? [...data.requiredResourceClasses]
       : [],
+    dependsOnRequirementKeys: Array.isArray(data.dependsOnRequirementKeys)
+      ? [...data.dependsOnRequirementKeys]
+      : [],
   };
+}
+
+/**
+ * Bounded accepted results from this Requirement's satisfied prerequisites,
+ * via the SAME canonical projection the manager's prerequisiteResults uses
+ * (projectPrerequisiteResults) — never a second interpretation. Scoped
+ * strictly to this objective, this contract revision, and the keys the
+ * current Requirement explicitly declared in dependsOnRequirementKeys.
+ */
+async function loadPriorRequirementResults(
+  db: QueryCtx["db"],
+  objectiveKey: string,
+  dependsOnRequirementKeys: string[],
+  currentContractRevision: number,
+): Promise<
+  Array<{
+    requirementKey: string;
+    summary: string;
+    fit: string;
+    unknowns: string[];
+    recommendedNextAction: string;
+  }>
+> {
+  const reqRows = await db
+    .query("requirements")
+    .withIndex("by_objectiveKey", (q) => q.eq("objectiveKey", objectiveKey))
+    .collect();
+  const assignmentRows = await db
+    .query("assignments")
+    .withIndex("by_objective", (q) => q.eq("objectiveKey", objectiveKey))
+    .collect();
+  const facts = projectPrerequisiteResults({
+    dependsOnRequirementKeys,
+    currentContractRevision,
+    requirementRows: reqRows.map(
+      (row) =>
+        (row as {
+          data: {
+            requirementKey: string;
+            contractRevision: number;
+            state: string;
+            resolution?: { proofRefs?: string[] } | null;
+          };
+        }).data,
+    ),
+    assignmentRows: assignmentRows.map(
+      (row) =>
+        (row as {
+          data: {
+            requirementKey: string;
+            contractRevision: number;
+            state: string;
+            acceptedOutput?: AcceptedOutputSnapshot | null;
+          };
+        }).data,
+    ),
+  });
+  return facts.map((f) => ({
+    requirementKey: f.requirementKey,
+    summary: f.summary,
+    fit: f.fit,
+    unknowns: f.unknowns,
+    recommendedNextAction: f.recommendedNextAction,
+  }));
 }
 
 // M6.1: acquisitions the worker may read are exactly those whose intent reached

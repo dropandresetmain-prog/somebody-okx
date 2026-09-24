@@ -319,7 +319,133 @@ export type PrerequisiteResultFact = {
   proofRefs: string[];
   findings: string[];
   unknowns: string[];
+  /** The prerequisite's own accepted worker output (DATA), when one exists. */
+  summary: string;
+  fit: string;
+  recommendedNextAction: string;
 };
+
+/** Durable per-assignment accepted-output snapshot (see Assignment.acceptedOutput). */
+export type AcceptedOutputSnapshot = {
+  runId: string;
+  terminal: "DELIVERED";
+  summary: string;
+  fit: string;
+  unknowns: string[];
+  recommendedNextAction: string;
+  acceptedAt: number;
+};
+
+/**
+ * Build the durable accepted-output snapshot for an assignment moving to
+ * "verified", from the SAME canonical acceptance projection
+ * (`projectWorkerOutput`) the manager already trusts. Returns null unless the
+ * application's durable terminal record accepts THIS runId as DELIVERED —
+ * never derived from prose, UI events, or a stale/different run's result.
+ */
+export function projectAcceptedOutputSnapshot(input: {
+  runId: string | null;
+  serialProtocol: boolean;
+  result: {
+    runId?: string;
+    summary?: string;
+    fit?: string;
+    recommendedNextAction?: string;
+    unknowns?: string[];
+  } | null;
+  acceptedTerminal?: {
+    runId: string;
+    terminal: "DELIVERED" | "NEEDS_INPUT" | "EXECUTION_ERROR";
+    acceptedAt: number;
+    outcome: "accepted";
+  } | null;
+}): AcceptedOutputSnapshot | null {
+  if (!input.runId) return null;
+  const { latestAcceptedWorkerOutput } = projectWorkerOutput({
+    serialProtocol: input.serialProtocol,
+    result: input.result,
+    acceptedTerminal: input.acceptedTerminal ?? null,
+    lastUnconfirmedTerminal: null,
+  });
+  if (!latestAcceptedWorkerOutput) return null;
+  if (latestAcceptedWorkerOutput.runId !== input.runId) return null;
+  if (latestAcceptedWorkerOutput.terminal !== "DELIVERED") return null;
+  const unknowns = Array.isArray(input.result?.unknowns)
+    ? input.result!.unknowns!.slice(0, 6).map(String)
+    : [];
+  return {
+    runId: latestAcceptedWorkerOutput.runId,
+    terminal: "DELIVERED",
+    summary: latestAcceptedWorkerOutput.summary,
+    fit: latestAcceptedWorkerOutput.fit,
+    unknowns,
+    recommendedNextAction: latestAcceptedWorkerOutput.recommendedNextAction,
+    acceptedAt: latestAcceptedWorkerOutput.acceptedAt,
+  };
+}
+
+/**
+ * Canonical projection of accepted prerequisite Requirement results — the
+ * ONLY place either the manager (`prerequisiteResults`) or a dependent
+ * worker (`priorRequirementResults`) may read a satisfied dependency's
+ * accepted conclusion, so the two surfaces can never diverge. Scoped
+ * strictly to: same Objective (implicit — callers pass already-scoped rows),
+ * same contract revision, keys explicitly listed in
+ * dependsOnRequirementKeys, Requirement state satisfied/waived, and an
+ * application-verified assignment carrying a matching acceptedOutput.
+ */
+export function projectPrerequisiteResults(input: {
+  dependsOnRequirementKeys: readonly string[];
+  currentContractRevision: number;
+  requirementRows: ReadonlyArray<{
+    requirementKey: string;
+    contractRevision: number;
+    state: string;
+    resolution?: { proofRefs?: string[] } | null;
+  }>;
+  assignmentRows: ReadonlyArray<{
+    requirementKey: string;
+    contractRevision: number;
+    state: string;
+    acceptedOutput?: AcceptedOutputSnapshot | null;
+  }>;
+}): PrerequisiteResultFact[] {
+  const results: PrerequisiteResultFact[] = [];
+  for (const depKey of input.dependsOnRequirementKeys.slice(0, 8)) {
+    const dep = input.requirementRows.find(
+      (r) =>
+        r.requirementKey === depKey &&
+        r.contractRevision === input.currentContractRevision,
+    );
+    if (!dep) continue;
+    if (dep.state !== "satisfied" && dep.state !== "waived") continue;
+    const accepted =
+      input.assignmentRows
+        .filter(
+          (a) =>
+            a.requirementKey === depKey &&
+            a.contractRevision === input.currentContractRevision &&
+            a.state === "verified" &&
+            a.acceptedOutput,
+        )
+        .sort(
+          (a, b) => (b.acceptedOutput!.acceptedAt) - (a.acceptedOutput!.acceptedAt),
+        )[0]?.acceptedOutput ?? null;
+    results.push({
+      requirementKey: depKey,
+      state: dep.state,
+      proofRefs: Array.isArray(dep.resolution?.proofRefs)
+        ? dep.resolution!.proofRefs!.slice(0, 8).map(String)
+        : [],
+      findings: accepted ? [accepted.summary.slice(0, 300)] : [],
+      unknowns: accepted ? accepted.unknowns.slice(0, 6) : [],
+      summary: accepted ? accepted.summary : "",
+      fit: accepted ? accepted.fit : "",
+      recommendedNextAction: accepted ? accepted.recommendedNextAction : "",
+    });
+  }
+  return results;
+}
 
 export type MarketDiscoveryWitness = {
   requirementKey: string;

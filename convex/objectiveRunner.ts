@@ -322,6 +322,9 @@ export function makeConvexPort(
                 // provenance/reasoning as lockedCriteria/correction above:
                 // this explicit-field reconstruction must carry it through).
                 acceptedInputChecks: loaded.acceptedInputChecks,
+                // Same reasoning: accepted prerequisite Requirement results
+                // (DATA) must survive this explicit-field reconstruction too.
+                priorRequirementResults: loaded.priorRequirementResults,
               },
             }
           : {}),
@@ -395,6 +398,29 @@ async function actCommand(
             const normalized = normalizePublicUrl(url);
             if (!normalized)
               throw new ToolStatusError("refused", `read_public_web requires a valid https URL`);
+            // Deterministic no-op on a repeat: if this run already has a
+            // successful (application_observation) public_web evidence row
+            // for this exact normalized URL identity, do not fetch again and
+            // do not record a second evidence row. `focus` text is never
+            // consulted — identity is URL-only (scheme/host case-insensitive,
+            // fragment ignored, path/query preserved).
+            const priorObservation = await ctx.runQuery(
+              internal.objectives.readWorkerObservation,
+              { objectiveKey, runId },
+            );
+            const priorRead = priorObservation.recordedFindings.find(
+              (f) =>
+                f.origin === "application_observation" &&
+                f.sourceClass === "public_web" &&
+                normalizePublicUrl(f.url ?? "") === normalized,
+            );
+            if (priorRead) {
+              return serialStatusResult(
+                "idempotent_replay",
+                `Already inspected in this run: evidence ${priorRead.id} ("${priorRead.label}") already observed this exact page. Reuse that observation instead of re-fetching it — move to a distinct URL, or call record_finding, check_input_availability, update the artifact, or submit_result as appropriate.`,
+                { evidenceId: priorRead.id, duplicateOfUrl: true },
+              );
+            }
             const page = await fetchPublicHtml(url);
             text = htmlToExtractableText(page.html).slice(
               0,

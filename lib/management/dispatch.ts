@@ -106,7 +106,7 @@ export function advanceAssignment(
   assignment: Assignment,
   next: AssignmentState,
   at: number,
-  patch: Partial<Pick<Assignment, "runId" | "resultSummary">> = {},
+  patch: Partial<Pick<Assignment, "runId" | "resultSummary" | "acceptedOutput">> = {},
 ): AssignmentTransition {
   if (!LEGAL_ASSIGNMENT_TRANSITIONS[assignment.state].includes(next))
     return {
