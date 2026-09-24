@@ -10,7 +10,7 @@
     "start": "next start --hostname 127.0.0.1",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts",
-    "m3:seller": "tsx scripts/m3-controlled-seller.ts",
+    "m3:seller": "node --env-file=.env.local ./node_modules/tsx/dist/cli.mjs scripts/m3-controlled-seller.ts",
     "typecheck:convex": "tsc -p convex/tsconfig.json --noEmit",
     "convex:dev": "convex dev --env-file .env.local",
     "convex:dev:local": "convex dev --env-file .env.local",
