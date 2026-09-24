@@ -198,6 +198,21 @@ export type WorkerObservation = {
       reviewRecommendedAction?: string;
       classification: string;
     } | null;
+    /**
+     * Read-only, application-owned: the exact closed set of
+     * check_input_availability ids checkInputAvailability already accepts for
+     * the current Requirement (from the same listInputObligations builder
+     * validation uses). Exposed so the model does not have to guess a
+     * namespace convention before its first availability call. Grants no
+     * authority — check_input_availability still independently validates
+     * whatever id is actually called.
+     */
+    acceptedInputChecks?: Array<{
+      inputCheckId: string;
+      kind: "required_resource_class" | "evidence_sufficiency";
+      resourceClass: string | null;
+      purpose: string;
+    }>;
   };
   unmetCompletionRequirements: string[];
   /** When set, the worker must stop — application accepted an input gap. */

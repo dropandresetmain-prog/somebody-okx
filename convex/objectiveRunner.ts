@@ -317,6 +317,11 @@ export function makeConvexPort(
                 ...(loaded.correction !== undefined
                   ? { correction: loaded.correction }
                   : {}),
+                // The application-owned closed set of legal
+                // check_input_availability ids for this Requirement (same
+                // provenance/reasoning as lockedCriteria/correction above:
+                // this explicit-field reconstruction must carry it through).
+                acceptedInputChecks: loaded.acceptedInputChecks,
               },
             }
           : {}),

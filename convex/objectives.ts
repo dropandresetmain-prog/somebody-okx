@@ -88,6 +88,7 @@ import {
   currentUnresolvedValidatedGap,
   listInputObligations,
   validateMissingInputProposal,
+  type InputObligation,
   type MissingInputProposal,
   type UnconfirmedInputFinding,
 } from "../lib/objective/inputDiagnosis";
@@ -1216,6 +1217,24 @@ export const readWorkerObservation = internalQuery({
             classification: v.string(),
           }),
         ),
+        // Read-only, application-owned: the exact closed set of
+        // check_input_availability ids checkInputAvailability already accepts
+        // for the CURRENT Requirement, from the SAME builder validation uses
+        // (listInputObligations). Exposed so the model does not have to guess
+        // a namespace convention before its first availability call. Grants
+        // no authority: check_input_availability still independently
+        // validates whatever id is actually called.
+        acceptedInputChecks: v.array(
+          v.object({
+            inputCheckId: v.string(),
+            kind: v.union(
+              v.literal("required_resource_class"),
+              v.literal("evidence_sufficiency"),
+            ),
+            resourceClass: v.union(v.string(), v.null()),
+            purpose: v.string(),
+          }),
+        ),
       }),
     ),
     unmetCompletionRequirements: v.array(v.string()),
@@ -1280,6 +1299,18 @@ export const readWorkerObservation = internalQuery({
     const lockedCriteria = serial
       ? await loadLockedCriteriaForRun(ctx.db, record, workItem)
       : null;
+    // Same closed set validation already accepts (checkInputAvailability),
+    // from the SAME builder (listInputObligations) — never a second
+    // derivation. Falls back exactly like recordInputAvailabilityCheck does
+    // when no bound Requirement is resolvable for this run.
+    const acceptedInputChecks = serial
+      ? listInputObligations({
+          requiredResourceClasses: lockedCriteria?.requiredResourceClasses ?? [],
+          sourceProofs: contract.sourceProofs,
+          mustBeTrue: lockedCriteria?.mustBeTrue ?? contract.assignment,
+          expectedOutput: lockedCriteria?.expectedOutput ?? null,
+        })
+      : [];
     const loadedInputPackage = serial
       ? buildLoadedInputPackage({
           contract,
@@ -1288,6 +1319,7 @@ export const readWorkerObservation = internalQuery({
           textCap: TEXT_CAP,
           artifactCap: MAX_ARTIFACT_CONTENT_CHARS,
           lockedCriteria,
+          acceptedInputChecks,
         })
       : undefined;
 
@@ -1340,9 +1372,17 @@ function buildLoadedInputPackage(input: {
     expectedOutput: string | null;
     minimumCompletionBar: string;
     contractRevision: number;
+    requiredResourceClasses: string[];
   } | null;
+  /**
+   * The exact closed set checkInputAvailability already accepts for this run,
+   * from listInputObligations — the SAME builder validation uses. Exposed
+   * read-only so the model does not have to guess before its first call.
+   */
+  acceptedInputChecks: InputObligation[];
 }) {
-  const { contract, record, acquiredInputs, textCap, artifactCap, lockedCriteria } = input;
+  const { contract, record, acquiredInputs, textCap, artifactCap, lockedCriteria, acceptedInputChecks } =
+    input;
   const canReadCompany = contract.allowedToolPermissions.includes(
     "read_company_record",
   );
@@ -1504,8 +1544,21 @@ function buildLoadedInputPackage(input: {
     linkedAcquisitions,
     targetArtifactKey: targetKey,
     inputEvidenceIds: [...(contract.inputEvidenceIds ?? [])],
-    ...(lockedCriteria ? { lockedCriteria } : {}),
+    // requiredResourceClasses is internal (feeds listInputObligations above);
+    // the model-facing lockedCriteria shape omits it.
+    ...(lockedCriteria
+      ? {
+          lockedCriteria: {
+            requirementKey: lockedCriteria.requirementKey,
+            mustBeTrue: lockedCriteria.mustBeTrue,
+            expectedOutput: lockedCriteria.expectedOutput,
+            minimumCompletionBar: lockedCriteria.minimumCompletionBar,
+            contractRevision: lockedCriteria.contractRevision,
+          },
+        }
+      : {}),
     ...(correction ? { correction } : {}),
+    acceptedInputChecks,
   };
 }
 
@@ -1526,6 +1579,8 @@ async function loadLockedCriteriaForRun(
   expectedOutput: string | null;
   minimumCompletionBar: string;
   contractRevision: number;
+  /** Same Requirement row's declared classes — feeds listInputObligations. */
+  requiredResourceClasses: string[];
 } | null> {
   const workItemId = workItem?.id;
   if (!workItemId?.startsWith("wi:")) return null;
@@ -1566,6 +1621,7 @@ async function loadLockedCriteriaForRun(
       contractRevision?: number;
       mustBeTrue?: string;
       expectedOutput?: string | null;
+      requiredResourceClasses?: string[];
     };
   }).data;
   const contractRows = await db
@@ -1586,6 +1642,9 @@ async function loadLockedCriteriaForRun(
         .minimumCompletionBar ?? "",
     ).slice(0, 800),
     contractRevision: data.contractRevision ?? (latestContract as { revision: number }).revision,
+    requiredResourceClasses: Array.isArray(data.requiredResourceClasses)
+      ? [...data.requiredResourceClasses]
+      : [],
   };
 }
 
