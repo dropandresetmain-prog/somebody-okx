@@ -9,6 +9,7 @@ import { FinalDeliverable } from "./components/FinalDeliverable";
 import { Deliverables } from "./components/Deliverables";
 import { Acquisitions } from "./components/Acquisitions";
 import { Attention } from "./components/Attention";
+import { OKXDemoStack } from "./components/OKXDemoStack";
 
 /** Historical demo / fixture frames may omit liveness — fill a truthful idle default. */
 function withLiveness(view: ObjectiveWorkspaceView): ObjectiveWorkspaceView {
@@ -152,6 +153,7 @@ function MainPane({
                 error={attentionError}
                 acknowledgement={attentionAcknowledgement}
               />
+              <OKXDemoStack />
               <Deliverables deliverables={view.deliverables} />
               <Checkpoints progress={view.progress} />
               <OrphanAcquisitions activity={view.activity} acquisitions={view.acquisitions} />
