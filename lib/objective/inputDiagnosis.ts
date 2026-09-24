@@ -8,6 +8,8 @@
 import { sha256Hex } from "../management/sha256";
 import {
   RESOURCE_CLASSES,
+  GOVERNED_PURPOSE_KINDS,
+  externalResourceClassesForPurposeKind,
   isGovernedPurposeKind,
   isOwnedResourceClass,
   purposeKindAppliesToClass,
@@ -406,20 +408,24 @@ export function validateMissingInputProposal(
   // purpose-scoped offerings treat as incompatible downstream (fail closed).
   const proposedKind =
     typeof proposal.purposeKind === "string" ? proposal.purposeKind.trim() : "";
+  // Refusals name the bounded legal alternative, mirroring
+  // checkInputAvailability's "Accepted ids: ..." pattern: the application
+  // already knows the closed vocabulary, so a worker's next attempt does not
+  // have to guess blindly across the whole class/purpose space.
   if (proposedKind && !isGovernedPurposeKind(proposedKind))
     return refuse(
       "unknown_purpose_scope",
-      `purposeKind ${String(proposal.purposeKind).trim().slice(0, 120)} is not a governed requested scope`,
+      `purposeKind ${String(proposal.purposeKind).trim().slice(0, 120)} is not a governed requested scope. Governed kinds: ${GOVERNED_PURPOSE_KINDS.join(", ") || "(none)"}.`,
     );
   if (proposedKind && !purposeKindAppliesToClass(proposedKind, resourceClass))
     return refuse(
       "purpose_scope_class_mismatch",
-      `purposeKind ${proposedKind} cannot be requested for resource class ${resourceClass}`,
+      `purposeKind ${proposedKind} cannot be requested for resource class ${resourceClass}. Legal resource class(es) for ${proposedKind}: ${externalResourceClassesForPurposeKind(proposedKind).join(", ") || "(none)"}.`,
     );
   if (proposedKind && !(ctx.authorizedPurposeKinds ?? []).includes(proposedKind))
     return refuse(
       "purpose_scope_not_authorized",
-      `Requirement ${ctx.requirementKey} does not authorize purposeKind ${proposedKind}`,
+      `Requirement ${ctx.requirementKey} does not authorize purposeKind ${proposedKind}. Kinds authorized for this Requirement: ${(ctx.authorizedPurposeKinds ?? []).join(", ") || "(none)"}.`,
     );
 
   // Company already controls this class → no acquisition-relevant gap.

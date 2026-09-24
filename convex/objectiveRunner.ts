@@ -304,6 +304,19 @@ export function makeConvexPort(
                   ...toAcquired(item),
                   truncated: item.truncated,
                 })),
+                // CHECKPOINT 2: the locked completion bar and any reopening
+                // correction critique are read-only projections the gate and
+                // final assessor already use (convex/objectives.ts::
+                // buildLoadedInputPackage) — this explicit-field reconstruction
+                // must carry them through, or a corrective worker never sees
+                // the bar it is being measured against or the critique that
+                // reopened its deliverable.
+                ...(loaded.lockedCriteria !== undefined
+                  ? { lockedCriteria: loaded.lockedCriteria }
+                  : {}),
+                ...(loaded.correction !== undefined
+                  ? { correction: loaded.correction }
+                  : {}),
               },
             }
           : {}),
