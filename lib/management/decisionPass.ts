@@ -521,14 +521,17 @@ export async function buildDecisionPassInput(
   // Requirement's requiredResourceClasses say what our own worker needs and are
   // never reinterpreted as what a merchant must supply. The external class +
   // purpose come ONLY from a validated ResourceNeed or the Objective-owned
-  // sourcing policy (via the governed catalogue). No context ⇒ no merchant can
-  // become compatible. Read/selection context only — never spend authority.
+  // sourcing policy (via the governed catalogue) — and the policy binds only
+  // when its class is one of these required inputs, so it never invents a gap.
+  // No context ⇒ no merchant can become compatible. Read/selection context
+  // only — never spend authority.
   const sourcing = deriveExternalSourcingContext({
     openResourceNeeds: validatedNeeds,
     controlledResourceClasses,
     scopedCoveredResourceClasses: [...scopedCovered],
     objectivePolicy: reads.objectiveSourcingPolicy ?? null,
     requirementAuthorizedPurposeKinds: requirement.authorizedPurposeKinds ?? null,
+    requiredResourceClasses,
   });
   const externalClass: ResourceClass | null = sourcing?.resourceClass ?? null;
   // Unowned, not-yet-acquired MAKE inputs — used below only as an awareness

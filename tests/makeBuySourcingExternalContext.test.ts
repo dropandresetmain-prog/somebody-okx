@@ -8,9 +8,10 @@
  * B. Objective sourcing policy derives the BUY class via the governed catalogue
  * C. No policy + no validated gap → fail closed
  * D. Validated gap wins over the Objective policy fallback
- * E. Early input Requirement w/o local scope gets policy-governed BUY, no spend
- * F. Market: all three Testnet merchants discovered; Guru ✓, Token ✕, Wallet ✕
- * G. MAKE ✓ + Guru ✓ → exactly one Jev call (deterministic double)
+ * E. Early input Requirement w/o a validated gap: Objective policy alone never
+ *    makes Guru compatible (fix/final-natural-buy-path — no Objective-wide leak)
+ * F. Market after a validated proprietary_data gap: Guru ✓, Token ✕, Wallet ✕
+ * G. Validated gap → MAKE input_not_owned; eligible set is exactly [Guru]
  * H. Founder projection reads "Different purpose"; raw detail stays in source
  */
 import test from "node:test";
@@ -137,6 +138,20 @@ const MAKE_PROPOSAL = {
 };
 const noRecommend = async () => null;
 
+/** An application-validated, scope-less proprietary_data gap (worker NEEDS_INPUT). */
+const VALIDATED_GAP: OpenResourceNeedFact = {
+  needId: "need_validated_gap",
+  resourceClass: "proprietary_data",
+  purpose: "current cross-platform audience engagement evidence",
+  reasonOwnedInsufficient: "owned records and public pages carry no current audience-behaviour data",
+  status: "active",
+  validated: true,
+  dedupeKey: null,
+  requestedPurposeKind: null,
+};
+const withGap = (over: Partial<DecisionPassReads> = {}) =>
+  reads({ openResourceNeeds: [VALIDATED_GAP], ...over });
+
 async function groundedOptions(r: DecisionPassReads): Promise<GroundedOption[]> {
   const built = await buildDecisionPassInput(r, MAKE_PROPOSAL, noRecommend);
   assert.equal(built.ok, true);
@@ -175,6 +190,7 @@ test("B: Objective policy external_social_intelligence resolves to proprietary_d
     controlledResourceClasses: CURRENT_RESOURCE_INVENTORY,
     scopedCoveredResourceClasses: [],
     objectivePolicy: SUBMISSION_EXTERNAL_SOCIAL_PURPOSE_POLICY,
+    requiredResourceClasses: ["company_records", "proprietary_data"],
   });
   assert.deepEqual(
     ctx && { resourceClass: ctx.resourceClass, purposeKind: ctx.purposeKind, source: ctx.source },
@@ -188,6 +204,7 @@ test("B: Objective policy external_social_intelligence resolves to proprietary_d
       controlledResourceClasses: CURRENT_RESOURCE_INVENTORY,
       scopedCoveredResourceClasses: [],
       objectivePolicy: { purposeKind: "quantitative_conversion_uplift", targetRequirementKind: "deliverable" },
+      requiredResourceClasses: ["proprietary_data"],
     }),
     null,
   );
@@ -198,9 +215,27 @@ test("B: Objective policy external_social_intelligence resolves to proprietary_d
       controlledResourceClasses: CURRENT_RESOURCE_INVENTORY,
       scopedCoveredResourceClasses: ["proprietary_data"],
       objectivePolicy: SUBMISSION_EXTERNAL_SOCIAL_PURPOSE_POLICY,
+      requiredResourceClasses: ["proprietary_data"],
     }),
     null,
   );
+  // The policy authorizes a purpose; it never invents a gap. A Requirement
+  // whose inputs are all owned (or public_web-only) gets no sourcing context,
+  // including via a Requirement-local scope bound from the same policy.
+  for (const required of [["company_records", "llm_reasoning"], ["public_web"], []]) {
+    assert.equal(
+      deriveExternalSourcingContext({
+        openResourceNeeds: [],
+        controlledResourceClasses: CURRENT_RESOURCE_INVENTORY,
+        scopedCoveredResourceClasses: [],
+        objectivePolicy: SUBMISSION_EXTERNAL_SOCIAL_PURPOSE_POLICY,
+        requirementAuthorizedPurposeKinds: [EXTERNAL_SOCIAL_INTELLIGENCE_PURPOSE_KIND],
+        requiredResourceClasses: required,
+      }),
+      null,
+      `policy must not create a gap for required=[${required.join(",")}]`,
+    );
+  }
 });
 
 // ── C ────────────────────────────────────────────────────────────────────────
@@ -232,6 +267,7 @@ test("D: a validated ResourceNeed overrides the generic Objective sourcing fallb
     controlledResourceClasses: CURRENT_RESOURCE_INVENTORY,
     scopedCoveredResourceClasses: [],
     objectivePolicy: SUBMISSION_EXTERNAL_SOCIAL_PURPOSE_POLICY,
+    requiredResourceClasses: ["company_records", "public_web"],
   });
   assert.equal(ctx?.source, "validated_resource_need");
   assert.equal(ctx?.purposeKind, FOUNDER_MESSAGING_QUALITATIVE_PURPOSE_KIND, "need's own scope wins over broader policy");
@@ -244,6 +280,7 @@ test("D: a validated ResourceNeed overrides the generic Objective sourcing fallb
     controlledResourceClasses: CURRENT_RESOURCE_INVENTORY,
     scopedCoveredResourceClasses: [],
     objectivePolicy: SUBMISSION_EXTERNAL_SOCIAL_PURPOSE_POLICY,
+    requiredResourceClasses: ["company_records", "public_web"],
   });
   assert.equal(scopeless?.source, "validated_resource_need");
   assert.equal(scopeless?.purposeKind, EXTERNAL_SOCIAL_INTELLIGENCE_PURPOSE_KIND);
@@ -254,52 +291,58 @@ test("D: a validated ResourceNeed overrides the generic Objective sourcing fallb
     controlledResourceClasses: CURRENT_RESOURCE_INVENTORY,
     scopedCoveredResourceClasses: [],
     objectivePolicy: SUBMISSION_EXTERNAL_SOCIAL_PURPOSE_POLICY,
+    requiredResourceClasses: ["company_records", "public_web"],
   });
   assert.equal(rejected?.purposeKind, null);
 
-  // An unvalidated (proposed) need never drives sourcing.
+  // An unvalidated (proposed) need never drives sourcing, and the policy
+  // cannot stand in for it when the Requirement does not require the class.
   const proposed = deriveExternalSourcingContext({
     openResourceNeeds: [{ ...need, validated: false }],
     controlledResourceClasses: CURRENT_RESOURCE_INVENTORY,
     scopedCoveredResourceClasses: [],
     objectivePolicy: SUBMISSION_EXTERNAL_SOCIAL_PURPOSE_POLICY,
+    requiredResourceClasses: ["company_records", "public_web"],
   });
-  assert.equal(proposed?.source, "objective_sourcing_policy");
+  assert.equal(proposed, null);
 });
 
 // ── E ────────────────────────────────────────────────────────────────────────
 
-test("E: early input Requirement without local authorizedPurposeKinds gets policy-governed BUY, but no spend authority", async () => {
+test("E: early Requirements with owned/public inputs — MAKE eligible; Objective policy alone never makes Guru eligible", async () => {
   const requirement = evidenceRequirement();
   assert.equal(requirement.authorizedPurposeKinds, undefined);
-  const built = await buildDecisionPassInput(
-    reads({ requirement }),
-    MAKE_PROPOSAL,
-    async (eligible) => {
-      const buy = eligible.find((o) => o.strategy === "BUY");
-      return buy
-        ? { requirementKey: requirement.requirementKey, contractRevision: 1, selectedOptionId: buy.optionId, rationale: "double selects BUY", materialAssumptions: [], changeMyMindEvidence: [] }
-        : null;
-    },
-  );
+  let recommendSawBuy = false;
+  const built = await buildDecisionPassInput(reads({ requirement }), MAKE_PROPOSAL, async (eligible) => {
+    recommendSawBuy ||= eligible.some((o) => o.strategy === "BUY");
+    return null;
+  });
   assert.equal(built.ok, true);
   if (!built.ok) return;
-  // Selection context never becomes spend authority.
   assert.equal(built.input.spendAuthorityUsd, null);
-  assert.equal(built.input.spendApprovalId, null);
-  assert.equal(built.input.eligibilityFacts.spendAuthorityUsd, null);
   assert.deepEqual(built.input.authorizedPurposeKinds, [], "the Requirement row is not widened");
+  assert.equal(built.input.eligibilityFacts.requiredResourceClasses.includes("proprietary_data" as never), false);
   const result = await runManagerialDecisionPass(built.input);
+  assert.equal(makeOf(result.options)?.eligibility.eligible, true);
   const guru = byService(result.options, SOCIAL_MEDIA_GURU_SERVICE_ID);
-  assert.equal(guru?.eligibility.eligible, true);
-  assert.notEqual(result.authorization.kind, "authorized", "BUY without founder authority is never authorized");
-  assert.equal(result.authorization.kind, "approval_required", "selected BUY routes to Needs You");
+  assert.ok(guru, "market awareness may still list it");
+  assert.equal(guru!.external!.purposeScopeCompatible, false);
+  assert.equal(guru!.eligibility.eligible, false);
+  assert.ok(result.options.filter((o) => o.strategy === "BUY").every((o) => !o.eligibility.eligible));
+  assert.equal(recommendSawBuy, false);
+
+  // public_evidence shape: requires only public_web.
+  const publicOnly = await groundedOptions(
+    reads({ requirement: evidenceRequirement({ requirementKey: "req_public_evidence", requiredResourceClasses: ["public_web"] }) }),
+  );
+  assert.equal(makeOf(publicOnly)?.eligibility.eligible, true);
+  assert.equal(byService(publicOnly, SOCIAL_MEDIA_GURU_SERVICE_ID)?.eligibility.eligible ?? false, false);
 });
 
 // ── F ────────────────────────────────────────────────────────────────────────
 
-test("F: all three Testnet merchants discovered; Guru eligible, Token + Wallet purpose-incompatible", async () => {
-  const options = await groundedOptions(reads());
+test("F: after a validated gap, all three Testnet merchants discovered; Guru eligible, Token + Wallet purpose-incompatible", async () => {
+  const options = await groundedOptions(withGap());
   const buys = options.filter((o) => o.strategy === "BUY");
   assert.equal(buys.length, 3);
   const guru = byService(options, SOCIAL_MEDIA_GURU_SERVICE_ID)!;
@@ -315,27 +358,28 @@ test("F: all three Testnet merchants discovered; Guru eligible, Token + Wallet p
     assert.equal(distractor.external!.purposeScopeCompatible, false, "…different purpose");
     assert.equal(distractor.eligibility.eligible, false);
   }
-  // Deliverable Requirement (Run 1 req_launch_week_ready) grounds the same way.
-  const deliverable = await groundedOptions(
-    reads({
-      requirement: evidenceRequirement({
-        requirementKey: "req_launch_week_ready",
-        requirementKind: "deliverable",
-        requiredResourceClasses: ["llm_reasoning", "company_records", "public_web", "ordinary_compute"],
-        authorizedPurposeKinds: [EXTERNAL_SOCIAL_INTELLIGENCE_PURPOSE_KIND],
-      }),
-    }),
-  );
-  assert.equal(byService(deliverable, SOCIAL_MEDIA_GURU_SERVICE_ID)?.eligibility.eligible, true);
+  // Deliverable Requirement carrying the bound local scope: still no BUY until
+  // a validated gap exists for it; then Guru grounds the same way.
+  const deliverableReq = evidenceRequirement({
+    requirementKey: "req_launch_week_ready",
+    requirementKind: "deliverable",
+    requiredResourceClasses: ["llm_reasoning", "company_records", "public_web", "ordinary_compute"],
+    authorizedPurposeKinds: [EXTERNAL_SOCIAL_INTELLIGENCE_PURPOSE_KIND],
+  });
+  const before = await groundedOptions(reads({ requirement: deliverableReq }));
+  assert.equal(makeOf(before)?.eligibility.eligible, true);
+  assert.equal(byService(before, SOCIAL_MEDIA_GURU_SERVICE_ID)?.eligibility.eligible ?? false, false);
+  const after = await groundedOptions(withGap({ requirement: deliverableReq }));
+  assert.equal(byService(after, SOCIAL_MEDIA_GURU_SERVICE_ID)?.eligibility.eligible, true);
 });
 
 // ── G ────────────────────────────────────────────────────────────────────────
 
-test("G: MAKE ✓ + Guru ✓ → exactly ONE Jev call (deterministic double, choice not asserted)", async () => {
+test("G: validated gap → MAKE input_not_owned; bounded stage 3 sees exactly [Guru]; BUY parks at approval_required", async () => {
   let jevCalls = 0;
   let seenEligible: readonly GroundedOption[] = [];
   const requirement = evidenceRequirement();
-  const built = await buildDecisionPassInput(reads({ requirement }), MAKE_PROPOSAL, async (eligible) => {
+  const built = await buildDecisionPassInput(withGap({ requirement }), MAKE_PROPOSAL, async (eligible) => {
     seenEligible = eligible;
     const compose = await composeBoundedStage3Recommendation(
       {
@@ -363,17 +407,21 @@ test("G: MAKE ✓ + Guru ✓ → exactly ONE Jev call (deterministic double, cho
   });
   assert.equal(built.ok, true);
   if (!built.ok) return;
-  await runManagerialDecisionPass(built.input);
-  assert.equal(seenEligible.length, 2);
-  assert.deepEqual(seenEligible.map((o) => o.strategy).sort(), ["BUY", "MAKE"]);
-  assert.equal(seenEligible.find((o) => o.strategy === "BUY")?.external?.serviceId, SOCIAL_MEDIA_GURU_SERVICE_ID);
-  assert.equal(jevCalls, 1);
+  assert.ok(built.input.eligibilityFacts.requiredResourceClasses.includes("proprietary_data" as never));
+  const result = await runManagerialDecisionPass(built.input);
+  const make = makeOf(result.options)!;
+  assert.equal(make.eligibility.eligible, false);
+  if (!make.eligibility.eligible) assert.ok(make.eligibility.reasons.includes("input_not_owned"));
+  assert.deepEqual(seenEligible.map((o) => o.external?.serviceId), [SOCIAL_MEDIA_GURU_SERVICE_ID]);
+  assert.ok(jevCalls <= 1, "sole eligible option needs no competitive Jev selection");
+  assert.equal(result.decision.optionId, seenEligible[0]!.optionId);
+  assert.equal(result.authorization.kind, "approval_required", "no founder grant → Needs You, never authorized");
 });
 
 // ── H ────────────────────────────────────────────────────────────────────────
 
 test("H: founder Activity reads 'Different purpose' for distractors; raw detail preserved in source truth", async () => {
-  const options = await groundedOptions(reads());
+  const options = await groundedOptions(withGap());
   const make = makeOf(options)!;
   const coarsePlanSummary = JSON.stringify({ original: "", extra: { options } });
   const objective: ProductObjectiveRow = {

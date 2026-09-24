@@ -295,11 +295,14 @@ test("explicit structured policy binds external_social_intelligence to one Objec
   assert.deepEqual(data.management?.authorizedPurposePolicy, {
     purposeKind: EXTERNAL_SOCIAL_INTELLIGENCE_PURPOSE_KIND,
     targetRequirementKind: "deliverable",
-    // demo/okx-required-buy-path: the submission policy additively states the
-    // genuine proprietary_data need on the same targeted deliverable — see
-    // SUBMISSION_EXTERNAL_SOCIAL_PURPOSE_POLICY in lib/objective/seedData.ts.
-    requiredResourceClasses: ["proprietary_data"],
+    // fix/final-natural-buy-path: the submission policy authorizes the purpose
+    // only; it must NOT pre-declare the proprietary_data gap that forces BUY.
   });
+  assert.equal(
+    (data.management?.authorizedPurposePolicy as { requiredResourceClasses?: unknown } | undefined)?.requiredResourceClasses,
+    undefined,
+    "/start must not inject the runtime scarcity",
+  );
 });
 
 test("createObjectiveV1 without policy leaves social authority absent; with policy accepts structured authority", async () => {

@@ -235,10 +235,36 @@ test("I3: BUY with needsExternalResourceClass 'proprietary_data' → market is v
     assert.equal(offering.compatibleResourceClass, false, `${offering.offeringId}: model proposal alone grants no compatibility`);
   }
 
+  // The Objective policy alone authorizes a purpose but never invents the gap.
+  const policy = { purposeKind: "external_social_intelligence", targetRequirementKind: "deliverable" as const };
+  const policyOnly = await buildDecisionPassInput(
+    makeReads({ requirement, objectiveSourcingPolicy: policy }),
+    proposal,
+    noopRecommend,
+  );
+  assert.equal(policyOnly.ok, true);
+  if (!policyOnly.ok) throw new Error("expected ok");
+  for (const offering of policyOnly.input.grounding.discovered) {
+    assert.equal(offering.compatibleResourceClass, false, `${offering.offeringId}: policy alone is not a gap`);
+  }
+
+  // Policy + an application-validated proprietary_data gap → governed context.
   const governed = await buildDecisionPassInput(
     makeReads({
       requirement,
-      objectiveSourcingPolicy: { purposeKind: "external_social_intelligence", targetRequirementKind: "deliverable" },
+      objectiveSourcingPolicy: policy,
+      openResourceNeeds: [
+        {
+          needId: "need_i3",
+          resourceClass: "proprietary_data",
+          purpose: "current narrative data from X",
+          reasonOwnedInsufficient: "no owned or public source carries it",
+          status: "active",
+          validated: true,
+          dedupeKey: null,
+          requestedPurposeKind: null,
+        },
+      ],
     }),
     proposal,
     noopRecommend,

@@ -160,19 +160,19 @@ export const CANONICAL_AUTHORIZED_PURPOSE_POLICY: AuthorizedPurposePolicy = {
  * generic platform guidance — but the company does not own current
  * cross-platform audience-engagement / platform-derived social intelligence
  * (see CURRENT_RESOURCE_INVENTORY: `proprietary_data` is deliberately
- * absent). The submission demo's founder-facing deliverable may not claim
- * current audience-behaviour evidence without that external input, so
- * `requiredResourceClasses` states this genuine need on the same targeted
- * deliverable Requirement that `purposeKind` authorizes. This does not force
- * BUY: it is a fact bindAuthorizedPurposePolicy attaches to the Requirement,
- * and the normal `input_not_owned` eligibility rule plus Jev/stage-4
- * pipeline still decide MAKE vs BUY from it like any other declared need.
+ * absent).
+ *
+ * This policy only AUTHORIZES the governed external purpose on the targeted
+ * deliverable Requirement. It deliberately does NOT pre-declare
+ * `requiredResourceClasses`: the `proprietary_data` gap must be discovered at
+ * runtime by the worker (validated into a ResourceNeed by the application),
+ * which the decision pass then merges into MAKE's required inputs. Declaring
+ * it here would manufacture the scarcity that forces BUY.
  */
 export const SUBMISSION_EXTERNAL_SOCIAL_PURPOSE_POLICY: AuthorizedPurposePolicy =
   {
     purposeKind: EXTERNAL_SOCIAL_INTELLIGENCE_PURPOSE_KIND,
     targetRequirementKind: "deliverable",
-    requiredResourceClasses: ["proprietary_data"],
   };
 
 // A second, LATER need used only to prove the seam is repeatable: after the

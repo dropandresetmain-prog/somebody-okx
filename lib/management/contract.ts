@@ -196,8 +196,8 @@ export function buildSemanticRequirement(input: {
  *
  * The same policy may also carry `requiredResourceClasses` — an additive,
  * APPLICATION-OWNED statement that the targeted Requirement genuinely needs
- * those inputs (e.g. the Testnet submission demo's deliverable genuinely
- * needs `proprietary_data` social intelligence the company does not own).
+ * those inputs. (The Testnet submission policy deliberately does not use it:
+ * its `proprietary_data` gap must be discovered at runtime, not pre-declared.)
  * This only ADDS to `Requirement.requiredResourceClasses`; it never removes
  * an already-declared need, and ungoverned classes are dropped rather than
  * grants being widened silently. It does not choose MAKE or BUY — the normal

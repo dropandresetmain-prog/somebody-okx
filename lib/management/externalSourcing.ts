@@ -20,6 +20,11 @@
 //      policy (or the Requirement-local scope bound from it). The external
 //      class is derived through the governed catalogue
 //      (externalResourceClassesForPurposeKind), never from prose or a model.
+//      The policy only AUTHORIZES a purpose; it never manufactures a gap: it
+//      binds only when that derived class is an actual missing input of the
+//      Requirement being decided (declared or application-validated, not
+//      controlled, not already acquired). Otherwise an Objective-wide policy
+//      would make a merchant compatible on unrelated Requirements.
 //   3. none — no merchant may become compatible.
 //
 // This is READ / SELECTION context only. It grants no spend authority, no
@@ -73,6 +78,12 @@ export type DeriveExternalSourcingInput = {
   objectivePolicy: AuthorizedPurposePolicy | null | undefined;
   /** Requirement-local scope bound from that same policy, when present. */
   requirementAuthorizedPurposeKinds?: readonly string[] | null;
+  /**
+   * MAKE-input classes of the Requirement being decided: Requirement-declared
+   * plus application-validated ResourceNeed classes. The policy fallback binds
+   * only when its derived external class is one of these and still missing.
+   */
+  requiredResourceClasses: readonly string[];
 };
 
 const knownClasses = new Set<string>(RESOURCE_CLASSES.map((r) => r.class));
@@ -141,10 +152,17 @@ export function deriveExternalSourcingContext(
     };
   }
 
-  // 2. Objective-owned sourcing policy — class derived via the catalogue.
+  // 2. Objective-owned sourcing policy — class derived via the catalogue, and
+  //    only when that class is an actual missing input of THIS Requirement.
   if (policyKind) {
     const resourceClass = resolveExternalClassForPurposeKind(policyKind);
-    if (resourceClass && !covered.has(resourceClass.toLowerCase())) {
+    const required = new Set(input.requiredResourceClasses.map((c) => c.toLowerCase()));
+    if (
+      resourceClass &&
+      required.has(resourceClass.toLowerCase()) &&
+      !controlled.has(resourceClass.toLowerCase()) &&
+      !covered.has(resourceClass.toLowerCase())
+    ) {
       return {
         resourceClass,
         purposeKind: policyKind,

@@ -1,20 +1,25 @@
 /**
- * OKX demo buy-path hardening (branch demo/okx-required-buy-path).
+ * OKX demo natural BUY path (fix/final-natural-buy-path).
  *
- * Proves the controlled OKX testnet_demo submission scenario reliably
- * produces: MAKE ineligible (input_not_owned on a genuine `proprietary_data`
- * need) -> Social Media Guru sole eligible BUY -> founder approval required
- * for the $0.01 spend -> no payment before that approval -> MAKE can resume
- * once the need is satisfied. Nothing here changes generic MAKE/BUY policy,
- * Jev scoring, or mainnet/disabled behavior — the new mechanism is an
- * additive `requiredResourceClasses` field on AuthorizedPurposePolicy, bound
- * by the existing bindAuthorizedPurposePolicy seam only when the caller
- * supplies SUBMISSION_EXTERNAL_SOCIAL_PURPOSE_POLICY (i.e. only the
- * testnet_demo `/start` path — see convex/productCommands.ts).
+ * The submission policy only AUTHORIZES the external-social purpose; it does
+ * not pre-declare the `proprietary_data` gap. BUY must emerge from a runtime,
+ * application-validated ResourceNeed:
+ *   no gap  -> MAKE eligible, no BUY eligible (no Objective-wide leak)
+ *   gap     -> MAKE input_not_owned -> Social Media Guru sole eligible BUY
+ *           -> founder approval required for the $0.01 spend, no effect before
+ *   covered -> input_not_owned clears, MAKE can resume.
+ * Nothing in code selects BUY or Social Media Guru directly.
  */
 import test from "node:test";
 import assert from "node:assert/strict";
 
+import {
+  buildDecisionPassInput,
+  type DecisionPassReads,
+  type OpenResourceNeedFact,
+} from "../lib/management/decisionPass";
+import { runManagerialDecisionPass } from "../lib/management/decision";
+import { createBudget } from "../lib/management/budget";
 import { interpretOutcomeContract, interpretRequirements } from "../lib/management/interpretation";
 import {
   SUBMISSION_EXTERNAL_SOCIAL_PURPOSE_POLICY,
@@ -88,10 +93,146 @@ function interpret(policy: typeof SUBMISSION_EXTERNAL_SOCIAL_PURPOSE_POLICY | nu
 // submission policy, never generically and never for the unrelated canonical
 // demo policy (which authorizes a different purposeKind entirely). ──────────
 
-test("controlled Testnet submission policy binds required proprietary_data onto the deliverable Requirement", () => {
+test("A: Testnet submission policy authorizes the purpose but does NOT inject proprietary_data", () => {
+  assert.equal(
+    (SUBMISSION_EXTERNAL_SOCIAL_PURPOSE_POLICY as { requiredResourceClasses?: unknown }).requiredResourceClasses,
+    undefined,
+  );
   const req = interpret(SUBMISSION_EXTERNAL_SOCIAL_PURPOSE_POLICY);
-  assert.ok(req.requiredResourceClasses.includes("proprietary_data"));
+  assert.equal(req.requiredResourceClasses.includes("proprietary_data"), false);
   assert.deepEqual(req.authorizedPurposeKinds, [SUBMISSION_EXTERNAL_SOCIAL_PURPOSE_POLICY.purposeKind]);
+});
+
+// ── B/C/D/F through the real decision pass (interpreted Requirement + ──────
+// controlled Testnet market + Objective policy on every pass). ──────────────
+
+const previousMode = process.env.SOMEBODY_EXECUTION_MODE;
+process.env.SOMEBODY_EXECUTION_MODE = "testnet_demo";
+test.after(() => {
+  if (previousMode === undefined) delete process.env.SOMEBODY_EXECUTION_MODE;
+  else process.env.SOMEBODY_EXECUTION_MODE = previousMode;
+});
+
+const MAKE_PROPOSAL = {
+  strategy: "MAKE",
+  desiredCapabilities: ["public_information_research", "company_records_lookup"],
+  needsExternalResourceClass: null,
+};
+
+const RUNTIME_GAP: OpenResourceNeedFact = {
+  needId: "need_runtime_gap",
+  resourceClass: "proprietary_data",
+  purpose: "current cross-platform audience-behaviour evidence",
+  reasonOwnedInsufficient: "company records and public pages carry no current audience-behaviour data",
+  status: "active",
+  validated: true,
+  dedupeKey: null,
+  requestedPurposeKind: null,
+};
+
+function passReads(over: Partial<DecisionPassReads> = {}): DecisionPassReads {
+  return {
+    contract: contract(),
+    currentContractRevision: 1,
+    requirement: interpret(SUBMISSION_EXTERNAL_SOCIAL_PURPOSE_POLICY),
+    inventory: [],
+    creationAllowed: true,
+    budget: createBudget(OBJ, AT),
+    grant: null, // no founder spend authority
+    at: AT,
+    decisionId: "dec_natural_buy",
+    serialManagerProtocol: true,
+    objectiveSourcingPolicy: SUBMISSION_EXTERNAL_SOCIAL_PURPOSE_POLICY,
+    ...over,
+  };
+}
+
+async function decide(over: Partial<DecisionPassReads> = {}) {
+  let recommendCalls = 0;
+  let seen: readonly GroundedOption[] = [];
+  const built = await buildDecisionPassInput(passReads(over), MAKE_PROPOSAL, async (eligible) => {
+    recommendCalls += 1;
+    seen = eligible;
+    // Deterministic double: echo the first eligible option. It never names a
+    // strategy or merchant — whatever is eligible is what it sees.
+    return eligible[0]
+      ? {
+          requirementKey: eligible[0].requirementKey,
+          contractRevision: 1,
+          selectedOptionId: eligible[0].optionId,
+          rationale: "first eligible",
+          materialAssumptions: [],
+          changeMyMindEvidence: [],
+        }
+      : null;
+  });
+  assert.equal(built.ok, true);
+  if (!built.ok) throw new Error("build");
+  const result = await runManagerialDecisionPass(built.input);
+  return { built: built.input, result, seen, recommendCalls };
+}
+const svc = (o: GroundedOption) => o.external?.serviceId ?? "MAKE";
+const eligibleIds = (options: readonly GroundedOption[]) =>
+  options.filter((o) => o.eligibility.eligible).map(svc);
+
+test("B: early public_web Requirement — MAKE eligible; Guru not eligible merely because the Objective carries the social policy", async () => {
+  const publicEvidence = {
+    ...interpret(null),
+    requirementKey: "req_public_evidence",
+    requirementKind: "input" as const,
+    requiredResourceClasses: ["public_web"],
+  };
+  const { result } = await decide({ requirement: publicEvidence });
+  assert.deepEqual(eligibleIds(result.options), ["MAKE"]);
+  const guru = result.options.find((o) => svc(o) === SOCIAL_MEDIA_GURU_SERVICE_ID);
+  assert.equal(guru?.external?.purposeScopeCompatible ?? false, false);
+  assert.equal(result.authorization.kind, "authorized");
+  assert.equal(result.decision.strategy, "MAKE");
+});
+
+test("C: target deliverable BEFORE a validated gap — no forced proprietary_data, no forced sole BUY", async () => {
+  const { built, result } = await decide();
+  assert.equal(built.eligibilityFacts.requiredResourceClasses.includes("proprietary_data" as never), false);
+  assert.deepEqual(eligibleIds(result.options), ["MAKE"]);
+  assert.equal(result.decision.strategy, "MAKE");
+});
+
+test("D: after an application-validated proprietary_data ResourceNeed — MAKE input_not_owned; eligible set is exactly [Guru]", async () => {
+  const { built, result, seen } = await decide({ openResourceNeeds: [RUNTIME_GAP] });
+  assert.ok(built.eligibilityFacts.requiredResourceClasses.includes("proprietary_data" as never));
+  const make = result.options.find((o) => o.strategy === "MAKE")!;
+  assert.equal(make.eligibility.eligible, false);
+  if (!make.eligibility.eligible) assert.ok(make.eligibility.reasons.includes("input_not_owned"));
+  for (const distractor of [TESTNET_TOKEN_MARKET_SERVICE_ID, TESTNET_WALLET_RISK_SERVICE_ID]) {
+    const option = result.options.find((o) => svc(o) === distractor)!;
+    assert.equal(option.external!.purposeScopeCompatible, false);
+    assert.equal(option.eligibility.eligible, false);
+  }
+  assert.deepEqual(eligibleIds(result.options), [SOCIAL_MEDIA_GURU_SERVICE_ID]);
+  assert.deepEqual(seen.map(svc), [SOCIAL_MEDIA_GURU_SERVICE_ID]);
+  // E (kernel half): no grant → approval_required, never authorized.
+  assert.equal(result.authorization.kind, "approval_required");
+});
+
+test("D': an UNVALIDATED (proposed) need does not exclude MAKE or make Guru eligible", async () => {
+  const { result } = await decide({ openResourceNeeds: [{ ...RUNTIME_GAP, validated: false }] });
+  assert.deepEqual(eligibleIds(result.options), ["MAKE"]);
+});
+
+test("F: after verified acquisition coverage of the need — input_not_owned clears and MAKE resumes", async () => {
+  const { result } = await decide({
+    openResourceNeeds: [RUNTIME_GAP],
+    scopedCoveredResourceClasses: ["proprietary_data"],
+  });
+  const make = result.options.find((o) => o.strategy === "MAKE")!;
+  assert.equal(make.eligibility.eligible, true, JSON.stringify(make.eligibility));
+  assert.equal(
+    result.options.some((o) => o.strategy === "BUY" && o.eligibility.eligible),
+    false,
+    "covered need is not re-sourced",
+  );
+  assert.equal(result.decision.strategy, "MAKE");
+  assert.equal(result.authorization.kind, "authorized");
 });
 
 test("normal/general Objective (no policy) does not gain proprietary_data", () => {
