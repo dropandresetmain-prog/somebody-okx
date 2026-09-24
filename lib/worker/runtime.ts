@@ -276,10 +276,17 @@ export function toolNamesForContract(
       case "read_company_record":
       case "read_public_web":
       case "record_finding":
-      case "update_company_artifact":
       case "submit_result":
       case "request_completion":
         materialized.push(permission);
+        break;
+      case "update_company_artifact":
+        // CHECKPOINT 2: an explicit null target means mutation is not
+        // authorized for THIS assignment (analysis-only). Never present the
+        // write tool as usable when the deterministic write it would attempt
+        // is already refused — the model has no legal way to make it succeed.
+        if (contract.targetArtifactKey === null) skipped.push(permission);
+        else materialized.push(permission);
         break;
       case "request_resource":
         // Serial: one canonical gap path via submit_result.terminal=NEEDS_INPUT.

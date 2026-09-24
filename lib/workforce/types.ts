@@ -43,6 +43,14 @@ export type CapabilityDefinition = {
   requiredResources: readonly ResourceClass[];
   allowedToolPermissions: readonly ToolPermissionId[];
   responsibility: string;
+  /**
+   * Substitute responsibility text for an assignment whose WorkContract has
+   * targetArtifactKey === null (analysis-only: mutation is not authorized).
+   * Only capabilities whose ordinary `responsibility` instructs an artifact
+   * mutation need this — it must never itself instruct a mutation. Absent for
+   * capabilities that never mention artifact mutation.
+   */
+  analysisOnlyResponsibility?: string;
 };
 export type WorkerSpec = {
   workerKey: string;

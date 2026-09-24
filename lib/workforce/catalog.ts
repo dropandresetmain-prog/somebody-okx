@@ -141,6 +141,8 @@ export const CONTROLLED_CAPABILITIES: readonly CapabilityDefinition[] = [
     allowedToolPermissions: ["update_company_artifact", "record_finding"],
     responsibility:
       "Draft the requested artifact from supplied material only via a bounded versioned company-artifact change, and leave it for review rather than sending or publishing it.",
+    analysisOnlyResponsibility:
+      "This assignment is analysis-only: you have no authority to modify any company artifact. Produce your draft content and analysis in the structured result instead of writing it anywhere.",
   },
   {
     key: "growth_launch_operations",
@@ -162,6 +164,8 @@ export const CONTROLLED_CAPABILITIES: readonly CapabilityDefinition[] = [
     ],
     responsibility:
       "Research public sources and internal records as needed, update the controlled company artifact with a versioned change, and request any missing resources the application must acquire. Do not invoke providers, authorize spend, or make arbitrary external calls.",
+    analysisOnlyResponsibility:
+      "Research public sources and internal records as needed and request any missing resources the application must acquire. This assignment is analysis-only: you have no authority to modify any company artifact — report your findings and recommendation in the structured result. Do not invoke providers, authorize spend, or make arbitrary external calls.",
   },
 ] as const;
 const resourceByClass = new Map(
@@ -186,6 +190,27 @@ export function requireCapability(key: string): CapabilityDefinition {
   const capability = getCapability(key);
   if (!capability) throw new Error(`Unknown capability: ${key}`);
   return capability;
+}
+/**
+ * Per-ASSIGNMENT responsibility text (distinct from a worker's persistent,
+ * capability-set-wide `responsibility`). When `analysisOnly` is true, any
+ * capability whose ordinary responsibility instructs an artifact mutation is
+ * substituted with its `analysisOnlyResponsibility` so a model with no
+ * mutation authority for this assignment (WorkContract.targetArtifactKey ===
+ * null) is never told to update an artifact it cannot write to.
+ */
+export function responsibilityForAssignment(
+  capabilityKeys: readonly string[],
+  options: { analysisOnly: boolean },
+): string {
+  return capabilityKeys
+    .map((key) => {
+      const capability = requireCapability(key);
+      return options.analysisOnly && capability.analysisOnlyResponsibility
+        ? capability.analysisOnlyResponsibility
+        : capability.responsibility;
+    })
+    .join("\n");
 }
 export function isControlledToolPermissionId(id: string): id is ToolPermissionId {
   return permissionById.has(id as ToolPermissionId);
