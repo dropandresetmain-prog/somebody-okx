@@ -153,9 +153,9 @@ function MainPane({
                 error={attentionError}
                 acknowledgement={attentionAcknowledgement}
               />
-              <OKXDemoStack />
               <Deliverables deliverables={view.deliverables} />
               <Checkpoints progress={view.progress} />
+              <OKXDemoStack />
               <OrphanAcquisitions activity={view.activity} acquisitions={view.acquisitions} />
             </div>
           </div>

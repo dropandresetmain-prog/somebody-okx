@@ -704,6 +704,61 @@ test("ready workspace keeps Activity dominant and does not mount a Current Work 
   assert.ok(deliverables >= 0 && checkpoints >= 0 && deliverables < checkpoints);
 });
 
+test("right rail renders Deliverables, Checkpoints, OKX stack, Orphan acquisitions in that order with no Attention card when absent", () => {
+  const html = renderToStaticMarkup(
+    createElement(V6WorkspaceView, {
+      list: list(),
+      selectedId: "obj_1",
+      onSelect: () => {},
+      onStartNew: () => {},
+      main: { kind: "ready", view: workspace({ attention: null }) },
+    }),
+  );
+  // No permanent empty "Needs You" card when attention is absent.
+  assert.ok(!html.includes('aria-label="Needs you"'));
+  assert.ok(!html.includes("v6-right-attention"));
+
+  const deliverables = html.indexOf('aria-label="Deliverables"');
+  const checkpoints = html.indexOf('aria-label="Checkpoints"');
+  const okxStack = html.indexOf('data-okx-demo-surface="true"');
+  assert.ok(deliverables >= 0, "Deliverables must render");
+  assert.ok(checkpoints >= 0, "Checkpoints must render");
+  assert.ok(okxStack >= 0, "OKX stack must render");
+  assert.ok(
+    deliverables < checkpoints && checkpoints < okxStack,
+    "rail order must be Deliverables, Checkpoints, OKX stack",
+  );
+});
+
+test("right rail shows Attention first, above Deliverables, only when attention is present", () => {
+  const attention: AttentionState = {
+    id: "att1",
+    revision: "att1:1",
+    type: "approval",
+    title: "Needs approval",
+    detail: "…",
+    actions: [],
+  };
+  const html = renderToStaticMarkup(
+    createElement(V6WorkspaceView, {
+      list: list(),
+      selectedId: "obj_1",
+      onSelect: () => {},
+      onStartNew: () => {},
+      main: { kind: "ready", view: workspace({ attention }) },
+    }),
+  );
+  const attentionIdx = html.indexOf('aria-label="Needs you"');
+  const deliverables = html.indexOf('aria-label="Deliverables"');
+  const checkpoints = html.indexOf('aria-label="Checkpoints"');
+  const okxStack = html.indexOf('data-okx-demo-surface="true"');
+  assert.ok(attentionIdx >= 0, "Attention must render when present");
+  assert.ok(
+    attentionIdx < deliverables && deliverables < checkpoints && checkpoints < okxStack,
+    "rail order must be Attention, Deliverables, Checkpoints, OKX stack",
+  );
+});
+
 test("Activity intern assignment uses the approved Intern visual, not an icon substitute", () => {
   const items: ActivityItem[] = [
     {
