@@ -13,6 +13,7 @@ import { V6WorkspaceView } from "./V6WorkspaceView";
 import { useProductWorkspace } from "../demo/useProductWorkspace";
 import { DemoConsole } from "../demo/DemoConsole";
 import "./product-workspace.css";
+import "./okx-demo-surface.css";
 
 function attentionErrorCopy(result: Extract<ProductCommandResult, { accepted: false }>): string {
   switch (result.error.code) {
