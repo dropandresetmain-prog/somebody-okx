@@ -186,8 +186,23 @@ export type FindingPayload = {
   evidenceRefs?: EvidenceRefView[];
 };
 
+export type ManagerDecisionConsideredOption = {
+  optionId: string;
+  approach: ProductApproach | null;
+  label: string;
+  status: "eligible" | "ineligible";
+  reason?: string;
+  providerLabel?: string;
+  amount?: MoneyView;
+};
+
 export type ManagerDecisionPayload = {
-  selected: { approach: ProductApproach; label: string };
+  decisionType?: "sourcing";
+  selected: { optionId?: string; approach: ProductApproach; label: string };
+  /** Every persisted option Somebody looked at, including the selected one. */
+  considered?: ManagerDecisionConsideredOption[];
+  selectionSource?: "jev" | "sole_eligible" | "incumbent_fallback";
+  trigger?: string;
   alternative?: { approach: ProductApproach; label: string };
   reason?: string;
 };

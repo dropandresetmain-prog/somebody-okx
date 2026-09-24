@@ -6,16 +6,19 @@ import type {
   ArtifactChangedPayload,
   FindingPayload,
   InternAssignedPayload,
+  ManagerDecisionConsideredOption,
   ManagerDecisionPayload,
   VerificationPayload,
   WorkSummaryPayload,
 } from "../contracts";
 import {
   actorName,
+  decisionAttributionLabel,
   humanizeKey,
   internName,
   internRole,
   presentActivity,
+  presentConsideredLabel,
   presentEvidenceLabel,
   presentOption,
 } from "../humanize";
@@ -354,6 +357,11 @@ function EvidenceGapEvent({ item }: { item: ActivityItem }) {
 function DecisionEvent({ item }: { item: ActivityItem }) {
   const payload = isDecision(item.payload) ? item.payload : null;
   const display = presentActivity(item);
+  // A real sourcing comparison (more than one persisted option) gets the full
+  // considered-market list + a separate Selected line; a single-option or
+  // legacy decision keeps the original two-up grid unchanged.
+  const isComparison = (payload?.considered?.length ?? 0) > 1;
+  const attribution = payload ? decisionAttributionLabel(payload.selectionSource) : null;
   return (
     <div className="v6-event-card v6-decision">
       <p className="v6-event-type">{activityTypeLabel(item.type)}</p>
@@ -361,10 +369,23 @@ function DecisionEvent({ item }: { item: ActivityItem }) {
       {display.detail ? <p className="v6-event-desc v6-activity-detail">{display.detail}</p> : null}
       {payload ? (
         <>
-          <div className="v6-decision-grid">
-            {payload.alternative ? <DecisionOption option={payload.alternative} /> : null}
-            <DecisionOption option={payload.selected} selected />
-          </div>
+          {isComparison ? (
+            <>
+              <ConsideredOptions considered={payload.considered!} selectedOptionId={payload.selected.optionId} />
+              <div className="v6-decision-selected-line">
+                <span className="v6-decision-selected-label">Selected</span>
+                <strong>
+                  {APPROACH_LABEL[payload.selected.approach]} · {presentConsideredLabel(payload.selected)}
+                </strong>
+              </div>
+            </>
+          ) : (
+            <div className="v6-decision-grid">
+              {payload.alternative ? <DecisionOption option={payload.alternative} /> : null}
+              <DecisionOption option={payload.selected} selected />
+            </div>
+          )}
+          {attribution ? <p className="v6-decision-attribution">{attribution}</p> : null}
           {payload.reason ? (
             <details className="v6-decision-why">
               <summary>Why</summary>
@@ -392,6 +413,44 @@ function DecisionOption({
       <strong>{display.label}</strong>
       {display.source ? <span className="v6-option-source">from {display.source}</span> : null}
     </div>
+  );
+}
+
+// Every persisted option Somebody weighed — eligible and ineligible alike, so
+// the founder can see the marketplace was actually checked, not just the pick.
+function ConsideredOptions({
+  considered,
+  selectedOptionId,
+}: {
+  considered: ManagerDecisionConsideredOption[];
+  selectedOptionId?: string;
+}) {
+  return (
+    <ul className="v6-considered-list">
+      {considered.map((option, index) => {
+        const isSelected = Boolean(selectedOptionId) && option.optionId === selectedOptionId;
+        const eligible = option.status === "eligible";
+        return (
+          <li
+            key={option.optionId || index}
+            className={`v6-considered-option v6-considered-option--${option.status}${isSelected ? " is-selected" : ""}`}
+          >
+            {isSelected ? <span className="v6-selected-ribbon">Selected</span> : null}
+            <p className="v6-option-label">{option.approach ? APPROACH_LABEL[option.approach] : "Option"}</p>
+            <strong>{presentConsideredLabel(option)}</strong>
+            {option.providerLabel ? <span className="v6-option-source">{humanizeKey(option.providerLabel)}</span> : null}
+            {option.amount ? (
+              <span className="v6-considered-amount">
+                {option.amount.amount} {option.amount.currency}
+              </span>
+            ) : null}
+            <span className="v6-considered-status">
+              {eligible ? "Eligible" : option.reason ? `Not suitable — ${option.reason}` : "Not suitable"}
+            </span>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 

@@ -15,6 +15,7 @@ import type {
   ArtifactChangedPayload,
   DeliverableView,
   InternView,
+  ManagerDecisionConsideredOption,
   ManagerDecisionPayload,
   ProductApproach,
   SomebodyNowView,
@@ -116,6 +117,37 @@ export function presentOption(option: { approach: ProductApproach; label: string
     return { label: humanizeKey(resource), source: humanizeKey(parts.join("_")) };
   }
   return { label: humanizeKey(label), source: null };
+}
+
+/**
+ * Label for one considered option in a sourcing decision. Same MAKE
+ * eligibility-phrase guard as presentOption; considered rows never carry the
+ * `provider:resource` colon form so no source-split is needed here.
+ */
+export function presentConsideredLabel(option: Pick<ManagerDecisionConsideredOption, "approach" | "label">): string {
+  const label = option.label.trim();
+  if (option.approach === "MAKE" && /\b(eligible|capability-matched)\b/i.test(label)) {
+    return "Use the Intern";
+  }
+  return humanizeKey(label);
+}
+
+/**
+ * Restrained founder-facing attribution for who made the sourcing call.
+ * Never surfaces probabilities, confidence, or model internals (those are
+ * debug/evidence, not product UX).
+ */
+export function decisionAttributionLabel(selectionSource: ManagerDecisionPayload["selectionSource"]): string | null {
+  switch (selectionSource) {
+    case "jev":
+      return "Decision: Jev";
+    case "sole_eligible":
+      return "Decision: only viable path";
+    case "incumbent_fallback":
+      return "Decision: fallback manager";
+    default:
+      return null;
+  }
 }
 
 // ── Evidence / deliverables ──────────────────────────────────────────────────
@@ -228,6 +260,11 @@ function decisionHeadline(approach: ProductApproach, needsApproval: boolean): st
   }
 }
 
+/** Lead-in shown above the option comparison, only when more than one option was actually weighed. */
+function decisionComparisonIntro(consideredCount: number): string | null {
+  return consideredCount > 1 ? "Somebody compared how to move this forward" : null;
+}
+
 // Projection work-summary templates that describe checking mechanics.
 function presentWorkSummary(summary: string): string {
   if (/^application-verified against the current revision'?s proof obligations$/i.test(summary.trim())) {
@@ -257,8 +294,8 @@ export function presentActivity(item: ActivityItem): ActivityDisplay {
       if (isDecision(item.payload)) {
         return {
           title: decisionHeadline(item.payload.selected.approach, /^Somebody needs approval/i.test(item.title)),
-          // Selected option + Why disclosure own the meaning.
-          detail: null,
+          // Selected/considered options + Why disclosure own the rest of the meaning.
+          detail: decisionComparisonIntro(item.payload.considered?.length ?? 0),
           meta: null,
         };
       }

@@ -36,6 +36,7 @@ import type {
   ExternalProvenance,
   InternState,
   InternView,
+  ManagerDecisionConsideredOption,
   ObjectiveListView,
   ObjectiveLivenessView,
   ObjectiveProductStatus,
@@ -309,23 +310,77 @@ function toApproach(strategy: string | null): ProductApproach | null {
   }
 }
 
-type DecodedOption = { optionId: string; approach: ProductApproach | null; label: string | null };
+type DecodedOption = {
+  optionId: string;
+  approach: ProductApproach | null;
+  label: string | null;
+  /** null only when the persisted option carries no eligibility verdict (legacy rows). */
+  eligible: boolean | null;
+  /** Persisted ineligibility detail — never inferred from reasons alone. */
+  ineligibilityDetail: string | null;
+  providerLabel: string | null;
+  amount: { amount: string; currency: string } | null;
+};
+
+const FACTUAL_PRICE_SOURCES: ReadonlySet<string> = new Set(["measured", "provider_quote", "persisted_evidence", "registry_data"]);
 
 function decodeOptions(summary: string): DecodedOption[] {
   try {
     const parsed = JSON.parse(summary) as { extra?: { options?: Array<Record<string, unknown>> } };
     return (parsed.extra?.options ?? []).map((raw) => {
       const internal = raw.internal as { responsibility?: string } | null | undefined;
-      const external = raw.external as { offeringId?: string | null; providerId?: string | null } | null | undefined;
-      const label = internal?.responsibility ?? external?.offeringId ?? external?.providerId ?? null;
+      const external = raw.external as
+        | {
+            offeringId?: string | null;
+            providerId?: string | null;
+            serviceId?: string | null;
+            resourceClass?: string | null;
+            priceUsd?: number | null;
+            priceSource?: string;
+          }
+        | null
+        | undefined;
+      const label = internal?.responsibility ?? external?.offeringId ?? external?.serviceId ?? external?.resourceClass ?? external?.providerId ?? null;
+      const providerLabel = external?.providerId ? String(external.providerId) : null;
+      const hasFactualPrice =
+        Boolean(external) && typeof external?.priceUsd === "number" && typeof external?.priceSource === "string" && FACTUAL_PRICE_SOURCES.has(external.priceSource);
+      const eligibility = raw.eligibility as { eligible?: unknown; detail?: unknown } | null | undefined;
+      const eligible = typeof eligibility?.eligible === "boolean" ? eligibility.eligible : null;
+      const ineligibilityDetail = eligible === false && typeof eligibility?.detail === "string" ? eligibility.detail : null;
       return {
         optionId: String(raw.optionId ?? ""),
         approach: toApproach(typeof raw.strategy === "string" ? raw.strategy : null),
         label: label ? String(label) : null,
+        eligible,
+        ineligibilityDetail,
+        providerLabel,
+        amount: hasFactualPrice ? toMoney(external!.priceUsd as number) : null,
       };
     });
   } catch {
     return [];
+  }
+}
+
+type DecodedSourcingDecision = {
+  selectionSource?: "jev" | "sole_eligible" | "incumbent_fallback";
+  trigger?: string;
+};
+
+function decodeSourcingDecision(summary: string): DecodedSourcingDecision | null {
+  try {
+    const parsed = JSON.parse(summary) as {
+      extra?: { sourcingDecision?: { selectionSource?: unknown; trigger?: unknown } };
+    };
+    const raw = parsed.extra?.sourcingDecision;
+    if (!raw) return null;
+    const selectionSource =
+      raw.selectionSource === "jev" || raw.selectionSource === "sole_eligible" || raw.selectionSource === "incumbent_fallback" ? raw.selectionSource : undefined;
+    const trigger = typeof raw.trigger === "string" ? raw.trigger : undefined;
+    if (!selectionSource && !trigger) return null;
+    return { ...(selectionSource ? { selectionSource } : {}), ...(trigger ? { trigger } : {}) };
+  } catch {
+    return null;
   }
 }
 
@@ -1487,6 +1542,19 @@ export function projectActivity(source: ProductSource, facts: ObjectiveFacts, no
     const selectedOption = options.find((row) => row.optionId === decision.optionId);
     const label = selectedOption?.label ?? reqTitle(decision.requirementKey, decision.contractRevision);
     const alt = decision.strongestAlternativeId ? options.find((row) => row.optionId === decision.strongestAlternativeId) : undefined;
+    const sourcing = decodeSourcingDecision(decision.coarsePlanSummary);
+    const considered: ManagerDecisionConsideredOption[] | undefined =
+      options.length > 0
+        ? options.map((opt) => ({
+            optionId: opt.optionId,
+            approach: opt.approach,
+            label: clip(opt.label ?? reqTitle(decision.requirementKey, decision.contractRevision), 160),
+            status: opt.eligible === false ? "ineligible" : "eligible",
+            ...(opt.eligible === false && opt.ineligibilityDetail ? { reason: clip(opt.ineligibilityDetail, 200) } : {}),
+            ...(opt.providerLabel ? { providerLabel: clip(opt.providerLabel, 80) } : {}),
+            ...(opt.amount ? { amount: opt.amount } : {}),
+          }))
+        : undefined;
     items.push({
       id: `activity:manager_decision:${decision.decisionId}`,
       type: "manager_decision",
@@ -1498,7 +1566,11 @@ export function projectActivity(source: ProductSource, facts: ObjectiveFacts, no
           : `Somebody chose to ${approach === "MAKE" ? "make" : approach === "BUY" ? "buy" : approach === "WAIT" ? "wait" : "ask"}: ${clip(label, 80)}`,
       importance: "major",
       payload: {
-        selected: { approach, label: clip(label, 160) },
+        decisionType: "sourcing",
+        selected: { ...(decision.optionId ? { optionId: decision.optionId } : {}), approach, label: clip(label, 160) },
+        ...(considered ? { considered } : {}),
+        ...(sourcing?.selectionSource ? { selectionSource: sourcing.selectionSource } : {}),
+        ...(sourcing?.trigger ? { trigger: sourcing.trigger } : {}),
         ...(alt && alt.approach && alt.label ? { alternative: { approach: alt.approach, label: clip(alt.label, 160) } } : {}),
         ...(decision.rationale ? { reason: clip(decision.rationale, 300) } : {}),
       },
