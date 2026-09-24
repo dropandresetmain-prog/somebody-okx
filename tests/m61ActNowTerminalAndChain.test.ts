@@ -16,6 +16,7 @@ import {
   putRequirement,
 } from "../convex/internal/workforce";
 import {
+  finishRun,
   readWorkerObservation,
   recordFinding,
   submitFinalSemanticAssessment,
@@ -434,6 +435,360 @@ test("terminal: EXECUTION_ERROR persists EXECUTION_FAILED class", async () => {
   });
   assert.equal(data.lastDeliveryFailureClass, "EXECUTION_FAILED");
   assert.equal(data.acceptedTerminal?.terminal, "EXECUTION_ERROR");
+});
+
+test("finishRun: current-run EXECUTION_ERROR does not complete work item, satisfy the requirement, or propose gate completion despite sufficient observations", async () => {
+  const t = convexTest(schema, modules);
+  const key = "obj_term_exec_finish";
+  const runId = "run_exec_finish";
+  await seedRunningSerial(t, key, runId);
+
+  await t.mutation(async (ctx) =>
+    (recordFinding as unknown as Handler)._handler(ctx, {
+      objectiveKey: key,
+      runId,
+      finding: {
+        sourceClass: "company_record",
+        label: "Company record",
+        text: "Observed company record content before the tooling failure.",
+        origin: "application_observation",
+        sourceId: "record:launch/context",
+        recordRef: "launch/context",
+        observedAt: now,
+      },
+    }),
+  );
+  await t.mutation(async (ctx) =>
+    (recordFinding as unknown as Handler)._handler(ctx, {
+      objectiveKey: key,
+      runId,
+      finding: {
+        sourceClass: "public_web",
+        label: "Public page",
+        text: "Observed public page content before the tooling failure.",
+        origin: "application_observation",
+        sourceId: "url:https://example.com/launch",
+        url: "https://example.com/launch",
+        observedAt: now,
+      },
+    }),
+  );
+
+  const submit = (await t.mutation(async (ctx) =>
+    (submitResult as unknown as Handler)._handler(ctx, {
+      objectiveKey: key,
+      runId,
+      result: {
+        summary: "tooling failed after gathering otherwise-sufficient evidence",
+        fit: "would otherwise meet the bar",
+        risks: ["provider timeout"],
+        unknowns: [],
+        recommendedNextAction: "retry or redecide",
+        terminal: "EXECUTION_ERROR",
+      },
+    }),
+  )) as { status: string; terminalAccepted: boolean };
+  assert.equal(submit.status, "accepted");
+  assert.equal(submit.terminalAccepted, true);
+
+  // This mirrors the real chain: runWorker returns normally for an accepted
+  // EXECUTION_ERROR terminal, so executeWorker calls finishRun without a
+  // thrown exception and without an explicit failed flag.
+  const finished = (await t.mutation(async (ctx) =>
+    (finishRun as unknown as Handler)._handler(ctx, {
+      objectiveKey: key,
+      runId,
+    }),
+  )) as { completed: boolean; unmet: string[] };
+  assert.equal(
+    finished.completed,
+    false,
+    "an accepted EXECUTION_ERROR must never satisfy proof merely because observations/result fields exist",
+  );
+
+  const data = await t.query(async (ctx) => {
+    const row = await ctx.db
+      .query("objectives")
+      .withIndex("by_key", (q) => q.eq("key", key))
+      .unique();
+    return (row as { data: ObjectiveRecord }).data;
+  });
+  assert.equal(data.workItems[0]!.state, "failed", "work item must not become completed");
+  assert.equal(
+    data.state,
+    "executing",
+    "M4-managed objective must not seal completed off a failed delivery",
+  );
+  assert.equal(data.lastDeliveryFailureClass, "EXECUTION_FAILED");
+  const notes =
+    (data as unknown as { management?: { controlNotes?: Array<{ type: string }> } })
+      .management?.controlNotes ?? [];
+  assert.ok(
+    !notes.some((n) => n.type === "completion_proposed"),
+    "an accepted EXECUTION_ERROR must never propose objective completion to the independent gate",
+  );
+});
+
+test("finishRun: EXECUTION_ERROR finalize is idempotent on replay", async () => {
+  const t = convexTest(schema, modules);
+  const key = "obj_term_exec_replay";
+  const runId = "run_exec_replay";
+  await seedRunningSerial(t, key, runId);
+
+  await t.mutation(async (ctx) =>
+    (submitResult as unknown as Handler)._handler(ctx, {
+      objectiveKey: key,
+      runId,
+      result: {
+        summary: "tooling failed",
+        fit: "incomplete",
+        risks: ["provider timeout"],
+        unknowns: [],
+        recommendedNextAction: "retry",
+        terminal: "EXECUTION_ERROR",
+      },
+    }),
+  );
+
+  const first = (await t.mutation(async (ctx) =>
+    (finishRun as unknown as Handler)._handler(ctx, { objectiveKey: key, runId }),
+  )) as { completed: boolean; unmet: string[] };
+  assert.equal(first.completed, false);
+
+  const replay = (await t.mutation(async (ctx) =>
+    (finishRun as unknown as Handler)._handler(ctx, { objectiveKey: key, runId }),
+  )) as { completed: boolean; unmet: string[] };
+  assert.equal(
+    replay.completed,
+    false,
+    "duplicate finishRun replay for the same run must remain safe, never flipping to completed",
+  );
+});
+
+test("finishRun: a prior EXECUTION_ERROR on an old run does not poison a later valid DELIVERED run", async () => {
+  const t = convexTest(schema, modules);
+  const key = "obj_term_exec_then_delivered";
+  const runIdA = "run_exec_a";
+  await seedRunningSerial(t, key, runIdA);
+
+  await t.mutation(async (ctx) =>
+    (submitResult as unknown as Handler)._handler(ctx, {
+      objectiveKey: key,
+      runId: runIdA,
+      result: {
+        summary: "tooling failed",
+        fit: "incomplete",
+        risks: [],
+        unknowns: [],
+        recommendedNextAction: "retry",
+        terminal: "EXECUTION_ERROR",
+      },
+    }),
+  );
+  await t.mutation(async (ctx) =>
+    (finishRun as unknown as Handler)._handler(ctx, { objectiveKey: key, runId: runIdA }),
+  );
+
+  // Management redecides and dispatches a fresh run on the same work item.
+  const runIdB = "run_delivered_b";
+  await t.mutation(async (ctx) => {
+    const row = await ctx.db
+      .query("objectives")
+      .withIndex("by_key", (q) => q.eq("key", key))
+      .unique();
+    const data = (row as { data: ObjectiveRecord }).data;
+    const workItem = { ...data.workItems[0]! };
+    const newRun = {
+      id: runIdB,
+      workItemId: workItem.id,
+      status: "running" as const,
+      startedAt: now + 1,
+      leaseUntil: now + 1 + 120_000,
+      model: "mock",
+      modelSelectionReason: "test",
+      toolCalls: 0,
+      summary: "",
+    };
+    workItem.runs = [...workItem.runs, newRun];
+    workItem.state = "running";
+    await ctx.db.patch(row!._id, {
+      data: { ...data, state: "executing", workItems: [workItem], run: newRun },
+    });
+  });
+
+  await t.mutation(async (ctx) =>
+    (recordFinding as unknown as Handler)._handler(ctx, {
+      objectiveKey: key,
+      runId: runIdB,
+      finding: {
+        sourceClass: "company_record",
+        label: "Company record",
+        text: "Observed company record content for the retry.",
+        origin: "application_observation",
+        sourceId: "record:launch/context",
+        recordRef: "launch/context",
+        observedAt: now + 1,
+      },
+    }),
+  );
+  await t.mutation(async (ctx) =>
+    (recordFinding as unknown as Handler)._handler(ctx, {
+      objectiveKey: key,
+      runId: runIdB,
+      finding: {
+        sourceClass: "public_web",
+        label: "Public page",
+        text: "Observed public page content for the retry.",
+        origin: "application_observation",
+        sourceId: "url:https://example.com/retry",
+        url: "https://example.com/retry",
+        observedAt: now + 1,
+      },
+    }),
+  );
+
+  const delivered = (await t.mutation(async (ctx) =>
+    (submitResult as unknown as Handler)._handler(ctx, {
+      objectiveKey: key,
+      runId: runIdB,
+      result: {
+        summary: "delivered on retry",
+        fit: "meets bar",
+        risks: [],
+        unknowns: [],
+        recommendedNextAction: "founder review",
+        terminal: "DELIVERED",
+      },
+    }),
+  )) as { status: string; terminalAccepted: boolean };
+  assert.equal(delivered.status, "accepted");
+  assert.equal(delivered.terminalAccepted, true);
+
+  const finishedB = (await t.mutation(async (ctx) =>
+    (finishRun as unknown as Handler)._handler(ctx, { objectiveKey: key, runId: runIdB }),
+  )) as { completed: boolean; unmet: string[] };
+  assert.equal(
+    finishedB.completed,
+    true,
+    "a later valid DELIVERED run must still be able to complete after a prior EXECUTION_ERROR run",
+  );
+});
+
+test("finishRun: a stale prior DELIVERED cannot bless a current run that actually errored", async () => {
+  const t = convexTest(schema, modules);
+  const key = "obj_term_delivered_then_exec";
+  const runIdA = "run_delivered_a";
+  await seedRunningSerial(t, key, runIdA);
+
+  await t.mutation(async (ctx) =>
+    (recordFinding as unknown as Handler)._handler(ctx, {
+      objectiveKey: key,
+      runId: runIdA,
+      finding: {
+        sourceClass: "company_record",
+        label: "Company record",
+        text: "Observed.",
+        origin: "application_observation",
+        sourceId: "record:launch/context",
+        recordRef: "launch/context",
+        observedAt: now,
+      },
+    }),
+  );
+  await t.mutation(async (ctx) =>
+    (recordFinding as unknown as Handler)._handler(ctx, {
+      objectiveKey: key,
+      runId: runIdA,
+      finding: {
+        sourceClass: "public_web",
+        label: "Public page",
+        text: "Observed.",
+        origin: "application_observation",
+        sourceId: "url:https://example.com/a",
+        url: "https://example.com/a",
+        observedAt: now,
+      },
+    }),
+  );
+  await t.mutation(async (ctx) =>
+    (submitResult as unknown as Handler)._handler(ctx, {
+      objectiveKey: key,
+      runId: runIdA,
+      result: {
+        summary: "delivered",
+        fit: "meets bar",
+        risks: [],
+        unknowns: [],
+        recommendedNextAction: "review",
+        terminal: "DELIVERED",
+      },
+    }),
+  );
+  const finishedA = (await t.mutation(async (ctx) =>
+    (finishRun as unknown as Handler)._handler(ctx, { objectiveKey: key, runId: runIdA }),
+  )) as { completed: boolean };
+  assert.equal(finishedA.completed, true);
+
+  // Management dispatches a fresh run on the same work item (e.g. a follow-up pass).
+  const runIdC = "run_exec_c";
+  await t.mutation(async (ctx) => {
+    const row = await ctx.db
+      .query("objectives")
+      .withIndex("by_key", (q) => q.eq("key", key))
+      .unique();
+    const data = (row as { data: ObjectiveRecord }).data;
+    const workItem = { ...data.workItems[0]! };
+    const newRun = {
+      id: runIdC,
+      workItemId: workItem.id,
+      status: "running" as const,
+      startedAt: now + 1,
+      leaseUntil: now + 1 + 120_000,
+      model: "mock",
+      modelSelectionReason: "test",
+      toolCalls: 0,
+      summary: "",
+    };
+    workItem.runs = [...workItem.runs, newRun];
+    workItem.state = "running";
+    await ctx.db.patch(row!._id, {
+      data: { ...data, state: "executing", workItems: [workItem], run: newRun },
+    });
+  });
+
+  const errored = (await t.mutation(async (ctx) =>
+    (submitResult as unknown as Handler)._handler(ctx, {
+      objectiveKey: key,
+      runId: runIdC,
+      result: {
+        summary: "tooling failed",
+        fit: "incomplete",
+        risks: [],
+        unknowns: [],
+        recommendedNextAction: "retry",
+        terminal: "EXECUTION_ERROR",
+      },
+    }),
+  )) as { status: string };
+  assert.equal(errored.status, "accepted");
+
+  const finishedC = (await t.mutation(async (ctx) =>
+    (finishRun as unknown as Handler)._handler(ctx, { objectiveKey: key, runId: runIdC }),
+  )) as { completed: boolean };
+  assert.equal(
+    finishedC.completed,
+    false,
+    "the stale prior DELIVERED terminal must not bless a run that itself errored",
+  );
+
+  const data = await t.query(async (ctx) => {
+    const row = await ctx.db
+      .query("objectives")
+      .withIndex("by_key", (q) => q.eq("key", key))
+      .unique();
+    return (row as { data: ObjectiveRecord }).data;
+  });
+  assert.equal(data.workItems[0]!.state, "failed");
 });
 
 /**

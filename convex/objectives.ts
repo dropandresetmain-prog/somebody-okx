@@ -2347,9 +2347,23 @@ export const finishRun = internalMutation({
       );
     }
 
-    if (args.failed) {
+    // Decisive terminal outcome, not observations/result fields: an accepted
+    // EXECUTION_ERROR for THIS run is a failed delivery even when runWorker
+    // returned normally (no thrown exception) and args.failed was never set.
+    // Scoped to this run's own accepted terminal so an old EXECUTION_ERROR
+    // cannot poison a later valid DELIVERED run on a fresh run id, and a stale
+    // prior DELIVERED cannot bless a current run that actually errored.
+    const acceptedTerminalForRun =
+      record.acceptedTerminal?.runId === args.runId ? record.acceptedTerminal : null;
+    const decisiveExecutionError = acceptedTerminalForRun?.terminal === "EXECUTION_ERROR";
+
+    if (args.failed || decisiveExecutionError) {
       run.status = "failed";
-      run.summary = args.failureReason ?? "Run failed";
+      run.summary =
+        args.failureReason ??
+        (decisiveExecutionError
+          ? "Accepted terminal EXECUTION_ERROR: execution failed"
+          : "Run failed");
       runs[runIndex] = run;
       workItem.runs = runs;
       workItem.state = "failed";
@@ -2361,11 +2375,11 @@ export const finishRun = internalMutation({
         state: isM4Managed ? "executing" : "failed",
         lastDeliveryFailureClass: "EXECUTION_FAILED",
         activity: isM4Managed
-          ? `Assignment run failed; manager will re-decide. ${args.failureReason ?? "unknown"}`.slice(
+          ? `Assignment run failed; manager will re-decide. ${args.failureReason ?? run.summary}`.slice(
               0,
               500,
             )
-          : `Run failed: ${args.failureReason ?? "unknown"}`,
+          : `Run failed: ${args.failureReason ?? run.summary}`,
         workItems: [workItem],
         run,
         updatedAt: now,
@@ -2375,7 +2389,7 @@ export const finishRun = internalMutation({
         ctx.db,
         args.objectiveKey,
         "system",
-        `Run failed: ${args.failureReason ?? "unknown"}`,
+        `Run failed: ${args.failureReason ?? run.summary}`,
         now,
       );
       return { completed: false, unmet: [run.summary] };
