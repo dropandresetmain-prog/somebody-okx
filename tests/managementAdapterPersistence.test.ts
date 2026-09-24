@@ -178,6 +178,140 @@ test("persistDecision writes decision + options, and loadGrounded reconstructs t
   assert.equal(loadedOptions[0].optionId, options[0].optionId);
 });
 
+test("persistDecision approval_required appends pending_approval; stale overwrite would wipe it", async () => {
+  const t = convexTest(schema, modules);
+  const key = "obj_pending_approval_survive";
+  const question =
+    "No founder spend limit is set for this objective. Acquiring social_media_guru costs $0.01. Approve a bounded spend limit, or choose another option?";
+
+  await t.mutation(async (ctx) => {
+    await ctx.db.insert("objectives", {
+      key,
+      data: {
+        key,
+        request: "test",
+        createdAt: now,
+        updatedAt: now,
+        state: "executing",
+        activity: "test",
+        plan: null,
+        workItems: [],
+        run: null,
+        result: null,
+        management: {
+          contractId: null,
+          controlNotes: [{ type: "control_state", state: "executing", summary: "working", at: now - 1 }],
+          pendingDecision: {
+            requestId: "decide_test",
+            requirementKey: "req_buy",
+            contractRevision: 1,
+            attempts: 1,
+          },
+        },
+      },
+    });
+  });
+
+  const decision: ManagerialDecision = {
+    decisionId: "dec_pending_survive",
+    objectiveKey: key,
+    contractRevision: 1,
+    requirementKey: "req_buy",
+    kind: "satisfaction_strategy",
+    strategy: null,
+    optionId: "opt_buy",
+    recommendation: null,
+    authorization: {
+      kind: "approval_required",
+      requirementKey: "req_buy",
+      contractRevision: 1,
+      reason: "spend_authority_required",
+      question,
+    },
+    coarsePlanSummary: "founder approval required",
+    consideredOptionIds: ["opt_buy"],
+    at: now,
+  };
+  const result: DecisionPassResult = {
+    decision,
+    boundRequirement: null,
+    options: [],
+    recommendation: null,
+    authorization: decision.authorization,
+  };
+
+  await t.mutation(async (ctx) => {
+    const ports = buildConvexManagementPorts(ctx as any);
+    await ports.persistDecision(result, now);
+  });
+
+  const afterPersist = await t.query(async (ctx) => {
+    const row = await (ctx.db as any).query("objectives").withIndex("by_key", (q: any) => q.eq("key", key)).unique();
+    return (row as any).data.management.controlNotes as Array<Record<string, unknown>>;
+  });
+  assert.ok(
+    afterPersist.some((n) => n.type === "pending_approval" && n.question === question),
+    "persistDecision must write pending_approval for Needs You",
+  );
+
+  // Reproduce the pre-fix clearPending bug: patch from a stale management
+  // snapshot that predates the pending_approval note.
+  await t.mutation(async (ctx) => {
+    const row = await (ctx.db as any).query("objectives").withIndex("by_key", (q: any) => q.eq("key", key)).unique();
+    const data = (row as any).data as Record<string, unknown>;
+    const staleMgmt = {
+      contractId: null,
+      controlNotes: [{ type: "control_state", state: "executing", summary: "working", at: now - 1 }],
+      pendingDecision: {
+        requestId: "decide_test",
+        requirementKey: "req_buy",
+        contractRevision: 1,
+        attempts: 1,
+      },
+    };
+    await ctx.db.patch(row._id, {
+      data: {
+        ...data,
+        management: { ...staleMgmt, pendingDecision: null },
+      },
+    } as never);
+  });
+
+  const afterStale = await t.query(async (ctx) => {
+    const row = await (ctx.db as any).query("objectives").withIndex("by_key", (q: any) => q.eq("key", key)).unique();
+    return (row as any).data.management.controlNotes as Array<Record<string, unknown>>;
+  });
+  assert.equal(
+    afterStale.some((n) => n.type === "pending_approval"),
+    false,
+    "stale overwrite demonstrates the wipe that hid Needs You",
+  );
+
+  // Re-apply persistDecision, then clear with a fresh read (fixed clearPending shape).
+  await t.mutation(async (ctx) => {
+    const ports = buildConvexManagementPorts(ctx as any);
+    await ports.persistDecision(result, now + 1);
+    const row = await (ctx.db as any).query("objectives").withIndex("by_key", (q: any) => q.eq("key", key)).unique();
+    const latestData = (row as any).data as Record<string, unknown>;
+    const latestMgmt = (latestData.management ?? {}) as Record<string, unknown>;
+    await ctx.db.patch(row._id, {
+      data: {
+        ...latestData,
+        management: { ...latestMgmt, pendingDecision: null },
+      },
+    } as never);
+  });
+
+  const afterFresh = await t.query(async (ctx) => {
+    const row = await (ctx.db as any).query("objectives").withIndex("by_key", (q: any) => q.eq("key", key)).unique();
+    return (row as any).data.management.controlNotes as Array<Record<string, unknown>>;
+  });
+  assert.ok(
+    afterFresh.some((n) => n.type === "pending_approval" && n.question === question),
+    "fresh-read clear must preserve pending_approval so the founder gate stays visible",
+  );
+});
+
 test("loadGrounded omits empty options[] so a refused empty proposal is not stable grounding", async () => {
   const t = convexTest(schema, modules);
 

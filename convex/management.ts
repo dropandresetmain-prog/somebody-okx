@@ -2304,18 +2304,27 @@ export const applyDecision = internalMutation({
       extra: Record<string, unknown> = {},
       storeFingerprint = false,
     ): Promise<void> => {
+      // Re-read before patch. persistDecisionRow may have just appended a
+      // pending_approval control note; rewriting from the begin-of-handler
+      // snapshot would wipe it and the product Needs You gate would never open.
+      const latest = await ctx.db.get(row._id);
+      if (!latest) return;
+      const latestData = (latest as AnyRow).data as Record<string, unknown>;
+      const latestMgmt = (latestData.management ?? {}) as Record<string, unknown>;
       const fingerprints = {
-        ...((mgmt.decisionInputFingerprints ?? {}) as Record<string, string>),
+        ...((latestMgmt.decisionInputFingerprints ??
+          mgmt.decisionInputFingerprints ??
+          {}) as Record<string, string>),
       };
       if (storeFingerprint && pendingFingerprint) {
         fingerprints[pending.requirementKey] = pendingFingerprint;
       }
       await ctx.db.patch(row._id, {
         data: {
-          ...data,
+          ...latestData,
           management: {
-            ...mgmt,
-            contractId: (mgmt.contractId as string | null) ?? null,
+            ...latestMgmt,
+            contractId: (latestMgmt.contractId as string | null) ?? null,
             pendingDecision: null,
             ...(storeFingerprint
               ? { decisionInputFingerprints: fingerprints }
@@ -2382,6 +2391,11 @@ export const applyDecision = internalMutation({
     );
 
     const authorized = result.authorization.kind === "authorized";
+    // Spend/waiver parking is a legitimate wait for the founder — not a failed
+    // proposal. Burning decisionRefusalAttempts on approval_required would
+    // exhaust the ceiling while the founder never got a Needs You gate.
+    const burnsRefusalCeiling =
+      !authorized && result.authorization.kind !== "approval_required";
 
     // Keep decisionAttempts (sequence) after authorization for identity. Storm
     // ceiling uses decisionRefusalAttempts — only unauthorized outcomes burn it.
@@ -2389,7 +2403,7 @@ export const applyDecision = internalMutation({
     const refusalMap = {
       ...((mgmt.decisionRefusalAttempts ?? {}) as Record<string, number>),
     };
-    if (!authorized) {
+    if (burnsRefusalCeiling) {
       refusalMap[pending.requirementKey] =
         (refusalMap[pending.requirementKey] ?? 0) + 1;
     }
