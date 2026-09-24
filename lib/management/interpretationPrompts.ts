@@ -50,7 +50,7 @@ export function requirementsPrompt(input: {
   return {
     system: [
       "You decompose one founder objective into SEMANTIC Requirements.",
-      "Reply with a JSON array only, matching the given schema.",
+      "Reply with JSON only, matching the given schema.",
       "You receive a VALIDATED Outcome Contract — do not revise it.",
       "Each requirement states WHAT must be true, never HOW (no providers,",
       "prices, tools, permissions, spend, or make/buy strategy).",
@@ -71,10 +71,10 @@ export function requirementsPrompt(input: {
       "",
       contextBlock,
       "",
-      'Shape: [{"requirementKey":string,"priority":"required"|"supporting",',
+      'Shape: {"requirements":[{"requirementKey":string,"priority":"required"|"supporting",',
       '"title":string,"mustBeTrue":string,"scope":string,',
       '"dependsOnRequirementKeys":string[],"requiredResourceClasses":string[],',
-      '"expectedOutput":string|null,"requirementKind":"deliverable"|"input"}]',
+      '"expectedOutput":string|null,"requirementKind":"deliverable"|"input"}]}',
     ].join("\n"),
   };
 }
@@ -97,7 +97,8 @@ export function requirementsRepairPrompt(input: {
       "",
       "SEMANTIC INVARIANT FAILURE (application-owned; fix Requirements only):",
       input.failure.slice(0, 800),
-      "Do NOT revise the Outcome Contract. Return a corrected Requirements array only.",
+      'Do NOT revise the Outcome Contract. Return corrected Requirements only as',
+      '{"requirements":[...]} matching the schema.',
     ].join("\n"),
   };
 }
@@ -139,31 +140,38 @@ export const OUTCOME_CONTRACT_SCHEMA = {
 } as const;
 
 export const REQUIREMENTS_SCHEMA = {
-  type: "array",
-  items: {
-    type: "object",
-    additionalProperties: false,
-    required: [
-      "requirementKey",
-      "priority",
-      "title",
-      "mustBeTrue",
-      "scope",
-      "dependsOnRequirementKeys",
-      "requiredResourceClasses",
-      "expectedOutput",
-      "requirementKind",
-    ],
-    properties: {
-      requirementKey: { type: "string" },
-      priority: { type: "string", enum: ["required", "supporting"] },
-      title: { type: "string" },
-      mustBeTrue: { type: "string" },
-      scope: { type: "string" },
-      dependsOnRequirementKeys: { type: "array", items: { type: "string" } },
-      requiredResourceClasses: { type: "array", items: { type: "string" } },
-      expectedOutput: { type: ["string", "null"] },
-      requirementKind: { type: "string", enum: ["deliverable", "input"] },
+  type: "object",
+  additionalProperties: false,
+  required: ["requirements"],
+  properties: {
+    requirements: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "requirementKey",
+          "priority",
+          "title",
+          "mustBeTrue",
+          "scope",
+          "dependsOnRequirementKeys",
+          "requiredResourceClasses",
+          "expectedOutput",
+          "requirementKind",
+        ],
+        properties: {
+          requirementKey: { type: "string" },
+          priority: { type: "string", enum: ["required", "supporting"] },
+          title: { type: "string" },
+          mustBeTrue: { type: "string" },
+          scope: { type: "string" },
+          dependsOnRequirementKeys: { type: "array", items: { type: "string" } },
+          requiredResourceClasses: { type: "array", items: { type: "string" } },
+          expectedOutput: { type: ["string", "null"] },
+          requirementKind: { type: "string", enum: ["deliverable", "input"] },
+        },
+      },
     },
   },
 } as const;
