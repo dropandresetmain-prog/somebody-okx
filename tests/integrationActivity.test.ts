@@ -114,7 +114,7 @@ test("A. OKX Marketplace card renders logo, name, search action, and all 3 candi
     },
   ];
   const html = renderToStaticMarkup(createElement(Activity, { items }));
-  assert.ok(html.includes('src="/integrations/okx.svg"'), "literal OKX logo asset must be referenced");
+  assert.ok(html.includes('src="/integrations/okx-wordmark-white.png"'), "literal OKX logo asset must be referenced");
   assert.ok(html.includes("OKX Marketplace"), "canonical identity label must appear");
   assert.ok(html.includes("Searched for external services"), "search action copy must appear");
   assert.ok(html.includes("Cross-platform social intelligence"), "the Need must appear");
@@ -147,7 +147,7 @@ test("B. OKX Agentic Wallet card renders the exact copy block", () => {
     },
   ];
   const html = renderToStaticMarkup(createElement(Activity, { items }));
-  assert.ok(html.includes('src="/integrations/okx.svg"'), "literal OKX logo asset must be referenced");
+  assert.ok(html.includes('src="/integrations/okx-wordmark-white.png"'), "literal OKX logo asset must be referenced");
   assert.ok(html.includes("OKX Agentic Wallet"));
   assert.ok(html.includes("Preparing x402 payment"));
   assert.ok(html.includes("0.01"));
@@ -190,7 +190,7 @@ test("C. X Layer Testnet submitted card renders identity, submitted action, and 
     },
   ];
   const html = renderToStaticMarkup(createElement(Activity, { items }));
-  assert.ok(html.includes('src="/integrations/x-layer.svg"'), "literal X Layer logo asset must be referenced");
+  assert.ok(html.includes('src="/integrations/x-layer-icon-black.svg"'), "literal X Layer logo asset must be referenced");
   assert.ok(html.includes("X Layer Testnet"));
   assert.ok(html.includes("Transaction submitted"));
   assert.ok(html.includes(shortenTxHash(TX_HASH)), "the (shortened) tx hash must be visible");
@@ -395,8 +395,8 @@ test("F. Legacy Activity data with no integration events renders unchanged (no i
   const html = renderToStaticMarkup(createElement(Activity, { items }));
   assert.ok(!html.includes("v6-integration"), "no integration card markup when no integration_activity items are supplied");
   assert.ok(!html.includes("v6-event--integration"));
-  assert.ok(!html.includes("/integrations/okx.svg"));
-  assert.ok(!html.includes("/integrations/x-layer.svg"));
+  assert.ok(!html.includes("/integrations/okx-wordmark-white.png"));
+  assert.ok(!html.includes("/integrations/x-layer-icon-black.svg"));
   assert.ok(html.includes("Somebody defined the outcome"));
   assert.ok(html.includes("Rae"), "the intern_assigned card renders unchanged (Intern name)");
   assert.ok(html.includes("Fix launch"), "the intern_assigned card renders unchanged (assignment title)");

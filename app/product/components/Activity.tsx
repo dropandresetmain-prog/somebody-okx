@@ -12,7 +12,7 @@ import type {
   VerificationPayload,
   WorkSummaryPayload,
 } from "../contracts";
-import { INTEGRATION_LOGO_ALT, INTEGRATION_LOGO_SRC } from "../integrations";
+import { INTEGRATION_LOGO_ALT, INTEGRATION_LOGO_SRC, INTEGRATION_LOGO_TREATMENT } from "../integrations";
 import {
   actorName,
   decisionAttributionLabel,
@@ -215,14 +215,25 @@ function IntegrationActivityEvent({ item }: { item: ActivityItem }) {
   const payload = isIntegrationActivity(item.payload) ? item.payload : null;
   if (!payload) return <SomebodyEvent item={item} />;
   const { integration } = payload;
+  const chip = INTEGRATION_LOGO_TREATMENT[integration.logoKey] === "chip-dark";
   return (
     <div className="v6-event-card v6-integration" data-integration-id={integration.id} data-integration-action={payload.action}>
       <div className="v6-integration-header">
-        <img
-          className="v6-integration-logo"
-          src={INTEGRATION_LOGO_SRC[integration.logoKey]}
-          alt={INTEGRATION_LOGO_ALT[integration.logoKey]}
-        />
+        {chip ? (
+          <span className="v6-integration-logo-chip">
+            <img
+              className="v6-integration-logo v6-integration-logo--on-chip"
+              src={INTEGRATION_LOGO_SRC[integration.logoKey]}
+              alt={INTEGRATION_LOGO_ALT[integration.logoKey]}
+            />
+          </span>
+        ) : (
+          <img
+            className="v6-integration-logo"
+            src={INTEGRATION_LOGO_SRC[integration.logoKey]}
+            alt={INTEGRATION_LOGO_ALT[integration.logoKey]}
+          />
+        )}
         <div>
           <p className="v6-integration-name">{integration.label}</p>
           <p className="v6-integration-action">{payload.headline}</p>

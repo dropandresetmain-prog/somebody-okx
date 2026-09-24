@@ -1305,6 +1305,25 @@
   flex: none;
 }
 
+/* OKX's own site hosts only a white/transparent wordmark (no dark variant).
+   Per spec (no recoloring/redrawing the asset itself), the untouched PNG is
+   shown on a small dark rounded chip — a standard reversed-logo lockup. */
+.v6-integration-logo-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 7px;
+  background: #0a0a0a;
+}
+
+.v6-integration-logo--on-chip {
+  height: 16px;
+  max-width: 60px;
+}
+
 .v6-integration-name {
   font-family: var(--font-display-stack);
   font-size: 14px;
