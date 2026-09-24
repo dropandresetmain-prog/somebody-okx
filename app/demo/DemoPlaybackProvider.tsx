@@ -46,7 +46,12 @@ function nowMs(): number {
 }
 
 export function isDemoConsoleEnabled(): boolean {
-  return process.env.NEXT_PUBLIC_DEMO_CONSOLE === "true";
+  const explicit = process.env.NEXT_PUBLIC_DEMO_CONSOLE;
+  if (explicit === "false") return false;
+  // Local hackathon/demo development must not silently lose the playback
+  // controls just because one shell forgot a public env flag. Production stays
+  // opt-in; local development stays visible by default.
+  return explicit === "true" || process.env.NODE_ENV !== "production";
 }
 
 export function DemoPlaybackProvider({
