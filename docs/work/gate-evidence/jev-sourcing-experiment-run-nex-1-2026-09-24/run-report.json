@@ -1,0 +1,1018 @@
+{
+  "objectiveKey": "obj_1790250330627_tl7ivz",
+  "url": "http://127.0.0.1:3000/?objective=obj_1790250330627_tl7ivz",
+  "sha": "043d24eb80ca060eee71b0835cb87159c534b7f9",
+  "createdAt": 1790250330627,
+  "elapsedMs": 765702,
+  "model": "nex-agi/nex-n2.5-mini:free",
+  "state": "recovery_required",
+  "somebodyNow": {
+    "detail": "decision refusal ceiling exhausted (3) for req_01",
+    "headline": "Blocked",
+    "state": "blocked",
+    "updatedAt": 1790251090593
+  },
+  "attention": null,
+  "outcomeIntent": "Produce an evidence-bounded launch-week social media plan for TikTok, Instagram, Facebook, and X that uses available company-owned evidence and public research, identifies current audience behavior and engagement trends where verifiable, and gives channel-specific content formats, posting priorities, and messaging recommendations without unsupported assumptions.",
+  "requirements": [
+    {
+      "key": "req_01",
+      "title": "Evidence boundary",
+      "state": "active",
+      "strategy": null
+    },
+    {
+      "key": "req_02",
+      "title": "Audience findings",
+      "state": "active",
+      "strategy": null
+    },
+    {
+      "key": "req_03",
+      "title": "Launch-week channel plan",
+      "state": "active",
+      "strategy": null
+    }
+  ],
+  "integrationEvents": [
+    {
+      "action": "market_search",
+      "amount": null,
+      "candidateLabels": [
+        "Social Media Guru",
+        "Token Market Intelligence",
+        "Wallet / Onchain Risk Intelligence"
+      ],
+      "explorerUrl": null,
+      "id": "okx_marketplace:market_search:obj_1790250330627_tl7ivz:decide_obj_1790250330627_tl7ivz_req_01_r1_a1",
+      "integrationId": "okx_marketplace",
+      "merchantLabel": null,
+      "networkLabel": null,
+      "objectiveKey": "obj_1790250330627_tl7ivz",
+      "occurredAt": 1790250484627,
+      "requirementKey": "req_01",
+      "resourceNeed": "Evidence boundary The launch-week plan has an explicit evidence boundary: material claims about the app, its audience, and engagement are supported by available company-owned evidence or verifiable pu",
+      "txHash": null
+    },
+    {
+      "action": "market_search",
+      "amount": null,
+      "candidateLabels": [
+        "Social Media Guru",
+        "Token Market Intelligence",
+        "Wallet / Onchain Risk Intelligence"
+      ],
+      "explorerUrl": null,
+      "id": "okx_marketplace:market_search:obj_1790250330627_tl7ivz:decide_obj_1790250330627_tl7ivz_req_01_r1_a2",
+      "integrationId": "okx_marketplace",
+      "merchantLabel": null,
+      "networkLabel": null,
+      "objectiveKey": "obj_1790250330627_tl7ivz",
+      "occurredAt": 1790250576294,
+      "requirementKey": "req_01",
+      "resourceNeed": "Evidence boundary The launch-week plan has an explicit evidence boundary: material claims about the app, its audience, and engagement are supported by available company-owned evidence or verifiable pu",
+      "txHash": null
+    },
+    {
+      "action": "market_search",
+      "amount": null,
+      "candidateLabels": [
+        "Social Media Guru",
+        "Token Market Intelligence",
+        "Wallet / Onchain Risk Intelligence"
+      ],
+      "explorerUrl": null,
+      "id": "okx_marketplace:market_search:obj_1790250330627_tl7ivz:decide_obj_1790250330627_tl7ivz_req_01_r1_a3",
+      "integrationId": "okx_marketplace",
+      "merchantLabel": null,
+      "networkLabel": null,
+      "objectiveKey": "obj_1790250330627_tl7ivz",
+      "occurredAt": 1790250748349,
+      "requirementKey": "req_01",
+      "resourceNeed": "Evidence boundary The launch-week plan has an explicit evidence boundary: material claims about the app, its audience, and engagement are supported by available company-owned evidence or verifiable pu",
+      "txHash": null
+    },
+    {
+      "action": "market_search",
+      "amount": null,
+      "candidateLabels": [
+        "Social Media Guru",
+        "Token Market Intelligence",
+        "Wallet / Onchain Risk Intelligence"
+      ],
+      "explorerUrl": null,
+      "id": "okx_marketplace:market_search:obj_1790250330627_tl7ivz:decide_obj_1790250330627_tl7ivz_req_01_r1_a4",
+      "integrationId": "okx_marketplace",
+      "merchantLabel": null,
+      "networkLabel": null,
+      "objectiveKey": "obj_1790250330627_tl7ivz",
+      "occurredAt": 1790250892900,
+      "requirementKey": "req_01",
+      "resourceNeed": "Evidence boundary The launch-week plan has an explicit evidence boundary: material claims about the app, its audience, and engagement are supported by available company-owned evidence or verifiable pu",
+      "txHash": null
+    },
+    {
+      "action": "market_search",
+      "amount": null,
+      "candidateLabels": [
+        "Social Media Guru",
+        "Token Market Intelligence",
+        "Wallet / Onchain Risk Intelligence"
+      ],
+      "explorerUrl": null,
+      "id": "okx_marketplace:market_search:obj_1790250330627_tl7ivz:decide_obj_1790250330627_tl7ivz_req_01_r1_a5",
+      "integrationId": "okx_marketplace",
+      "merchantLabel": null,
+      "networkLabel": null,
+      "objectiveKey": "obj_1790250330627_tl7ivz",
+      "occurredAt": 1790250895721,
+      "requirementKey": "req_01",
+      "resourceNeed": "Evidence boundary The launch-week plan has an explicit evidence boundary: material claims about the app, its audience, and engagement are supported by available company-owned evidence or verifiable pu",
+      "txHash": null
+    },
+    {
+      "action": "market_search",
+      "amount": null,
+      "candidateLabels": [
+        "Social Media Guru",
+        "Token Market Intelligence",
+        "Wallet / Onchain Risk Intelligence"
+      ],
+      "explorerUrl": null,
+      "id": "okx_marketplace:market_search:obj_1790250330627_tl7ivz:decide_obj_1790250330627_tl7ivz_req_01_r1_a6",
+      "integrationId": "okx_marketplace",
+      "merchantLabel": null,
+      "networkLabel": null,
+      "objectiveKey": "obj_1790250330627_tl7ivz",
+      "occurredAt": 1790250899308,
+      "requirementKey": "req_01",
+      "resourceNeed": "Evidence boundary The launch-week plan has an explicit evidence boundary: material claims about the app, its audience, and engagement are supported by available company-owned evidence or verifiable pu",
+      "txHash": null
+    }
+  ],
+  "decisions": [
+    {
+      "at": 1790250490160,
+      "authorization": "authorized",
+      "decisionId": "dec_obj_1790250330627_tl7ivz_req_01_r1_a1",
+      "options": [
+        {
+          "eligibility": "eligible",
+          "facts": [],
+          "label": "eligible, available and capability-matched",
+          "optionId": "opt_00c81b61b704b69d91a18da2",
+          "reason": "",
+          "strategy": "MAKE"
+        },
+        {
+          "eligibility": "eligible",
+          "facts": [
+            {
+              "label": "scope",
+              "provenance": "unknown",
+              "value": "external:proprietary_data"
+            },
+            {
+              "label": "externalPriceUsd",
+              "provenance": "registry_data",
+              "value": "0.01"
+            }
+          ],
+          "label": "somebody_testnet_social:social_media_guru",
+          "optionId": "opt_82a2d618dc66c8c0a52589fc",
+          "reason": "",
+          "strategy": "BUY"
+        },
+        {
+          "eligibility": "ineligible",
+          "facts": [
+            {
+              "label": "scope",
+              "provenance": "unknown",
+              "value": "external:proprietary_data"
+            },
+            {
+              "label": "externalPriceUsd",
+              "provenance": "registry_data",
+              "value": "0.02"
+            }
+          ],
+          "label": "somebody_testnet_token_intel:token_market_intelligence",
+          "optionId": "opt_30948426d50d8adc828a7d89",
+          "reason": "required proof method not currently available; offering somebody_testnet_token_intel:token_market_intelligence has no configured execution path in the current runtime composition; offering somebody_testnet_token_intel:token_market_intelligence product scope cannot fulfill the current purpose",
+          "strategy": "BUY"
+        },
+        {
+          "eligibility": "ineligible",
+          "facts": [
+            {
+              "label": "scope",
+              "provenance": "unknown",
+              "value": "external:proprietary_data"
+            },
+            {
+              "label": "externalPriceUsd",
+              "provenance": "registry_data",
+              "value": "0.015"
+            }
+          ],
+          "label": "somebody_testnet_onchain_risk:wallet_onchain_risk_intelligence",
+          "optionId": "opt_05f6418c6023a0f1cb27aea4",
+          "reason": "required proof method not currently available; offering somebody_testnet_onchain_risk:wallet_onchain_risk_intelligence has no configured execution path in the current runtime composition; offering somebody_testnet_onchain_risk:wallet_onchain_risk_intelligence product scope cannot fulfill the current purpose",
+          "strategy": "BUY"
+        }
+      ],
+      "rationale": "Choose the internal MAKE option. It directly covers company_records_lookup, document_drafting, and public_information_research, and all internal eligibility checks passed. The requirement has no missing resources, open needs, or prerequisites, so the external proprietary-data option adds no demonstrated coverage.",
+      "requirementKey": "req_01",
+      "selectedOptionId": "opt_00c81b61b704b69d91a18da2",
+      "strategy": "MAKE",
+      "summary": "authorized MAKE via opt_00c81b61b704b69d91a18da2"
+    },
+    {
+      "at": 1790250587486,
+      "authorization": "authorized",
+      "decisionId": "dec_obj_1790250330627_tl7ivz_req_01_r1_a2",
+      "options": [
+        {
+          "eligibility": "eligible",
+          "facts": [],
+          "label": "eligible, available and capability-matched",
+          "optionId": "opt_00c81b61b704b69d91a18da2",
+          "reason": "",
+          "strategy": "MAKE"
+        },
+        {
+          "eligibility": "eligible",
+          "facts": [
+            {
+              "label": "scope",
+              "provenance": "unknown",
+              "value": "external:proprietary_data"
+            },
+            {
+              "label": "externalPriceUsd",
+              "provenance": "registry_data",
+              "value": "0.01"
+            }
+          ],
+          "label": "somebody_testnet_social:social_media_guru",
+          "optionId": "opt_82a2d618dc66c8c0a52589fc",
+          "reason": "",
+          "strategy": "BUY"
+        },
+        {
+          "eligibility": "ineligible",
+          "facts": [
+            {
+              "label": "scope",
+              "provenance": "unknown",
+              "value": "external:proprietary_data"
+            },
+            {
+              "label": "externalPriceUsd",
+              "provenance": "registry_data",
+              "value": "0.02"
+            }
+          ],
+          "label": "somebody_testnet_token_intel:token_market_intelligence",
+          "optionId": "opt_30948426d50d8adc828a7d89",
+          "reason": "required proof method not currently available; offering somebody_testnet_token_intel:token_market_intelligence has no configured execution path in the current runtime composition; offering somebody_testnet_token_intel:token_market_intelligence product scope cannot fulfill the current purpose",
+          "strategy": "BUY"
+        },
+        {
+          "eligibility": "ineligible",
+          "facts": [
+            {
+              "label": "scope",
+              "provenance": "unknown",
+              "value": "external:proprietary_data"
+            },
+            {
+              "label": "externalPriceUsd",
+              "provenance": "registry_data",
+              "value": "0.015"
+            }
+          ],
+          "label": "somebody_testnet_onchain_risk:wallet_onchain_risk_intelligence",
+          "optionId": "opt_05f6418c6023a0f1cb27aea4",
+          "reason": "required proof method not currently available; offering somebody_testnet_onchain_risk:wallet_onchain_risk_intelligence has no configured execution path in the current runtime composition; offering somebody_testnet_onchain_risk:wallet_onchain_risk_intelligence product scope cannot fulfill the current purpose",
+          "strategy": "BUY"
+        }
+      ],
+      "rationale": "Select the MAKE option because it directly covers the required company_records and public_web resource classes through company records lookup and public information research, while also supporting document drafting. The requirement context shows no missing resources or open needs, and the prerequisite results are empty. The external BUY option provides proprietary data rather than the required evidence sources and is not necessary for this requirement.",
+      "requirementKey": "req_01",
+      "selectedOptionId": "opt_00c81b61b704b69d91a18da2",
+      "strategy": "MAKE",
+      "summary": "authorized MAKE via opt_00c81b61b704b69d91a18da2"
+    },
+    {
+      "at": 1790250753949,
+      "authorization": "authorized",
+      "decisionId": "dec_obj_1790250330627_tl7ivz_req_01_r1_a3",
+      "options": [
+        {
+          "eligibility": "eligible",
+          "facts": [],
+          "label": "eligible, available and capability-matched",
+          "optionId": "opt_418774120cd7a8bd08f5dcc6",
+          "reason": "",
+          "strategy": "MAKE"
+        },
+        {
+          "eligibility": "eligible",
+          "facts": [
+            {
+              "label": "scope",
+              "provenance": "unknown",
+              "value": "external:proprietary_data"
+            },
+            {
+              "label": "externalPriceUsd",
+              "provenance": "registry_data",
+              "value": "0.01"
+            }
+          ],
+          "label": "somebody_testnet_social:social_media_guru",
+          "optionId": "opt_82a2d618dc66c8c0a52589fc",
+          "reason": "",
+          "strategy": "BUY"
+        },
+        {
+          "eligibility": "ineligible",
+          "facts": [
+            {
+              "label": "scope",
+              "provenance": "unknown",
+              "value": "external:proprietary_data"
+            },
+            {
+              "label": "externalPriceUsd",
+              "provenance": "registry_data",
+              "value": "0.02"
+            }
+          ],
+          "label": "somebody_testnet_token_intel:token_market_intelligence",
+          "optionId": "opt_30948426d50d8adc828a7d89",
+          "reason": "required proof method not currently available; offering somebody_testnet_token_intel:token_market_intelligence has no configured execution path in the current runtime composition; offering somebody_testnet_token_intel:token_market_intelligence product scope cannot fulfill the current purpose",
+          "strategy": "BUY"
+        },
+        {
+          "eligibility": "ineligible",
+          "facts": [
+            {
+              "label": "scope",
+              "provenance": "unknown",
+              "value": "external:proprietary_data"
+            },
+            {
+              "label": "externalPriceUsd",
+              "provenance": "registry_data",
+              "value": "0.015"
+            }
+          ],
+          "label": "somebody_testnet_onchain_risk:wallet_onchain_risk_intelligence",
+          "optionId": "opt_05f6418c6023a0f1cb27aea4",
+          "reason": "required proof method not currently available; offering somebody_testnet_onchain_risk:wallet_onchain_risk_intelligence has no configured execution path in the current runtime composition; offering somebody_testnet_onchain_risk:wallet_onchain_risk_intelligence product scope cannot fulfill the current purpose",
+          "strategy": "BUY"
+        }
+      ],
+      "rationale": "Select the internal MAKE option. It is eligible and directly covers the required company_records and public_web resource classes, plus document drafting and launch operations needed to state the evidence boundary and classify claims. The external BUY option provides proprietary data rather than the required evidence sources, and the context identifies no missing resource or prerequisite need.",
+      "requirementKey": "req_01",
+      "selectedOptionId": "opt_418774120cd7a8bd08f5dcc6",
+      "strategy": "MAKE",
+      "summary": "authorized MAKE via opt_418774120cd7a8bd08f5dcc6"
+    },
+    {
+      "at": 1790250894834,
+      "authorization": "approval_required",
+      "decisionId": "dec_obj_1790250330627_tl7ivz_req_01_r1_a4",
+      "options": [
+        {
+          "eligibility": "ineligible",
+          "facts": [],
+          "label": "eligible, available and capability-matched",
+          "optionId": "opt_418774120cd7a8bd08f5dcc6",
+          "reason": "worker attempt ceiling reached for req_01; internal dispatch is not available",
+          "strategy": "MAKE"
+        },
+        {
+          "eligibility": "eligible",
+          "facts": [
+            {
+              "label": "scope",
+              "provenance": "unknown",
+              "value": "external:proprietary_data"
+            },
+            {
+              "label": "externalPriceUsd",
+              "provenance": "registry_data",
+              "value": "0.01"
+            }
+          ],
+          "label": "somebody_testnet_social:social_media_guru",
+          "optionId": "opt_82a2d618dc66c8c0a52589fc",
+          "reason": "",
+          "strategy": "BUY"
+        },
+        {
+          "eligibility": "ineligible",
+          "facts": [
+            {
+              "label": "scope",
+              "provenance": "unknown",
+              "value": "external:proprietary_data"
+            },
+            {
+              "label": "externalPriceUsd",
+              "provenance": "registry_data",
+              "value": "0.02"
+            }
+          ],
+          "label": "somebody_testnet_token_intel:token_market_intelligence",
+          "optionId": "opt_30948426d50d8adc828a7d89",
+          "reason": "required proof method not currently available; offering somebody_testnet_token_intel:token_market_intelligence has no configured execution path in the current runtime composition; offering somebody_testnet_token_intel:token_market_intelligence product scope cannot fulfill the current purpose",
+          "strategy": "BUY"
+        },
+        {
+          "eligibility": "ineligible",
+          "facts": [
+            {
+              "label": "scope",
+              "provenance": "unknown",
+              "value": "external:proprietary_data"
+            },
+            {
+              "label": "externalPriceUsd",
+              "provenance": "registry_data",
+              "value": "0.015"
+            }
+          ],
+          "label": "somebody_testnet_onchain_risk:wallet_onchain_risk_intelligence",
+          "optionId": "opt_05f6418c6023a0f1cb27aea4",
+          "reason": "required proof method not currently available; offering somebody_testnet_onchain_risk:wallet_onchain_risk_intelligence has no configured execution path in the current runtime composition; offering somebody_testnet_onchain_risk:wallet_onchain_risk_intelligence product scope cannot fulfill the current purpose",
+          "strategy": "BUY"
+        }
+      ],
+      "rationale": "opt_82a2d618dc66c8c0a52589fc was the sole eligible grounded option; Jev was not called. Selected option facts: optionId=opt_82a2d618dc66c8c0a52589fc; strategy=BUY; kind=external; offeringId=somebody_testnet_social:social_media_guru; providerId=somebody_testnet_social; serviceId=social_media_guru; resourceClass=proprietary_data; quotedPrice=0.01usd(provenance=registry_data); externalPriceUsd=0.01(provenance=registry_data). Strongest alternative facts: none.",
+      "requirementKey": "req_01",
+      "selectedOptionId": "opt_82a2d618dc66c8c0a52589fc",
+      "strategy": "WAIT",
+      "summary": "founder approval required: No founder spend limit is set for this objective. Acquiring somebody_testnet_social:social_media_guru costs $0.01. Approve a bounded spend limit, or choose another option?"
+    },
+    {
+      "at": 1790250898200,
+      "authorization": "approval_required",
+      "decisionId": "dec_obj_1790250330627_tl7ivz_req_01_r1_a5",
+      "options": [
+        {
+          "eligibility": "ineligible",
+          "facts": [],
+          "label": "eligible, available and capability-matched",
+          "optionId": "opt_418774120cd7a8bd08f5dcc6",
+          "reason": "worker attempt ceiling reached for req_01; internal dispatch is not available",
+          "strategy": "MAKE"
+        },
+        {
+          "eligibility": "eligible",
+          "facts": [
+            {
+              "label": "scope",
+              "provenance": "unknown",
+              "value": "external:proprietary_data"
+            },
+            {
+              "label": "externalPriceUsd",
+              "provenance": "registry_data",
+              "value": "0.01"
+            }
+          ],
+          "label": "somebody_testnet_social:social_media_guru",
+          "optionId": "opt_82a2d618dc66c8c0a52589fc",
+          "reason": "",
+          "strategy": "BUY"
+        },
+        {
+          "eligibility": "ineligible",
+          "facts": [
+            {
+              "label": "scope",
+              "provenance": "unknown",
+              "value": "external:proprietary_data"
+            },
+            {
+              "label": "externalPriceUsd",
+              "provenance": "registry_data",
+              "value": "0.02"
+            }
+          ],
+          "label": "somebody_testnet_token_intel:token_market_intelligence",
+          "optionId": "opt_30948426d50d8adc828a7d89",
+          "reason": "required proof method not currently available; offering somebody_testnet_token_intel:token_market_intelligence has no configured execution path in the current runtime composition; offering somebody_testnet_token_intel:token_market_intelligence product scope cannot fulfill the current purpose",
+          "strategy": "BUY"
+        },
+        {
+          "eligibility": "ineligible",
+          "facts": [
+            {
+              "label": "scope",
+              "provenance": "unknown",
+              "value": "external:proprietary_data"
+            },
+            {
+              "label": "externalPriceUsd",
+              "provenance": "registry_data",
+              "value": "0.015"
+            }
+          ],
+          "label": "somebody_testnet_onchain_risk:wallet_onchain_risk_intelligence",
+          "optionId": "opt_05f6418c6023a0f1cb27aea4",
+          "reason": "required proof method not currently available; offering somebody_testnet_onchain_risk:wallet_onchain_risk_intelligence has no configured execution path in the current runtime composition; offering somebody_testnet_onchain_risk:wallet_onchain_risk_intelligence product scope cannot fulfill the current purpose",
+          "strategy": "BUY"
+        }
+      ],
+      "rationale": "opt_82a2d618dc66c8c0a52589fc was the sole eligible grounded option; Jev was not called. Selected option facts: optionId=opt_82a2d618dc66c8c0a52589fc; strategy=BUY; kind=external; offeringId=somebody_testnet_social:social_media_guru; providerId=somebody_testnet_social; serviceId=social_media_guru; resourceClass=proprietary_data; quotedPrice=0.01usd(provenance=registry_data); externalPriceUsd=0.01(provenance=registry_data). Strongest alternative facts: none.",
+      "requirementKey": "req_01",
+      "selectedOptionId": "opt_82a2d618dc66c8c0a52589fc",
+      "strategy": "WAIT",
+      "summary": "founder approval required: No founder spend limit is set for this objective. Acquiring somebody_testnet_social:social_media_guru costs $0.01. Approve a bounded spend limit, or choose another option?"
+    },
+    {
+      "at": 1790250903003,
+      "authorization": "approval_required",
+      "decisionId": "dec_obj_1790250330627_tl7ivz_req_01_r1_a6",
+      "options": [
+        {
+          "eligibility": "ineligible",
+          "facts": [],
+          "label": "eligible, available and capability-matched",
+          "optionId": "opt_418774120cd7a8bd08f5dcc6",
+          "reason": "worker attempt ceiling reached for req_01; internal dispatch is not available",
+          "strategy": "MAKE"
+        },
+        {
+          "eligibility": "eligible",
+          "facts": [
+            {
+              "label": "scope",
+              "provenance": "unknown",
+              "value": "external:proprietary_data"
+            },
+            {
+              "label": "externalPriceUsd",
+              "provenance": "registry_data",
+              "value": "0.01"
+            }
+          ],
+          "label": "somebody_testnet_social:social_media_guru",
+          "optionId": "opt_82a2d618dc66c8c0a52589fc",
+          "reason": "",
+          "strategy": "BUY"
+        },
+        {
+          "eligibility": "ineligible",
+          "facts": [
+            {
+              "label": "scope",
+              "provenance": "unknown",
+              "value": "external:proprietary_data"
+            },
+            {
+              "label": "externalPriceUsd",
+              "provenance": "registry_data",
+              "value": "0.02"
+            }
+          ],
+          "label": "somebody_testnet_token_intel:token_market_intelligence",
+          "optionId": "opt_30948426d50d8adc828a7d89",
+          "reason": "required proof method not currently available; offering somebody_testnet_token_intel:token_market_intelligence has no configured execution path in the current runtime composition; offering somebody_testnet_token_intel:token_market_intelligence product scope cannot fulfill the current purpose",
+          "strategy": "BUY"
+        },
+        {
+          "eligibility": "ineligible",
+          "facts": [
+            {
+              "label": "scope",
+              "provenance": "unknown",
+              "value": "external:proprietary_data"
+            },
+            {
+              "label": "externalPriceUsd",
+              "provenance": "registry_data",
+              "value": "0.015"
+            }
+          ],
+          "label": "somebody_testnet_onchain_risk:wallet_onchain_risk_intelligence",
+          "optionId": "opt_05f6418c6023a0f1cb27aea4",
+          "reason": "required proof method not currently available; offering somebody_testnet_onchain_risk:wallet_onchain_risk_intelligence has no configured execution path in the current runtime composition; offering somebody_testnet_onchain_risk:wallet_onchain_risk_intelligence product scope cannot fulfill the current purpose",
+          "strategy": "BUY"
+        }
+      ],
+      "rationale": "opt_82a2d618dc66c8c0a52589fc was the sole eligible grounded option; Jev was not called. Selected option facts: optionId=opt_82a2d618dc66c8c0a52589fc; strategy=BUY; kind=external; offeringId=somebody_testnet_social:social_media_guru; providerId=somebody_testnet_social; serviceId=social_media_guru; resourceClass=proprietary_data; quotedPrice=0.01usd(provenance=registry_data); externalPriceUsd=0.01(provenance=registry_data). Strongest alternative facts: none.",
+      "requirementKey": "req_01",
+      "selectedOptionId": "opt_82a2d618dc66c8c0a52589fc",
+      "strategy": "WAIT",
+      "summary": "founder approval required: No founder spend limit is set for this objective. Acquiring somebody_testnet_social:social_media_guru costs $0.01. Approve a bounded spend limit, or choose another option?"
+    }
+  ],
+  "managerDecisionsActivity": [
+    {
+      "id": "activity:manager_decision:dec_obj_1790250330627_tl7ivz_req_01_r1_a6",
+      "at": 1790250903003,
+      "payload": {
+        "considered": [
+          {
+            "approach": "MAKE",
+            "label": "eligible, available and capability-matched",
+            "optionId": "opt_418774120cd7a8bd08f5dcc6",
+            "status": "ineligible",
+            "unsuitability": "not_available"
+          },
+          {
+            "amount": {
+              "amount": "0.01",
+              "currency": "USD"
+            },
+            "approach": "BUY",
+            "label": "somebody_testnet_social:social_media_guru",
+            "optionId": "opt_82a2d618dc66c8c0a52589fc",
+            "providerLabel": "somebody_testnet_social",
+            "status": "eligible"
+          },
+          {
+            "amount": {
+              "amount": "0.02",
+              "currency": "USD"
+            },
+            "approach": "BUY",
+            "label": "somebody_testnet_token_intel:token_market_intelligence",
+            "optionId": "opt_30948426d50d8adc828a7d89",
+            "providerLabel": "somebody_testnet_token_intel",
+            "reason": "Different purpose",
+            "status": "ineligible",
+            "unsuitability": "not_suitable"
+          },
+          {
+            "amount": {
+              "amount": "0.01",
+              "currency": "USD"
+            },
+            "approach": "BUY",
+            "label": "somebody_testnet_onchain_risk:wallet_onchain_risk_intelligence",
+            "optionId": "opt_05f6418c6023a0f1cb27aea4",
+            "providerLabel": "somebody_testnet_onchain_risk",
+            "reason": "Different purpose",
+            "status": "ineligible",
+            "unsuitability": "not_suitable"
+          }
+        ],
+        "decisionType": "sourcing",
+        "reason": "opt_82a2d618dc66c8c0a52589fc was the sole eligible grounded option; Jev was not called. Selected option facts: optionId=opt_82a2d618dc66c8c0a52589fc; strategy=BUY; kind=external; offeringId=somebody_testnet_social:social_media_guru; providerId=somebody_testnet_social; serviceId=social_media_guru; r…",
+        "selected": {
+          "approach": "ASK",
+          "label": "somebody_testnet_social:social_media_guru",
+          "optionId": "opt_82a2d618dc66c8c0a52589fc"
+        },
+        "selectionSource": "sole_eligible",
+        "trigger": "requirement_ready"
+      }
+    },
+    {
+      "id": "activity:manager_decision:dec_obj_1790250330627_tl7ivz_req_01_r1_a5",
+      "at": 1790250898200,
+      "payload": {
+        "considered": [
+          {
+            "approach": "MAKE",
+            "label": "eligible, available and capability-matched",
+            "optionId": "opt_418774120cd7a8bd08f5dcc6",
+            "status": "ineligible",
+            "unsuitability": "not_available"
+          },
+          {
+            "amount": {
+              "amount": "0.01",
+              "currency": "USD"
+            },
+            "approach": "BUY",
+            "label": "somebody_testnet_social:social_media_guru",
+            "optionId": "opt_82a2d618dc66c8c0a52589fc",
+            "providerLabel": "somebody_testnet_social",
+            "status": "eligible"
+          },
+          {
+            "amount": {
+              "amount": "0.02",
+              "currency": "USD"
+            },
+            "approach": "BUY",
+            "label": "somebody_testnet_token_intel:token_market_intelligence",
+            "optionId": "opt_30948426d50d8adc828a7d89",
+            "providerLabel": "somebody_testnet_token_intel",
+            "reason": "Different purpose",
+            "status": "ineligible",
+            "unsuitability": "not_suitable"
+          },
+          {
+            "amount": {
+              "amount": "0.01",
+              "currency": "USD"
+            },
+            "approach": "BUY",
+            "label": "somebody_testnet_onchain_risk:wallet_onchain_risk_intelligence",
+            "optionId": "opt_05f6418c6023a0f1cb27aea4",
+            "providerLabel": "somebody_testnet_onchain_risk",
+            "reason": "Different purpose",
+            "status": "ineligible",
+            "unsuitability": "not_suitable"
+          }
+        ],
+        "decisionType": "sourcing",
+        "reason": "opt_82a2d618dc66c8c0a52589fc was the sole eligible grounded option; Jev was not called. Selected option facts: optionId=opt_82a2d618dc66c8c0a52589fc; strategy=BUY; kind=external; offeringId=somebody_testnet_social:social_media_guru; providerId=somebody_testnet_social; serviceId=social_media_guru; r…",
+        "selected": {
+          "approach": "ASK",
+          "label": "somebody_testnet_social:social_media_guru",
+          "optionId": "opt_82a2d618dc66c8c0a52589fc"
+        },
+        "selectionSource": "sole_eligible",
+        "trigger": "requirement_ready"
+      }
+    },
+    {
+      "id": "activity:manager_decision:dec_obj_1790250330627_tl7ivz_req_01_r1_a4",
+      "at": 1790250894834,
+      "payload": {
+        "considered": [
+          {
+            "approach": "MAKE",
+            "label": "eligible, available and capability-matched",
+            "optionId": "opt_418774120cd7a8bd08f5dcc6",
+            "status": "ineligible",
+            "unsuitability": "not_available"
+          },
+          {
+            "amount": {
+              "amount": "0.01",
+              "currency": "USD"
+            },
+            "approach": "BUY",
+            "label": "somebody_testnet_social:social_media_guru",
+            "optionId": "opt_82a2d618dc66c8c0a52589fc",
+            "providerLabel": "somebody_testnet_social",
+            "status": "eligible"
+          },
+          {
+            "amount": {
+              "amount": "0.02",
+              "currency": "USD"
+            },
+            "approach": "BUY",
+            "label": "somebody_testnet_token_intel:token_market_intelligence",
+            "optionId": "opt_30948426d50d8adc828a7d89",
+            "providerLabel": "somebody_testnet_token_intel",
+            "reason": "Different purpose",
+            "status": "ineligible",
+            "unsuitability": "not_suitable"
+          },
+          {
+            "amount": {
+              "amount": "0.01",
+              "currency": "USD"
+            },
+            "approach": "BUY",
+            "label": "somebody_testnet_onchain_risk:wallet_onchain_risk_intelligence",
+            "optionId": "opt_05f6418c6023a0f1cb27aea4",
+            "providerLabel": "somebody_testnet_onchain_risk",
+            "reason": "Different purpose",
+            "status": "ineligible",
+            "unsuitability": "not_suitable"
+          }
+        ],
+        "decisionType": "sourcing",
+        "reason": "opt_82a2d618dc66c8c0a52589fc was the sole eligible grounded option; Jev was not called. Selected option facts: optionId=opt_82a2d618dc66c8c0a52589fc; strategy=BUY; kind=external; offeringId=somebody_testnet_social:social_media_guru; providerId=somebody_testnet_social; serviceId=social_media_guru; r…",
+        "selected": {
+          "approach": "ASK",
+          "label": "somebody_testnet_social:social_media_guru",
+          "optionId": "opt_82a2d618dc66c8c0a52589fc"
+        },
+        "selectionSource": "sole_eligible",
+        "trigger": "requirement_ready"
+      }
+    },
+    {
+      "id": "activity:manager_decision:dec_obj_1790250330627_tl7ivz_req_01_r1_a3",
+      "at": 1790250753949,
+      "payload": {
+        "alternative": {
+          "approach": "BUY",
+          "label": "somebody_testnet_social:social_media_guru"
+        },
+        "considered": [
+          {
+            "approach": "MAKE",
+            "label": "eligible, available and capability-matched",
+            "optionId": "opt_418774120cd7a8bd08f5dcc6",
+            "status": "eligible"
+          },
+          {
+            "amount": {
+              "amount": "0.01",
+              "currency": "USD"
+            },
+            "approach": "BUY",
+            "label": "somebody_testnet_social:social_media_guru",
+            "optionId": "opt_82a2d618dc66c8c0a52589fc",
+            "providerLabel": "somebody_testnet_social",
+            "status": "eligible"
+          },
+          {
+            "amount": {
+              "amount": "0.02",
+              "currency": "USD"
+            },
+            "approach": "BUY",
+            "label": "somebody_testnet_token_intel:token_market_intelligence",
+            "optionId": "opt_30948426d50d8adc828a7d89",
+            "providerLabel": "somebody_testnet_token_intel",
+            "reason": "Different purpose",
+            "status": "ineligible",
+            "unsuitability": "not_suitable"
+          },
+          {
+            "amount": {
+              "amount": "0.01",
+              "currency": "USD"
+            },
+            "approach": "BUY",
+            "label": "somebody_testnet_onchain_risk:wallet_onchain_risk_intelligence",
+            "optionId": "opt_05f6418c6023a0f1cb27aea4",
+            "providerLabel": "somebody_testnet_onchain_risk",
+            "reason": "Different purpose",
+            "status": "ineligible",
+            "unsuitability": "not_suitable"
+          }
+        ],
+        "decisionType": "sourcing",
+        "reason": "Select the internal MAKE option. It is eligible and directly covers the required company_records and public_web resource classes, plus document drafting and launch operations needed to state the evidence boundary and classify claims. The external BUY option provides proprietary data rather than the…",
+        "selected": {
+          "approach": "MAKE",
+          "label": "eligible, available and capability-matched",
+          "optionId": "opt_418774120cd7a8bd08f5dcc6"
+        },
+        "selectionSource": "incumbent_fallback",
+        "trigger": "requirement_ready"
+      }
+    },
+    {
+      "id": "activity:manager_decision:dec_obj_1790250330627_tl7ivz_req_01_r1_a2",
+      "at": 1790250587486,
+      "payload": {
+        "alternative": {
+          "approach": "BUY",
+          "label": "somebody_testnet_social:social_media_guru"
+        },
+        "considered": [
+          {
+            "approach": "MAKE",
+            "label": "eligible, available and capability-matched",
+            "optionId": "opt_00c81b61b704b69d91a18da2",
+            "status": "eligible"
+          },
+          {
+            "amount": {
+              "amount": "0.01",
+              "currency": "USD"
+            },
+            "approach": "BUY",
+            "label": "somebody_testnet_social:social_media_guru",
+            "optionId": "opt_82a2d618dc66c8c0a52589fc",
+            "providerLabel": "somebody_testnet_social",
+            "status": "eligible"
+          },
+          {
+            "amount": {
+              "amount": "0.02",
+              "currency": "USD"
+            },
+            "approach": "BUY",
+            "label": "somebody_testnet_token_intel:token_market_intelligence",
+            "optionId": "opt_30948426d50d8adc828a7d89",
+            "providerLabel": "somebody_testnet_token_intel",
+            "reason": "Different purpose",
+            "status": "ineligible",
+            "unsuitability": "not_suitable"
+          },
+          {
+            "amount": {
+              "amount": "0.01",
+              "currency": "USD"
+            },
+            "approach": "BUY",
+            "label": "somebody_testnet_onchain_risk:wallet_onchain_risk_intelligence",
+            "optionId": "opt_05f6418c6023a0f1cb27aea4",
+            "providerLabel": "somebody_testnet_onchain_risk",
+            "reason": "Different purpose",
+            "status": "ineligible",
+            "unsuitability": "not_suitable"
+          }
+        ],
+        "decisionType": "sourcing",
+        "reason": "Select the MAKE option because it directly covers the required company_records and public_web resource classes through company records lookup and public information research, while also supporting document drafting. The requirement context shows no missing resources or open needs, and the prerequis…",
+        "selected": {
+          "approach": "MAKE",
+          "label": "eligible, available and capability-matched",
+          "optionId": "opt_00c81b61b704b69d91a18da2"
+        },
+        "selectionSource": "incumbent_fallback",
+        "trigger": "requirement_ready"
+      }
+    },
+    {
+      "id": "activity:manager_decision:dec_obj_1790250330627_tl7ivz_req_01_r1_a1",
+      "at": 1790250490160,
+      "payload": {
+        "alternative": {
+          "approach": "BUY",
+          "label": "somebody_testnet_social:social_media_guru"
+        },
+        "considered": [
+          {
+            "approach": "MAKE",
+            "label": "eligible, available and capability-matched",
+            "optionId": "opt_00c81b61b704b69d91a18da2",
+            "status": "eligible"
+          },
+          {
+            "amount": {
+              "amount": "0.01",
+              "currency": "USD"
+            },
+            "approach": "BUY",
+            "label": "somebody_testnet_social:social_media_guru",
+            "optionId": "opt_82a2d618dc66c8c0a52589fc",
+            "providerLabel": "somebody_testnet_social",
+            "status": "eligible"
+          },
+          {
+            "amount": {
+              "amount": "0.02",
+              "currency": "USD"
+            },
+            "approach": "BUY",
+            "label": "somebody_testnet_token_intel:token_market_intelligence",
+            "optionId": "opt_30948426d50d8adc828a7d89",
+            "providerLabel": "somebody_testnet_token_intel",
+            "reason": "Different purpose",
+            "status": "ineligible",
+            "unsuitability": "not_suitable"
+          },
+          {
+            "amount": {
+              "amount": "0.01",
+              "currency": "USD"
+            },
+            "approach": "BUY",
+            "label": "somebody_testnet_onchain_risk:wallet_onchain_risk_intelligence",
+            "optionId": "opt_05f6418c6023a0f1cb27aea4",
+            "providerLabel": "somebody_testnet_onchain_risk",
+            "reason": "Different purpose",
+            "status": "ineligible",
+            "unsuitability": "not_suitable"
+          }
+        ],
+        "decisionType": "sourcing",
+        "reason": "Choose the internal MAKE option. It directly covers company_records_lookup, document_drafting, and public_information_research, and all internal eligibility checks passed. The requirement has no missing resources, open needs, or prerequisites, so the external proprietary-data option adds no demonst…",
+        "selected": {
+          "approach": "MAKE",
+          "label": "eligible, available and capability-matched",
+          "optionId": "opt_00c81b61b704b69d91a18da2"
+        },
+        "selectionSource": "incumbent_fallback",
+        "trigger": "requirement_ready"
+      }
+    }
+  ],
+  "runs": [
+    {
+      "runId": "run_1e79070fceec56fb3025cd7a",
+      "model": "nex-agi/nex-n2.5-mini:free",
+      "status": "failed",
+      "toolCalls": 16,
+      "summary": "Max turns (16) exceeded"
+    }
+  ],
+  "run": {
+    "id": "run_1e79070fceec56fb3025cd7a",
+    "leaseUntil": 1790251054206,
+    "model": "nex-agi/nex-n2.5-mini:free",
+    "modelSelectionReason": "Operator-selected tool-capable model for bounded research execution",
+    "startedAt": 1790250754206,
+    "status": "failed",
+    "summary": "Max turns (16) exceeded",
+    "toolCalls": 16,
+    "workItemId": "wi:asg_6adca0717ce43c0682da6929"
+  },
+  "acceptedTerminal": null,
+  "acquisitions": [],
+  "availableActions": [],
+  "resourceNeeds": []
+}
