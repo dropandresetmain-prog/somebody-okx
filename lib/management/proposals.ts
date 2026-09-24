@@ -10,6 +10,10 @@
 // lib/management/authorization.ts after a deterministic recheck.
 
 import { isControlledCapabilityKey } from "../workforce/catalog";
+import {
+  canonicalizeOutcomeLevelIdentifier,
+  isValidOutcomeLevelKey,
+} from "./levelIdentity";
 import { isSatisfactionStrategy } from "./types";
 import type { StructuralIssue, StructuralValidation } from "./modelBoundary";
 import type {
@@ -86,20 +90,30 @@ export function parseOutcomeContractProposal(raw: unknown): ProposalParseResult<
       return;
     }
     const item = entry as Record<string, unknown>;
+    const statement = text(item.statement, LIMITS.statement);
+    const labelText = text(item.label, LIMITS.label);
     // Models often emit mixed-case keys (e.g. L1); IDs are lowercase-only.
     const levelKeyRaw = text(item.levelKey, LIMITS.key);
-    const levelKey = levelKeyRaw ? levelKeyRaw.toLowerCase() : null;
-    if (!levelKey || !LEVEL_KEY_PATTERN.test(levelKey)) {
-      errors.push(`level ${index} has no bounded levelKey`);
-      return;
+    const levelKeyLower = levelKeyRaw ? levelKeyRaw.toLowerCase() : null;
+    let levelKey: string | null =
+      levelKeyLower && isValidOutcomeLevelKey(levelKeyLower) ? levelKeyLower : null;
+    if (!levelKey) {
+      if (!labelText) {
+        errors.push(`level ${index} has no bounded levelKey`);
+        return;
+      }
+      levelKey = canonicalizeOutcomeLevelIdentifier(labelText);
+      if (!levelKey) {
+        errors.push(`level ${index} has no bounded levelKey`);
+        return;
+      }
     }
     if (seenKeys.has(levelKey)) {
       errors.push(`duplicate levelKey ${levelKey}`);
       return;
     }
     seenKeys.add(levelKey);
-    const statement = text(item.statement, LIMITS.statement);
-    const label = text(item.label, LIMITS.label) ?? levelKey;
+    const label = labelText ?? levelKey;
     if (!statement) errors.push(`level ${levelKey} has no statement`);
     levels.push({
       levelKey,
@@ -109,18 +123,25 @@ export function parseOutcomeContractProposal(raw: unknown): ProposalParseResult<
     });
   });
 
-  // Models often put a prose statement in minimumCompletionBar instead of a
-  // levelKey. Resolve against keys/labels/statements before refusing — never
-  // invent a new level, only remap onto one the proposal already declared.
+  // Resolve the model's bar only against levels it already declared — never
+  // invent a level or pick a default ordering.
   const rawBar = text(candidate.minimumCompletionBar, LIMITS.statement);
   let bar: string | null = null;
-  const rawBarKey = rawBar ? rawBar.toLowerCase() : null;
-  if (rawBarKey && seenKeys.has(rawBarKey)) bar = rawBarKey;
-  else if (rawBar) {
-    const matched = levels.find(
-      (level) => level.label === rawBar || level.statement === rawBar,
-    );
-    if (matched) bar = matched.levelKey;
+  if (rawBar) {
+    const rawBarKey = rawBar.toLowerCase();
+    if (seenKeys.has(rawBarKey)) {
+      bar = rawBarKey;
+    } else {
+      const barCanon = canonicalizeOutcomeLevelIdentifier(rawBar);
+      if (barCanon && seenKeys.has(barCanon)) {
+        bar = barCanon;
+      } else if (barCanon) {
+        const byLabel = levels.filter(
+          (level) => canonicalizeOutcomeLevelIdentifier(level.label) === barCanon,
+        );
+        if (byLabel.length === 1) bar = byLabel[0]!.levelKey;
+      }
+    }
   }
   if (!bar)
     errors.push(
