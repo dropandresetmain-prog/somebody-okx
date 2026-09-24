@@ -63,6 +63,14 @@ export type ProofFacts = {
   // BOTH the evidence ids and the source ids of rows the application recorded
   // as origin=application_observation (the A5 note above)
   applicationObservationIds: readonly string[];
+  /**
+   * Source-proof alignment fix: id (evidence id OR source id, same keyspace as
+   * applicationObservationIds) → the application-verified source class it was
+   * actually observed from. Optional/absent on legacy call sites — a proof
+   * with no explicit sourceClass requirement never consults it, and an id
+   * missing from this map simply cannot satisfy a class-scoped proof.
+   */
+  applicationObservationSourceClasses?: Readonly<Record<string, string>>;
   // intent ids whose external result/effect is independently verified
   verifiedIntentIds: readonly string[];
   /** Acquisition/result facts and external-effect facts are deliberately
@@ -134,8 +142,18 @@ export function missingProofs(
       }
       case "application_observation": {
         const want = String(proof.params.sourceId ?? proof.params.evidenceId ?? "");
-        if (!want || !facts.applicationObservationIds.includes(want))
+        if (!want || !facts.applicationObservationIds.includes(want)) {
           missing.push(`${proof.proofKey}: no application observation for ${want || "(unspecified source)"}`);
+          break;
+        }
+        const requiredClass = proof.params.sourceClass;
+        if (requiredClass !== undefined) {
+          const actualClass = facts.applicationObservationSourceClasses?.[want];
+          if (actualClass !== requiredClass)
+            missing.push(
+              `${proof.proofKey}: application observation ${want} is ${actualClass ?? "(unknown source class)"}, not required ${String(requiredClass)}`,
+            );
+        }
         break;
       }
       case "verified_external_result":

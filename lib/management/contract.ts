@@ -259,6 +259,62 @@ export function buildRequirement(
   };
 }
 
+// Requirement.requiredResourceClasses is the wide MAKE-input vocabulary
+// (company_records, public_web, llm_reasoning, ordinary_compute,
+// company_tools, ...); only the two that name an OBSERVABLE evidence source
+// translate onto the narrow application_observation proof source-class
+// vocabulary. llm_reasoning/ordinary_compute/company_tools are real MAKE
+// inputs but never evidence sources, so they translate to nothing — this is
+// the application-owned mapping the source-proof fix relies on, never a
+// model-authored label.
+const OBSERVABLE_SOURCE_CLASS_ORDER = ["company_record", "public_web"] as const;
+const RESOURCE_CLASS_TO_PROOF_SOURCE_CLASS: Record<
+  string,
+  (typeof OBSERVABLE_SOURCE_CLASS_ORDER)[number]
+> = {
+  company_records: "company_record",
+  public_web: "public_web",
+};
+
+/** Deterministically ordered, deduplicated observable source classes a Requirement explicitly requires. */
+function observableSourceClassesRequired(
+  requiredResourceClasses: readonly string[],
+): Array<(typeof OBSERVABLE_SOURCE_CLASS_ORDER)[number]> {
+  const required = new Set(
+    requiredResourceClasses
+      .map((resourceClass) => RESOURCE_CLASS_TO_PROOF_SOURCE_CLASS[resourceClass])
+      .filter((sourceClass): sourceClass is (typeof OBSERVABLE_SOURCE_CLASS_ORDER)[number] => sourceClass !== undefined),
+  );
+  return OBSERVABLE_SOURCE_CLASS_ORDER.filter((sourceClass) => required.has(sourceClass));
+}
+
+/**
+ * One application_observation ProofSpec per explicitly required observable
+ * source class, each carrying its class in `params.sourceClass` so the class
+ * survives dispatch, binding and Requirement-level recomputation. When the
+ * Requirement names no observable class, falls back to the single generic
+ * proof (params: {}) so pre-existing behavior is unchanged.
+ */
+function observationProofs(requiredResourceClasses: readonly string[]): ProofSpec[] {
+  const classes = observableSourceClassesRequired(requiredResourceClasses);
+  if (classes.length === 0) {
+    return [
+      {
+        proofKey: "observation",
+        description: "at least one application-recorded observation supports the requirement",
+        proofKind: "application_observation",
+        params: {},
+      },
+    ];
+  }
+  return classes.map((sourceClass) => ({
+    proofKey: `observation_${sourceClass}`,
+    description: `at least one application-recorded ${sourceClass} observation supports the requirement`,
+    proofKind: "application_observation",
+    params: { sourceClass },
+  }));
+}
+
 function attachGovernedProofs(
   proposed: ParsedRequirementProposal,
   contract: OutcomeContract,
@@ -293,12 +349,7 @@ function attachGovernedProofs(
         params: { artifactKey, minVersion: 2 },
       });
     }
-    proofs.push({
-      proofKey: "observation",
-      description: "at least one application-recorded observation supports the requirement",
-      proofKind: "application_observation",
-      params: {},
-    });
+    proofs.push(...observationProofs(proposed.requiredResourceClasses ?? []));
   }
   if (strategy === "ASK_FOUNDER") {
     proofs.push({
@@ -326,12 +377,7 @@ function attachDeliverableProofs(
       params: { artifactKey, minVersion: 2 },
     });
   }
-  proofs.push({
-    proofKey: "observation",
-    description: "at least one application-recorded observation supports the requirement",
-    proofKind: "application_observation",
-    params: {},
-  });
+  proofs.push(...observationProofs(proposed.requiredResourceClasses ?? []));
   return proofs;
 }
 
@@ -350,12 +396,7 @@ function attachInputProofs(
     });
   }
   if (strategy === "MAKE") {
-    proofs.push({
-      proofKey: "observation",
-      description: "at least one application-recorded observation supports the requirement",
-      proofKind: "application_observation",
-      params: {},
-    });
+    proofs.push(...observationProofs(proposed.requiredResourceClasses ?? []));
   }
   if (strategy === "ASK_FOUNDER") {
     proofs.push({
@@ -408,8 +449,16 @@ export function bindExecutedProofParams(
   for (const proof of requirement.proofs) {
     switch (proof.proofKind) {
       case "application_observation": {
-        if (!proof.params.sourceId && !proof.params.evidenceId && observations.length > 0)
-          bindings[proof.proofKey] = { sourceId: observations[0] };
+        if (proof.params.sourceId || proof.params.evidenceId) break;
+        const requiredClass = proof.params.sourceClass;
+        // A proof carrying explicit source intent binds ONLY an observation
+        // application-verified as that class — a company_record observation
+        // can never satisfy a public_web proof merely because its id exists.
+        const candidate =
+          requiredClass === "company_record" || requiredClass === "public_web"
+            ? observations.find((id) => facts.applicationObservationSourceClasses?.[id] === requiredClass)
+            : observations[0];
+        if (candidate) bindings[proof.proofKey] = { sourceId: candidate };
         break;
       }
       case "verified_external_result": {

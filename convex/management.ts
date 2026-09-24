@@ -2503,6 +2503,7 @@ async function readScopedProofFacts(
   );
 
   const observationIds: string[] = [];
+  const observationSourceClasses: Record<string, string> = {};
   if (runIds.size > 0) {
     const evidenceRows = await ctx.db
       .query("evidence")
@@ -2513,8 +2514,18 @@ async function readScopedProofFacts(
       if (data.origin !== "application_observation") continue;
       if (!runIds.has(String(data.runId ?? ""))) continue;
       // R3 A5 vocabulary: both public identities of the same application row.
-      observationIds.push((row as AnyRow).evidenceId as string);
-      observationIds.push(String(data.sourceId ?? ""));
+      const evidenceId = (row as AnyRow).evidenceId as string;
+      const sourceId = String(data.sourceId ?? "");
+      observationIds.push(evidenceId);
+      observationIds.push(sourceId);
+      // Source-proof alignment: carry the application-verified source class
+      // (written at observation time, never model-authored) under both public
+      // identities so a downstream proof can be checked against it.
+      const sourceClass = data.sourceClass;
+      if (sourceClass === "company_record" || sourceClass === "public_web") {
+        observationSourceClasses[evidenceId] = sourceClass;
+        if (sourceId) observationSourceClasses[sourceId] = sourceClass;
+      }
     }
   }
 
@@ -2554,6 +2565,7 @@ async function readScopedProofFacts(
   return {
     artifactVersions,
     applicationObservationIds: observationIds,
+    applicationObservationSourceClasses: observationSourceClasses,
     verifiedIntentIds: verifiedExternalResultIntentIds,
     verifiedExternalResultIntentIds,
     verifiedExternalEffectIntentIds,

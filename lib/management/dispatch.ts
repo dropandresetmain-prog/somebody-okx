@@ -168,13 +168,37 @@ export function assessInternalContractExecutability(input: {
     );
   }
 
-  const needsObservation = input.requirement.proofs.some(
+  const observationProofs = input.requirement.proofs.filter(
     (proof) => proof.proofKind === "application_observation",
   );
-  if (needsObservation && proofSourceClassesFor(keys).length === 0) {
-    reasons.push(
-      "observation proof required but capability envelope has no executable observe path",
-    );
+  if (observationProofs.length > 0) {
+    const observableClasses = proofSourceClassesFor(keys);
+    if (observableClasses.length === 0) {
+      reasons.push(
+        "observation proof required but capability envelope has no executable observe path",
+      );
+    } else {
+      // A Requirement that explicitly names an observable source class (e.g.
+      // public_web) must be rejected outright when the envelope cannot
+      // produce THAT class — never silently satisfied by substituting
+      // whatever class the envelope happens to have (e.g. company_record).
+      const observableSet = new Set(observableClasses.map((c) => c.sourceClass));
+      const missingClasses = new Set<string>();
+      for (const proof of observationProofs) {
+        const required = proof.params.sourceClass;
+        if (
+          (required === "company_record" || required === "public_web") &&
+          !observableSet.has(required)
+        ) {
+          missingClasses.add(required);
+        }
+      }
+      if (missingClasses.size > 0) {
+        reasons.push(
+          `observation proof requires source class(es) ${[...missingClasses].join(", ")} but capability envelope cannot observe them`,
+        );
+      }
+    }
   }
 
   const needsArtifact = input.requirement.proofs.some(
@@ -202,14 +226,31 @@ export function observationProofObligations(
   const observationProofs = requirement.proofs.filter(
     (proof) => proof.proofKind === "application_observation",
   );
+  if (observationProofs.length === 0) return [];
   const classes = proofSourceClassesFor(capabilityKeys);
-  if (observationProofs.length === 0 || classes.length === 0) return [];
-  // Round-robin the declared proofs over the observable classes so N proofs
-  // demand N distinct-source obligations, deterministically ordered.
-  return observationProofs.map((_, index) => ({
-    sourceClass: classes[index % classes.length].sourceClass,
-    minDistinctSources: 1,
-  }));
+  const obligations: SourceProof[] = [];
+  let genericIndex = 0;
+  for (const proof of observationProofs) {
+    const explicit = proof.params.sourceClass;
+    if (explicit === "company_record" || explicit === "public_web") {
+      // Explicit source intent from the Requirement is honored exactly —
+      // never substituted for a different class the envelope happens to
+      // expose. `assessInternalContractExecutability` is what refuses
+      // dispatch when the envelope cannot actually produce this class.
+      obligations.push({ sourceClass: explicit, minDistinctSources: 1 });
+      continue;
+    }
+    // Legacy/generic proof with no explicit source intent: round-robin over
+    // the observable classes so N such proofs demand N distinct-source
+    // obligations, deterministically ordered.
+    if (classes.length === 0) continue;
+    obligations.push({
+      sourceClass: classes[genericIndex % classes.length].sourceClass,
+      minDistinctSources: 1,
+    });
+    genericIndex += 1;
+  }
+  return obligations;
 }
 
 // Build the bounded work contract for one internal dispatch. `createWorkContract`
