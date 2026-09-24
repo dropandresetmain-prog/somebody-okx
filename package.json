@@ -19,7 +19,8 @@
     "gate:local": "node scripts/gate/run-objective.mjs",
     "gate:cloud": "node scripts/gate/run-objective.mjs --env-file=.env.cloud.local",
     "gate:peek:local": "node scripts/gate/peek.mjs",
-    "gate:peek:cloud": "node scripts/gate/peek.mjs --env-file=.env.cloud.local"
+    "gate:peek:cloud": "node scripts/gate/peek.mjs --env-file=.env.cloud.local",
+    "okx:prepare:local": "node scripts/prepare-okx-demo.mjs .env.local"
   },
   "dependencies": {
     "@langchain/langgraph": "^1.4.15",
