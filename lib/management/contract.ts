@@ -9,7 +9,7 @@
 
 import { validateCapabilitySpec } from "./capability";
 import { isSatisfactionStrategy } from "./types";
-import { isGovernedPurposeKind } from "../workforce/catalog";
+import { isGovernedPurposeKind, isGovernedResourceClass } from "../workforce/catalog";
 import type { ProofFacts } from "./requirements";
 import type { ParsedOutcomeContract, ParsedRequirementProposal } from "./proposals";
 import type {
@@ -193,6 +193,16 @@ export function buildSemanticRequirement(input: {
  * Fails closed: an ungoverned purposeKind, or zero / more than one
  * structurally-matching Requirement in this interpretation batch, grants
  * nothing rather than guessing which row was meant.
+ *
+ * The same policy may also carry `requiredResourceClasses` — an additive,
+ * APPLICATION-OWNED statement that the targeted Requirement genuinely needs
+ * those inputs (e.g. the Testnet submission demo's deliverable genuinely
+ * needs `proprietary_data` social intelligence the company does not own).
+ * This only ADDS to `Requirement.requiredResourceClasses`; it never removes
+ * an already-declared need, and ungoverned classes are dropped rather than
+ * grants being widened silently. It does not choose MAKE or BUY — the normal
+ * eligibility (`input_not_owned`) and Jev pipeline still decide that from
+ * this fact plus `CURRENT_RESOURCE_INVENTORY`.
  */
 export function bindAuthorizedPurposePolicy(
   requirements: readonly Requirement[],
@@ -205,9 +215,25 @@ export function bindAuthorizedPurposePolicy(
   );
   if (matches.length !== 1) return [...requirements];
   const target = matches[0]!;
+  const additionalResourceClasses = [
+    ...new Set((policy.requiredResourceClasses ?? []).filter(isGovernedResourceClass)),
+  ];
   return requirements.map((requirement) =>
     requirement === target
-      ? { ...requirement, authorizedPurposeKinds: [policy.purposeKind] }
+      ? {
+          ...requirement,
+          authorizedPurposeKinds: [policy.purposeKind],
+          ...(additionalResourceClasses.length
+            ? {
+                requiredResourceClasses: [
+                  ...new Set([
+                    ...requirement.requiredResourceClasses,
+                    ...additionalResourceClasses,
+                  ]),
+                ],
+              }
+            : {}),
+        }
       : requirement,
   );
 }

@@ -288,12 +288,17 @@ test("explicit structured policy binds external_social_intelligence to one Objec
       authorizedPurposePolicy?: {
         purposeKind: string;
         targetRequirementKind: string;
+        requiredResourceClasses?: string[];
       };
     };
   };
   assert.deepEqual(data.management?.authorizedPurposePolicy, {
     purposeKind: EXTERNAL_SOCIAL_INTELLIGENCE_PURPOSE_KIND,
     targetRequirementKind: "deliverable",
+    // demo/okx-required-buy-path: the submission policy additively states the
+    // genuine proprietary_data need on the same targeted deliverable — see
+    // SUBMISSION_EXTERNAL_SOCIAL_PURPOSE_POLICY in lib/objective/seedData.ts.
+    requiredResourceClasses: ["proprietary_data"],
   });
 });
 

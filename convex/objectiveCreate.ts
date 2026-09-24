@@ -9,7 +9,7 @@ import { normalizeObjectiveRequest } from "../lib/product/objectiveRequest";
 import { createArtifact } from "../lib/objective/artifact";
 import { GENERIC_OBJECTIVE_DELIVERABLE } from "../lib/objective/seedData";
 import type { AuthorizedPurposePolicy } from "../lib/management/types";
-import { isGovernedPurposeKind } from "../lib/workforce/catalog";
+import { isGovernedPurposeKind, isGovernedResourceClass } from "../lib/workforce/catalog";
 
 export {
   OBJECTIVE_REQUEST_MAX_CHARS,
@@ -52,7 +52,18 @@ export function validateCreateAuthorizedPurposePolicy(
       `authorizedPurposePolicy.targetRequirementKind must be deliverable or input`,
     );
   }
-  return { purposeKind, targetRequirementKind };
+  // Additive, APPLICATION-OWNED resource-class need (see AuthorizedPurposePolicy
+  // in lib/management/types.ts). Ungoverned entries are dropped rather than
+  // widening the grant on malformed input — bindAuthorizedPurposePolicy applies
+  // the same filter defensively, but this is the create-time boundary.
+  const requiredResourceClasses = (policy.requiredResourceClasses ?? []).filter(
+    isGovernedResourceClass,
+  );
+  return {
+    purposeKind,
+    targetRequirementKind,
+    ...(requiredResourceClasses.length ? { requiredResourceClasses } : {}),
+  };
 }
 
 /**

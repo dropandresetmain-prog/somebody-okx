@@ -374,6 +374,10 @@ export const objectiveRecord = v.object({
               v.literal("deliverable"),
               v.literal("input"),
             ),
+            // Additive, APPLICATION-OWNED resource-class need bound onto the
+            // same targeted Requirement (see AuthorizedPurposePolicy in
+            // lib/management/types.ts). Absent = no added need.
+            requiredResourceClasses: v.optional(v.array(v.string())),
           }),
           v.null(),
         ),
