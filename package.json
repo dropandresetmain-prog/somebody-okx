@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts",
     "m3:seller": "tsx scripts/m3-controlled-seller.ts",
+    "m3:local-demo-driver": "tsx --env-file=.env.local scripts/local-demo-m3-driver-watcher.ts",
     "typecheck:convex": "tsc -p convex/tsconfig.json --noEmit",
     "convex:dev": "convex dev --env-file .env.local",
     "convex:dev:local": "convex dev --env-file .env.local",

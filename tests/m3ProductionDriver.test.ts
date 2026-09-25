@@ -166,8 +166,9 @@ test("R3: the production CLI has no adapter override and its execute/observe pat
   const source = fs.readFileSync(path.resolve(process.cwd(), "scripts/m4-m3-production-driver.ts"), "utf8");
   assert.doesNotMatch(source, /adapter-module/);
   assert.doesNotMatch(source, /await import\(/);
-  assert.match(source, /mode === "observe" \|\| mode === "execute"\) supplied = createLocalProductionComposition\(applicationRoot\)/);
-  assert.match(source, /tests inject dependencies[\s\S]{0,100}library driver seam/);
+  assert.match(source, /createLocalProductionComposition\(applicationRoot\)/);
+  assert.match(source, /createM3DriverConvexBridge/);
+  assert.match(source, /advanceLocalDemoM3Intent/);
 });
 
 test("D4-D6/D20: durable confirmation is purchase-and-approval-bound; payment_attempted persists before ambiguous executor return", async () => {

@@ -246,6 +246,27 @@ describe("X Layer settlement readback", () => {
     assert.deepEqual(verifyExactXLayerTransaction(transaction(), expected), { state: "valid" });
   });
 
+  it("accepts the 9-arg transferWithAuthorization overload when viem decodes v as a number", () => {
+    const r = `0x${"22".repeat(32)}` as `0x${string}`;
+    const s = `0x${"33".repeat(32)}` as `0x${string}`;
+    const input = encodeFunctionData({
+      abi: eip3009ABI,
+      functionName: "transferWithAuthorization",
+      args: [
+        payer as `0x${string}`,
+        payTo as `0x${string}`,
+        10000n,
+        900n,
+        1100n,
+        authorizationNonce,
+        27,
+        r,
+        s,
+      ],
+    });
+    assert.deepEqual(verifyExactXLayerTransaction(transaction({ input }), expected), { state: "valid" });
+  });
+
   it("rejects another purchase authorization nonce", () => {
     const purchaseB = {
       ...expected,
