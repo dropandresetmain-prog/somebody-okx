@@ -199,207 +199,86 @@ function main() {
 
   // Never drop the final frame.
   const finalFrame = kept[kept.length - 1]!;
+  const originalDurationMs = finalFrame.elapsedMs;
 
-  // Prune toward ~18-35 frames: always keep first + last; among the rest,
-  // keep every frame that represents a durable product beat transition
-  // (status change, attention appears/disappears, acquisition status change,
-  // deliverable version bump, or activity-count change) and otherwise thin
-  // evenly to stay in the target range.
+  // ── Timing: milestone frames → replay time ───────────────────────────────
+  // Milestone frames are DETECTED in the projected frames (never hand-placed
+  // indices) and pinned to replay times. Frames between two milestones are
+  // spaced evenly by order, so real idle waits (founder approval, the payment
+  // round trip) compress while every real state still gets readable time.
+  const firstIdx = (pred: (f: DemoFrame) => boolean): number => kept.findIndex(pred);
+  const attentionIdx = firstIdx((f) => f.workspace.attention !== null);
+  const approvedIdx =
+    attentionIdx < 0 ? -1 : kept.findIndex((f, i) => i > attentionIdx && f.workspace.attention === null);
+  const proposedIdx = firstIdx((f) => f.workspace.acquisitions.length > 0);
+  const acquiringIdx = firstIdx((f) => f.workspace.acquisitions.some((a) => a.status === "in_progress"));
+  const resultIdx = firstIdx((f) => f.workspace.acquisitions.some((a) => a.status === "result_received"));
+  const verifiedIdx = firstIdx((f) => f.workspace.acquisitions.some((a) => a.status === "verified"));
+  const workingIdx = firstIdx((f) => f.workspace.objective.status === "working");
+  const completedIdx = firstIdx((f) => f.workspace.objective.status === "completed");
+
+  // [kept-frame index, replay ms]; missing milestones are skipped.
+  const anchorPairs: Array<[number, number]> = [
+    [0, 0],
+    [workingIdx, 8_000], // outcome defined → internal MAKE
+    [attentionIdx, 50_000], // MAKE, evidence, sourcing → Needs You
+    [approvedIdx, 61_000], // hold Needs You ~11 s → approval recorded
+    [proposedIdx, 65_000], // BUY selected on the OKX market
+    [acquiringIdx, 68_000], // wallet, x402, X Layer Testnet
+    [resultIdx, 84_000], // external result arrives
+    [verifiedIdx, 91_000], // result verified → MAKE resumes
+    [completedIdx, 114_000], // resumed MAKE → completion
+  ];
+  const anchors = anchorPairs
+    .filter(([idx]) => idx >= 0)
+    .filter((a, i, arr) => i === 0 || a[0] > arr[i - 1]![0]);
+  const replayAt: number[] = new Array(kept.length).fill(0);
+  for (let k = 1; k < anchors.length; k++) {
+    const [i0, d0] = anchors[k - 1]!;
+    const [i1, d1] = anchors[k]!;
+    for (let i = i0; i <= i1; i++) replayAt[i] = Math.round(d0 + ((i - i0) / (i1 - i0)) * (d1 - d0));
+  }
+  const lastAnchor = anchors[anchors.length - 1]!;
+  for (let i = lastAnchor[0] + 1; i < kept.length; i++) replayAt[i] = lastAnchor[1];
+  const toReplayIdx = (i: number): number => replayAt[i]!;
+
+  // ── Selection: readable spacing, never losing a product beat ─────────────
+  // A frame is a beat when objective status, attention, an acquisition status
+  // or a deliverable version changes. Beats are always kept; other frames are
+  // kept only when at least MIN_GAP_MS of replay time has passed.
   function beatSignature(f: DemoFrame): string {
     const w = f.workspace;
     return JSON.stringify({
       status: w.objective.status,
       attention: w.attention ? w.attention.type : null,
       acquisitions: w.acquisitions.map((a) => a.status),
-      deliverableVersions: w.deliverables.map((d) => d.version),
-      somebodyNowState: w.somebodyNow.state,
+      deliverableVersions: w.deliverables.map((d) => `${d.version}:${d.status}`),
     });
   }
-
-  const beatChangeIdx = new Set<number>([0, kept.length - 1]);
-  let prevSig = beatSignature(kept[0]!);
+  const MIN_GAP_MS = 2_400;
+  const chosen: number[] = [0];
   for (let i = 1; i < kept.length; i++) {
-    const sig = beatSignature(kept[i]!);
-    if (sig !== prevSig) {
-      beatChangeIdx.add(i);
-      prevSig = sig;
-    }
+    const isBeat = beatSignature(kept[i]!) !== beatSignature(kept[i - 1]!) || i === kept.length - 1;
+    const gap = toReplayIdx(i) - toReplayIdx(chosen[chosen.length - 1]!);
+    if (isBeat || gap >= MIN_GAP_MS) chosen.push(i);
   }
-
-  // These indices are never dropped by downsampling: they carry the
-  // must-cover beats (attention/needs-you, an acquisition, a status change,
-  // or a deliverable version bump) — narrow real-time windows like the
-  // founder-approval attention frame must survive TARGET_MAX pruning.
-  const forced = new Set<number>(beatChangeIdx);
-  kept.forEach((f, i) => {
-    if (f.workspace.attention !== null) forced.add(i);
-    if (f.workspace.acquisitions.length > 0) forced.add(i);
-  });
-
-  const TARGET_MIN = 18;
-  const TARGET_MAX = 35;
-  let indices = [...beatChangeIdx].sort((a, b) => a - b);
-
-  if (indices.length < TARGET_MIN) {
-    // Fill in with evenly spaced additional frames from the full kept set.
-    const need = TARGET_MIN - indices.length;
-    const existing = new Set(indices);
-    const gaps: number[] = [];
-    for (let i = 0; i < kept.length; i++) if (!existing.has(i)) gaps.push(i);
-    const stride = Math.max(1, Math.floor(gaps.length / Math.max(1, need)));
-    for (let i = 0; i < gaps.length && indices.length < TARGET_MIN; i += stride) {
-      indices.push(gaps[i]!);
-    }
-    indices = [...new Set(indices)].sort((a, b) => a - b);
-  }
-
-  if (indices.length > TARGET_MAX) {
-    // Always keep forced indices (first, last, and any beat-critical frame).
-    // Fill remaining budget with an even subsample of the rest.
-    const first = indices[0]!;
-    const last = indices[indices.length - 1]!;
-    const mustKeep = [...new Set([first, last, ...indices.filter((i) => forced.has(i))])].sort((a, b) => a - b);
-    const remaining = TARGET_MAX - mustKeep.length;
-    if (remaining > 0) {
-      const middle = indices.filter((i) => !mustKeep.includes(i));
-      const stride = middle.length / remaining;
-      const sampled: number[] = [];
-      for (let i = 0; i < remaining && i < middle.length; i++) {
-        sampled.push(middle[Math.min(middle.length - 1, Math.round(i * stride))]!);
-      }
-      indices = [...new Set([...mustKeep, ...sampled])].sort((a, b) => a - b);
-    } else {
-      indices = mustKeep;
-    }
-  }
-
-  const frames = indices.map((i) => kept[i]!);
-  if (frames[frames.length - 1] !== finalFrame) frames.push(finalFrame);
-
-  // ── Timing ────────────────────────────────────────────────────────────
-  const originalDurationMs = finalFrame.elapsedMs;
+  const frames = chosen.map((i) => kept[i]!);
   const originalSequence: DemoSequenceEntry[] = frames.map((f, i) => ({ frameIndex: i, atMs: f.elapsedMs }));
-
-  // Classify each kept frame into a product "beat" (content-driven, not a
-  // hardcoded index), then place beats into the target demo windows from
-  // the task brief. Classification is monotonic: once the story has moved
-  // past a beat it never regresses to an earlier one, matching the
-  // frames' chronological order.
-  type Beat = {
-    key: string;
-    test: (f: DemoFrame) => boolean;
-    windowMs: [number, number];
-  };
-  // Listed most-specific-first: each frame gets the HIGHEST-priority beat
-  // whose test matches, so a frame that (chronologically) also happens to
-  // satisfy an earlier, more generic test still lands in its real beat.
-  const beats: Beat[] = [
-    {
-      key: "received_interpreted",
-      test: (f) => f.workspace.objective.status === "starting" || f.workspace.somebodyNow.state === "interpreting",
-      windowMs: [0, 10_000],
-    },
-    {
-      key: "internal_make",
-      test: (f) => f.workspace.objective.status === "working" && f.workspace.attention === null && f.workspace.acquisitions.length === 0,
-      windowMs: [10_000, 45_000],
-    },
-    {
-      key: "post_approval_wait",
-      test: (f) => f.workspace.objective.status === "waiting" && f.workspace.acquisitions.length === 0,
-      windowMs: [68_000, 72_000],
-    },
-    {
-      key: "needs_you",
-      test: (f) => f.workspace.attention !== null,
-      windowMs: [58_000, 68_000],
-    },
-    {
-      key: "okx_payment_xlayer",
-      test: (f) => f.workspace.acquisitions.some((a) => a.status === "proposed" || a.status === "in_progress"),
-      windowMs: [72_000, 95_000],
-    },
-    {
-      key: "result_verification",
-      test: (f) =>
-        f.workspace.acquisitions.some((a) => a.status === "result_received") ||
-        (f.workspace.somebodyNow.state === "verifying" && f.workspace.deliverables.length === 0),
-      windowMs: [95_000, 105_000],
-    },
-    {
-      key: "resume_make",
-      test: (f) => f.workspace.acquisitions.some((a) => a.status === "verified") && f.workspace.objective.status !== "completed",
-      windowMs: [105_000, 112_000],
-    },
-    {
-      key: "final_complete",
-      test: (f) => f.workspace.objective.status === "completed",
-      windowMs: [113_000, 120_000],
-    },
-  ];
-  // Reorder by priority (test specificity), highest-priority last so the
-  // backward scan below finds the most specific match first.
-  const priorityOrder = [
-    "received_interpreted",
-    "internal_make",
-    "needs_you",
-    "post_approval_wait",
-    "okx_payment_xlayer",
-    "result_verification",
-    "resume_make",
-    "final_complete",
-  ];
-  const byKey = new Map(beats.map((b) => [b.key, b] as const));
-  const orderedBeats = priorityOrder.map((k) => byKey.get(k)!);
-
-  const frameBeatIdx: number[] = [];
-  let beatPtr = 0;
-  for (const f of frames) {
-    let matched = beatPtr;
-    for (let b = orderedBeats.length - 1; b >= beatPtr; b--) {
-      if (orderedBeats[b]!.test(f)) {
-        matched = b;
-        break;
-      }
-    }
-    beatPtr = matched;
-    frameBeatIdx.push(beatPtr);
-  }
-
-  const foundBeats = new Set(frameBeatIdx.map((b) => orderedBeats[b]!.key));
-
-  const demoAt: number[] = new Array(frames.length).fill(0);
-  for (let b = 0; b < orderedBeats.length; b++) {
-    const idxInBeat: number[] = [];
-    frameBeatIdx.forEach((bi, i) => {
-      if (bi === b) idxInBeat.push(i);
-    });
-    if (idxInBeat.length === 0) continue;
-    const [start, end] = orderedBeats[b]!.windowMs;
-    const span = end - start;
-    idxInBeat.forEach((idx, k) => {
-      const frac = idxInBeat.length === 1 ? 0 : k / idxInBeat.length;
-      demoAt[idx] = Math.round(start + frac * span);
-    });
-  }
-  // Enforce strictly increasing (beats are already ordered; this only
-  // resolves ties/rounding within a beat's window).
+  const demoAt = chosen.map((i) => toReplayIdx(i));
   for (let i = 1; i < demoAt.length; i++) {
-    if (demoAt[i]! <= demoAt[i - 1]!) demoAt[i] = demoAt[i - 1]! + 200;
+    if (demoAt[i]! <= demoAt[i - 1]!) demoAt[i] = demoAt[i - 1]! + 250;
   }
-  // Final frame holds to the end of the sequence (nothing plays after it).
-  const lastIdx = demoAt.length - 1;
-  if (demoAt[lastIdx]! < 112_000) demoAt[lastIdx] = 112_000;
-  if (demoAt[lastIdx]! > 118_000) demoAt[lastIdx] = 118_000;
-  for (let i = demoAt.length - 2; i >= 0; i--) {
-    if (demoAt[i]! >= demoAt[i + 1]!) demoAt[i] = demoAt[i + 1]! - 200;
-  }
-  if (demoAt[0]! < 0) {
-    const shift = -demoAt[0]!;
-    for (let i = 0; i < demoAt.length; i++) demoAt[i] = demoAt[i]! + shift;
-  }
-
+  // The completed frame holds until the end so visitors can read the report.
   const demoSequenceDurationMs = 120_000;
+  const foundBeats = new Set(
+    Object.entries({ workingIdx, attentionIdx, approvedIdx, proposedIdx, acquiringIdx, resultIdx, verifiedIdx, completedIdx })
+      .filter(([, idx]) => idx >= 0)
+      .map(([key]) => key),
+  );
+  const orderedBeats = ["workingIdx", "attentionIdx", "approvedIdx", "proposedIdx", "acquiringIdx", "resultIdx", "verifiedIdx", "completedIdx"].map(
+    (key) => ({ key }),
+  );
+
   const demoSequence: DemoSequenceEntry[] = frames.map((_, i) => ({ frameIndex: i, atMs: demoAt[i]! }));
 
   // ── Provenance / model ──────────────────────────────────────────────────
