@@ -8,6 +8,8 @@ import type {
 } from "../product/contracts";
 import {
   CREATE_TRANSITION_COPY,
+  START_LOADING_COPY,
+  START_NOT_OPEN_COPY,
   canSubmitCreate,
   productErrorCopy,
   shouldShowSuccessTransition,
@@ -15,7 +17,18 @@ import {
   trimObjectiveRequest,
 } from "./startCreateFlow";
 import type { SomebodyMode } from "../../lib/product/mode";
-import { REPLAY_START_CAPABILITIES, REPLAY_TRANSITION_COPY } from "./startReplayFlow";
+import { founderContactUrl } from "../../lib/product/mode";
+import {
+  REPLAY_COMPOSER_NOTE,
+  REPLAY_CONTACT_LABEL,
+  REPLAY_DISCLOSURE_BODY,
+  REPLAY_DISCLOSURE_TITLE,
+  REPLAY_LIVE_CTA,
+  REPLAY_LIVE_QUESTION,
+  REPLAY_START_CAPABILITIES,
+  REPLAY_TRANSITION_COPY,
+  startSubmitAction,
+} from "./startReplayFlow";
 
 type StartViewProps = {
   /**
@@ -73,7 +86,7 @@ export function StartView({
   );
 
   const handleSubmit = useCallback(async () => {
-    if (replay) {
+    if (startSubmitAction(mode) === "replay") {
       // Replay: start the recorded run. The visitor's text is not sent anywhere.
       if (!onReplayStart || !submittable || pending) return;
       setPending(true);
@@ -122,7 +135,7 @@ export function StartView({
       setError("Objective creation is unavailable right now. Try again in a moment.");
       setPending(false);
     }
-  }, [finishNavigate, onCreate, onReplayStart, pending, replay, request, submittable]);
+  }, [finishNavigate, mode, onCreate, onReplayStart, pending, request, submittable]);
 
   if (transitionObjectiveId) {
     return (
@@ -153,6 +166,25 @@ export function StartView({
         <h1>Give Somebody an objective</h1>
         <p>Describe the result you want. Add context, files or limits only when they matter.</p>
       </div>
+
+      {replay ? (
+        <div className="v6-replay-disclosure" data-replay-disclosure="true">
+          <strong>{REPLAY_DISCLOSURE_TITLE}</strong>
+          <p>{REPLAY_DISCLOSURE_BODY}</p>
+          <p>
+            {founderContactUrl() ? (
+              <>
+                {REPLAY_LIVE_QUESTION}{" "}
+                <a href={founderContactUrl() ?? undefined} data-founder-contact-link="true">
+                  {REPLAY_CONTACT_LABEL}
+                </a>
+              </>
+            ) : (
+              REPLAY_LIVE_CTA
+            )}
+          </p>
+        </div>
+      ) : null}
 
       <div className="v6-start-composer" data-can-create={canCreate ? "true" : "false"}>
         <label className="sr-only" htmlFor="v6-start-request">
@@ -214,25 +246,31 @@ export function StartView({
           </p>
         ) : (
           <p className="muted v6-start-note" role="status">
-            {!loaded
-              ? "Checking what’s available…"
-              : canCreate
-                ? "Somebody will interpret this and get to work."
-                : "Starting a new objective isn’t available yet."}
+            {replay
+              ? REPLAY_COMPOSER_NOTE
+              : !loaded
+                ? START_LOADING_COPY
+                : canCreate
+                  ? "Somebody will interpret this and get to work."
+                  : START_NOT_OPEN_COPY}
           </p>
         )}
       </div>
 
-      <div className="v6-empty-zones">
-        <div className="v6-empty-zone">
-          <strong>Activity</strong>
-          <span>Meaningful moves will appear here once Somebody starts managing the objective.</span>
+      {replay ? null : (
+        <div className="v6-empty-zones">
+          <div className="v6-empty-zone">
+            <strong>Activity</strong>
+            <span>Meaningful moves will appear here once Somebody starts managing the objective.</span>
+          </div>
+          <div className="v6-empty-zone">
+            <strong>Deliverable</strong>
+            <span>Nothing to show yet. Output appears when there is something real to review.</span>
+          </div>
         </div>
-        <div className="v6-empty-zone">
-          <strong>Deliverable</strong>
-          <span>Nothing to show yet. Output appears when there is something real to review.</span>
-        </div>
-      </div>
+      )}
     </div>
   );
 }
+
+export { startSubmitAction };

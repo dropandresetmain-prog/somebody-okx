@@ -11,6 +11,11 @@ export const CREATE_TRANSITION_MS = 800;
 export const CREATE_TRANSITION_COPY = "Somebody is on it.";
 export const CREATE_TRANSITION_ASSET = "/mascot/duo/duo-walking-transparent.webp";
 
+/** Shown while start capabilities are still loading. */
+export const START_LOADING_COPY = "Getting things ready…";
+/** Shown once loaded, when Create Objective is not yet open to this visitor. */
+export const START_NOT_OPEN_COPY = "You'll be able to start a new objective here soon.";
+
 export function trimObjectiveRequest(raw: string): string {
   return raw.trim();
 }
@@ -49,7 +54,7 @@ export function productErrorCopy(error: ProductCommandError): string {
     case "validation_error":
       return error.message || "Describe the objective in 8–2000 characters.";
     case "not_allowed":
-      return error.message || "That option isn’t available yet.";
+      return error.message || "That action isn’t available right now.";
     case "temporarily_unavailable":
       return error.message || "Creation is unavailable right now. Try again in a moment.";
     default:
