@@ -1,0 +1,523 @@
+/**
+ * Build lib/demo/scenarios/okxSubmissionRun.ts from a raw Convex MVCC export
+ * of the founder's completed GPT-6 run (obj_1790305036274_96t4b4), by
+ * reconstructing DB state at each distinct commit timestamp and feeding it
+ * through the REAL product projection (the exact same path Convex uses in
+ * convex/productWorkspace.ts): normalizers from lib/product/sourceAdapter.ts
+ * -> projectObjectiveWorkspace / projectObjectiveSummary / groupObjectiveSummaries
+ * from lib/product/frontendProjection.ts.
+ *
+ * Does NOT invent Activity, acquisitions, artifacts, or completion. Every
+ * frame is a real product-contract snapshot at a real historical instant.
+ *
+ * Usage: npx tsx scripts/demo/build-okx-submission-scenario.ts [evidencePath]
+ */
+
+import { readFileSync, writeFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+import {
+  groupObjectiveSummaries,
+  projectObjectiveSummary,
+  projectObjectiveWorkspace,
+  type ProductSource,
+  type StatusSource,
+} from "../../lib/product/frontendProjection";
+import {
+  normalizeAssignment,
+  normalizeContract,
+  normalizeDecision,
+  normalizeEvidence,
+  normalizeIntent,
+  normalizeObjective,
+  normalizeRequirement,
+  normalizeWorker,
+} from "../../lib/product/sourceAdapter";
+import { normalizeIntegrationEventsForProduct } from "../../lib/integration/productProjection";
+import type { ObjectiveListView, ObjectiveWorkspaceView } from "../../app/product/contracts";
+import type { DemoFrame, DemoScenario, DemoSequenceEntry } from "../../lib/demo/playback";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const ROOT = resolve(__dirname, "../..");
+const DEFAULT_EVIDENCE =
+  "C:\\Users\\sethl\\AppData\\Local\\Temp\\claude\\C--Dev-somebody-okx\\1d4e5979-7e4f-463c-8b5d-0f1b1f7dfded\\scratchpad\\gpt6-versioned.json";
+const EVIDENCE = resolve(process.argv[2] ?? DEFAULT_EVIDENCE);
+const OUT = join(ROOT, "lib/demo/scenarios/okxSubmissionRun.ts");
+
+const OBJ = "obj_1790305036274_96t4b4";
+const CANDIDATE_SHA = "83db29a";
+const MODEL = "openai/gpt-6-luna";
+
+// ── Evidence export shape ────────────────────────────────────────────────
+type Version = { ts_ms: number; deleted: boolean; doc: Record<string, unknown> };
+type DocHistory = { id: string; versions: Version[] };
+type EvidenceFile = {
+  objectiveKey: string;
+  tables: Record<string, DocHistory[]>;
+};
+
+function loadEvidence(): EvidenceFile {
+  return JSON.parse(readFileSync(EVIDENCE, "utf8")) as EvidenceFile;
+}
+
+/** Reconstruct table state at instant T: latest version with ts_ms <= T, dropped if deleted/absent. */
+function tableAt(ev: EvidenceFile, table: string, until: number): Record<string, unknown>[] {
+  const docs = ev.tables[table] ?? [];
+  const out: Record<string, unknown>[] = [];
+  for (const doc of docs) {
+    let best: Version | null = null;
+    for (const v of doc.versions) {
+      if (v.ts_ms <= until && (best === null || v.ts_ms > best.ts_ms)) best = v;
+    }
+    if (best && !best.deleted) out.push(best.doc);
+  }
+  return out;
+}
+
+function allDistinctTimestamps(ev: EvidenceFile): number[] {
+  const set = new Set<number>();
+  for (const table of Object.values(ev.tables)) {
+    for (const doc of table) {
+      for (const v of doc.versions) set.add(v.ts_ms);
+    }
+  }
+  return [...set].sort((a, b) => a - b);
+}
+
+type AnyRow = Record<string, unknown>;
+const dataOf = (row: unknown): AnyRow => ((row as AnyRow).data ?? {}) as AnyRow;
+
+/** Mirrors convex/productWorkspace.ts trimDecisionsForStatus exactly (byte-for-byte logic, duplicated
+ * here because that module also imports the Convex query wrapper and cannot run outside Convex). */
+const STATUS_DECISION_SCAN_CAP = 48;
+function trimDecisionsForStatus(rows: AnyRow[]): AnyRow[] {
+  if (rows.length <= STATUS_DECISION_SCAN_CAP) return rows;
+  return [...rows]
+    .sort((a, b) => (numOf(dataOf(b), "at") ?? 0) - (numOf(dataOf(a), "at") ?? 0))
+    .slice(0, STATUS_DECISION_SCAN_CAP);
+}
+function numOf(data: AnyRow, key: string): number | undefined {
+  const value = data[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+/** Mirrors convex/productWorkspace.ts loadStatusSource, over reconstructed-at-T rows. */
+function buildStatusSource(ev: EvidenceFile, until: number): StatusSource | null {
+  const objectiveRows = tableAt(ev, "objectives", until).filter((row) => dataOf(row).key === OBJ);
+  if (objectiveRows.length === 0) return null;
+  const objective = normalizeObjective(dataOf(objectiveRows[0]));
+  const key = objective.key;
+
+  const contractRows = tableAt(ev, "outcomeContracts", until).filter((row) => row.objectiveKey === key);
+  const requirementRows = tableAt(ev, "requirements", until).filter((row) => row.objectiveKey === key);
+  const assignmentRows = tableAt(ev, "assignments", until).filter((row) => row.objectiveKey === key);
+  const decisionRows = tableAt(ev, "managerialDecisions", until).filter((row) => row.objectiveKey === key);
+  const intentRows = tableAt(ev, "executionIntents", until).filter((row) => row.objectiveKey === key);
+
+  return {
+    objective,
+    contracts: contractRows.map((row) => normalizeContract(dataOf(row))),
+    requirements: requirementRows.map((row) => normalizeRequirement(dataOf(row))),
+    assignments: assignmentRows.map((row) => normalizeAssignment(dataOf(row))),
+    decisions: trimDecisionsForStatus(decisionRows as AnyRow[]).map((row) => normalizeDecision(dataOf(row))),
+    intents: intentRows.map((row) => normalizeIntent(dataOf(row))),
+  };
+}
+
+/** Mirrors convex/productWorkspace.ts getObjectiveWorkspaceV1's extra reads, over reconstructed-at-T rows. */
+function buildProductSource(ev: EvidenceFile, until: number): ProductSource | null {
+  const base = buildStatusSource(ev, until);
+  if (!base) return null;
+
+  const evidenceRows = tableAt(ev, "evidence", until).filter((row) => row.objectiveKey === OBJ);
+  const workerKeys = [...new Set(base.assignments.map((row) => row.workerKey))];
+  const workerRows = tableAt(ev, "workers", until).filter((row) => workerKeys.includes(row.workerKey as string));
+
+  const objectiveRows = tableAt(ev, "objectives", until).filter((row) => dataOf(row).key === OBJ);
+  const objectiveData = dataOf(objectiveRows[0]);
+
+  return {
+    ...base,
+    workers: workerRows.map((row) => normalizeWorker(dataOf(row))),
+    evidence: evidenceRows.map((row) => normalizeEvidence({ evidenceId: row.evidenceId, data: row.data })),
+    integrationEvents: normalizeIntegrationEventsForProduct(objectiveData.integrationEvents),
+  };
+}
+
+function buildFrameAt(ev: EvidenceFile, until: number, t0: number): DemoFrame | null {
+  const source = buildProductSource(ev, until);
+  if (!source) return null;
+  const workspace = projectObjectiveWorkspace(source, { now: until });
+  const summary = projectObjectiveSummary(source);
+  const objectiveList = groupObjectiveSummaries([summary]);
+  return { elapsedMs: Math.round(until - t0), objectiveList, workspace };
+}
+
+// ── Volatile-field-stripped comparison, to find materially-changed frames ──
+const VOLATILE_KEYS = new Set(["updatedAt", "generatedAt", "lastProgressAt", "at", "occurredAt", "observedAt"]);
+function stripVolatile(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stripVolatile);
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      if (VOLATILE_KEYS.has(k)) continue;
+      out[k] = stripVolatile(v);
+    }
+    return out;
+  }
+  return value;
+}
+function materiallyDifferent(a: DemoFrame, b: DemoFrame): boolean {
+  return JSON.stringify(stripVolatile(a.workspace)) !== JSON.stringify(stripVolatile(b.workspace));
+}
+
+// ── Build all candidate frames, keep only materially-changed ones ─────────
+function main() {
+  const ev = loadEvidence();
+  if (ev.objectiveKey !== OBJ) {
+    throw new Error(`Evidence objectiveKey mismatch: expected ${OBJ}, got ${ev.objectiveKey}`);
+  }
+
+  const timestamps = allDistinctTimestamps(ev);
+  const objVersions = (ev.tables.objectives?.[0]?.versions ?? []).map((v) => v.ts_ms).sort((a, b) => a - b);
+  if (objVersions.length === 0) throw new Error("No objectives versions found in evidence.");
+  const T0 = objVersions[0]!;
+
+  const candidateInstants = [...new Set([T0, ...timestamps.filter((t) => t >= T0)])].sort((a, b) => a - b);
+
+  const kept: DemoFrame[] = [];
+  for (const t of candidateInstants) {
+    const frame = buildFrameAt(ev, t, T0);
+    if (!frame) continue;
+    if (kept.length === 0 || materiallyDifferent(kept[kept.length - 1]!, frame)) {
+      kept.push(frame);
+    }
+  }
+
+  if (kept.length === 0) throw new Error("No frames reconstructed from evidence.");
+
+  // Never drop the final frame.
+  const finalFrame = kept[kept.length - 1]!;
+
+  // Prune toward ~18-35 frames: always keep first + last; among the rest,
+  // keep every frame that represents a durable product beat transition
+  // (status change, attention appears/disappears, acquisition status change,
+  // deliverable version bump, or activity-count change) and otherwise thin
+  // evenly to stay in the target range.
+  function beatSignature(f: DemoFrame): string {
+    const w = f.workspace;
+    return JSON.stringify({
+      status: w.objective.status,
+      attention: w.attention ? w.attention.type : null,
+      acquisitions: w.acquisitions.map((a) => a.status),
+      deliverableVersions: w.deliverables.map((d) => d.version),
+      somebodyNowState: w.somebodyNow.state,
+    });
+  }
+
+  const beatChangeIdx = new Set<number>([0, kept.length - 1]);
+  let prevSig = beatSignature(kept[0]!);
+  for (let i = 1; i < kept.length; i++) {
+    const sig = beatSignature(kept[i]!);
+    if (sig !== prevSig) {
+      beatChangeIdx.add(i);
+      prevSig = sig;
+    }
+  }
+
+  // These indices are never dropped by downsampling: they carry the
+  // must-cover beats (attention/needs-you, an acquisition, a status change,
+  // or a deliverable version bump) — narrow real-time windows like the
+  // founder-approval attention frame must survive TARGET_MAX pruning.
+  const forced = new Set<number>(beatChangeIdx);
+  kept.forEach((f, i) => {
+    if (f.workspace.attention !== null) forced.add(i);
+    if (f.workspace.acquisitions.length > 0) forced.add(i);
+  });
+
+  const TARGET_MIN = 18;
+  const TARGET_MAX = 35;
+  let indices = [...beatChangeIdx].sort((a, b) => a - b);
+
+  if (indices.length < TARGET_MIN) {
+    // Fill in with evenly spaced additional frames from the full kept set.
+    const need = TARGET_MIN - indices.length;
+    const existing = new Set(indices);
+    const gaps: number[] = [];
+    for (let i = 0; i < kept.length; i++) if (!existing.has(i)) gaps.push(i);
+    const stride = Math.max(1, Math.floor(gaps.length / Math.max(1, need)));
+    for (let i = 0; i < gaps.length && indices.length < TARGET_MIN; i += stride) {
+      indices.push(gaps[i]!);
+    }
+    indices = [...new Set(indices)].sort((a, b) => a - b);
+  }
+
+  if (indices.length > TARGET_MAX) {
+    // Always keep forced indices (first, last, and any beat-critical frame).
+    // Fill remaining budget with an even subsample of the rest.
+    const first = indices[0]!;
+    const last = indices[indices.length - 1]!;
+    const mustKeep = [...new Set([first, last, ...indices.filter((i) => forced.has(i))])].sort((a, b) => a - b);
+    const remaining = TARGET_MAX - mustKeep.length;
+    if (remaining > 0) {
+      const middle = indices.filter((i) => !mustKeep.includes(i));
+      const stride = middle.length / remaining;
+      const sampled: number[] = [];
+      for (let i = 0; i < remaining && i < middle.length; i++) {
+        sampled.push(middle[Math.min(middle.length - 1, Math.round(i * stride))]!);
+      }
+      indices = [...new Set([...mustKeep, ...sampled])].sort((a, b) => a - b);
+    } else {
+      indices = mustKeep;
+    }
+  }
+
+  const frames = indices.map((i) => kept[i]!);
+  if (frames[frames.length - 1] !== finalFrame) frames.push(finalFrame);
+
+  // ── Timing ────────────────────────────────────────────────────────────
+  const originalDurationMs = finalFrame.elapsedMs;
+  const originalSequence: DemoSequenceEntry[] = frames.map((f, i) => ({ frameIndex: i, atMs: f.elapsedMs }));
+
+  // Classify each kept frame into a product "beat" (content-driven, not a
+  // hardcoded index), then place beats into the target demo windows from
+  // the task brief. Classification is monotonic: once the story has moved
+  // past a beat it never regresses to an earlier one, matching the
+  // frames' chronological order.
+  type Beat = {
+    key: string;
+    test: (f: DemoFrame) => boolean;
+    windowMs: [number, number];
+  };
+  // Listed most-specific-first: each frame gets the HIGHEST-priority beat
+  // whose test matches, so a frame that (chronologically) also happens to
+  // satisfy an earlier, more generic test still lands in its real beat.
+  const beats: Beat[] = [
+    {
+      key: "received_interpreted",
+      test: (f) => f.workspace.objective.status === "starting" || f.workspace.somebodyNow.state === "interpreting",
+      windowMs: [0, 10_000],
+    },
+    {
+      key: "internal_make",
+      test: (f) => f.workspace.objective.status === "working" && f.workspace.attention === null && f.workspace.acquisitions.length === 0,
+      windowMs: [10_000, 45_000],
+    },
+    {
+      key: "post_approval_wait",
+      test: (f) => f.workspace.objective.status === "waiting" && f.workspace.acquisitions.length === 0,
+      windowMs: [68_000, 72_000],
+    },
+    {
+      key: "needs_you",
+      test: (f) => f.workspace.attention !== null,
+      windowMs: [58_000, 68_000],
+    },
+    {
+      key: "okx_payment_xlayer",
+      test: (f) => f.workspace.acquisitions.some((a) => a.status === "proposed" || a.status === "in_progress"),
+      windowMs: [72_000, 95_000],
+    },
+    {
+      key: "result_verification",
+      test: (f) =>
+        f.workspace.acquisitions.some((a) => a.status === "result_received") ||
+        (f.workspace.somebodyNow.state === "verifying" && f.workspace.deliverables.length === 0),
+      windowMs: [95_000, 105_000],
+    },
+    {
+      key: "resume_make",
+      test: (f) => f.workspace.acquisitions.some((a) => a.status === "verified") && f.workspace.objective.status !== "completed",
+      windowMs: [105_000, 112_000],
+    },
+    {
+      key: "final_complete",
+      test: (f) => f.workspace.objective.status === "completed",
+      windowMs: [113_000, 120_000],
+    },
+  ];
+  // Reorder by priority (test specificity), highest-priority last so the
+  // backward scan below finds the most specific match first.
+  const priorityOrder = [
+    "received_interpreted",
+    "internal_make",
+    "needs_you",
+    "post_approval_wait",
+    "okx_payment_xlayer",
+    "result_verification",
+    "resume_make",
+    "final_complete",
+  ];
+  const byKey = new Map(beats.map((b) => [b.key, b] as const));
+  const orderedBeats = priorityOrder.map((k) => byKey.get(k)!);
+
+  const frameBeatIdx: number[] = [];
+  let beatPtr = 0;
+  for (const f of frames) {
+    let matched = beatPtr;
+    for (let b = orderedBeats.length - 1; b >= beatPtr; b--) {
+      if (orderedBeats[b]!.test(f)) {
+        matched = b;
+        break;
+      }
+    }
+    beatPtr = matched;
+    frameBeatIdx.push(beatPtr);
+  }
+
+  const foundBeats = new Set(frameBeatIdx.map((b) => orderedBeats[b]!.key));
+
+  const demoAt: number[] = new Array(frames.length).fill(0);
+  for (let b = 0; b < orderedBeats.length; b++) {
+    const idxInBeat: number[] = [];
+    frameBeatIdx.forEach((bi, i) => {
+      if (bi === b) idxInBeat.push(i);
+    });
+    if (idxInBeat.length === 0) continue;
+    const [start, end] = orderedBeats[b]!.windowMs;
+    const span = end - start;
+    idxInBeat.forEach((idx, k) => {
+      const frac = idxInBeat.length === 1 ? 0 : k / idxInBeat.length;
+      demoAt[idx] = Math.round(start + frac * span);
+    });
+  }
+  // Enforce strictly increasing (beats are already ordered; this only
+  // resolves ties/rounding within a beat's window).
+  for (let i = 1; i < demoAt.length; i++) {
+    if (demoAt[i]! <= demoAt[i - 1]!) demoAt[i] = demoAt[i - 1]! + 200;
+  }
+  // Final frame holds to the end of the sequence (nothing plays after it).
+  const lastIdx = demoAt.length - 1;
+  if (demoAt[lastIdx]! < 112_000) demoAt[lastIdx] = 112_000;
+  if (demoAt[lastIdx]! > 118_000) demoAt[lastIdx] = 118_000;
+  for (let i = demoAt.length - 2; i >= 0; i--) {
+    if (demoAt[i]! >= demoAt[i + 1]!) demoAt[i] = demoAt[i + 1]! - 200;
+  }
+  if (demoAt[0]! < 0) {
+    const shift = -demoAt[0]!;
+    for (let i = 0; i < demoAt.length; i++) demoAt[i] = demoAt[i]! + shift;
+  }
+
+  const demoSequenceDurationMs = 120_000;
+  const demoSequence: DemoSequenceEntry[] = frames.map((_, i) => ({ frameIndex: i, atMs: demoAt[i]! }));
+
+  // ── Provenance / model ──────────────────────────────────────────────────
+  const finalObjectiveRows = tableAt(ev, "objectives", finalFrame.elapsedMs + T0).filter(
+    (row) => dataOf(row).key === OBJ,
+  );
+  const finalObjectiveData = dataOf(finalObjectiveRows[0]);
+  const acquisitionResults = (finalObjectiveData.acquisitionResults as AnyRow[] | undefined) ?? [];
+  const acquisitionProvenance =
+    (acquisitionResults[0]?.provenance as "live" | "simulation" | "recorded_replay" | undefined) ?? "simulation";
+
+  const scenario: DemoScenario = {
+    id: "okx-submission-run",
+    label: "Launch-week social media plan",
+    source: {
+      candidateSha: CANDIDATE_SHA,
+      objectiveId: OBJ,
+      model: MODEL,
+      evidencePath: `local Convex history of ${OBJ} (not committed)`,
+      acquisitionProvenance,
+    },
+    originalDurationMs,
+    demoSequenceDurationMs,
+    frames,
+    originalSequence,
+    demoSequence,
+  };
+
+  // ── Sanity checks ────────────────────────────────────────────────────────
+  const last = frames[frames.length - 1]!;
+  if (last.workspace.objective.status !== "completed") {
+    throw new Error(`Final frame status is not completed: ${last.workspace.objective.status}`);
+  }
+  if (last.workspace.deliverables.length === 0) {
+    throw new Error("Final frame has no deliverables.");
+  }
+  if (!last.workspace.deliverables.some((d) => d.status === "verified")) {
+    throw new Error("Final frame has no verified deliverable.");
+  }
+  const hasNeedsYouAttention = frames.some(
+    (f) => f.workspace.attention !== null && f.objectiveList.needsYou.some((row) => row.id === OBJ),
+  );
+  if (!hasNeedsYouAttention) {
+    throw new Error("No frame found with attention + objectiveList.needsYou set.");
+  }
+  const hasAcquisition = frames.some((f) => f.workspace.acquisitions.length > 0);
+  if (!hasAcquisition) {
+    throw new Error("No frame shows an acquisition.");
+  }
+  for (let i = 1; i < demoSequence.length; i++) {
+    if (demoSequence[i]!.atMs <= demoSequence[i - 1]!.atMs) {
+      throw new Error(`demoSequence not strictly increasing at index ${i}`);
+    }
+  }
+  if (demoSequenceDurationMs < 100_000 || demoSequenceDurationMs > 120_000) {
+    throw new Error(`demoSequenceDurationMs out of range: ${demoSequenceDurationMs}`);
+  }
+
+  // ── Write output ─────────────────────────────────────────────────────────
+  const header = `/* eslint-disable */
+/**
+ * AUTO-GENERATED by scripts/demo/build-okx-submission-scenario.ts — do not hand-edit frames.
+ *
+ * Product Contract snapshots for demo playback of the founder's completed
+ * GPT-6 run, pushed through the REAL product projection
+ * (lib/product/frontendProjection.ts + lib/product/sourceAdapter.ts), exactly
+ * as convex/productWorkspace.ts builds them. No invented states, events, or
+ * text.
+ *
+ * Objective: ${OBJ}
+ * Model: ${MODEL}
+ * Candidate SHA: ${CANDIDATE_SHA}
+ * Original duration: ${originalDurationMs}ms
+ * Acquisition provenance (historical truth, preserved as-is): ${acquisitionProvenance}
+ */
+import type { DemoScenario } from "../playback";
+
+export const okxSubmissionRunScenario: DemoScenario = ${JSON.stringify(scenario, null, 2)};
+`;
+  writeFileSync(OUT, header, "utf8");
+
+  // ── Per-frame report ─────────────────────────────────────────────────────
+  console.log(`\nEvidence: ${EVIDENCE}`);
+  console.log(`Candidate instants: ${candidateInstants.length}; materially-distinct kept: ${kept.length}; final frames: ${frames.length}`);
+  console.log(`originalDurationMs=${originalDurationMs}  demoSequenceDurationMs=${demoSequenceDurationMs}`);
+  console.log(`acquisitionProvenance (from run)=${acquisitionProvenance}\n`);
+
+  const rows = frames.map((f, i) => {
+    const w = f.workspace;
+    const bucket = f.objectiveList.needsYou.length ? "needsYou" : f.objectiveList.done.length ? "done" : "inProgress";
+    const attn = w.attention ? `${w.attention.type}${w.attention.context?.amount ? ` $${w.attention.context.amount.amount}` : ""}` : "-";
+    const acq = w.acquisitions.length
+      ? w.acquisitions.map((a) => `${a.status}/${a.provenance ?? "-"}`).join(",")
+      : "-";
+    const deliv = w.deliverables.length
+      ? w.deliverables.map((d) => `v${d.version}`).join(",")
+      : "-";
+    return {
+      idx: i,
+      atMs: demoSequence[i]!.atMs,
+      realS: (f.elapsedMs / 1000).toFixed(1),
+      status: w.objective.status,
+      bucket,
+      headline: w.somebodyNow.headline.slice(0, 50),
+      attention: attn,
+      acquisitions: acq,
+      deliverables: deliv,
+      activity: w.activity.length,
+    };
+  });
+  console.table(rows);
+
+  console.log("\nBeats found in the real data:");
+  for (const b of orderedBeats) {
+    console.log(`  ${foundBeats.has(b.key) ? "[x]" : "[ ]"} ${b.key}`);
+  }
+
+  console.log(`\nWrote ${OUT}`);
+}
+
+main();

@@ -31,9 +31,10 @@ test("playback mode returns current DemoFrame product contract views", () => {
 test("sidebar list and workspace switch together on the same frame", () => {
   let engine = createIdleEngine(okxSubmissionRunScenario, "demo_sequence", 0);
   engine = engineRun(engine, 0);
-  // Advance to completed frame (last demo sequence entry at 26s).
-  engine = engineTick(engine, 26_000);
-  const snap = engineSnapshot(engine, 26_000);
+  // Advance to the completed frame (last demo sequence entry, end of duration).
+  const endMs = okxSubmissionRunScenario.demoSequenceDurationMs;
+  engine = engineTick(engine, endMs);
+  const snap = engineSnapshot(engine, endMs);
   assert.ok(snap.currentFrame);
   const { objectiveList, workspace } = snap.currentFrame!;
   assert.equal(workspace.objective.status, "completed");
@@ -68,11 +69,10 @@ test("scenario frames are product-contract shaped (no raw Requirement/Intent arr
   }
 });
 
-test("historical acquisition provenance stays simulation (not recorded_replay)", () => {
-  assert.equal(okxSubmissionRunScenario.source.acquisitionProvenance, "simulation");
+test("historical acquisition provenance is preserved as recorded (not relabelled to recorded_replay)", () => {
   const final = okxSubmissionRunScenario.frames[okxSubmissionRunScenario.frames.length - 1]!;
   const acq = final.workspace.acquisitions.find((row) => row.provenance);
   assert.ok(acq);
-  assert.equal(acq!.provenance, "simulation");
+  assert.equal(acq!.provenance, okxSubmissionRunScenario.source.acquisitionProvenance);
   assert.notEqual(acq!.provenance, "recorded_replay");
 });
