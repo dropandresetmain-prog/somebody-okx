@@ -96,6 +96,26 @@ npm run convex:dev:local
 npm run dev:local
 ```
 
+### Founder testnet demo (BUY / X Layer)
+
+When `SOMEBODY_EXECUTION_MODE=testnet_demo` and `M4_M3_EXECUTION_ENABLED=true`
+on the local deployment (see `.env.example`), Product Attention spend approval
+only authorizes payment — the **Node M4×M3 driver** still signs, submits, and
+observes settlement. Run four processes:
+
+```bash
+npm run convex:dev:local    # terminal 1
+npm run dev:local           # terminal 2
+npm run m3:seller           # terminal 3 — before any BUY
+npm run m3:local-demo-driver  # terminal 4 — auto advance after UI approve
+```
+
+The watcher polls `m3Driver.localDemoDriverCandidate` and runs one bounded
+`advance` step per tick (`prepare` → `preview` → `confirm` → `execute` →
+`observe`). It is **local-only** (Convex returns no candidate unless
+`SOMEBODY_EXECUTION_MODE=testnet_demo` on that deployment). Cloud and
+`disabled` modes are unchanged.
+
 `npm run dev` and `npm run convex:dev` are unqualified aliases for the same
 thing — both now resolve to LOCAL by construction (`convex:dev` passes
 `--env-file .env.local` explicitly; `dev` relies on Next's `.env.local`

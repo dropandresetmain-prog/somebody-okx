@@ -123,6 +123,113 @@ export const snapshot = query({
   },
 });
 
+const TESTNET_DEMO_SERVICE_IDS = new Set(
+  TESTNET_DEMO_OFFERINGS.map((offering) => offering.serviceId),
+);
+
+function founderGrantCoversIntent(
+  intent: ExecutionIntent,
+  grant: FounderSpendGrant | undefined,
+): boolean {
+  const approvalId = intent.terms.approvalId;
+  if (approvalId === null) {
+    return intent.terms.priceUsd === null || intent.terms.priceUsd <= 0;
+  }
+  return (
+    grant?.approvalId === approvalId &&
+    grant.objectiveKey === intent.objectiveKey &&
+    grant.revokedAt === null &&
+    intent.terms.priceUsd !== null &&
+    grant.limitUsd >= intent.terms.priceUsd
+  );
+}
+
+/**
+ * LOCAL testnet_demo only: one intent that still needs the Node M4×M3 driver.
+ * The watcher polls this; cloud / disabled modes return null.
+ */
+export const localDemoDriverCandidate = query({
+  args: { driverToken: v.string() },
+  returns: v.union(
+    v.null(),
+    v.object({
+      intentId: v.string(),
+      objectiveKey: v.string(),
+      intentState: v.string(),
+      phase: v.string(),
+      updatedAt: v.number(),
+    }),
+  ),
+  handler: async (ctx, args) => {
+    authorize(args.driverToken);
+    if (process.env.SOMEBODY_EXECUTION_MODE !== "testnet_demo") return null;
+
+    const rows = await ctx.db.query("executionIntents").collect();
+    const candidates: Array<{
+      intent: ExecutionIntent;
+      phase: string;
+      priority: number;
+    }> = [];
+
+    for (const row of rows) {
+      const intent = row.data as ExecutionIntent;
+      if (intent.kind !== "external_acquisition") continue;
+      const serviceId = intent.target.serviceId?.trim() ?? "";
+      if (!serviceId || !TESTNET_DEMO_SERVICE_IDS.has(serviceId)) continue;
+      if (intent.state === "verified" || intent.state === "failed") continue;
+
+      const objective = await ctx.db
+        .query("objectives")
+        .withIndex("by_key", (q) => q.eq("key", intent.objectiveKey))
+        .unique();
+      if (!objective) continue;
+      const objectiveState = (objective.data as { state?: string }).state;
+      if (objectiveState !== "executing" && objectiveState !== "escalated") continue;
+
+      const approvalId = intent.terms.approvalId;
+      const grantRow =
+        approvalId === null
+          ? null
+          : await ctx.db
+              .query("founderSpendGrants")
+              .withIndex("by_approvalId", (q) => q.eq("approvalId", approvalId))
+              .unique();
+      const grant = grantRow?.data as FounderSpendGrant | undefined;
+      if (!founderGrantCoversIntent(intent, grant)) continue;
+
+      let phase: string | null = null;
+      let priority = 9;
+      if (intent.state === "authorized" || intent.state === "awaiting_m3") {
+        phase = "awaiting_submission";
+        priority = 0;
+      } else if (intent.state === "handed_off" || intent.state === "result_recorded") {
+        phase = "awaiting_observation";
+        priority = 1;
+      } else if (intent.state === "reconciliation_required") {
+        phase = "reconciliation_required";
+        priority = 2;
+      }
+      if (!phase) continue;
+      candidates.push({ intent, phase, priority });
+    }
+
+    candidates.sort(
+      (left, right) =>
+        left.priority - right.priority ||
+        left.intent.updatedAt - right.intent.updatedAt,
+    );
+    const pick = candidates[0];
+    if (!pick) return null;
+    return {
+      intentId: pick.intent.intentId,
+      objectiveKey: pick.intent.objectiveKey,
+      intentState: pick.intent.state,
+      phase: pick.phase,
+      updatedAt: pick.intent.updatedAt,
+    };
+  },
+});
+
 /**
  * Applies only a named M3 fact through M4's existing intent kernel. The local
  * driver cannot submit an arbitrary `verified` row. A stale intent may record

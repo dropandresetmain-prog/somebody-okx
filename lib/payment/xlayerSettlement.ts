@@ -138,6 +138,7 @@ function blockNumberFrom(receipt: TransactionReceipt): string | undefined {
 
 function unsignedIntegerFrom(value: unknown): bigint | null {
   if (typeof value === "bigint") return value >= 0n ? value : null;
+  if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) return BigInt(value);
   if (typeof value !== "string" || !/^(?:0x[0-9a-f]+|[0-9]+)$/i.test(value)) return null;
   try {
     const parsed = BigInt(value);
