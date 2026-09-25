@@ -43,6 +43,7 @@ function nowMs(): number {
 
 /** Short beat between arriving in the workspace and the first frame advancing. */
 export const REPLAY_START_DELAY_MS = 600;
+const REPLAY_TICK_MS = 250;
 
 export function ReplayPlaybackProvider({
   children,
@@ -67,19 +68,16 @@ export function ReplayPlaybackProvider({
     if (autoStart && engineRef.current.phase === "idle") apply(engineRun(engineRef.current, nowMs()));
   }, [autoStart, apply]);
 
-  // Monotonic rAF tick while delaying/playing — never blocks the UI thread.
+  // Coarse tick while delaying/playing. Frames change every few seconds, so
+  // publishing ~4×/s keeps the progress indicator smooth without re-rendering
+  // the workspace on every animation frame.
   useEffect(() => {
     if (snap.phase !== "delaying" && snap.phase !== "playing") return;
-    let raf = 0;
-    const loop = () => {
+    const timer = setInterval(() => {
       engineRef.current = engineTick(engineRef.current, nowMs());
       setSnap(engineSnapshot(engineRef.current, nowMs()));
-      if (engineRef.current.phase === "delaying" || engineRef.current.phase === "playing") {
-        raf = requestAnimationFrame(loop);
-      }
-    };
-    raf = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(raf);
+    }, REPLAY_TICK_MS);
+    return () => clearInterval(timer);
   }, [snap.phase]);
 
   const run = useCallback(() => apply(engineRun(engineRef.current, nowMs())), [apply]);

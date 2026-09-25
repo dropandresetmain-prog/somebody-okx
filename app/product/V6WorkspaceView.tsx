@@ -140,6 +140,7 @@ function MainPane({
             somebodyNow={view.somebodyNow}
             currentWork={view.currentWork}
             deliverables={view.deliverables}
+            clockNow={mode === "replay" ? view.objective.updatedAt : undefined}
           />
           <div className="v6-columns">
             <div className="v6-column-primary">

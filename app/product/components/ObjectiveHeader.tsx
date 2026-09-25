@@ -28,18 +28,26 @@ export function ObjectiveHeader({
   somebodyNow,
   currentWork,
   deliverables = [],
+  clockNow,
 }: {
   objective: ObjectiveView;
   liveness: ObjectiveLivenessView;
   somebodyNow: SomebodyNowView;
   currentWork?: CurrentWorkView | null;
   deliverables?: DeliverableView[];
+  /**
+   * Fixed "now" for recorded frames (public replay): progress age is measured
+   * against the moment the frame was recorded, not today's wall clock.
+   */
+  clockNow?: number;
 }) {
-  const [now, setNow] = useState(() => Date.now());
+  const [wallNow, setWallNow] = useState(() => clockNow ?? Date.now());
   useEffect(() => {
-    const id = window.setInterval(() => setNow(Date.now()), 15_000);
+    if (clockNow !== undefined) return;
+    const id = window.setInterval(() => setWallNow(Date.now()), 15_000);
     return () => window.clearInterval(id);
-  }, []);
+  }, [clockNow]);
+  const now = clockNow ?? wallNow;
 
   const display = presentSomebodyNow(somebodyNow, deliverables);
   const ageMs = Math.max(0, now - liveness.lastProgressAt);
