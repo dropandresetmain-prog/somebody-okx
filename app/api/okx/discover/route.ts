@@ -15,10 +15,13 @@ import { createOkxDiscovery } from "@/lib/market/okxDiscovery";
 import { createLocalOnchainosRunner } from "@/lib/market/okxCliBridge";
 import type { ResourceClass } from "@/lib/workforce/types";
 import type { MarketOffering } from "@/lib/market/discovery";
+import { isReplayMode } from "@/lib/product/mode";
 
 export const runtime = "nodejs";
 
 export async function POST(req: Request) {
+  // The public replay website has no market authority.
+  if (isReplayMode()) return NextResponse.json({ error: "not_found" }, { status: 404 });
   let body: {
     resourceClass?: string;
     taskDescription?: string;
