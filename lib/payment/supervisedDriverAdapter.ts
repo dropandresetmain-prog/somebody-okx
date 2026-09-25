@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   buildQuoteFromChallenge,
+  canonicalMerchantEndpoint,
   OfficialSignOnlyReplayExecutor,
   MERCHANT_REPLAY_TIMEOUT_MS,
   createLocalOnchainosPaymentRunner,
@@ -11,6 +12,7 @@ import {
   type PreviewQuote,
 } from "./onchainOsExecutor";
 import { authorizeFreshExecutionQuote, confirmApprovedPurchaseTerms } from "./supervisedPurchase";
+import { readSomebodyExecutionMode } from "../execution/executionMode";
 import type { PaymentExecutionAuthority } from "./executionAuthority";
 import type { PaymentExecutor, PaymentSubmissionResult, PurchaseRecord, RailConfig } from "./types";
 import { handoffApprovedPurchaseToM3, type M3BuyerRailDeps, type SeamResult } from "../management/m3BuyerRail";
@@ -105,6 +107,66 @@ export function persistFounderConfirmation(input: {
   }
   const preview = input.preview ?? buildQuoteFromChallenge(input.previewBody, `preview_${input.purchase.id}_${input.confirmedAt}`, input.confirmedAt);
   return input.confirmations.put(confirmApprovedPurchaseTerms({ purchase: input.purchase, preview, confirmationId: input.confirmationId, merchantEndpoint: input.merchantEndpoint, confirmedAt: input.confirmedAt }));
+}
+
+/**
+ * LOCAL `testnet_demo` ONLY. The founder's one explicit authorizing action for
+ * this controlled purchase is the earlier Product Attention $0.01 approval —
+ * the automated watcher path never shows the founder a second preview to
+ * confirm. This function's authority basis is that approval PLUS independent
+ * verification, right here, that the live preview is exactly the bounded
+ * controlled Social Media Guru terms: same service, same controlled merchant
+ * endpoint, and (via `confirmApprovedPurchaseTerms`) the same network/asset/
+ * amount/payTo/resource already bound to the approval. Any mismatch throws
+ * before a confirmation is ever persisted.
+ *
+ * Must NOT be called outside `SOMEBODY_EXECUTION_MODE=testnet_demo`, and must
+ * never stand in for `persistFounderConfirmation`'s manual-preview-review
+ * authority on the ordinary supervised path.
+ */
+export function persistLocalTestnetDemoExecutionConsent(input: {
+  intent: ExecutionIntent;
+  purchase: PurchaseRecord;
+  preview: PreviewQuote;
+  confirmationId: string;
+  merchantEndpoint: string;
+  confirmedAt: number;
+  confirmations: ConfirmationLedger;
+  env?: NodeJS.ProcessEnv;
+}): FounderPaymentConfirmation {
+  const env = input.env ?? process.env;
+  if (readSomebodyExecutionMode(env) !== "testnet_demo") {
+    throw new Error(
+      "local Testnet-demo execution consent requires SOMEBODY_EXECUTION_MODE=testnet_demo",
+    );
+  }
+  if (env.M4_M3_EXECUTION_ENABLED !== "true") {
+    throw new Error("local Testnet-demo execution consent requires M4_M3_EXECUTION_ENABLED=true");
+  }
+  const serviceId = input.intent.target?.serviceId?.trim() ?? "";
+  if (serviceId !== SOCIAL_MEDIA_GURU_SERVICE_ID) {
+    throw new Error(
+      `local Testnet-demo execution consent is bounded to ${SOCIAL_MEDIA_GURU_SERVICE_ID}; refusing for ${serviceId || "(no service)"}`,
+    );
+  }
+  const expectedMerchantEndpoint = controlledMerchantEndpointForService(serviceId, env);
+  if (
+    canonicalMerchantEndpoint(input.merchantEndpoint) !==
+    canonicalMerchantEndpoint(expectedMerchantEndpoint)
+  ) {
+    throw new Error(
+      "local Testnet-demo execution consent merchant endpoint does not match the controlled Social Media Guru endpoint",
+    );
+  }
+  return input.confirmations.put(
+    confirmApprovedPurchaseTerms({
+      purchase: input.purchase,
+      preview: input.preview,
+      confirmationId: input.confirmationId,
+      merchantEndpoint: input.merchantEndpoint,
+      confirmedAt: input.confirmedAt,
+    }),
+  );
 }
 
 /**

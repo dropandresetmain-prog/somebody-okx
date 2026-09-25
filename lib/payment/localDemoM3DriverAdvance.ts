@@ -7,7 +7,7 @@ import type { M3BuyerRailDeps } from "../management/m3BuyerRail";
 import { readSomebodyExecutionMode } from "../execution/executionMode";
 import { createLocalPreviewComposition, createLocalProductionComposition } from "./localProductionComposition";
 import { prepareFounderVisiblePreview } from "./supervisedPreparation";
-import { persistFounderConfirmation } from "./supervisedDriverAdapter";
+import { persistLocalTestnetDemoExecutionConsent } from "./supervisedDriverAdapter";
 import { FilePreviewLedger, resolvePreviewLedgerPath } from "./previewLedger";
 import type { M3DriverBridge } from "./m3DriverConvexBridge";
 
@@ -206,7 +206,8 @@ export async function advanceLocalDemoM3Intent(
         detail: "founder-visible preview bound; awaiting confirmation",
       };
     }
-    persistFounderConfirmation({
+    persistLocalTestnetDemoExecutionConsent({
+      intent: snapshot.intent,
       purchase: workingPurchase,
       preview: previews.get(workingPurchase.id)!,
       confirmationId: LOCAL_DEMO_FOUNDER_PAYMENT_CONFIRMATION_ID,
@@ -220,7 +221,7 @@ export async function advanceLocalDemoM3Intent(
       done: false,
       intentState: intent.state,
       purchaseState: workingPurchase.state,
-      detail: "durable founder confirmation recorded (local demo)",
+      detail: "local Testnet-demo execution consent recorded (Product Attention approval basis)",
     };
   }
 
