@@ -1,0 +1,10 @@
+# Never upload local secrets, local Convex state or agent scratch to Vercel.
+.env*
+!.env.example
+.convex/
+.claude/
+.kilo/
+.tmp*
+*.sqlite3
+node_modules/
+.next/
