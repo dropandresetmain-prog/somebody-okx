@@ -1,0 +1,633 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Somebody × OKX — SEQ 5.5 — One Transaction Is Just the Beginning</title>
+<style>
+:root{
+  --paper:#f5f2eb;
+  --ink:#22231f;
+  --ink2:#484943;
+  --muted:#8f8e87;
+  --line:rgba(34,35,31,.13);
+  --line-soft:rgba(34,35,31,.07);
+  --surface:rgba(255,255,255,.50);
+  --surface-strong:rgba(255,255,255,.80);
+  --orange:#e4602a;
+  --black:#11110f;
+  --w:1920px;
+  --h:1080px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#dedad1}
+body{
+  font-family:Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;
+  color:var(--ink)
+}
+.viewport{position:fixed;inset:0;overflow:hidden;background:#dedad1}
+.stage{
+  position:absolute;left:50%;top:50%;width:var(--w);height:var(--h);
+  transform:translate(-50%,-50%) scale(var(--scale,1));transform-origin:center;
+  background:var(--paper);overflow:hidden;isolation:isolate
+}
+.stage:before{
+  content:"";position:absolute;inset:44px;border:1px solid rgba(34,35,31,.055);
+  border-radius:40px;pointer-events:none;z-index:120
+}
+
+/* ---------- PHASE 1: THE PROVEN TRANSACTION ---------- */
+
+.proof-world{
+  position:absolute;inset:0;z-index:24;
+  transition:transform 850ms cubic-bezier(.2,.72,.2,1),opacity 600ms ease
+}
+.today{
+  position:absolute;left:50%;top:188px;
+  transform:translate(-50%,8px);opacity:0;
+  font-size:15px;font-weight:850;letter-spacing:.17em;text-transform:uppercase;color:var(--muted);
+  transition:opacity 450ms ease,transform 550ms ease
+}
+.stage.started .today{opacity:1;transform:translate(-50%,0)}
+
+.proof-card{
+  position:absolute;left:50%;top:52%;
+  width:560px;height:315px;
+  transform:translate(-50%,-50%) scale(.96);
+  border:1px solid var(--line);border-radius:34px;background:var(--surface-strong);
+  box-shadow:0 18px 50px rgba(42,37,29,.055);
+  padding:34px 38px;opacity:0;
+  transition:
+    opacity 600ms ease,
+    transform 800ms cubic-bezier(.2,.72,.2,1),
+    width 800ms cubic-bezier(.2,.72,.2,1),
+    height 800ms cubic-bezier(.2,.72,.2,1),
+    padding 800ms cubic-bezier(.2,.72,.2,1)
+}
+.stage.started .proof-card{opacity:1;transform:translate(-50%,-50%) scale(1)}
+.proof-card .toprow{display:flex;align-items:center;justify-content:space-between}
+.buy{
+  font-size:15px;font-weight:900;letter-spacing:.18em;text-transform:uppercase;color:var(--orange)
+}
+.verified{
+  display:flex;align-items:center;gap:8px;color:var(--ink2);
+  font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase
+}
+.check{
+  width:22px;height:22px;border-radius:50%;display:grid;place-items:center;
+  background:var(--orange);color:white;font-size:13px;font-weight:950
+}
+.service{margin-top:35px;font-size:50px;line-height:.98;letter-spacing:-.055em;font-weight:850}
+.price-row{margin-top:30px;display:flex;align-items:flex-end;justify-content:space-between}
+.price{font-size:66px;line-height:.85;letter-spacing:-.065em;font-weight:860}
+.settled{
+  padding:12px 16px;border-radius:999px;background:var(--black);color:white;
+  font-size:11px;font-weight:850;letter-spacing:.12em;text-transform:uppercase
+}
+.proof-foot{
+  position:absolute;left:38px;bottom:29px;color:var(--muted);
+  font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase
+}
+
+/* ---------- PHASE 2: ACTION SPACE ---------- */
+
+.future-label{
+  position:absolute;left:50%;top:92px;z-index:30;
+  transform:translate(-50%,8px);opacity:0;
+  font-size:13px;font-weight:850;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);
+  transition:opacity 500ms ease,transform 550ms ease
+}
+.stage.capabilities-on .future-label{opacity:1;transform:translate(-50%,0)}
+
+.capabilities{
+  position:absolute;inset:0;z-index:10;opacity:0;
+  transition:opacity 600ms ease,transform 850ms cubic-bezier(.2,.72,.2,1);
+  transform:scale(.97)
+}
+.stage.capabilities-on .capabilities{opacity:1;transform:scale(1)}
+
+.orbit{
+  position:absolute;left:50%;top:52%;
+  width:1370px;height:720px;transform:translate(-50%,-50%);
+  border:1px dashed rgba(34,35,31,.115);border-radius:50%
+}
+.orbit:after{
+  content:"";position:absolute;inset:55px;border:1px solid rgba(34,35,31,.05);border-radius:50%
+}
+
+.action-svg{
+  position:absolute;inset:0;width:100%;height:100%;z-index:1;overflow:visible;pointer-events:none
+}
+.spoke{
+  stroke:rgba(34,35,31,.13);stroke-width:2;fill:none;
+  stroke-dasharray:7 10;opacity:0;transition:opacity 500ms ease
+}
+.stage.capabilities-on .spoke{opacity:1}
+.action-chain{
+  stroke:var(--orange);stroke-width:3;fill:none;stroke-linecap:round;
+  stroke-dasharray:1000;stroke-dashoffset:1000;opacity:.80;
+  transition:stroke-dashoffset 950ms cubic-bezier(.2,.72,.2,1)
+}
+.stage.chains-on .action-chain{stroke-dashoffset:0}
+
+.cap{
+  --x:0px;--y:0px;
+  position:absolute;left:calc(50% + var(--x));top:calc(52% + var(--y));
+  width:250px;height:90px;
+  transform:translate(-50%,-50%) translateY(14px) scale(.96);
+  display:flex;align-items:center;justify-content:center;text-align:center;
+  padding:0 24px;border:1px solid var(--line);border-radius:23px;
+  background:var(--surface-strong);box-shadow:0 12px 30px rgba(42,37,29,.035);
+  color:var(--ink2);font-size:19px;font-weight:780;letter-spacing:-.025em;
+  opacity:0;z-index:4;
+  transition:opacity 500ms ease,transform 600ms cubic-bezier(.2,.72,.2,1)
+}
+.stage.capabilities-on .cap{opacity:1;transform:translate(-50%,-50%)}
+.stage.capabilities-on .c2{transition-delay:.08s}
+.stage.capabilities-on .c3{transition-delay:.16s}
+.stage.capabilities-on .c4{transition-delay:.24s}
+.stage.capabilities-on .c5{transition-delay:.32s}
+.stage.capabilities-on .c6{transition-delay:.40s}
+.cap .mini{
+  display:block;margin-bottom:5px;font-size:9px;font-weight:850;
+  letter-spacing:.12em;text-transform:uppercase;color:var(--muted)
+}
+/* exact mirrored columns around x=960; vertical alignment keeps action chains clean */
+.c1{--x:-500px;--y:-245px}
+.c2{--x:500px;--y:-245px}
+.c3{--x:-500px;--y:20px}
+.c4{--x:500px;--y:20px}
+.c5{--x:-500px;--y:285px}
+.c6{--x:500px;--y:285px}
+
+.chain-note{
+  position:absolute;left:50%;top:823px;z-index:6;
+  transform:translate(-50%,8px);padding:9px 14px;border-radius:999px;
+  background:rgba(245,242,235,.95);border:1px solid var(--line-soft);
+  color:var(--muted);font-size:10px;font-weight:850;letter-spacing:.13em;text-transform:uppercase;
+  opacity:0;transition:opacity 450ms ease,transform 550ms ease
+}
+.stage.chains-on .chain-note{opacity:1;transform:translate(-50%,0)}
+.stage.chains-on .c2,.stage.chains-on .c4,.stage.chains-on .c6{
+  border-color:rgba(228,96,42,.42);box-shadow:0 0 0 5px rgba(228,96,42,.045),0 12px 30px rgba(42,37,29,.035)
+}
+
+/* the transaction becomes the seed at the exact center */
+.stage.capabilities-on .proof-card{width:360px;height:200px;padding:23px 25px}
+.stage.capabilities-on .today{opacity:0}
+.stage.capabilities-on .service{margin-top:18px;font-size:31px}
+.stage.capabilities-on .price-row{margin-top:18px}
+.stage.capabilities-on .price{font-size:42px}
+.stage.capabilities-on .settled{font-size:8px;padding:8px 10px}
+.stage.capabilities-on .proof-foot{left:25px;bottom:18px;font-size:8px}
+.stage.capabilities-on .verified{font-size:8px}
+.stage.capabilities-on .check{width:17px;height:17px;font-size:10px}
+.stage.capabilities-on .buy{font-size:10px}
+
+/* ---------- PHASE 3: THESIS ---------- */
+
+.headline{
+  position:absolute;left:110px;right:110px;top:78px;z-index:45;text-align:center;
+  opacity:0;transform:translateY(14px);
+  transition:opacity 600ms ease,transform 680ms cubic-bezier(.2,.72,.2,1)
+}
+.headline .small{
+  display:block;margin-bottom:12px;color:var(--muted);
+  font-size:12px;font-weight:850;letter-spacing:.16em;text-transform:uppercase
+}
+.headline h2{
+  margin:0;font-size:76px;line-height:.90;letter-spacing:-.064em;font-weight:860
+}
+.headline h2 span{color:var(--orange)}
+.headline p{
+  margin:17px auto 0;max-width:760px;color:var(--ink2);
+  font-size:18px;line-height:1.42;font-weight:610
+}
+.stage.headline-on .headline{opacity:1;transform:none}
+.stage.headline-on .proof-world{transform:translateY(72px) scale(.90);opacity:.72}
+.stage.headline-on .capabilities{transform:translateY(72px) scale(.90);opacity:.66}
+.stage.headline-on .future-label{opacity:.12}
+
+/* ---------- PHASE 4: ZOOM OUT TO A REAL CENTERED ORG STRUCTURE ---------- */
+
+.org{
+  position:absolute;inset:0;z-index:75;opacity:0;pointer-events:none;
+  transform:scale(1.055);
+  transition:opacity 600ms ease,transform 900ms cubic-bezier(.2,.72,.2,1)
+}
+.stage.org-on .org{opacity:1;transform:scale(1)}
+.stage.org-on .headline{opacity:.035;transform:translateY(-65px) scale(.84)}
+.stage.org-on .proof-world,
+.stage.org-on .capabilities,
+.stage.org-on .future-label{opacity:.035}
+
+.org-title{
+  position:absolute;left:50%;top:60px;width:900px;transform:translateX(-50%);text-align:center
+}
+.org-title .pre{
+  display:block;margin-bottom:8px;color:var(--muted);
+  font-size:11px;font-weight:850;letter-spacing:.16em;text-transform:uppercase
+}
+.org-title h3{
+  margin:0;font-size:51px;line-height:1;letter-spacing:-.055em;font-weight:850
+}
+.org-title h3 span{color:var(--orange)}
+
+.org-svg{
+  position:absolute;inset:0;width:100%;height:100%;z-index:1;overflow:visible
+}
+.org-connector{
+  stroke:rgba(34,35,31,.22);stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round
+}
+.org-connector.orange{stroke:rgba(228,96,42,.60)}
+.org-connector.dashed{stroke-dasharray:7 9}
+
+.objective{
+  position:absolute;left:50%;top:145px;width:320px;height:76px;
+  transform:translateX(-50%);z-index:6;
+  border:1px solid var(--line);border-radius:21px;background:var(--surface-strong);
+  display:grid;place-items:center;text-align:center;box-shadow:0 12px 30px rgba(42,37,29,.035)
+}
+.objective b{font-size:18px;letter-spacing:-.02em}
+.objective small{
+  display:block;margin-top:3px;color:var(--muted);
+  font-size:9px;font-weight:850;letter-spacing:.11em;text-transform:uppercase
+}
+
+.somebody-node{
+  position:absolute;left:50%;top:270px;width:280px;height:186px;
+  transform:translateX(-50%);z-index:7;
+  border:2px solid rgba(228,96,42,.32);border-radius:29px;
+  background:rgba(255,255,255,.82);box-shadow:0 16px 42px rgba(42,37,29,.045);
+  text-align:center;padding-top:8px
+}
+.somebody-node img{width:120px;height:120px;object-fit:contain;display:block;margin:0 auto -4px}
+.somebody-node b{font-size:21px;letter-spacing:-.035em}
+.somebody-node small{
+  display:block;margin-top:2px;color:var(--muted);
+  font-size:8px;font-weight:850;letter-spacing:.12em;text-transform:uppercase
+}
+
+/* These two panels are exact mirrors around the 1920px centerline. */
+.lane{
+  position:absolute;top:548px;width:680px;height:350px;z-index:5;
+  border:1px solid var(--line);border-radius:31px;background:rgba(255,255,255,.24);
+  box-shadow:0 16px 46px rgba(42,37,29,.025)
+}
+.lane.make{left:140px}
+.lane.external{right:140px}
+.lane-head{
+  position:absolute;left:26px;right:26px;top:22px;height:45px;
+  display:flex;align-items:flex-start;justify-content:space-between;
+  border-bottom:1px solid var(--line-soft)
+}
+.lane-head .kind{
+  font-size:11px;font-weight:900;letter-spacing:.15em;text-transform:uppercase
+}
+.lane.make .kind{color:var(--ink)}
+.lane.external .kind{color:var(--orange)}
+.lane-head .desc{
+  color:var(--muted);font-size:9px;font-weight:800;letter-spacing:.08em;text-transform:uppercase
+}
+.cards{
+  position:absolute;left:25px;right:25px;top:92px;
+  display:grid;grid-template-columns:repeat(3,1fr);gap:14px
+}
+.node-card{
+  min-width:0;height:115px;padding:18px 16px;border:1px solid var(--line);
+  border-radius:20px;background:var(--surface-strong);text-align:left
+}
+.node-card .role{
+  color:var(--muted);font-size:8px;font-weight:850;letter-spacing:.12em;text-transform:uppercase
+}
+.node-card b{
+  display:block;margin-top:13px;font-size:17px;line-height:1.04;letter-spacing:-.025em
+}
+.node-card .bubble{
+  position:absolute;width:25px;height:25px;border-radius:50%;
+  display:grid;place-items:center;font-size:10px;font-weight:900
+}
+.lane.make .node-card{position:relative}
+.lane.make .bubble{right:12px;top:12px;background:rgba(34,35,31,.075)}
+.lane.external .node-card{position:relative}
+.lane.external .bubble{right:12px;top:12px;background:rgba(228,96,42,.10);color:var(--orange)}
+
+.lane-foot{
+  position:absolute;left:25px;right:25px;bottom:24px;height:72px;
+  border-radius:18px;display:flex;align-items:center;justify-content:space-between;padding:0 20px
+}
+.make-foot{
+  border:1px dashed rgba(34,35,31,.13);color:var(--muted)
+}
+.make-foot b{color:var(--ink);font-size:16px}
+.make-foot small{font-size:9px;font-weight:800;letter-spacing:.09em;text-transform:uppercase}
+.okx-access{background:var(--black);color:white;box-shadow:0 12px 28px rgba(17,17,15,.10)}
+.okx-access b{font-size:23px;letter-spacing:-.035em}
+.okx-access b span{font-weight:600;color:#cfcfcf}
+.okx-access small{
+  color:#c8c8c5;font-size:8px;font-weight:850;letter-spacing:.11em;text-transform:uppercase
+}
+
+.org-caption{
+  position:absolute;left:50%;bottom:67px;z-index:9;transform:translateX(-50%);
+  color:var(--muted);font-size:9px;font-weight:850;letter-spacing:.12em;text-transform:uppercase;
+  white-space:nowrap
+}
+
+.snap *{transition:none!important;animation:none!important}
+.debug{
+  position:absolute;left:58px;bottom:52px;z-index:150;color:rgba(34,35,31,.28);
+  font-size:9px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;opacity:0
+}
+body:hover .debug{opacity:.65}
+</style>
+</head>
+<body>
+<div class="viewport">
+<main class="stage" id="stage">
+
+  <div class="future-label">Tomorrow · a wider action space</div>
+
+  <section class="capabilities">
+    <div class="orbit"></div>
+    <svg class="action-svg" viewBox="0 0 1920 1080" aria-hidden="true">
+      <path class="spoke" id="spoke1"></path>
+      <path class="spoke" id="spoke2"></path>
+      <path class="spoke" id="spoke3"></path>
+      <path class="spoke" id="spoke4"></path>
+      <path class="spoke" id="spoke5"></path>
+      <path class="spoke" id="spoke6"></path>
+      <path class="action-chain" id="chain1"></path>
+      <path class="action-chain" id="chain2"></path>
+    </svg>
+
+    <div class="cap c1" id="cap1"><div><span class="mini">Agentic action</span>Hire another agent</div></div>
+    <div class="cap c2" id="cap2"><div><span class="mini">Agentic action</span>Call a supplier</div></div>
+    <div class="cap c3" id="cap3"><div><span class="mini">Agentic action</span>Book infrastructure</div></div>
+    <div class="cap c4" id="cap4"><div><span class="mini">Agentic action</span>Place an order</div></div>
+    <div class="cap c5" id="cap5"><div><span class="mini">Agentic action</span>Commission a specialist</div></div>
+    <div class="cap c6" id="cap6"><div><span class="mini">Agentic action</span>Coordinate logistics</div></div>
+
+    <div class="chain-note">actions can chain around the same objective</div>
+  </section>
+
+  <section class="proof-world">
+    <div class="today">Today · one proven external action</div>
+    <div class="proof-card" id="proofCard">
+      <div class="toprow">
+        <span class="buy">BUY</span>
+        <span class="verified"><span class="check">✓</span> Verified</span>
+      </div>
+      <div class="service">Social Media Guru</div>
+      <div class="price-row">
+        <div class="price">$0.01</div>
+        <div class="settled">Settled on X Layer</div>
+      </div>
+      <div class="proof-foot">external capability · acquired by Somebody</div>
+    </div>
+  </section>
+
+  <section class="headline">
+    <span class="small">From transaction to action</span>
+    <h2>ONE TRANSACTION IS<br><span>JUST THE BEGINNING.</span></h2>
+    <p>As more capabilities become machine-accessible, Somebody can reach beyond the company and assemble what the objective requires.</p>
+  </section>
+
+  <section class="org">
+    <div class="org-title">
+      <span class="pre">zoom out</span>
+      <h3>AN <span>ASSEMBLED</span> COMPANY</h3>
+    </div>
+
+    <svg class="org-svg" viewBox="0 0 1920 1080" aria-hidden="true">
+      <path class="org-connector orange" id="orgObjToSomebody"></path>
+      <path class="org-connector" id="orgSomebodyToMake"></path>
+      <path class="org-connector dashed orange" id="orgSomebodyToExternal"></path>
+    </svg>
+
+    <div class="objective" id="objectiveNode">
+      <div><b>FOUNDER OBJECTIVE</b><small>one person sets direction</small></div>
+    </div>
+
+    <div class="somebody-node" id="somebodyNode">
+      <img src="../assets/somebody-working.webp" alt="Somebody">
+      <b>Somebody</b>
+      <small>coordinates the company</small>
+    </div>
+
+    <div class="lane make" id="makeLane">
+      <div class="lane-head">
+        <span class="kind">MAKE · INTERNAL CAPABILITY</span>
+        <span class="desc">Company-controlled</span>
+      </div>
+      <div class="cards">
+        <div class="node-card"><span class="bubble">I</span><span class="role">Intern</span><b>Research</b></div>
+        <div class="node-card"><span class="bubble">I</span><span class="role">Intern</span><b>Content</b></div>
+        <div class="node-card"><span class="bubble">I</span><span class="role">Intern</span><b>Operations</b></div>
+      </div>
+      <div class="lane-foot make-foot">
+        <b>Build where you can.</b>
+        <small>Owned capability</small>
+      </div>
+    </div>
+
+    <div class="lane external" id="externalLane">
+      <div class="lane-head">
+        <span class="kind">BUY / ACT · EXTERNAL CAPABILITY</span>
+        <span class="desc">Reach beyond the company</span>
+      </div>
+      <div class="cards">
+        <div class="node-card"><span class="bubble">↗</span><span class="role">External</span><b>Supplier call</b></div>
+        <div class="node-card"><span class="bubble">↗</span><span class="role">External</span><b>Specialist</b></div>
+        <div class="node-card"><span class="bubble">↗</span><span class="role">External</span><b>Logistics</b></div>
+      </div>
+      <div class="lane-foot okx-access">
+        <b>OKX <span>AI</span></b>
+        <small>external capability access</small>
+      </div>
+    </div>
+
+    <div class="org-caption">Illustrative future operating structure · one objective, assembled capability</div>
+  </section>
+
+  <div class="debug">SEQ 5.5 · 15 seconds · double-click to restart</div>
+</main>
+</div>
+
+<script>
+(() => {
+  const W=1920,H=1080,DURATION=15000;
+  const stage=document.getElementById('stage');
+  let timers=[], run=0, raf=null;
+
+  const steps=[
+    [150,()=>stage.classList.add('started')],
+    [2750,()=>{
+      stage.classList.add('capabilities-on');
+      trackActionConnectors(950);
+    }],
+    [6400,()=>stage.classList.add('chains-on')],
+    [9000,()=>stage.classList.add('headline-on')],
+    [11700,()=>{
+      stage.classList.add('org-on');
+      requestAnimationFrame(updateOrgConnectors);
+    }]
+  ];
+
+  function fit(){
+    stage.style.setProperty('--scale',String(Math.min(innerWidth/W,innerHeight/H)));
+  }
+
+  function clearAll(){
+    timers.forEach(clearTimeout);timers=[];
+    if(raf){cancelAnimationFrame(raf);raf=null}
+  }
+
+  function stageRect(el){
+    const s=stage.getBoundingClientRect();
+    const r=el.getBoundingClientRect();
+    const scale=parseFloat(getComputedStyle(stage).getPropertyValue('--scale'))||1;
+    return {
+      left:(r.left-s.left)/scale,
+      top:(r.top-s.top)/scale,
+      width:r.width/scale,
+      height:r.height/scale,
+      right:(r.right-s.left)/scale,
+      bottom:(r.bottom-s.top)/scale,
+      cx:(r.left-s.left+r.width/2)/scale,
+      cy:(r.top-s.top+r.height/2)/scale
+    };
+  }
+
+  function setPath(id,d){
+    document.getElementById(id).setAttribute('d',d);
+  }
+
+  function edgeToward(rect, target){
+    const dx=target.x-rect.cx, dy=target.y-rect.cy;
+    const ax=Math.abs(dx), ay=Math.abs(dy);
+    if(ax<1e-6 && ay<1e-6) return {x:rect.cx,y:rect.cy};
+    const tx=(rect.width/2)/(ax||1e-6);
+    const ty=(rect.height/2)/(ay||1e-6);
+    const t=Math.min(tx,ty);
+    return {x:rect.cx+dx*t,y:rect.cy+dy*t};
+  }
+
+  function updateActionConnectors(){
+    const p=stageRect(document.getElementById('proofCard'));
+    const caps=[1,2,3,4,5,6].map(i=>stageRect(document.getElementById('cap'+i)));
+
+    caps.forEach((c,i)=>{
+      const a=edgeToward(p,{x:c.cx,y:c.cy});
+      const b=edgeToward(c,{x:p.cx,y:p.cy});
+      setPath('spoke'+(i+1),`M ${a.x} ${a.y} L ${b.x} ${b.y}`);
+    });
+
+    // Clean, card-edge-to-card-edge sequence: supplier -> order -> logistics.
+    const c2=caps[1], c4=caps[3], c6=caps[5];
+    setPath('chain1',
+      `M ${c2.cx} ${c2.bottom} L ${c4.cx} ${c4.top} `+
+      `M ${c4.cx} ${c4.bottom} L ${c6.cx} ${c6.top}`
+    );
+
+    // Second clean sequence on the left: agent -> infrastructure -> specialist.
+    const c1=caps[0], c3=caps[2], c5=caps[4];
+    setPath('chain2',
+      `M ${c1.cx} ${c1.bottom} L ${c3.cx} ${c3.top} `+
+      `M ${c3.cx} ${c3.bottom} L ${c5.cx} ${c5.top}`
+    );
+  }
+
+  function trackActionConnectors(ms){
+    const start=performance.now();
+    function frame(now){
+      updateActionConnectors();
+      if(now-start<ms) raf=requestAnimationFrame(frame);
+      else raf=null;
+    }
+    raf=requestAnimationFrame(frame);
+  }
+
+  function orthogonal(from,to,splitY){
+    return `M ${from.cx} ${from.bottom}
+            L ${from.cx} ${splitY}
+            L ${to.cx} ${splitY}
+            L ${to.cx} ${to.top}`;
+  }
+
+  function updateOrgConnectors(){
+    const obj=stageRect(document.getElementById('objectiveNode'));
+    const somebody=stageRect(document.getElementById('somebodyNode'));
+    const make=stageRect(document.getElementById('makeLane'));
+    const external=stageRect(document.getElementById('externalLane'));
+
+    setPath('orgObjToSomebody',
+      `M ${obj.cx} ${obj.bottom} L ${somebody.cx} ${somebody.top}`
+    );
+
+    const splitY=505;
+    setPath('orgSomebodyToMake',orthogonal(somebody,make,splitY));
+    setPath('orgSomebodyToExternal',orthogonal(somebody,external,splitY));
+  }
+
+  function reset(preserveSnap=false){
+    stage.className=preserveSnap?'stage snap':'stage';
+    updateActionConnectors();
+    updateOrgConnectors();
+  }
+
+  function applyThrough(ms,preserveSnap=false){
+    reset(preserveSnap);
+    if(ms>=150)stage.classList.add('started');
+    if(ms>=2750)stage.classList.add('capabilities-on');
+    if(ms>=6400)stage.classList.add('chains-on');
+    if(ms>=9000)stage.classList.add('headline-on');
+    if(ms>=11700)stage.classList.add('org-on');
+    requestAnimationFrame(()=>{
+      updateActionConnectors();
+      updateOrgConnectors();
+    });
+  }
+
+  function restart(){
+    clearAll();run++;
+    const token=run;
+    stage.classList.remove('snap');
+    reset(false);void stage.offsetWidth;
+    for(const [ms,fn] of steps){
+      timers.push(setTimeout(()=>{if(token===run)fn()},ms));
+    }
+  }
+
+  function snapshot(ms){
+    clearAll();run++;
+    applyThrough(Math.max(0,Math.min(DURATION,Number(ms)||0)),true);
+  }
+
+  window.addEventListener('resize',()=>{
+    fit();
+    requestAnimationFrame(()=>{
+      updateActionConnectors();
+      updateOrgConnectors();
+    });
+  });
+  stage.addEventListener('dblclick',restart);
+
+  fit();
+  requestAnimationFrame(()=>{
+    updateActionConnectors();
+    updateOrgConnectors();
+  });
+
+  const qs=new URLSearchParams(location.search);
+  const snap=qs.get('t');
+  if(snap!==null)snapshot(Number(snap));else restart();
+
+  window.SomebodySeq55={
+    restart,snapshot,durationMs:DURATION,
+    beats:{proof:150,capabilityExpansion:2750,actionChains:6400,headline:9000,orgReveal:11700}
+  };
+})();
+</script>
+</body>
+</html>
