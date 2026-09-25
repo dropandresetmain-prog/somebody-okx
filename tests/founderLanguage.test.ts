@@ -14,12 +14,12 @@ import { Deliverables } from "../app/product/components/Deliverables";
 import { ObjectiveHeader } from "../app/product/components/ObjectiveHeader";
 import { V6WorkspaceView } from "../app/product/V6WorkspaceView";
 import { humanizeKey, internName, presentActivity, presentOption, presentSomebodyNow } from "../app/product/humanize";
-import { lunaRelaunchScenario } from "../lib/demo/scenarios/lunaRelaunch";
+import { okxSubmissionRunScenario } from "../lib/demo/scenarios/okxSubmissionRun";
 
 const NOW = 1_820_000_000_000;
 
 function renderFrame(index: number): string {
-  const frame = lunaRelaunchScenario.frames[index];
+  const frame = okxSubmissionRunScenario.frames[index];
   return renderToStaticMarkup(
     createElement(V6WorkspaceView, {
       list: frame.objectiveList,
@@ -65,7 +65,7 @@ const LEAKS = [
 ];
 
 test("every Luna replay frame renders without orchestration vocabulary on the default surface", () => {
-  lunaRelaunchScenario.frames.forEach((_, index) => {
+  okxSubmissionRunScenario.frames.forEach((_, index) => {
     const text = defaultVisibleText(renderFrame(index));
     for (const pattern of LEAKS) {
       assert.ok(!pattern.test(text), `frame ${index} leaks ${pattern}: …${text.match(pattern)?.[0]}…`);
@@ -74,7 +74,7 @@ test("every Luna replay frame renders without orchestration vocabulary on the de
 });
 
 test("Luna final frame keeps the business story and every truth marker", () => {
-  const html = renderFrame(lunaRelaunchScenario.frames.length - 1);
+  const html = renderFrame(okxSubmissionRunScenario.frames.length - 1);
   const text = defaultVisibleText(html);
   // Story beats.
   for (const beat of [
@@ -105,7 +105,7 @@ test("Luna final frame keeps the business story and every truth marker", () => {
 });
 
 test("completion hero is one calm sentence and never repeats the deliverable summary", () => {
-  const frame = lunaRelaunchScenario.frames[lunaRelaunchScenario.frames.length - 1].workspace;
+  const frame = okxSubmissionRunScenario.frames[okxSubmissionRunScenario.frames.length - 1].workspace;
   const html = renderToStaticMarkup(
     createElement(ObjectiveHeader, {
       objective: frame.objective,

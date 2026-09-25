@@ -6,6 +6,8 @@ import {
   INTEGRATION_LOGO_SRC,
   INTEGRATION_LOGO_TREATMENT,
 } from "../integrations";
+import type { ObjectiveWorkspaceView } from "../contracts";
+import type { SomebodyMode } from "../../../lib/product/mode";
 
 /**
  * Persistent, presentation-only view of the OKX stack used by the hackathon
@@ -14,9 +16,11 @@ import {
  * Activity. This card only shows the infrastructure/catalog that the controlled
  * Testnet demo can use.
  */
-export function OKXDemoStack() {
+export function OKXDemoStack({ view, mode = "live" }: { view: ObjectiveWorkspaceView; mode?: SomebodyMode }) {
+  void view; // stage progression is derived from the view (acquisitions/activity) — see Lane 5.
   const explicit = process.env.NEXT_PUBLIC_OKX_DEMO_SURFACE;
   const enabled =
+    mode === "replay" ||
     explicit === "true" ||
     process.env.NEXT_PUBLIC_DEMO_CONSOLE === "true" ||
     (explicit !== "false" && process.env.NODE_ENV !== "production");

@@ -1,0 +1,65 @@
+/* Public replay controls — a quiet floating pill, never a developer console. */
+.v6-replay-controls {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 8px 8px 16px;
+  border-radius: 999px;
+  background: #16130f;
+  color: #f7f3ec;
+  box-shadow: 0 10px 30px rgba(22, 19, 15, 0.22);
+  font-size: 13px;
+}
+
+.v6-replay-controls-label {
+  white-space: nowrap;
+  opacity: 0.8;
+}
+
+.v6-replay-controls-track {
+  position: relative;
+  width: 96px;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(247, 243, 236, 0.2);
+  overflow: hidden;
+}
+
+.v6-replay-controls-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: #ff6a2b;
+  border-radius: inherit;
+}
+
+.v6-replay-controls-button {
+  border: 0;
+  border-radius: 999px;
+  padding: 7px 14px;
+  background: #f7f3ec;
+  color: #16130f;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .v6-replay-controls {
+    left: 16px;
+    right: 16px;
+    bottom: 12px;
+    justify-content: space-between;
+  }
+  .v6-replay-controls-track {
+    flex: 1;
+    width: auto;
+  }
+  .v6-replay-controls-label {
+    display: none;
+  }
+}

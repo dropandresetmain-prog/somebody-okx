@@ -1,21 +1,31 @@
+import { redirect } from "next/navigation";
 import { ConvexClientProvider } from "./ConvexClientProvider";
-import { DemoPlaybackProvider } from "./demo/DemoPlaybackProvider";
 import { ProductWorkspace } from "./product/ProductWorkspace";
+import { ReplayWorkspace } from "./replay/ReplayWorkspace";
+import { shouldAutoStartReplay } from "./replay/replayRoutes";
+import { isReplayMode } from "../lib/product/mode";
 
-// V6 product surface — the app entry point. Reads only the accepted product
-// contract (app/product/contracts.ts) via convex/productWorkspace.ts; see
-// DESIGN.md for the approved information architecture. The older raw-domain
-// Objective workspace stays reachable at /m5 (app/m5/(live)/page.tsx).
+// V6 product surface — the app entry point.
 //
-// DemoPlaybackProvider is the only place that can swap the product-data source
-// to precomputed historical Product Contract frames (hackathon Demo Console).
-export default async function Home({ searchParams }: { searchParams: Promise<{ objective?: string }> }) {
+// live:   reads only the accepted product contract (app/product/contracts.ts)
+//         via convex/productWorkspace.ts; see DESIGN.md for the approved
+//         information architecture.
+// replay: the public website. No Convex provider is mounted at all; the
+//         workspace plays the recorded completed run. Visitors arrive from
+//         /start, which is where the public site begins.
+export default async function Home({
+  searchParams,
+}: {
+  searchParams: Promise<{ objective?: string; replay?: string | string[] }>;
+}) {
   const params = await searchParams;
+  if (isReplayMode()) {
+    if (!shouldAutoStartReplay(params.replay)) redirect("/start");
+    return <ReplayWorkspace autoStart />;
+  }
   return (
     <ConvexClientProvider>
-      <DemoPlaybackProvider>
-        <ProductWorkspace initialObjectiveId={params.objective} />
-      </DemoPlaybackProvider>
+      <ProductWorkspace initialObjectiveId={params.objective} />
     </ConvexClientProvider>
   );
 }

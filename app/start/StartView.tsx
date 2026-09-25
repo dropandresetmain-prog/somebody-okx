@@ -14,8 +14,17 @@ import {
   transitionDurationMs,
   trimObjectiveRequest,
 } from "./startCreateFlow";
+import type { SomebodyMode } from "../../lib/product/mode";
+import { REPLAY_START_CAPABILITIES, REPLAY_TRANSITION_COPY } from "./startReplayFlow";
 
 type StartViewProps = {
+  /**
+   * live: capability-gated Create Objective via onCreate.
+   * replay: the public site — submit only calls onReplayStart. The typed text
+   * never leaves this component's state.
+   */
+  mode?: SomebodyMode;
+  onReplayStart?: () => void;
   capabilities: StartCapabilitiesView | null;
   onCreate?: (request: string) => Promise<ProductCommandResult>;
   onNavigateToObjective?: (objectiveId: string) => void;
@@ -24,10 +33,14 @@ type StartViewProps = {
 // /start — capability-gated composer. When canCreateObjective is true, submits
 // through the Product Command adapter only. Unsupported controls stay hidden.
 export function StartView({
-  capabilities,
+  mode = "live",
+  onReplayStart,
+  capabilities: liveCapabilities,
   onCreate,
   onNavigateToObjective,
 }: StartViewProps) {
+  const replay = mode === "replay";
+  const capabilities = replay ? REPLAY_START_CAPABILITIES : liveCapabilities;
   const loaded = capabilities !== null;
   const canCreate = capabilities?.canCreateObjective ?? false;
   const showContext = Boolean(capabilities?.supportsContextRefs);
@@ -60,6 +73,22 @@ export function StartView({
   );
 
   const handleSubmit = useCallback(async () => {
+    if (replay) {
+      // Replay: start the recorded run. The visitor's text is not sent anywhere.
+      if (!onReplayStart || !submittable || pending) return;
+      setPending(true);
+      setTransitionObjectiveId("replay");
+      const reduced =
+        typeof window !== "undefined" &&
+        window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      const delay = transitionDurationMs(reduced);
+      if (delay <= 0) {
+        onReplayStart();
+        return;
+      }
+      navigateTimer.current = setTimeout(onReplayStart, delay);
+      return;
+    }
     if (!onCreate || !submittable || pending) return;
     setError(null);
     setPending(true);
@@ -93,7 +122,7 @@ export function StartView({
       setError("Objective creation is unavailable right now. Try again in a moment.");
       setPending(false);
     }
-  }, [finishNavigate, onCreate, pending, request, submittable]);
+  }, [finishNavigate, onCreate, onReplayStart, pending, replay, request, submittable]);
 
   if (transitionObjectiveId) {
     return (
@@ -104,7 +133,7 @@ export function StartView({
             className="v6-start-transition-duo"
             alt="Somebody and the Intern heading out"
           />
-          <p className="v6-start-transition-copy">{CREATE_TRANSITION_COPY}</p>
+          <p className="v6-start-transition-copy">{replay ? REPLAY_TRANSITION_COPY : CREATE_TRANSITION_COPY}</p>
         </div>
       </div>
     );

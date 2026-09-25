@@ -1,8 +1,8 @@
 "use client";
 
-// V6 live container. Product reads come through useProductWorkspace
-// (live Convex vs explicit demo playback). Spend approval stays on the live
-// Product Command path only — playback never mutates live Objective state.
+// V6 live container. Product reads come through useProductWorkspace (live
+// Convex). Spend approval is a live Product Command; the public replay never
+// mounts this component (see app/replay/ReplayWorkspace).
 
 import { useState } from "react";
 import { useMutation } from "convex/react";
@@ -10,8 +10,7 @@ import { useRouter } from "next/navigation";
 import { api } from "@/convex/_generated/api";
 import type { AttentionActionView, ProductCommandResult } from "./contracts";
 import { V6WorkspaceView } from "./V6WorkspaceView";
-import { useProductWorkspace } from "../demo/useProductWorkspace";
-import { DemoConsole } from "../demo/DemoConsole";
+import { useProductWorkspace } from "./useProductWorkspace";
 import "./product-workspace.css";
 import "./okx-demo-surface.css";
 
@@ -32,7 +31,7 @@ function attentionErrorCopy(result: Extract<ProductCommandResult, { accepted: fa
 
 export function ProductWorkspace({ initialObjectiveId }: { initialObjectiveId?: string }) {
   const router = useRouter();
-  const { list, selectedId, select, main, demoActive } = useProductWorkspace(initialObjectiveId);
+  const { list, selectedId, select, main } = useProductWorkspace(initialObjectiveId);
   const submitAttention = useMutation(api.productCommands.submitAttentionActionV1);
 
   const [pendingActionId, setPendingActionId] = useState<string | null>(null);
@@ -44,14 +43,10 @@ export function ProductWorkspace({ initialObjectiveId }: { initialObjectiveId?: 
     setAttentionError(null);
     setAttentionAck(null);
     setPendingActionId(null);
-    if (!demoActive) {
-      router.replace(`?objective=${encodeURIComponent(id)}`, { scroll: false });
-    }
+    router.replace(`?objective=${encodeURIComponent(id)}`, { scroll: false });
   }
 
   async function onAttentionAction(action: AttentionActionView) {
-    // Demo playback is historical — never submit live Product Commands from it.
-    if (demoActive) return;
     if (main.kind !== "ready" || !selectedId || pendingActionId) return;
     const attention = main.view.attention;
     if (!attention) return;
@@ -78,23 +73,20 @@ export function ProductWorkspace({ initialObjectiveId }: { initialObjectiveId?: 
     }
   }
 
-  const liveAttention =
-    !demoActive && main.kind === "ready" && main.view.attention ? onAttentionAction : undefined;
+  const liveAttention = main.kind === "ready" && main.view.attention ? onAttentionAction : undefined;
 
   return (
-    <>
-      <V6WorkspaceView
-        list={list}
-        selectedId={selectedId}
-        onSelect={onSelect}
-        onStartNew={() => router.push("/start")}
-        main={main}
-        onAttentionAction={liveAttention}
-        pendingAttentionActionId={pendingActionId}
-        attentionError={attentionError}
-        attentionAcknowledgement={attentionAck}
-      />
-      <DemoConsole />
-    </>
+    <V6WorkspaceView
+      mode="live"
+      list={list}
+      selectedId={selectedId}
+      onSelect={onSelect}
+      onStartNew={() => router.push("/start")}
+      main={main}
+      onAttentionAction={liveAttention}
+      pendingAttentionActionId={pendingActionId}
+      attentionError={attentionError}
+      attentionAcknowledgement={attentionAck}
+    />
   );
 }

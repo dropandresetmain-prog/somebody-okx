@@ -3,7 +3,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { lunaRelaunchScenario } from "../lib/demo/scenarios/lunaRelaunch";
+import { okxSubmissionRunScenario } from "../lib/demo/scenarios/okxSubmissionRun";
 import {
   createIdleEngine,
   engineReset,
@@ -13,23 +13,23 @@ import {
 } from "../lib/demo/playback";
 
 test("live/idle mode exposes no demo frame (Convex path owns data)", () => {
-  const snap = engineSnapshot(createIdleEngine(lunaRelaunchScenario), 0);
+  const snap = engineSnapshot(createIdleEngine(okxSubmissionRunScenario), 0);
   assert.equal(snap.active, false);
   assert.equal(snap.currentFrame, null);
 });
 
 test("playback mode returns current DemoFrame product contract views", () => {
-  let engine = createIdleEngine(lunaRelaunchScenario, "demo_sequence", 0);
+  let engine = createIdleEngine(okxSubmissionRunScenario, "demo_sequence", 0);
   engine = engineRun(engine, 0);
   const snap = engineSnapshot(engine, 0);
   assert.ok(snap.currentFrame);
-  assert.equal(snap.currentFrame!.workspace.objective.id, lunaRelaunchScenario.source.objectiveId);
+  assert.equal(snap.currentFrame!.workspace.objective.id, okxSubmissionRunScenario.source.objectiveId);
   assert.ok(Array.isArray(snap.currentFrame!.workspace.activity));
   assert.ok(Array.isArray(snap.currentFrame!.objectiveList.inProgress) || Array.isArray(snap.currentFrame!.objectiveList.done));
 });
 
 test("sidebar list and workspace switch together on the same frame", () => {
-  let engine = createIdleEngine(lunaRelaunchScenario, "demo_sequence", 0);
+  let engine = createIdleEngine(okxSubmissionRunScenario, "demo_sequence", 0);
   engine = engineRun(engine, 0);
   // Advance to completed frame (last demo sequence entry at 26s).
   engine = engineTick(engine, 26_000);
@@ -43,7 +43,7 @@ test("sidebar list and workspace switch together on the same frame", () => {
 });
 
 test("leaving playback restores idle/live data ownership", () => {
-  let engine = createIdleEngine(lunaRelaunchScenario, "demo_sequence", 0);
+  let engine = createIdleEngine(okxSubmissionRunScenario, "demo_sequence", 0);
   engine = engineRun(engine, 0);
   assert.equal(engineSnapshot(engine, 0).active, true);
   engine = engineReset(engine);
@@ -52,7 +52,7 @@ test("leaving playback restores idle/live data ownership", () => {
 });
 
 test("scenario frames are product-contract shaped (no raw Requirement/Intent arrays)", () => {
-  for (const frame of lunaRelaunchScenario.frames) {
+  for (const frame of okxSubmissionRunScenario.frames) {
     const view = frame.workspace as Record<string, unknown>;
     assert.ok(view.objective);
     assert.ok(view.somebodyNow);
@@ -69,8 +69,8 @@ test("scenario frames are product-contract shaped (no raw Requirement/Intent arr
 });
 
 test("historical acquisition provenance stays simulation (not recorded_replay)", () => {
-  assert.equal(lunaRelaunchScenario.source.acquisitionProvenance, "simulation");
-  const final = lunaRelaunchScenario.frames[lunaRelaunchScenario.frames.length - 1]!;
+  assert.equal(okxSubmissionRunScenario.source.acquisitionProvenance, "simulation");
+  const final = okxSubmissionRunScenario.frames[okxSubmissionRunScenario.frames.length - 1]!;
   const acq = final.workspace.acquisitions.find((row) => row.provenance);
   assert.ok(acq);
   assert.equal(acq!.provenance, "simulation");

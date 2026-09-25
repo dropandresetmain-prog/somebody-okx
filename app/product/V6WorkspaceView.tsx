@@ -10,6 +10,7 @@ import { Deliverables } from "./components/Deliverables";
 import { Acquisitions } from "./components/Acquisitions";
 import { Attention } from "./components/Attention";
 import { OKXDemoStack } from "./components/OKXDemoStack";
+import type { SomebodyMode } from "../../lib/product/mode";
 
 /** Historical demo / fixture frames may omit liveness — fill a truthful idle default. */
 function withLiveness(view: ObjectiveWorkspaceView): ObjectiveWorkspaceView {
@@ -34,6 +35,7 @@ export type MainPaneState =
   | { kind: "ready"; view: ObjectiveWorkspaceView; stale?: boolean };
 
 export function V6WorkspaceView({
+  mode = "live",
   list,
   selectedId,
   onSelect,
@@ -44,6 +46,8 @@ export function V6WorkspaceView({
   attentionError,
   attentionAcknowledgement,
 }: {
+  /** live: full product. replay: read-only public replay (no PDF export, no commands). */
+  mode?: SomebodyMode;
   list: ObjectiveListView;
   selectedId: string | null;
   onSelect: (id: string) => void;
@@ -59,6 +63,7 @@ export function V6WorkspaceView({
       <Sidebar list={list} selectedId={selectedId} onSelect={onSelect} onStartNew={onStartNew} />
       <main className="v6-main" data-main-pane={main.kind}>
         <MainPane
+          mode={mode}
           main={main}
           onStartNew={onStartNew}
           onAttentionAction={onAttentionAction}
@@ -72,6 +77,7 @@ export function V6WorkspaceView({
 }
 
 function MainPane({
+  mode,
   main,
   onStartNew,
   onAttentionAction,
@@ -79,6 +85,7 @@ function MainPane({
   attentionError,
   attentionAcknowledgement,
 }: {
+  mode: SomebodyMode;
   main: MainPaneState;
   onStartNew: () => void;
   onAttentionAction?: (action: AttentionActionView) => void;
@@ -142,6 +149,7 @@ function MainPane({
                 objective={view.objective}
                 somebodyNow={view.somebodyNow}
                 deliverables={view.deliverables}
+                mode={mode}
               />
               <Activity items={view.activity} acquisitions={view.acquisitions} />
             </div>
@@ -155,7 +163,7 @@ function MainPane({
               />
               <Deliverables deliverables={view.deliverables} />
               <Checkpoints progress={view.progress} />
-              <OKXDemoStack />
+              <OKXDemoStack view={view} mode={mode} />
               <OrphanAcquisitions activity={view.activity} acquisitions={view.acquisitions} />
             </div>
           </div>

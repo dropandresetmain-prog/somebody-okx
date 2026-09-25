@@ -11,6 +11,7 @@ import {
   selectVerifiedPdfDeliverable,
   triggerBrowserPdfDownload,
 } from "../../../lib/product/finalReportPdf";
+import type { SomebodyMode } from "../../../lib/product/mode";
 
 // Main-column "Final deliverable" (post-founder-live-run Incident #2): when an
 // Objective is completed, the governed final artifact must be unmistakable,
@@ -26,10 +27,13 @@ export function FinalDeliverable({
   objective,
   somebodyNow,
   deliverables,
+  mode = "live",
 }: {
   objective: ObjectiveView;
   somebodyNow: SomebodyNowView;
   deliverables: DeliverableView[];
+  /** replay: PDF export is a live-workspace feature — show a note, never the button. */
+  mode?: SomebodyMode;
 }) {
   const [pdfBusy, setPdfBusy] = useState(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
@@ -48,7 +52,7 @@ export function FinalDeliverable({
 
   // PDF authority is verified-only — never draft, superseded, or unverified current.
   const pdfSource = selectVerifiedPdfDeliverable(deliverables);
-  const canDownloadPdf = pdfSource !== null && pdfSource.id === selected.id;
+  const canDownloadPdf = mode === "live" && pdfSource !== null && pdfSource.id === selected.id;
 
   async function onDownloadPdf() {
     if (!pdfSource || pdfBusy) return;
@@ -105,6 +109,10 @@ export function FinalDeliverable({
             >
               {pdfBusy ? "Preparing PDF…" : "Download PDF"}
             </button>
+          ) : mode === "replay" ? (
+            <p className="v6-final-deliverable-live-note muted" data-pdf-live-only="true">
+              Live Somebody workspaces can download verified deliverables as PDF.
+            </p>
           ) : null}
         </div>
       </div>

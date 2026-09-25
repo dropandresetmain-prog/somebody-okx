@@ -862,9 +862,10 @@ test("primary V6 files import no raw M6.1/M5 domain modules", () => {
 });
 
 test("the live container references product reads via useProductWorkspace; /start uses the create command", () => {
-  // Product reads live behind the useProductWorkspace seam (live Convex vs demo
-  // playback). ProductWorkspace keeps the live spend-approval command only.
-  const seam = readFileSync(join(__dirname, "..", "app", "demo", "useProductWorkspace.ts"), "utf8");
+  // Live product reads sit behind the useProductWorkspace seam (Convex only;
+  // the public replay never mounts it). ProductWorkspace keeps the live
+  // spend-approval command only.
+  const seam = readFileSync(join(__dirname, "..", "app", "product", "useProductWorkspace.ts"), "utf8");
   assert.ok(seam.includes("api.productWorkspace.getObjectiveListV1"));
   assert.ok(seam.includes("api.productWorkspace.getObjectiveWorkspaceV1"));
   assert.ok(!seam.includes("api.objectives.listObjectives"));
