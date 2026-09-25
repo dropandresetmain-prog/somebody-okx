@@ -1,4 +1,5 @@
 import { sha256Hex } from "../management/sha256";
+import type { ExecutionIntent } from "../management/types";
 import type { ResourceClass } from "../workforce/types";
 import { isGovernedPurposeKind, purposeKindAppliesToClass } from "../workforce/catalog";
 import type {
@@ -73,6 +74,74 @@ export function validatedRequestedPurposeKind(need: {
   if (!isGovernedPurposeKind(kind)) return null;
   if (typeof need.resourceClass !== "string" || !purposeKindAppliesToClass(kind, need.resourceClass)) return null;
   return kind;
+}
+
+/**
+ * Purpose kind to bind onto an ExecutionIntent at BUY dispatch. Mirrors
+ * deriveExternalSourcingContext: a need's validated scope wins; a validated
+ * need with no scope may borrow the Objective policy when it applies to the
+ * class; manager-initiated BUY (no need) may bind policy scope when it
+ * applies to the authorized offering's resource class.
+ */
+export function resolvePurposeKindForIntentBinding(input: {
+  need: ResourceNeed | null;
+  objectivePolicyPurposeKind: string | null;
+  resourceClass: string | null;
+}): string | null {
+  const resourceClass = input.need?.resourceClass ?? input.resourceClass;
+  if (typeof resourceClass !== "string" || !resourceClass) return null;
+
+  if (input.need) {
+    const fromScope = validatedRequestedPurposeKind(input.need);
+    if (fromScope) return fromScope;
+    const scopeRejected =
+      input.need.requestedScope != null && validatedRequestedPurposeKind(input.need) === null;
+    if (scopeRejected) return null;
+  }
+
+  const policyKind = input.objectivePolicyPurposeKind;
+  if (
+    policyKind &&
+    isGovernedPurposeKind(policyKind) &&
+    purposeKindAppliesToClass(policyKind, resourceClass)
+  ) {
+    return policyKind;
+  }
+  return null;
+}
+
+/** Attach bounded purpose + requestedPurposeKind to a dispatched BUY intent. */
+export function bindExecutionIntentPurposeScope(input: {
+  intent: ExecutionIntent;
+  matchingNeed: ResourceNeed | null;
+  objectivePolicyPurposeKind: string | null;
+  fallbackPurposeText: string | null;
+}): ExecutionIntent {
+  const requestedPurposeKind = resolvePurposeKindForIntentBinding({
+    need: input.matchingNeed,
+    objectivePolicyPurposeKind: input.objectivePolicyPurposeKind,
+    resourceClass: input.intent.target.resourceClass,
+  });
+  const purposeFromNeed = input.matchingNeed?.purpose?.trim().slice(0, 500) ?? "";
+  const fallbackPurpose = (input.fallbackPurposeText ?? "").trim().slice(0, 500);
+  const purpose = purposeFromNeed || fallbackPurpose;
+
+  if (input.matchingNeed) {
+    return {
+      ...input.intent,
+      needDedupeKey: input.matchingNeed.dedupeKey,
+      resourceNeedId: input.matchingNeed.id,
+      ...(purpose ? { purpose } : {}),
+      ...(requestedPurposeKind ? { requestedPurposeKind } : {}),
+    };
+  }
+
+  if (!requestedPurposeKind && !purpose) return input.intent;
+  return {
+    ...input.intent,
+    ...(purpose ? { purpose } : {}),
+    ...(requestedPurposeKind ? { requestedPurposeKind } : {}),
+  };
 }
 
 // ─── Dedupe key ───────────────────────────────────────────────────────────────

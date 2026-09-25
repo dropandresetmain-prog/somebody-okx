@@ -546,12 +546,16 @@ test("assessment: payload is complete JSON; untrusted content labelled; provenan
   installStructuredChatDouble((req) => {
     payload = JSON.parse(req.user);
     assert.doesNotMatch(req.system, /trusted application observation/i);
+    assert.match(req.system, /satisfiedPrerequisiteRequirements/);
+    assert.match(req.system, /minimumBarLevel/);
     return { meetsMinimumBar: false, rationale: "needs work", evidenceRefs: [], assumptionsUnknowns: [], recommendedNextAction: "revise" };
   });
   await beginAndAssess(t, key);
   installStructuredChatDouble(null);
 
   const p = payload!;
+  assert.ok(p.minimumBarLevel?.levelKey);
+  assert.ok(Array.isArray(p.satisfiedPrerequisiteRequirements));
   assert.equal(p.artifact.contentComplete, true);
   assert.equal(p.artifact.content, "grounded relaunch text");
   const acq = p.verifiedAcquisitions[0];

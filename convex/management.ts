@@ -54,7 +54,11 @@ import {
   verifiedAcquisitionCoversNeed,
 } from "../lib/objective/inputDiagnosis";
 import type { ResourceNeed } from "../lib/objective/resourceNeed";
-import { transitionNeedStatus, validatedRequestedPurposeKind } from "../lib/objective/resourceNeed";
+import {
+  bindExecutionIntentPurposeScope,
+  transitionNeedStatus,
+} from "../lib/objective/resourceNeed";
+import { isGovernedPurposeKind } from "../lib/workforce/catalog";
 import type { ExternalAcquisitionResult } from "../lib/objective/types";
 import {
   advanceAssignment,
@@ -3161,19 +3165,34 @@ async function dispatchExternal(
       "serial BUY with open validated ResourceNeed(s) must bind need identity before dispatch",
     );
   }
+  const policyRaw = objectiveData?.management?.authorizedPurposePolicy as
+    | { purposeKind?: unknown }
+    | undefined;
+  const policyPurposeKind =
+    typeof policyRaw?.purposeKind === "string" && isGovernedPurposeKind(policyRaw.purposeKind)
+      ? policyRaw.purposeKind
+      : null;
+  const requirementRow = await ctx.db
+    .query("requirements")
+    .withIndex("by_objectiveRequirement", (q) =>
+      q.eq("objectiveKey", objectiveKey).eq("requirementKey", persisted.requirementKey),
+    )
+    .unique();
+  const requirementData = requirementRow
+    ? ((requirementRow as AnyRow).data as { statement?: string; title?: string })
+    : null;
+  const fallbackPurposeText =
+    requirementData?.statement ?? requirementData?.title ?? null;
+
   // Manager-initiated: candidateNeeds.length === 0 and no bound need — intent
-  // is created from the authorized option without fabricating a ResourceNeed.
-  const intentWithNeed: ExecutionIntent = matchingNeed
-    ? {
-        ...created.intent,
-        needDedupeKey: matchingNeed.dedupeKey,
-        resourceNeedId: matchingNeed.id,
-        purpose: matchingNeed.purpose.slice(0, 500),
-        // V7 review R4: the bound need's validated scope, re-checked from the
-        // stored row. Absent → null (the scoped product then refuses).
-        requestedPurposeKind: validatedRequestedPurposeKind(matchingNeed),
-      }
-    : created.intent;
+  // is created from the authorized option without fabricating a ResourceNeed,
+  // but Objective policy + Requirement text still bind payment scope when present.
+  const intentWithNeed = bindExecutionIntentPurposeScope({
+    intent: created.intent,
+    matchingNeed,
+    objectivePolicyPurposeKind: policyPurposeKind,
+    fallbackPurposeText,
+  });
 
   const existing = (await ctx.runQuery(internal.internal.workforce.findIntent, {
     objectiveKey,
@@ -3187,6 +3206,24 @@ async function dispatchExternal(
     if (existing.state === "failed" || existing.state === "reconciliation_required")
       return await noteDispatchDeferred(ctx, objectiveKey, persisted.requirementKey, at,
         `intent ${existing.intentId} is ${existing.state}; a retry needs a fresh authorization`);
+    const repaired = bindExecutionIntentPurposeScope({
+      intent: existing,
+      matchingNeed,
+      objectivePolicyPurposeKind: policyPurposeKind,
+      fallbackPurposeText,
+    });
+    if (
+      repaired.requestedPurposeKind &&
+      !existing.requestedPurposeKind &&
+      repaired.purpose
+    ) {
+      await ctx.runMutation(internal.internal.workforce.putIntent, {
+        intentId: repaired.intentId,
+        objectiveKey,
+        idempotencyKey: repaired.idempotencyKey,
+        data: repaired,
+      });
+    }
     return existing.intentId;
   }
 
@@ -3949,6 +3986,60 @@ export const expireFinalAssessmentReservation = internalMutation({
       at: Date.now(),
     });
     return null;
+  },
+});
+
+/**
+ * Supervised operator recovery: one fresh final semantic assessment after a
+ * false block (e.g. assessor re-litigating already-satisfied prerequisites).
+ */
+export const repairFinalAssessmentRetry = internalMutation({
+  args: { objectiveKey: v.string(), at: v.number() },
+  returns: v.object({ ok: v.literal(true), finalAssessmentAttempts: v.number() }),
+  handler: async (ctx, args) => {
+    await ctx.runMutation(internal.internal.workforce.renewContinuationBudget, {
+      objectiveKey: args.objectiveKey,
+      at: args.at,
+    });
+    const row = await ctx.db
+      .query("objectives")
+      .withIndex("by_key", (q) => q.eq("key", args.objectiveKey))
+      .unique();
+    if (!row) throw new Error(`objective not found: ${args.objectiveKey}`);
+    const data = (row as AnyRow).data as Record<string, unknown>;
+    if (data.state === "completed") {
+      return { ok: true as const, finalAssessmentAttempts: 0 };
+    }
+    const mgmt = (data.management ?? {}) as Record<string, unknown>;
+    const revision = (mgmt.currentContractRevision as number | undefined) ?? 1;
+    const gateDecisionId = `gate_${args.objectiveKey}_r${revision}`;
+    const gateRow = await ctx.db
+      .query("managerialDecisions")
+      .withIndex("by_decisionId", (q) => q.eq("decisionId", gateDecisionId))
+      .unique();
+    if (gateRow) await ctx.db.delete(gateRow._id);
+    const attempts = 0;
+    await ctx.db.patch(row._id, {
+      data: {
+        ...data,
+        state: "executing",
+        activity: "resuming after supervised final-assessment repair",
+        finalSemanticAssessment: null,
+        updatedAt: args.at,
+        management: {
+          ...mgmt,
+          contractId: (mgmt.contractId as string | null) ?? null,
+          pendingFinalAssessment: null,
+          finalAssessmentAttempts: attempts,
+          lastFinalAssessmentCritique: null,
+        },
+      },
+    } as never);
+    await ctx.scheduler.runAfter(0, internal.management.runManagementPass, {
+      objectiveKey: args.objectiveKey,
+      reason: "recovery_event",
+    });
+    return { ok: true as const, finalAssessmentAttempts: attempts };
   },
 });
 

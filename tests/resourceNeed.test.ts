@@ -2,12 +2,16 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  bindExecutionIntentPurposeScope,
   computeNeedDedupeKey,
   createResourceNeed,
   dedupeResourceNeeds,
+  resolvePurposeKindForIntentBinding,
   transitionNeedStatus,
   buildDecisionRecord,
 } from "../lib/objective/resourceNeed";
+import { EXTERNAL_SOCIAL_INTELLIGENCE_PURPOSE_KIND } from "../lib/workforce/catalog";
+import type { ExecutionIntent } from "../lib/management/types";
 import type { ResourceNeed } from "../lib/objective/resourceNeed";
 import type { SourcingAuthorizingResult } from "../lib/sourcing/types";
 
@@ -198,4 +202,63 @@ test("active/sourcing -> rejected is legal", () => {
 test("proposed -> sourcing is illegal (must go through active)", () => {
   const need = makeNeed({ status: "proposed" });
   assert.throws(() => transitionNeedStatus(need, "sourcing", AT + 1));
+});
+
+test("resolvePurposeKindForIntentBinding borrows Objective policy when need has no validated scope", () => {
+  const need = makeNeed({
+    resourceClass: "proprietary_data",
+    validationAuthority: "application",
+    status: "active",
+    requestedScope: undefined,
+  });
+  assert.equal(
+    resolvePurposeKindForIntentBinding({
+      need,
+      objectivePolicyPurposeKind: EXTERNAL_SOCIAL_INTELLIGENCE_PURPOSE_KIND,
+      resourceClass: "proprietary_data",
+    }),
+    EXTERNAL_SOCIAL_INTELLIGENCE_PURPOSE_KIND,
+  );
+});
+
+test("bindExecutionIntentPurposeScope binds manager-initiated BUY from policy + requirement text", () => {
+  const intent: ExecutionIntent = {
+    intentId: "int_bind",
+    idempotencyKey: "idem_bind",
+    objectiveKey: "obj_bind",
+    requirementKey: "req_benchmark",
+    contractRevision: 1,
+    decisionId: "dec_bind",
+    kind: "external_acquisition",
+    strategy: "BUY",
+    target: {
+      offeringId: "somebody_testnet_social:social_media_guru",
+      providerId: "somebody_testnet_social",
+      serviceId: "social_media_guru",
+      resourceClass: "proprietary_data",
+      endpointRef: null,
+    },
+    terms: {
+      priceUsd: 0.01,
+      priceProvenance: "registry_data",
+      requiresApproval: false,
+      approvalId: "grant_test",
+    },
+    state: "authorized",
+    attempts: 0,
+    lastEventId: null,
+    resultEvidenceId: null,
+    verificationEvidenceId: null,
+    boundaryNote: "test",
+    createdAt: AT,
+    updatedAt: AT,
+  };
+  const bound = bindExecutionIntentPurposeScope({
+    intent,
+    matchingNeed: null,
+    objectivePolicyPurposeKind: EXTERNAL_SOCIAL_INTELLIGENCE_PURPOSE_KIND,
+    fallbackPurposeText: "Cross-platform social benchmark for launch week",
+  });
+  assert.equal(bound.requestedPurposeKind, EXTERNAL_SOCIAL_INTELLIGENCE_PURPOSE_KIND);
+  assert.match(bound.purpose ?? "", /benchmark/i);
 });
