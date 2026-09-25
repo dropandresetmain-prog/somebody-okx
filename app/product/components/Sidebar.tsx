@@ -2,9 +2,10 @@ import type { ObjectiveListView, ObjectiveSummaryView } from "../contracts";
 import { OBJECTIVE_STATUS_LABEL, objectiveStatusTone } from "../presentation";
 
 // Left rail — V6 IA: wordmark, tagline, dark Start CTA with orange plus,
-// physically separated In progress / Needs you / Done blocks (shown even when
-// empty), selected treatment, founder workspace footer. Status grouping is
-// exactly the backend arrays — no frontend reclassification.
+// physically separated In progress / Needs you / Done blocks (hidden when
+// empty rather than shown as an empty shell), selected treatment, founder
+// workspace footer. Status grouping is exactly the backend arrays — no
+// frontend reclassification.
 export function Sidebar({
   list,
   selectedId,
@@ -31,9 +32,15 @@ export function Sidebar({
       </button>
 
       <div className="v6-sidebar-sections">
-        <SidebarSection title="In progress" items={list.inProgress} selectedId={selectedId} onSelect={onSelect} />
-        <SidebarSection title="Needs you" items={list.needsYou} selectedId={selectedId} onSelect={onSelect} />
-        <SidebarSection title="Done" items={list.done} selectedId={selectedId} onSelect={onSelect} />
+        {list.inProgress.length > 0 ? (
+          <SidebarSection title="In progress" items={list.inProgress} selectedId={selectedId} onSelect={onSelect} />
+        ) : null}
+        {list.needsYou.length > 0 ? (
+          <SidebarSection title="Needs you" items={list.needsYou} selectedId={selectedId} onSelect={onSelect} />
+        ) : null}
+        {list.done.length > 0 ? (
+          <SidebarSection title="Done" items={list.done} selectedId={selectedId} onSelect={onSelect} />
+        ) : null}
       </div>
 
       {allEmpty ? <p className="v6-sidebar-empty muted">No objectives yet.</p> : null}
@@ -64,36 +71,33 @@ function SidebarSection({
   selectedId: string | null;
   onSelect: (id: string) => void;
 }) {
+  // Only ever rendered when items.length > 0 — the parent hides empty sections.
   return (
     <section className="v6-sidebar-section" data-sidebar-section={title}>
       <div className="v6-side-heading">
         <span>{title}</span>
         <span className="v6-side-count">{items.length}</span>
       </div>
-      {items.length === 0 ? (
-        <p className="v6-empty-row">Nothing right now.</p>
-      ) : (
-        <ul className="v6-sidebar-list">
-          {items.map((item) => (
-            <li key={item.id}>
-              <button
-                type="button"
-                className={`v6-sidebar-item${item.id === selectedId ? " is-selected" : ""}`}
-                data-objective-id={item.id}
-                aria-current={item.id === selectedId ? "true" : undefined}
-                onClick={() => onSelect(item.id)}
-              >
-                <span className="v6-sidebar-item-title">{item.title}</span>
-                <span className={`v6-nav-meta tone-${objectiveStatusTone(item.status)}`}>
-                  <span className={`dot tone-${objectiveStatusTone(item.status)}`} aria-hidden="true" />
-                  {item.statusLabel ?? OBJECTIVE_STATUS_LABEL[item.status]}
-                  {item.hasAttention ? <span className="v6-sidebar-item-flag" aria-hidden="true" /> : null}
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
+      <ul className="v6-sidebar-list">
+        {items.map((item) => (
+          <li key={item.id}>
+            <button
+              type="button"
+              className={`v6-sidebar-item${item.id === selectedId ? " is-selected" : ""}`}
+              data-objective-id={item.id}
+              aria-current={item.id === selectedId ? "true" : undefined}
+              onClick={() => onSelect(item.id)}
+            >
+              <span className="v6-sidebar-item-title">{item.title}</span>
+              <span className={`v6-nav-meta tone-${objectiveStatusTone(item.status)}`}>
+                <span className={`dot tone-${objectiveStatusTone(item.status)}`} aria-hidden="true" />
+                {item.statusLabel ?? OBJECTIVE_STATUS_LABEL[item.status]}
+                {item.hasAttention ? <span className="v6-sidebar-item-flag" aria-hidden="true" /> : null}
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }
