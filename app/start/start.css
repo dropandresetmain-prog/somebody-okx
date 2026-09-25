@@ -59,6 +59,37 @@
   margin: 9px auto 0;
 }
 
+.v6-replay-disclosure {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin: 0 0 14px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink-2);
+}
+
+.v6-replay-disclosure strong {
+  display: block;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--ink-3);
+  font-weight: 900;
+  margin-bottom: 6px;
+}
+
+.v6-replay-disclosure p {
+  margin: 4px 0 0;
+}
+
+.v6-replay-disclosure a {
+  color: var(--ink);
+  font-weight: 700;
+  text-decoration: underline;
+}
+
 .v6-start-composer {
   background: var(--surface);
   border: 1px solid var(--line-strong);
