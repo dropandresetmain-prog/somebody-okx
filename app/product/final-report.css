@@ -1,0 +1,108 @@
+/*
+ * Final report structured content typography.
+ *
+ * Scoped entirely under `.v6-final-deliverable-content` — the box itself
+ * (padding/background/border/scroll) is owned by app/product/
+ * product-workspace.css; this file only styles the structured elements
+ * ReportDocument.tsx renders inside that box (headings, paragraphs, lists,
+ * bold), plus the replay-mode live-PDF note. Readable measure, comfortable
+ * at 375px width, no horizontal overflow — long tokens/URLs wrap.
+ */
+
+.v6-final-deliverable-content {
+  max-width: 68ch;
+}
+
+.v6-final-deliverable-content > :first-child {
+  margin-top: 0;
+}
+
+.v6-final-deliverable-content > :last-child {
+  margin-bottom: 0;
+}
+
+.v6-final-deliverable-content h1,
+.v6-final-deliverable-content h2,
+.v6-final-deliverable-content h3 {
+  font-family: var(--font-display-stack);
+  color: var(--ink);
+  font-weight: 750;
+  letter-spacing: -0.01em;
+  line-height: 1.28;
+  overflow-wrap: anywhere;
+}
+
+.v6-final-deliverable-content h1 {
+  font-size: 19px;
+  margin: 0 0 12px;
+}
+
+.v6-final-deliverable-content h2 {
+  font-size: 16px;
+  margin: 26px 0 10px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.v6-final-deliverable-content h1 + h2 {
+  padding-top: 0;
+  border-top: none;
+}
+
+.v6-final-deliverable-content h3 {
+  font-size: 13.5px;
+  margin: 18px 0 8px;
+}
+
+.v6-final-deliverable-content p {
+  color: var(--ink-2);
+  font-size: 13.5px;
+  line-height: 1.65;
+  margin: 0 0 14px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.v6-final-deliverable-content ul,
+.v6-final-deliverable-content ol {
+  margin: 0 0 14px;
+  padding-left: 22px;
+  color: var(--ink-2);
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+
+.v6-final-deliverable-content li {
+  margin: 0 0 6px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.v6-final-deliverable-content li:last-child {
+  margin-bottom: 0;
+}
+
+.v6-final-deliverable-content strong {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+/* Replay-mode note in place of the (live-only) Download PDF button. */
+.v6-final-deliverable-live-note {
+  font-size: 11px;
+  line-height: 1.5;
+  margin: 0;
+  max-width: 30ch;
+  text-align: right;
+}
+
+@media (max-width: 480px) {
+  .v6-final-deliverable-content {
+    max-width: none;
+  }
+
+  .v6-final-deliverable-live-note {
+    max-width: none;
+    text-align: left;
+  }
+}
