@@ -3,6 +3,7 @@
 // and approval states stay visible. Driven by the real recorded Luna replay
 // frames plus small contract-shaped cases for paths Luna does not exercise.
 
+import "./helpers/ignoreCss";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createElement } from "react";

@@ -6,6 +6,7 @@
 // render tests go through FinalDeliverable via react-dom/server, mirroring
 // tests/finalDeliverable.test.ts.
 
+import "./helpers/ignoreCss";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createElement } from "react";

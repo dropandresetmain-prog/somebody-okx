@@ -2,6 +2,7 @@
 // path to Convex, Product Commands, models, JEV, payment, merchant or wallet
 // code — proven structurally (import graph) and behaviourally (routes).
 
+import "./helpers/ignoreCss";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
@@ -10,9 +11,6 @@ import { isValidElement } from "react";
 
 const ROOT = join(__dirname, "..");
 
-// Route modules import CSS for Next.js; make those imports inert under node:test.
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-(require as unknown as { extensions: Record<string, (m: unknown) => void> }).extensions[".css"] = () => {};
 
 const REPLAY_ENTRYPOINTS = [
   "app/replay/ReplayWorkspace.tsx",

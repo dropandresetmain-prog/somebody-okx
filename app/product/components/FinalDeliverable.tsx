@@ -13,7 +13,6 @@ import {
 } from "../../../lib/product/finalReportPdf";
 import type { SomebodyMode } from "../../../lib/product/mode";
 import { ReportDocument } from "./ReportDocument";
-import "../nodeTestCssShim";
 import "../final-report.css";
 
 // Main-column "Final deliverable" (post-founder-live-run Incident #2): when an

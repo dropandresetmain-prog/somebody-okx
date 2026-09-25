@@ -3,6 +3,7 @@
 // Fixtures below are shaped like the product contract types (app/product/
 // contracts.ts) for test purposes only — never copied into production code.
 
+import "./helpers/ignoreCss";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";

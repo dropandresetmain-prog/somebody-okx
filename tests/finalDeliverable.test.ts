@@ -5,6 +5,7 @@
 // contracts.ts) — renderToStaticMarkup, no Convex, no runtime — mirroring the
 // pattern in tests/v6ProductWorkspace.test.ts.
 
+import "./helpers/ignoreCss";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createElement } from "react";

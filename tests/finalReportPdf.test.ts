@@ -3,6 +3,7 @@
  * No Convex, no LLM, no whole-suite run.
  */
 
+import "./helpers/ignoreCss";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
