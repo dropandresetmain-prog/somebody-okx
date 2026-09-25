@@ -17,11 +17,13 @@ import type {
   InternView,
   ManagerDecisionConsideredOption,
   ManagerDecisionPayload,
+  MoneyView,
   ProductApproach,
   SomebodyNowView,
   VerificationPayload,
   WorkSummaryPayload,
 } from "./contracts";
+import { checkpointDisplayLabel } from "./presentation";
 
 // ── Machine keys ─────────────────────────────────────────────────────────────
 
@@ -46,8 +48,22 @@ function sentenceCase(value: string): string {
   return value ? value.charAt(0).toUpperCase() + value.slice(1) : value;
 }
 
-/** `proprietary_data` → `Proprietary data`. Non-keys pass through unchanged. */
+// A handful of machine keys from this product's own resource/provider
+// vocabulary read as jargon even after the generic snake_case→words rule
+// runs ("proprietary data", "somebody testnet social"). These exact-match
+// overrides give them the same first-time-reader phrasing the founder sees
+// elsewhere (e.g. the checkpoint rail); anything not listed falls through to
+// the generic rule unchanged.
+const KNOWN_KEY_LABEL: Record<string, string> = {
+  proprietary_data: "the audience benchmark",
+  social_media_guru: "Social Media Guru",
+  somebody_testnet_social: "OKX Testnet Marketplace",
+};
+
+/** `proprietary_data` → `the audience benchmark` (or `Proprietary data` when unrecognized). Non-keys pass through unchanged. */
 export function humanizeKey(value: string): string {
+  const trimmed = value.trim();
+  if (KNOWN_KEY_LABEL[trimmed]) return KNOWN_KEY_LABEL[trimmed];
   return isMachineKey(value) ? sentenceCase(words(value)) : value;
 }
 
@@ -160,6 +176,35 @@ export function presentEvidenceLabel(label: string): string {
     return acquired[1] ? `${name} · outside result · simulated` : `${name} · outside result`;
   }
   return humanizeSystemText(label);
+}
+
+/**
+ * Founder-facing money display. Some infrastructure events persist an
+ * on-chain accounting figure (smallest-unit token amount, contract address as
+ * "currency") rather than a price a founder should read — that never renders
+ * as a fact; callers fall back to a known real amount (e.g. the acquisition's
+ * price) or omit the field.
+ */
+export function formatMoney(money?: MoneyView | null): string | null {
+  if (!money) return null;
+  const currency = money.currency.trim();
+  if (!currency || /^0x/i.test(currency)) return null;
+  if (/^usd/i.test(currency)) return `$${money.amount}`;
+  return `${money.amount} ${currency}`;
+}
+
+/** Shortens a long on-chain hash for display: `0x1a8e18…686d`. */
+export function shortenHash(hash: string): string {
+  return hash.length <= 14 ? hash : `${hash.slice(0, 6)}…${hash.slice(-4)}`;
+}
+
+const ATTENTION_REASON_LABEL: Record<string, string> = {
+  spend_authority_required: "Waiting on a spend approval",
+};
+
+/** Founder-facing line for `AttentionState.context.reason`. */
+export function attentionReasonLabel(reason: string): string {
+  return ATTENTION_REASON_LABEL[reason] ?? humanizeKey(reason);
 }
 
 /** Drops a leading "Version N:" — the version is already on the card. */
