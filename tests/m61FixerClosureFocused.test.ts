@@ -299,10 +299,18 @@ test("H/I: correction accounting leaves room for assessment #2; reopen does not 
     /lastFinalAssessmentCritique/,
     "reopen must persist critique for manager context",
   );
+  // Scoped correction clears only the rejected final deliverable's fingerprint
+  // (via the shared correction plan). A blanket `{}` wipe would also erase
+  // prerequisite decision identities and is no longer acceptable.
   assert.match(
     reopenBody,
-    /decisionInputFingerprints:\s*\{\}/,
-    "reopen must clear fingerprints so correction is not duplicate-suppressed",
+    /decisionInputFingerprints:\s*plan\.decisionInputFingerprints/,
+    "reopen must apply the scoped fingerprint plan, not wipe all decision identities",
+  );
+  assert.equal(
+    /decisionInputFingerprints:\s*\{\}/.test(reopenBody),
+    false,
+    "reopen must not blanket-clear decisionInputFingerprints",
   );
   assert.match(src, /clearPendingFinalAssessment/, "provider failure cleanup export required");
 });

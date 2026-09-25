@@ -26,6 +26,10 @@ import type { MutationCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 
 import { buildManagementGraph } from "../lib/management/graph";
+import {
+  buildFinalDeliverableCorrectionPlan,
+  resolveGovernedAssessmentTarget as resolveFinalAssessmentTarget,
+} from "../lib/management/finalDeliverableLifecycle";
 import type { ManagementPorts } from "../lib/management/graph";
 import { runManagerialDecisionPass, BEGIN_DECISION_CEILING } from "../lib/management/decision";
 import {
@@ -898,6 +902,14 @@ export function buildConvexManagementPorts(ctx: MutationCtx): ManagementPorts {
           });
           return verdict;
         };
+        // Do not repeatedly schedule a begin step that cannot reserve a target.
+        // This is an explicit, persisted blocker, not an executing/no-progress loop.
+        if (!assessmentTarget.ok) {
+          return await persistBlockedGate(
+            `final assessment target is unresolved: ${assessmentTarget.reason}`,
+            "unresolvable final deliverable target",
+          );
+        }
         const substantiveAttempts =
           (omgmt.finalAssessmentAttempts as number | undefined) ?? 0;
         const nonSubstantiveFailures =
@@ -951,13 +963,19 @@ export function buildConvexManagementPorts(ctx: MutationCtx): ManagementPorts {
               "final assessment recovery budget exhausted",
             );
           }
-          await reopenSerialDeliverableAfterNegativeAssessment(
+          const reopened = await reopenSerialDeliverableAfterNegativeAssessment(
             ctx,
             proposal.objectiveKey,
             currentContractRevision,
             at,
             assessment.rationale,
           );
+          if (!reopened) {
+            return await persistBlockedGate(
+              "final deliverable could not be safely reopened for correction",
+              "final-deliverable correction target is unresolved or not satisfied",
+            );
+          }
           return {
             accepted: false,
             objectiveState: "executing",
@@ -3319,96 +3337,10 @@ export const BEGIN_FINAL_ASSESSMENT_NONSUBSTANTIVE_CEILING = 4;
  * Prefer company_artifact_version proof params; otherwise require a single
  * unambiguous company artifact. Never regex-match or pick an arbitrary first.
  */
-export function resolveGovernedAssessmentTarget(input: {
-  requirements: readonly Requirement[];
-  artifacts: readonly { key: string; version: number; content?: string }[];
-  contractRevision: number;
-}):
-  | {
-      ok: true;
-      artifactKey: string;
-      artifactVersion: number;
-      requirementKey: string;
-      minVersionRequired: number | null;
-    }
-  | { ok: false; reason: string } {
-  const deliverables = input.requirements.filter(
-    (req) =>
-      req.contractRevision === input.contractRevision &&
-      req.priority === "required" &&
-      !isSerialInputRequirement(req),
-  );
-  const proofTargets: Array<{
-    requirementKey: string;
-    artifactKey: string;
-    minVersion: number | null;
-  }> = [];
-  for (const req of deliverables) {
-    for (const proof of req.proofs) {
-      if (proof.proofKind !== "company_artifact_version") continue;
-      const key = String(proof.params?.artifactKey ?? "").trim();
-      if (!key) continue;
-      const minRaw = proof.params?.minVersion;
-      const minVersion =
-        typeof minRaw === "number" && Number.isFinite(minRaw) ? minRaw : null;
-      proofTargets.push({
-        requirementKey: req.requirementKey,
-        artifactKey: key,
-        minVersion,
-      });
-    }
-  }
-  const uniqueKeys = [...new Set(proofTargets.map((t) => t.artifactKey))];
-  if (uniqueKeys.length > 1) {
-    return {
-      ok: false,
-      reason: `ambiguous governed artifact targets: ${uniqueKeys.join(", ")}`,
-    };
-  }
-  if (uniqueKeys.length === 1) {
-    const artifactKey = uniqueKeys[0]!;
-    const art = input.artifacts.find((a) => a.key === artifactKey);
-    if (!art) {
-      return {
-        ok: false,
-        reason: `governed artifact ${artifactKey} is not present on this Objective`,
-      };
-    }
-    const hit = proofTargets.find((t) => t.artifactKey === artifactKey)!;
-    return {
-      ok: true,
-      artifactKey,
-      artifactVersion: art.version,
-      requirementKey: hit.requirementKey,
-      minVersionRequired: hit.minVersion,
-    };
-  }
-  // No proof-named target: only unambiguous when exactly one artifact exists.
-  if (input.artifacts.length === 1) {
-    const art = input.artifacts[0]!;
-    const req = deliverables[0];
-    if (!req) {
-      return {
-        ok: false,
-        reason: "no deliverable requirement for sole company artifact",
-      };
-    }
-    return {
-      ok: true,
-      artifactKey: art.key,
-      artifactVersion: art.version,
-      requirementKey: req.requirementKey,
-      minVersionRequired: null,
-    };
-  }
-  if (input.artifacts.length === 0) {
-    return { ok: false, reason: "no company artifact present for assessment" };
-  }
-  return {
-    ok: false,
-    reason:
-      "no explicit governed artifact target and multiple company artifacts present",
-  };
+export function resolveGovernedAssessmentTarget(
+  input: Parameters<typeof resolveFinalAssessmentTarget>[0],
+): ReturnType<typeof resolveFinalAssessmentTarget> {
+  return resolveFinalAssessmentTarget(input);
 }
 
 /**
@@ -3421,65 +3353,59 @@ async function reopenSerialDeliverableAfterNegativeAssessment(
   contractRevision: number,
   at: number,
   rationale: string,
-): Promise<void> {
+): Promise<boolean> {
   const row = await ctx.db
     .query("objectives")
     .withIndex("by_key", (q) => q.eq("key", objectiveKey))
     .unique();
-  if (!row) return;
+  if (!row) return false;
   const data = (row as AnyRow).data as Record<string, unknown>;
   const mgmt = (data.management ?? {}) as Record<string, unknown>;
   const attempts = (mgmt.finalAssessmentAttempts as number | undefined) ?? 0;
-  // begin counts each assessment. Once at ceiling, no further correction reopen.
-  if (attempts >= BEGIN_FINAL_ASSESSMENT_CEILING) return;
+  if (attempts >= BEGIN_FINAL_ASSESSMENT_CEILING) return false;
 
   const reqRows = await ctx.db
     .query("requirements")
     .withIndex("by_objectiveKey", (q) => q.eq("objectiveKey", objectiveKey))
     .collect();
-  for (const reqRow of reqRows) {
-    const req = (reqRow as AnyRow).data as Requirement;
-    if (req.contractRevision !== contractRevision) continue;
-    if (req.priority !== "required") continue;
-    if (req.state !== "satisfied") continue;
-    if (isSerialInputRequirement(req)) continue;
-    const reopened: Requirement = {
-      ...req,
-      state: "active",
-      strategy: null,
-      resolution: null,
-      updatedAt: at,
-    };
-    await ctx.runMutation(internal.internal.workforce.putRequirement, {
-      objectiveKey,
-      requirementKey: req.requirementKey,
-      data: reopened,
-      currentContractRevision: contractRevision,
-    });
-  }
-
-  // Preserve historical verified MAKE rows as history, not as the current
-  // delivery. Without this, strategyDelivery treats the prior verified
-  // assignment as "already delivered" and blocks corrective dispatch.
   const assignmentRows = await ctx.db
     .query("assignments")
     .withIndex("by_objective", (q) => q.eq("objectiveKey", objectiveKey))
     .collect();
-  for (const row of assignmentRows) {
-    const assignment = (row as AnyRow).data as Assignment;
-    if (assignment.contractRevision !== contractRevision) continue;
-    if (assignment.state !== "verified" && assignment.state !== "result_submitted")
-      continue;
+  // Resolve the same final output the assessor judged BEFORE writing anything.
+  // Prerequisite results are still valid; rejection of the final report is not
+  // a rejection of every prior research/input assignment in the Objective.
+  const plan = buildFinalDeliverableCorrectionPlan({
+    requirements: reqRows.map((reqRow) => (reqRow as AnyRow).data as Requirement),
+    assignments: assignmentRows.map((assignmentRow) => (assignmentRow as AnyRow).data as Assignment),
+    artifacts: (data.companyArtifacts ?? []) as Array<{ key: string; version: number; content?: string }>,
+    contractRevision,
+    decisionInputFingerprints: (mgmt.decisionInputFingerprints ?? {}) as Record<string, string>,
+    at,
+  });
+  if (!plan.ok) return false;
+
+  await ctx.runMutation(internal.internal.workforce.putRequirement, {
+    objectiveKey,
+    requirementKey: plan.reopenedRequirement.requirementKey,
+    data: plan.reopenedRequirement,
+    currentContractRevision: contractRevision,
+  });
+  const supersedeIds = new Set(plan.assignmentIdsToSupersede);
+  for (const assignmentRow of assignmentRows) {
+    const assignment = (assignmentRow as AnyRow).data as Assignment;
+    if (!supersedeIds.has(assignment.assignmentId)) continue;
     const moved = advanceAssignment(assignment, "superseded", at, {
       resultSummary: `superseded after negative final assessment: ${rationale.slice(0, 200)}`,
     });
-    if (moved.ok) {
-      await ctx.runMutation(internal.internal.workforce.putAssignment, {
-        assignmentId: assignment.assignmentId,
-        objectiveKey,
-        data: moved.assignment,
-      });
-    }
+    // This is one Convex mutation. An unexpected transition failure must roll
+    // back the reopen, never persist an active requirement with old delivery.
+    if (!moved.ok) throw new Error("Final-deliverable correction could not supersede its prior assignment");
+    await ctx.runMutation(internal.internal.workforce.putAssignment, {
+      assignmentId: assignment.assignmentId,
+      objectiveKey,
+      data: moved.assignment,
+    });
   }
 
   await ctx.db.patch(row._id, {
@@ -3489,14 +3415,11 @@ async function reopenSerialDeliverableAfterNegativeAssessment(
       management: {
         ...mgmt,
         contractId: (mgmt.contractId as string | null) ?? null,
-        // Do NOT increment finalAssessmentAttempts here — begin already counted
-        // the assessment that produced this critique. Reopen must leave room for
-        // one corrective action + assessment #2 within the existing ceiling.
+        // Retain attempts, approvals, acquisitions and prerequisite identities.
+        // Only the rejected output needs a fresh decision fingerprint.
         pendingFinalAssessment: null,
         lastFinalAssessmentCritique: rationale.slice(0, 800),
-        // Clear decision fingerprints for reopened deliverables so correction
-        // is not suppressed as an unchanged duplicate decision.
-        decisionInputFingerprints: {},
+        decisionInputFingerprints: plan.decisionInputFingerprints,
       },
       updatedAt: at,
     },
@@ -3506,22 +3429,12 @@ async function reopenSerialDeliverableAfterNegativeAssessment(
     data: {
       at,
       kind: "decision",
-      text: `Final semantic assessment not ready; deliverable reopened for bounded revision: ${rationale.slice(0, 400)}`,
+      text: `Final semantic assessment not ready; final deliverable ${plan.reopenedRequirement.requirementKey} reopened for bounded revision: ${rationale.slice(0, 400)}`,
     },
   });
 
-  // RELIABILITY V7 (D) — the reopen OWNS its continuation. The correction must
-  // not wait on an unrelated old worker timer or on some other event happening
-  // to arrive: this wake (deduped on the reopen identity, a SELF reason so it
-  // never launders the no-progress counter) plus this scheduled pass are the
-  // correction's guaranteed next step. A redelivered gate pass rebuilds a
-  // byte-identical wake, so the continuation can never fan out.
-  const wake = planWakeForReopen({
-    objectiveKey,
-    contractRevision,
-    assessmentAttempt: attempts,
-    at,
-  });
+  // Retain the existing request-bound, deduplicated continuation and ceilings.
+  const wake = planWakeForReopen({ objectiveKey, contractRevision, assessmentAttempt: attempts, at });
   await ctx.runMutation(internal.internal.workforce.appendWakeEvent, {
     eventId: wake.eventId,
     objectiveKey,
@@ -3532,6 +3445,7 @@ async function reopenSerialDeliverableAfterNegativeAssessment(
     objectiveKey,
     reason: "recovery_event",
   });
+  return true;
 }
 
 /**

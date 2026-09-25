@@ -807,7 +807,12 @@ test("DF6: governed target resolution stays proof-driven and refuses ambiguity",
     contractRevision: 1,
   });
   assert.equal(ambiguous.ok, false);
-  if (!ambiguous.ok) assert.match(ambiguous.reason, /multiple company artifacts|ambiguous/);
+  if (!ambiguous.ok) {
+    assert.match(
+      ambiguous.reason,
+      /multiple company artifacts|ambiguous|without a governed artifactKey/,
+    );
+  }
 });
 
 test("DF6/case-10 stale assessment version: verdict on v2 cannot bless v3", async () => {

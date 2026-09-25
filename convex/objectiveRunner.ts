@@ -10,6 +10,7 @@
 
 import { v } from "convex/values";
 import OpenAI from "openai";
+import { assessmentMatchesTarget } from "../lib/management/finalDeliverableLifecycle";
 import { internal } from "./_generated/api";
 import { internalAction } from "./_generated/server";
 import type { ActionCtx } from "./_generated/server";
@@ -2332,11 +2333,14 @@ export const proposeFinalSemanticAssessment = internalAction({
         }
       | null
       | undefined;
-    if (!pending || pending.requestId !== args.requestId) return null;
-    if (
-      record.finalSemanticAssessment &&
-      record.finalSemanticAssessment.contractRevision === args.contractRevision
-    ) {
+    if (!pending || pending.requestId !== args.requestId || pending.contractRevision !== args.contractRevision) return null;
+    // A verdict on an older artifact version must not suppress this newly
+    // reserved assessment. Match the same exact target used by begin/apply.
+    if (assessmentMatchesTarget(record.finalSemanticAssessment, {
+      contractRevision: args.contractRevision,
+      artifactKey: pending.targetArtifactKey,
+      artifactVersion: pending.targetArtifactVersion,
+    })) {
       return null;
     }
 
