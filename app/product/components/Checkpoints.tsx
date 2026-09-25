@@ -1,5 +1,5 @@
 import type { CheckpointView, ProgressView } from "../contracts";
-import { CHECKPOINT_LABEL } from "../presentation";
+import { CHECKPOINT_LABEL, checkpointDisplayLabel } from "../presentation";
 
 // Right-rail Checkpoints (DESIGN.md §4, contract §12–13). Renders exactly the
 // supplied checkpoints — no numeric progress, no Requirement inspection.
@@ -55,11 +55,22 @@ export function Checkpoints({ progress }: { progress: ProgressView }) {
 
 function CheckpointCopy({ checkpoint }: { checkpoint: CheckpointView }) {
   const { label, detail, state } = checkpoint;
-  if (!detail) return <p className="v6-checkpoint-label">{label}</p>;
+  // Short action-phrase display label; the full backend label stays available
+  // via title (and, when there's a definition disclosure, isn't lost either).
+  const displayLabel = checkpointDisplayLabel(label);
+  if (!detail) {
+    return (
+      <p className="v6-checkpoint-label" title={label}>
+        {displayLabel}
+      </p>
+    );
+  }
   if (state === "blocked") {
     return (
       <>
-        <p className="v6-checkpoint-label">{label}</p>
+        <p className="v6-checkpoint-label" title={label}>
+          {displayLabel}
+        </p>
         <p className="v6-checkpoint-detail">{detail}</p>
       </>
     );
@@ -67,7 +78,9 @@ function CheckpointCopy({ checkpoint }: { checkpoint: CheckpointView }) {
   // The label is the disclosure: the definition opens under it on demand.
   return (
     <details className="v6-checkpoint-disclosure">
-      <summary className="v6-checkpoint-label">{label}</summary>
+      <summary className="v6-checkpoint-label" title={label}>
+        {displayLabel}
+      </summary>
       <p className="v6-checkpoint-detail muted">{detail}</p>
     </details>
   );

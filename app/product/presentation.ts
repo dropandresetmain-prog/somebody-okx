@@ -281,3 +281,63 @@ export function activityEventClass(importance: ActivityImportance): string {
   if (importance === "minor") return "v6-event--minor";
   return "";
 }
+
+// ── Checkpoint label humanizer ──────────────────────────────────────────────
+//
+// Requirement labels come from the engine as evidence-state nouns ("Company
+// context available"). The checkpoint rail reads better as short action
+// phrases ("Understand the company") — what the founder is waiting on, not
+// what fact becomes true. Presentation-only: never rewrites backend truth,
+// and the full original label always stays available (callers should keep it
+// in a title/detail attribute).
+//
+// Labels observed from real runs need exact rewrites the generic rules can't
+// safely produce (article insertion, dropped qualifiers, reordering), so
+// those go in an exact-match table first. Anything else runs through a small
+// "strip a trailing status qualifier, then map a trailing noun to a leading
+// verb" pipeline, and falls back to the original label unchanged when no
+// rule applies.
+const CHECKPOINT_LABEL_OVERRIDES: Record<string, string> = {
+  "Company context available": "Understand the company",
+  "Public launch and platform research available": "Research the launch",
+  "Comparative cross-platform benchmark evidence available": "Acquire audience benchmark",
+  "Evidence-backed launch context": "Establish launch context",
+  "Cross-platform channel recommendations": "Recommend channels",
+  "Founder-ready launch-week social media plan": "Build the launch plan",
+};
+
+const CHECKPOINT_TRAILING_QUALIFIER = /\s+(?:available|completed|ready)\s*$/i;
+
+const CHECKPOINT_NOUN_VERB_RULES: Array<{ pattern: RegExp; verb: string }> = [
+  { pattern: /^(.*)\s+research$/i, verb: "Research" },
+  { pattern: /^(.*)\s+recommendations?$/i, verb: "Recommend" },
+  { pattern: /^(.*)\s+evidence$/i, verb: "Acquire" },
+  { pattern: /^(.*)\s+context$/i, verb: "Establish" },
+  { pattern: /^(.*)\s+plan$/i, verb: "Build" },
+];
+
+function lowerFirstWord(value: string): string {
+  return value && /^[A-Z][a-z]/.test(value) ? value.charAt(0).toLowerCase() + value.slice(1) : value;
+}
+
+// A subject ending in a dangling conjunction/preposition ("Launch context
+// and") means the trailing-noun rule sliced through a compound phrase it
+// doesn't actually understand — safer to fall back than to emit that.
+const CHECKPOINT_DANGLING_SUBJECT = /\b(?:and|or|of|to|with|for|the)$/i;
+
+/** Shortens a verbose Requirement label to a short action phrase. Falls back to the original label when no rule applies. */
+export function checkpointDisplayLabel(label: string): string {
+  const trimmed = label.trim();
+  const override = CHECKPOINT_LABEL_OVERRIDES[trimmed];
+  if (override) return override;
+
+  const stripped = trimmed.replace(CHECKPOINT_TRAILING_QUALIFIER, "").trim();
+  for (const rule of CHECKPOINT_NOUN_VERB_RULES) {
+    const match = stripped.match(rule.pattern);
+    const subject = match?.[1]?.trim();
+    if (subject && !CHECKPOINT_DANGLING_SUBJECT.test(subject)) {
+      return `${rule.verb} ${lowerFirstWord(subject)}`;
+    }
+  }
+  return label;
+}

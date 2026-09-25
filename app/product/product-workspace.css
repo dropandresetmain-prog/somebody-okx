@@ -255,10 +255,15 @@
 
 .v6-objective-head {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
-  gap: 25px;
+  gap: 12px 25px;
   align-items: flex-start;
   margin-bottom: 18px;
+}
+
+.v6-objective-head > div {
+  min-width: 0;
 }
 
 .v6-objective-kicker {
@@ -1955,13 +1960,13 @@
 }
 
 .v6-checkpoint-disclosure summary::after {
-  content: "  content: " ›";0a0›";
+  content: " ›";
   color: var(--ink-3);
   font-weight: 700;
 }
 
 .v6-checkpoint-disclosure[open] summary::after {
-  content: "  content: " ⌄";0a0⌄";
+  content: " ⌄";
 }
 
 .v6-checkpoint-state {
@@ -2391,6 +2396,15 @@
     height: auto;
     border-right: none;
     border-bottom: 1px solid var(--line);
+  }
+  .v6-main {
+    padding: 20px 16px 64px;
+  }
+  .v6-objective-title {
+    font-size: 26px;
+  }
+  .v6-somebody-card-copy {
+    padding: 18px 18px;
   }
   .v6-somebody-card {
     grid-template-columns: 1fr;

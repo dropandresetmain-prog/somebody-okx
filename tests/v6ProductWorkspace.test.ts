@@ -19,6 +19,7 @@ import type {
   ObjectiveProductStatus,
   StartCapabilitiesView,
 } from "../app/product/contracts";
+import { checkpointDisplayLabel } from "../app/product/presentation";
 import { Sidebar } from "../app/product/components/Sidebar";
 import { ObjectiveHeader } from "../app/product/components/ObjectiveHeader";
 import { Checkpoints } from "../app/product/components/Checkpoints";
@@ -94,6 +95,22 @@ test("Sidebar renders a truthful empty state when every section is empty", () =>
     createElement(Sidebar, { list: list(), selectedId: null, onSelect: () => {}, onStartNew: () => {} }),
   );
   assert.ok(html.includes("No objectives yet."));
+});
+
+test("Sidebar hides empty sections instead of showing an empty shell", () => {
+  const view = list({
+    inProgress: [summary({ id: "p1", status: "working" })],
+    // needsYou and done stay empty.
+  });
+  const html = renderToStaticMarkup(
+    createElement(Sidebar, { list: view, selectedId: "p1", onSelect: () => {}, onStartNew: () => {} }),
+  );
+  assert.ok(html.includes('data-sidebar-section="In progress"'));
+  assert.ok(!html.includes('data-sidebar-section="Needs you"'));
+  assert.ok(!html.includes('data-sidebar-section="Done"'));
+  assert.ok(!html.includes("Nothing right now."));
+  // Non-empty sections exist, so the fully-empty state does not show.
+  assert.ok(!html.includes("No objectives yet."));
 });
 
 // ── B. Objective status — rendered, not recalculated ────────────────────────
@@ -879,4 +896,36 @@ test("the live container references product reads via useProductWorkspace; /star
   assert.ok(startSrc.includes("api.productWorkspace.getStartCapabilitiesV1"));
   assert.ok(startSrc.includes("api.productCommands.createObjectiveV1"));
   assert.ok(!startSrc.includes("api.objectives.submitObjective"));
+});
+
+// ── Checkpoint label humanizer ───────────────────────────────────────────────
+
+test("checkpointDisplayLabel shortens the real replay-run labels to action phrases", () => {
+  assert.equal(checkpointDisplayLabel("Company context available"), "Understand the company");
+  assert.equal(
+    checkpointDisplayLabel("Public launch and platform research available"),
+    "Research the launch",
+  );
+  assert.equal(
+    checkpointDisplayLabel("Comparative cross-platform benchmark evidence available"),
+    "Acquire audience benchmark",
+  );
+  assert.equal(checkpointDisplayLabel("Evidence-backed launch context"), "Establish launch context");
+  assert.equal(checkpointDisplayLabel("Cross-platform channel recommendations"), "Recommend channels");
+  assert.equal(
+    checkpointDisplayLabel("Founder-ready launch-week social media plan"),
+    "Build the launch plan",
+  );
+});
+
+test("checkpointDisplayLabel falls back to the original label when no rule or override matches", () => {
+  assert.equal(checkpointDisplayLabel("Approval recorded"), "Approval recorded");
+  assert.equal(checkpointDisplayLabel("Something entirely unrecognized"), "Something entirely unrecognized");
+});
+
+test("checkpointDisplayLabel generalises beyond the exact-match table via the noun-to-verb rules", () => {
+  // Not in the override table, but shaped like the labels that are —
+  // exercises the generic "strip qualifier, map trailing noun" pipeline.
+  assert.equal(checkpointDisplayLabel("Pricing research completed"), "Research pricing");
+  assert.equal(checkpointDisplayLabel("Competitor teardown plan"), "Build competitor teardown");
 });
