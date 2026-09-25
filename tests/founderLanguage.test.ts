@@ -1,7 +1,7 @@
 // Founder-facing language pass: system/orchestration vocabulary must not reach
 // the default rendered surface, while provenance, transaction truth, unknowns
-// and approval states stay visible. Driven by the real recorded Luna replay
-// frames plus small contract-shaped cases for paths Luna does not exercise.
+// and approval states stay visible. Driven by the real recorded GPT-6 replay
+// frames plus small contract-shaped cases for paths that run does not exercise.
 
 import "./helpers/ignoreCss";
 import test from "node:test";
@@ -49,7 +49,12 @@ function defaultVisibleText(html: string): string {
 const LEAKS = [
   /worker_/,
   /capability-matched/i,
-  /\beligible\b/i,
+  // The raw, untranslated MAKE option label ("eligible, available and
+  // capability-matched") must never leak — but the product's own
+  // considered-option status badge legitimately renders the plain word
+  // "Eligible" (app/product/components/Activity.tsx `consideredStatusText`),
+  // so the pattern targets the raw label phrase, not the badge word.
+  /eligible,\s*available/i,
   /Managerial (decision|interpretation)/i,
   /External capability/i,
   /Accountable manager/i,
@@ -74,7 +79,7 @@ test("every Luna replay frame renders without orchestration vocabulary on the de
   });
 });
 
-test("Luna final frame keeps the business story and every truth marker", () => {
+test("GPT-6 replay final frame keeps the business story and every truth marker", () => {
   const html = renderFrame(okxSubmissionRunScenario.frames.length - 1);
   const text = defaultVisibleText(html);
   // Story beats.
@@ -83,26 +88,31 @@ test("Luna final frame keeps the business story and every truth marker", () => {
     "Keep this in-house",
     "Use the Intern",
     "Bring in outside help",
-    "Founder narrative pulse",
     "Authorized getting proprietary data",
     "The Intern picked the work back up with the outside result",
-    "Launch page headline and message",
+    "Objective deliverable",
     "Now version 3",
     "The deliverable meets the required outcome",
     "Objective complete",
   ]) {
     assert.ok(text.includes(beat), `missing story beat: ${beat}`);
   }
-  // Truth markers stay visible by default.
-  assert.ok(text.includes("Simulation"), "simulation provenance must stay visible");
-  assert.ok(text.includes("SIMULATED proprietary social evidence"), "external result keeps its own simulation disclosure");
+  // Truth markers stay visible by default. This run's acquisition provenance
+  // is `live` (a real X Layer Testnet transaction), and the acquired data's
+  // own content discloses it is a synthetic/test-provider dataset — both
+  // truths must stay visible, distinct from each other.
+  assert.ok(text.includes("Live"), "live acquisition provenance must stay visible");
+  assert.ok(
+    text.includes("No live TikTok / Instagram / Facebook / X data was queried"),
+    "external result keeps its own synthetic-data disclosure",
+  );
   assert.ok(text.includes("3 remaining unknowns"), "remaining unknowns stay discoverable");
   assert.ok(text.includes("Next move"));
   // Persisted rationale stays available behind Why.
   assert.ok(html.includes("<summary>Why</summary>"));
-  assert.ok(html.includes("Select the eligible internal MAKE option"), "rationale is preserved, not rewritten");
+  assert.ok(html.includes("was the sole eligible grounded option"), "rationale is preserved, not rewritten");
   // Causality is preserved.
-  assert.ok(html.includes('data-caused-by-activity-id="activity:external_result_verified:sim_result_6269e01f64377bbfb5f17971"'));
+  assert.ok(html.includes('data-caused-by-activity-id="activity:external_result_verified:ev_result_a292822a3d167c8af9d0dfc3"'));
 });
 
 test("completion hero is one calm sentence and never repeats the deliverable summary", () => {
@@ -121,8 +131,8 @@ test("completion hero is one calm sentence and never repeats the deliverable sum
     }),
   );
   assert.ok(html.includes("Objective complete"));
-  assert.ok(html.includes("Launch page headline and message (version 3) passed the final check."));
-  assert.ok(!html.includes("Saved version 3"));
+  assert.ok(html.includes("Objective deliverable (version 5) passed the final check."));
+  assert.ok(!html.includes("Saved version 5"));
   assert.ok(!html.includes("Outcome with Somebody"));
 });
 
