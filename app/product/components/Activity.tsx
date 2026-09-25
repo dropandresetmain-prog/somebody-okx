@@ -13,9 +13,11 @@ import type {
   WorkSummaryPayload,
 } from "../contracts";
 import { INTEGRATION_LOGO_ALT, INTEGRATION_LOGO_SRC, INTEGRATION_LOGO_TREATMENT } from "../integrations";
+import { compressActivityItems } from "../activityCompress";
 import {
   actorName,
   decisionAttributionLabel,
+  formatMoney,
   humanizeKey,
   internName,
   internRole,
@@ -23,6 +25,7 @@ import {
   presentConsideredLabel,
   presentEvidenceLabel,
   presentOption,
+  shortenHash,
 } from "../humanize";
 import {
   ACQUISITION_STATUS_LABEL,
@@ -72,7 +75,8 @@ export function Activity({
   items: ActivityItem[];
   acquisitions?: AcquisitionView[];
 }) {
-  if (items.length === 0) {
+  const visible = compressActivityItems(items);
+  if (visible.length === 0) {
     return (
       <section className="v6-activity" aria-label="Activity">
         <div className="v6-section-head">
@@ -85,7 +89,7 @@ export function Activity({
       </section>
     );
   }
-  const context = activityContext(items);
+  const context = activityContext(visible);
   return (
     <section className="v6-activity" aria-label="Activity">
       <div className="v6-section-head">
@@ -95,7 +99,7 @@ export function Activity({
         </div>
       </div>
       <ol className="v6-activity-list">
-        {items.map((item) => (
+        {visible.map((item) => (
           <ActivityEvent key={item.id} item={item} acquisitions={acquisitions} context={context} />
         ))}
       </ol>
@@ -249,7 +253,7 @@ function IntegrationActivityEvent({ item }: { item: ActivityItem }) {
       {payload.candidates && payload.candidates.length > 0 ? (
         <div className="v6-integration-candidates">
           <p className="v6-integration-candidates-count">
-            {payload.candidateCount ?? payload.candidates.length} Testnet service
+            {payload.candidateCount ?? payload.candidates.length} service
             {(payload.candidateCount ?? payload.candidates.length) === 1 ? "" : "s"} considered
           </p>
           <ul>
@@ -270,12 +274,10 @@ function IntegrationActivityEvent({ item }: { item: ActivityItem }) {
               <strong>{payload.merchantLabel}</strong>
             </div>
           ) : null}
-          {payload.amount ? (
+          {formatMoney(payload.amount) ? (
             <div className="v6-integration-field">
               <span>Amount</span>
-              <strong>
-                {payload.amount.amount} {payload.amount.currency}
-              </strong>
+              <strong>{formatMoney(payload.amount)}</strong>
             </div>
           ) : null}
           {payload.networkLabel ? (
@@ -291,19 +293,15 @@ function IntegrationActivityEvent({ item }: { item: ActivityItem }) {
           <span>Transaction</span>
           {payload.explorerUrl ? (
             <a href={payload.explorerUrl} target="_blank" rel="noreferrer noopener">
-              {shortenTxHash(payload.txHash)}
+              {shortenHash(payload.txHash)}
             </a>
           ) : (
-            <strong>{shortenTxHash(payload.txHash)}</strong>
+            <strong>{shortenHash(payload.txHash)}</strong>
           )}
         </div>
       ) : null}
     </div>
   );
-}
-
-function shortenTxHash(hash: string): string {
-  return hash.length <= 14 ? hash : `${hash.slice(0, 6)}…${hash.slice(-4)}`;
 }
 
 function DelegationEvent({ item }: { item: ActivityItem }) {
@@ -550,10 +548,8 @@ function ConsideredOptions({
             <p className="v6-option-label">{option.approach ? APPROACH_LABEL[option.approach] : "Option"}</p>
             <strong>{presentConsideredLabel(option)}</strong>
             {option.providerLabel ? <span className="v6-option-source">{humanizeKey(option.providerLabel)}</span> : null}
-            {option.amount ? (
-              <span className="v6-considered-amount">
-                {option.amount.amount} {option.amount.currency}
-              </span>
+            {formatMoney(option.amount) ? (
+              <span className="v6-considered-amount">{formatMoney(option.amount)}</span>
             ) : null}
             <span className="v6-considered-status">
               {consideredStatusText(option)}
@@ -622,11 +618,9 @@ function ReceiptEvent({
           <p className="v6-event-title v6-activity-title">{display.title}</p>
           {!acquisition && display.detail ? <p className="v6-event-desc v6-activity-detail">{display.detail}</p> : null}
         </div>
-        {acquisition?.amount ? (
+        {formatMoney(acquisition?.amount) ? (
           <div className="v6-receipt-amount">
-            <strong>
-              {acquisition.amount.amount} {acquisition.amount.currency}
-            </strong>
+            <strong>{formatMoney(acquisition?.amount)}</strong>
             <span>Cost</span>
           </div>
         ) : null}

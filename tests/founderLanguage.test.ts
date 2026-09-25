@@ -63,11 +63,15 @@ const LEAKS = [
   /proof obligations?/i,
   /application-verified/i,
   /proprietary_data/,
+  /somebody_testnet_social/,
+  /spend_authority_required/,
   /somebody_controlled_test/,
   /founder_narrative_pulse/,
   /Received is not verified/i,
   /does not by itself satisfy a requirement/i,
   /launch\/page-message artifact/i,
+  /\bdistractor\b/i,
+  /Controlled Testnet catalog/i,
 ];
 
 test("every Luna replay frame renders without orchestration vocabulary on the default surface", () => {
@@ -88,12 +92,15 @@ test("GPT-6 replay final frame keeps the business story and every truth marker",
     "Keep this in-house",
     "Use the Intern",
     "Bring in outside help",
-    "Authorized getting proprietary data",
+    "Authorized getting the audience benchmark",
     "The Intern picked the work back up with the outside result",
     "Objective deliverable",
     "Now version 3",
     "The deliverable meets the required outcome",
     "Objective complete",
+    "Social Media Guru selected",
+    "$0.01 paid",
+    "Transaction confirmed",
   ]) {
     assert.ok(text.includes(beat), `missing story beat: ${beat}`);
   }
@@ -163,7 +170,7 @@ test("waiting on outside help does not claim the ball is with the founder", () =
       },
     }),
   );
-  assert.ok(html.includes("Waiting on proprietary data"));
+  assert.ok(html.includes("Waiting on the audience benchmark"));
   assert.ok(html.includes("Waiting for outside help to come back."));
   assert.ok(!html.includes("Ball with you"));
 });
@@ -201,7 +208,7 @@ test("a decision that needs founder approval is never presented as already decid
 test("worker keys become the Intern; human names are kept", () => {
   assert.equal(internName("worker_company_records_lookup-document_drafting"), "Intern");
   assert.equal(internName("Rae"), "Rae");
-  assert.equal(humanizeKey("proprietary_data"), "Proprietary data");
+  assert.equal(humanizeKey("proprietary_data"), "the audience benchmark");
   assert.equal(humanizeKey("Growth research"), "Growth research");
 });
 
@@ -298,7 +305,7 @@ test("receipts: full facts once per acquisition, provenance and transaction trut
   assert.ok(text.includes("Cost"));
   assert.ok(text.includes("Settled on X Layer"), "transaction label renders exactly as supplied");
   assert.ok(html.includes('data-transaction-status="confirmed"'));
-  assert.ok(text.includes("Authorized getting proprietary data"));
+  assert.ok(text.includes("Authorized getting the audience benchmark"));
   assert.ok(text.includes("Somebody controlled test"));
 });
 

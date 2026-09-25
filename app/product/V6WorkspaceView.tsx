@@ -156,6 +156,7 @@ function MainPane({
             </div>
             <div className="v6-column-rail">
               <Attention
+                mode={mode}
                 attention={view.attention}
                 onAction={onAttentionAction}
                 pendingActionId={pendingAttentionActionId}

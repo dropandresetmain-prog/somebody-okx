@@ -27,6 +27,53 @@
   gap: 8px;
 }
 
+.v6-okx-stack-stages {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.v6-okx-stack-stage {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 9px;
+  align-items: center;
+  color: var(--ink-2);
+  font-size: 10.5px;
+}
+
+.v6-okx-stack-stage[data-okx-stage-state="pending"] {
+  opacity: 0.55;
+}
+
+.v6-okx-stack-stage[data-okx-stage-state="active"] .v6-okx-stack-stage-title {
+  color: var(--ink);
+  font-weight: 800;
+}
+
+.v6-okx-stack-stage[data-okx-stage-state="complete"] .v6-okx-stack-stage-detail {
+  color: var(--verified);
+}
+
+.v6-okx-stack-stage-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.v6-okx-stack-stage-title {
+  font-weight: 750;
+  line-height: 1.25;
+}
+
+.v6-okx-stack-stage-detail {
+  color: var(--ink-3);
+  font-size: 9.75px;
+  line-height: 1.35;
+}
+
 .v6-okx-stack-integration {
   display: grid;
   grid-template-columns: 42px minmax(0, 1fr);

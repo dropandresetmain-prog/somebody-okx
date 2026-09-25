@@ -17,16 +17,17 @@ import type {
   InternView,
   ManagerDecisionConsideredOption,
   ManagerDecisionPayload,
+  MoneyView,
   ProductApproach,
   SomebodyNowView,
   VerificationPayload,
   WorkSummaryPayload,
 } from "./contracts";
+import { checkpointDisplayLabel } from "./presentation";
 
 // ── Machine keys ─────────────────────────────────────────────────────────────
 
 const MACHINE_KEY = /^[a-z][a-z0-9]*(?:[_:-][a-z0-9]+)*(?:[_:][a-z0-9]+)+$/;
-const EMBEDDED_KEY = /\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b/g;
 
 /** True for snake_case / namespaced identifiers such as `proprietary_data`. */
 export function isMachineKey(value: string): boolean {
@@ -46,14 +47,32 @@ function sentenceCase(value: string): string {
   return value ? value.charAt(0).toUpperCase() + value.slice(1) : value;
 }
 
-/** `proprietary_data` → `Proprietary data`. Non-keys pass through unchanged. */
+// Exact-match product vocabulary. Anything not listed falls through to the
+// generic snake_case → words rule.
+const KNOWN_KEY_LABEL: Record<string, string> = {
+  proprietary_data: "the audience benchmark",
+  social_media_guru: "Social Media Guru",
+  somebody_testnet_social: "OKX Testnet Marketplace",
+};
+
+/** `proprietary_data` → `the audience benchmark` (or sentence-cased words). Non-keys pass through. */
 export function humanizeKey(value: string): string {
+  const trimmed = value.trim();
+  if (KNOWN_KEY_LABEL[trimmed]) return KNOWN_KEY_LABEL[trimmed];
+  // provider:resource (and longer colon forms) → humanize each segment.
+  if (trimmed.includes(":") && isMachineKey(trimmed)) {
+    const parts = trimmed.split(":").map((part) => KNOWN_KEY_LABEL[part] ?? (isMachineKey(part) ? sentenceCase(words(part)) : part));
+    // Prefer the resource (last segment) when it has a known product name.
+    const resource = parts[parts.length - 1]!;
+    if (KNOWN_KEY_LABEL[trimmed.split(":").pop()!]) return resource;
+    return parts.join(" · ");
+  }
   return isMachineKey(value) ? sentenceCase(words(value)) : value;
 }
 
-/** Replaces snake_case keys embedded in a SYSTEM sentence with plain words. */
+/** Replaces machine keys (and provider:resource forms) embedded in SYSTEM sentences. */
 function humanizeSystemText(text: string): string {
-  return text.replace(EMBEDDED_KEY, (key) => words(key));
+  return text.replace(/\b[a-z][a-z0-9]*(?:[_:][a-z0-9]+)+\b/gi, (key) => humanizeKey(key));
 }
 
 // ── People ───────────────────────────────────────────────────────────────────
@@ -162,6 +181,35 @@ export function presentEvidenceLabel(label: string): string {
   return humanizeSystemText(label);
 }
 
+/**
+ * Founder-facing money display. On-chain accounting figures (contract address
+ * as "currency", smallest-unit token amounts) are not product prices — omit
+ * them so callers can fall back to a known price or hide the field.
+ */
+export function formatMoney(money?: MoneyView | null): string | null {
+  if (!money) return null;
+  const currency = money.currency.trim();
+  if (!currency || /^0x/i.test(currency)) return null;
+  // Plain USD (and tether-symbol variants like USD₮0 from payment rails).
+  // Do not treat USDC / USDT as bare dollars — those stay as token amounts.
+  if (/^usd$/i.test(currency) || /^usd₮/i.test(currency)) return `$${money.amount}`;
+  return `${money.amount} ${currency}`;
+}
+
+/** Shortens a long on-chain hash for display: `0x1a8e18…686d`. */
+export function shortenHash(hash: string): string {
+  return hash.length <= 14 ? hash : `${hash.slice(0, 6)}…${hash.slice(-4)}`;
+}
+
+const ATTENTION_REASON_LABEL: Record<string, string> = {
+  spend_authority_required: "Waiting on a spend approval",
+};
+
+/** Founder-facing line for `AttentionState.context.reason`. */
+export function attentionReasonLabel(reason: string): string {
+  return ATTENTION_REASON_LABEL[reason] ?? humanizeKey(reason);
+}
+
 /** Drops a leading "Version N:" — the version is already on the card. */
 export function presentDeliverableSummary(summary: string): string {
   return sentenceCase(summary.replace(/^version\s+\d+\s*:\s*/i, "").trim());
@@ -202,7 +250,14 @@ export type SomebodyNowDisplay = { headline: string; detail: string | null };
 export function presentSomebodyNow(now: SomebodyNowView, deliverables: DeliverableView[] = []): SomebodyNowDisplay {
   // Requirement titles are outcome-phrased ("Messaging diagnosis completed"), so
   // "Working on <title>" reads as done; "Working toward" keeps the meaning.
-  const headline = humanizeSystemText(now.headline).replace(/^Working on (?!your objective$)(.+)$/, "Working toward: $1");
+  // Long checkpoint-style subjects are shortened the same way as the rail.
+  let headline = humanizeSystemText(now.headline).replace(/^Working on (?!your objective$)(.+)$/, (_match, subject: string) => {
+    const short = checkpointDisplayLabel(subject.trim());
+    return `Working toward: ${short}`;
+  });
+  if (/^Waiting on the audience benchmark$/i.test(headline)) {
+    headline = "Waiting on the audience benchmark";
+  }
   if (now.state === "completed") {
     const verified = deliverables.find((item) => item.status === "verified");
     if (verified) {
@@ -210,7 +265,7 @@ export function presentSomebodyNow(now: SomebodyNowView, deliverables: Deliverab
     }
     return { headline, detail: now.detail || null };
   }
-  const detail = SOMEBODY_NOW_DETAIL[now.detail] ?? now.detail;
+  const detail = SOMEBODY_NOW_DETAIL[now.detail] ?? (now.detail ? humanizeSystemText(now.detail) : null);
   return { headline, detail: detail || null };
 }
 
@@ -360,10 +415,17 @@ export function presentActivity(item: ActivityItem): ActivityDisplay {
     case "objective_completed":
       return { title: item.title.trim() || "Objective complete", detail: "The final deliverable is ready to review.", meta: null };
 
+    case "founder_action_required":
+      return {
+        title: humanizeSystemText(item.title),
+        detail: item.detail ? humanizeSystemText(item.detail) : null,
+        meta: null,
+      };
+
     case "finding_added":
       return { title: humanizeSystemText(item.title), detail: item.detail ?? null, meta: null };
 
     default:
-      return { title: humanizeSystemText(item.title), detail: item.detail ?? null, meta: null };
+      return { title: humanizeSystemText(item.title), detail: item.detail ? humanizeSystemText(item.detail) : null, meta: null };
   }
 }

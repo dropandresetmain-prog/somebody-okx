@@ -1,7 +1,14 @@
 import { DuoArt } from "../characters";
 import type { AttentionActionView, AttentionState } from "../contracts";
+import { attentionReasonLabel, formatMoney, humanizeKey } from "../humanize";
+import type { SomebodyMode } from "../../../lib/product/mode";
 
 export type AttentionActionHandler = (action: AttentionActionView) => void;
+
+function humanizeAttentionDetail(detail: string): string {
+  // Replace provider:resource tokens and embedded machine keys.
+  return detail.replace(/\b[a-z][a-z0-9]*(?:[_:][a-z0-9]+)+\b/gi, (key) => humanizeKey(key));
+}
 
 // Attention — renders view.attention and only the actions it supplies.
 // Mutations stay in ProductWorkspace; this component stays presentational.
@@ -11,15 +18,19 @@ export function Attention({
   pendingActionId,
   error,
   acknowledgement,
+  mode = "live",
 }: {
   attention: AttentionState | null;
   onAction?: AttentionActionHandler;
   pendingActionId?: string | null;
   error?: string | null;
   acknowledgement?: string | null;
+  mode?: SomebodyMode;
 }) {
   if (!attention) return null;
   const pending = Boolean(pendingActionId);
+  const replay = mode === "replay";
+  const amountLabel = formatMoney(attention.context?.amount);
   return (
     <section
       className="v6-attention v6-right-attention"
@@ -27,18 +38,19 @@ export function Attention({
       data-attention-id={attention.id}
       data-attention-type={attention.type}
       data-attention-pending={pending ? "true" : "false"}
+      data-attention-mode={mode}
     >
       <div className="v6-right-attention-copy">
         <p className="v6-event-type">Needs you</p>
         <p className="v6-attention-title">{attention.title}</p>
-        <p className="v6-attention-detail">{attention.detail}</p>
-        {attention.context?.reason ? <p className="muted">{attention.context.reason}</p> : null}
-        {attention.context?.amount ? (
-          <p className="v6-attention-amount">
-            {attention.context.amount.amount} {attention.context.amount.currency}
+        <p className="v6-attention-detail">{humanizeAttentionDetail(attention.detail)}</p>
+        {attention.context?.reason ? <p className="muted">{attentionReasonLabel(attention.context.reason)}</p> : null}
+        {amountLabel ? <p className="v6-attention-amount">{amountLabel}</p> : null}
+        {replay ? (
+          <p className="muted v6-attention-replay-note" role="status">
+            In this replay, the founder approval from the completed run is shown next.
           </p>
-        ) : null}
-        {attention.actions.length > 0 ? (
+        ) : attention.actions.length > 0 ? (
           <ul className="v6-attention-actions">
             {attention.actions.map((action) => {
               const isPending = pendingActionId === action.id;
