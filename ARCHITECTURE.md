@@ -1,445 +1,249 @@
 # Somebody × OKX — Architecture
 
-Status: **CANONICAL — Somebody Management Protocol v1 / LangGraph decision locked; implemented through integrated M5 baseline**  
-Date: **19 September 2026**  
-Integrated implementation baseline: `main@a9a0b3d31a7125e83fe0771a783ee62cbd96914a`
+## Overview
 
-## 1. Product architecture
+Somebody is a persistent AI manager operating over durable company state.
 
-Somebody is not a one-shot planner and not an agent-shopping UI.
-
-Somebody is a **persistent accountable managerial identity** operating a control loop over authoritative company state.
+It does not run a fixed workflow. Each objective is interpreted into success criteria and a dependency graph, then progressed through a repeating management loop.
 
 ```text
-OBSERVE
-→ INTERPRET OBJECTIVE
-→ DEFINE / REVISE OUTCOME CONTRACT
-→ IDENTIFY REQUIREMENTS
-→ PROPOSE SATISFACTION STRATEGIES
-→ GROUND OPTIONS IN REAL COMPANY/MARKET FACTS
-→ LLM MANAGERIAL RECOMMENDATION
-→ DETERMINISTIC AUTHORIZATION
-→ EXECUTE BOUNDED ACTION
-→ VERIFY
-→ UPDATE AUTHORITATIVE STATE
-→ WAKE SOMEBODY
-→ REPLAN
+Founder objective
+→ define outcome
+→ identify requirements
+→ inspect company resources
+→ generate internal and external options
+→ choose the next strategy
+→ authorize
+→ execute
+→ verify
+→ update company state
+→ reconsider
 ↺
 ```
 
-Execution results are observations. They do not automatically imply the next step or objective completion.
+## System layers
 
-## 2. Runtime ownership
+### Product interface
 
-### LangGraph owns
+Next.js and React provide the founder workspace:
 
-- orchestration position;
-- conditional routing;
-- bounded continuation state;
-- interrupts/waits;
-- wake/resume flow;
-- execution-local correlation identifiers.
+- Objective navigation;
+- Somebody status;
+- Activity;
+- Needs You approvals;
+- Deliverables;
+- Checkpoints;
+- OKX transaction activity;
+- final report and PDF export.
 
-### Convex owns authoritative business truth
+### Company state
 
-- founder Objective;
-- persistent Somebody managerial identity/history;
-- Outcome Contracts and revisions;
-- Outcome Levels;
-- Requirements and revisions;
-- resource availability;
-- Worker identities / WorkerSpecs;
-- assignment reservations;
-- WorkContracts;
-- managerial decisions;
-- authorization;
-- approvals;
-- purchase/effect intents;
+Convex stores the authoritative operational record:
+
+- objectives;
+- outcome contracts;
+- requirements;
+- workers and assignments;
+- decisions;
+- founder approvals;
+- execution intents;
 - evidence;
+- acquired results;
 - artifacts;
-- verified external effects;
-- objective resolution.
+- final assessments.
 
-### @openai/agents owns subordinate worker execution
+### Manager
 
-- bounded That Guy run;
-- tool-calling runtime;
-- run-local transcript/context;
-- model execution attempt.
+LangGraph coordinates Somebody's management loop.
 
-### External systems own external reality
+The graph keeps continuation state small. Business truth stays in Convex, so every consequential step can reload current state before acting.
 
-- blockchain settlement;
-- provider state;
-- published external effects.
+### Internal workers
 
-External reality is reconciled into Convex as evidence.
+The OpenAI Agents SDK runs bounded internal workers.
 
-If LangGraph continuation state and Convex disagree, reload/reconcile Convex and external truth. A checkpoint cannot override accepted business history.
+Workers receive assignment-specific tools and context. They can research, inspect company records, write findings and update controlled artifacts within their assignment.
 
-## 3. Objective → Outcome Contract
+### Decision engine
 
-Founder language can be vague.
+The decision engine combines:
 
-Default behavior is risk-based:
+- current requirement;
+- company-owned resources;
+- worker capability and availability;
+- open resource needs;
+- verified prerequisite results;
+- market offerings;
+- economic facts;
+- founder authority.
 
-- Somebody autonomously interprets ordinary low-risk ambiguity;
-- material ambiguity involving success criteria, money, external effects, risk or scope may require founder clarification/approval.
+It produces eligible MAKE / BUY / HYBRID / WAIT / ASK / BLOCK options.
 
-An Outcome Contract can contain multiple Outcome Levels.
+### JEV
 
-Example:
+When multiple eligible sourcing choices remain, JEV can perform structured option selection over the grounded choice set.
 
-```text
-L1 — diagnosed launch issue
-L2 — evidence-backed relaunch-ready revision prepared + verified  ← minimum completion bar
-L3 — revised launch published + verified                         ← higher level
-L4 — early response measured                                     ← may remain pending
-L5 — conversion improvement established                          ← later business impact
-```
+JEV does not decide eligibility or grant authority.
 
-Somebody may not call the Objective complete below the minimum completion bar.
-
-Completion may truthfully report higher outcome levels as pending.
-
-## 4. Requirements
-
-Somebody proposes semantic requirements. Application code validates/maps them into governed forms where execution/authority matters.
-
-Minimum priority semantics:
-
-- **required** — gates objective completion;
-- **supporting** — does not gate completion, but incomplete supporting work must be communicated clearly.
-
-Requirement resolution must distinguish:
-
-- active;
-- satisfied;
-- blocked;
-- superseded / waived only with an authorized reason.
-
-Provider-candidate rejection is not requirement satisfaction.
-
-A ResourceNeed is one possible consequence of a requirement strategy; it is not the universal outcome model.
-
-## 5. Satisfaction strategies
-
-For each requirement, Somebody may propose:
-
-- MAKE;
-- BUY;
-- HYBRID;
-- WAIT;
-- ASK FOUNDER;
-- BLOCK / ESCALATE.
-
-Investigation is ordinary bounded MAKE work.
-
-MAKE/BUY are not objective-level labels. One Objective may sequence multiple internal and external decisions.
-
-If both internal and external approaches are feasible, both classes should be considered. This does not require exhaustive marketplace discovery; discovery may be bounded.
-
-## 6. Option generation and grounding
-
-The LLM may propose semantic strategies/options.
-
-Application code grounds proposals against:
-
-- governed capabilities/tools;
-- current worker inventory/load;
-- factual company resources;
-- market/provider inventory;
-- provider compatibility;
-- real prices/terms where available;
-- approvals/budgets;
-- verification methods;
-- deadlines;
-- current objective/requirement revisions.
-
-Impossible or unauthorized candidates are removed before authorization.
-
-Unknown facts stay unknown. Do not turn estimates into authoritative measurements.
-
-## 7. Economic managerial judgment
-
-Do not use a single arbitrary weighted score.
-
-### Stage 1 — hard eligibility
-
-An executable option must satisfy applicable:
-
-- capability/output scope;
-- security/privacy/legal/account constraints;
-- deadline/mandatory proof;
-- provider identity/endpoint compatibility;
-- execution authority;
-- financial bounds.
-
-### Stage 2 — comparable facts
-
-Track only decision-relevant facts:
-
-- scope and expected quality;
-- time/setup/queue/verification;
-- incremental internal or external cost;
-- reliability/failure risk;
-- availability/workload;
-- reuse value;
-- external advantage;
-- provenance/confidence.
-
-### Stage 3 — LLM recommendation
-
-Somebody recommends an eligible option and records:
-
-- selected option;
-- strongest relevant alternative;
-- why the choice serves the objective;
-- material assumptions;
-- evidence that would change the decision.
-
-Then deterministic authorization rechecks current truth.
-
-Internal feasibility does not force MAKE.
-
-External listing does not force BUY.
-
-## 8. Staffing: REUSE / CREATE
-
-For the internal component of a MAKE or HYBRID strategy:
-
-1. filter workers by governed capability/permission/assignment compatibility;
-2. consider availability, relevant verified history, context/setup cost and expected completion;
-3. prefer REUSE unless a supported reason favors CREATE;
-4. record the staffing reason.
-
-Worker breadth is the smallest coherent capability bundle supporting a recognizable bounded responsibility.
-
-A worker is persistent. A WorkerRun is ephemeral.
-
-## 9. Dynamic capability/tool definition
-
-Somebody may dynamically define new semantic capabilities and tool contracts.
-
-Example:
+The sequence is:
 
 ```text
-Need: competitor pricing analysis
-→ define semantic capability
-→ compose from governed primitives:
-   public-web read + company-record read + evidence write
-→ validate
-→ attach to reusable WorkerSpec
+discover options
+→ deterministic eligibility
+→ JEV selection when needed
+→ deterministic authorization
 ```
 
-The model cannot invent real-world authority.
+A sole eligible option can be selected directly.
 
-A newly proposed executable tool that requires a new API, credential, platform right, professional license, payment permission or destructive authority remains unavailable until an application-controlled integration/authorization path exists.
+### External market
 
-Dynamic capability ≠ dynamic authority.
+External services are normalized into offerings with provider identity, service identity, resource class, supported purpose, price and execution route.
 
-## 10. Staffing authority
+This keeps provider discovery separate from the business requirement that created demand.
 
-Workers may emit:
+### OKX payment execution
 
-- capability requests;
-- resource requests;
-- dependency/block reports.
+Approved acquisitions move into a dedicated payment-execution path.
 
-Only Somebody may convert those requests into:
+The payment service:
 
-- REUSE;
-- CREATE;
-- BUY/HYBRID;
-- WAIT/ASK;
-- BLOCK/ESCALATE.
+- prepares the purchase;
+- obtains the x402 challenge;
+- binds the live terms to the founder-approved purchase;
+- signs and submits the transaction;
+- reads settlement from X Layer;
+- retrieves the merchant result;
+- verifies that the result matches the authorized request;
+- writes the verified acquisition back into Convex.
 
-Workers cannot create real workers directly, expand their own permissions, authorize spend or declare the Objective complete.
+The recorded demo runs this flow on **OKX Testnet**.
 
-For M4, worker-to-worker autonomous recursive creation is zero.
+## Objective and requirement model
 
-## 11. Planning horizon
+### Outcome Contract
 
-Somebody maintains a coarse overall plan but commits/authorizes only the next bounded action.
+The Outcome Contract describes:
 
-Reality may invalidate the coarse plan.
+- the founder's intended outcome;
+- ordered outcome levels;
+- the minimum completion bar.
 
-Every meaningful observation can cause replanning.
+### Requirements
 
-## 12. Wake semantics
+Requirements describe what must become true.
 
-Wake Somebody on meaningful state change, including:
+They can represent:
 
-- worker result/failure;
-- worker capability/resource request;
-- approval resolution;
-- purchase/submission/settlement/reconciliation result;
-- provider result;
-- verification result;
-- deadline/timeout/recovery event;
-- founder input/objective revision.
+- required evidence;
+- internal work;
+- an external resource;
+- a final founder-facing output.
 
-Do not invoke the model repeatedly while nothing changed.
+Dependencies establish causal order.
 
-Waiting/approval/escalation states are quiescent.
+The final founder-facing requirement is resolved structurally as the terminal deliverable in the graph rather than by title keywords.
 
-## 13. Completion semantics
+## MAKE and BUY
 
-Completion hierarchy:
+MAKE and BUY are requirement-level strategies.
 
-`Run stopped ≠ assignment complete ≠ requirement satisfied ≠ Objective complete`
+MAKE is available when the company controls the resources and capabilities needed for the work.
 
-Somebody proposes Objective completion.
+BUY is available when an external offering can satisfy a real requirement and passes resource, purpose, provider, price and authority checks.
 
-Application code accepts completion only when:
+A single objective can alternate between MAKE and BUY as new facts arrive.
 
-- current Outcome Contract version matches;
-- minimum completion bar is satisfied;
-- all required Requirements are satisfied;
-- required verification evidence is present/current;
-- no unresolved required effect/resource remains;
-- stale runs cannot mutate current truth.
+## Resource needs
 
-Supporting work may remain incomplete but must be disclosed.
+Workers and interpretation can identify external resource requirements.
 
-## 14. Control states
+A resource need carries:
 
-The exact schema may evolve, but semantics must support:
+- resource class;
+- purpose;
+- requirement identity;
+- evidence explaining why the company does not already have the needed input.
 
-- received/planning;
-- ready_to_execute;
-- executing;
-- waiting_for_resource;
-- generic waiting;
-- approval_required;
-- blocked;
-- escalated;
-- failed/recovery_required;
-- completed.
+This need feeds market discovery and compatibility.
 
-Unsupported objectives become typed blocked/escalated outcomes rather than exceptions.
+## Founder authority
 
-## 15. Persistent Somebody identity
+Paid options require explicit founder approval when no matching spend authority exists.
 
-Somebody itself is a persistent managerial identity.
+The approval is persisted with the objective and decision identity. Once present, the same decision can be recomputed and authorized without inventing a new objective or bypassing the manager.
 
-Persist decision history, objective history, assumptions, outcomes and later-overturned decisions where useful.
+## Payment lifecycle
 
-Do not depend on an infinitely growing chat transcript for identity.
-
-Each managerial invocation should load fresh authoritative company state and bounded relevant history.
-
-## 16. LangGraph execution rules
-
-Graph state should remain deliberately small: IDs, wake reason, continuation/correlation data and other execution-local fields.
-
-Do not copy the full company into graph memory.
-
-Consequential nodes re-read Convex before authorization/effects.
-
-Graph replay/checkpoint recovery must not directly perform duplicate payments/publications. All external effects route through stable logical business identities and reconciliation-aware application functions.
-
-## 17. External acquisition seam
-
-M4 defines a generic acquisition/effect interface.
-
-M3 remains the financial implementation authority.
-
-Conceptually:
+The economic lifecycle is explicit:
 
 ```text
-AuthorizedExecutionIntent(BUY)
-→ M3 buyer rail
-→ attempted/submitted/settled/reconciliation state
-→ result
-→ verification
-→ Convex evidence
-→ wake Somebody
+authorized
+→ prepared
+→ submitted
+→ settled
+→ result received
+→ verified
 ```
 
-M4 must not invent an alternate payment state machine.
+Durable purchase and execution identities let the system resume after restarts and reconcile ambiguous outcomes without creating a duplicate purchase.
 
-Until M3/R2 is accepted, M4 may truthfully stop/wait at the external-execution boundary.
+## Acquired result → resumed work
 
-M6.1 adds ONE deterministic simulation entry at this seam, without changing the
-architecture: an operator-token-gated mutation (`simulateVerifiedAcquisition`
-in `convex/m3Driver.ts`) drives the SAME intent transition kernel the live rail
-drives (`handed_off → provider_result → verification_result`) against a
-current, founder-grant-covered `authorized` intent, persists
-`ExternalAcquisitionResult` with `provenance: "simulation"`, and wakes Somebody
-through the normal wake path. It never touches a wallet, signature, rail call
-or payment record, fails closed on stale/unauthorized state, and never
-completes an Objective by itself — verification, satisfaction, artifact work
-and the completion gate stay with the engine. The M5 read model renders a
-simulated acquisition as SIMULATION ONLY and never as a payment fact.
+Verified acquisitions become governed company inputs.
 
-## 18. Reliability / no-progress limits
+Downstream workers receive those results through the dependency graph, so external capability can materially change later internal work.
 
-Persist objective-wide finite limits for:
+This is the core economic loop:
 
-- workers created;
-- active assignments;
-- management decisions;
-- execution attempts;
-- retries;
-- elapsed time;
-- model/runtime cost;
-- external spend;
-- repeated no-progress cycles.
+```text
+MAKE
+→ identify missing resource
+→ BUY
+→ verify
+→ MAKE with the acquired result
+```
 
-Limits survive process restarts.
+## Final deliverable and completion
 
-Duplicate wake-ups must be harmless.
+Somebody resolves the terminal founder-facing deliverable, then runs a final semantic assessment against:
 
-Ambiguous external submission/effects reconcile before retry.
+- the minimum completion bar;
+- the deliverable's requirement;
+- satisfied prerequisite results;
+- relevant verified evidence.
 
-## 19. Hackathon Cutoff 2
+If the report needs revision, only the final deliverable is reopened. A corrective worker produces a newer artifact version and the assessment runs again.
 
-The engine supports bounded capability/provider catalogs, not universal competence.
+Objective completion is accepted only for the current verified version.
 
-For an unsupported objective it may:
+## PDF export
 
-- identify missing capabilities/resources;
-- propose bounded feasibility investigation;
-- ask the founder;
-- block;
-- escalate.
+The PDF renderer formats the verified artifact into a founder-ready document.
 
-It must not silently substitute an easier objective and claim success.
+It does not create a second report. The verified artifact remains the source of truth.
 
-External/provider text is untrusted evidence, never instructions.
+## Reliability model
 
-## 20. Product surface
+The runtime uses:
 
-Default UI exposes high-level managerial truth:
+- stable objective, decision, assignment and purchase identities;
+- idempotent writes;
+- stale-action checks;
+- bounded retries;
+- no-progress detection;
+- durable approvals;
+- durable payment ledgers;
+- settlement read-back;
+- result verification;
+- version-bound final assessment.
 
-- objective/success criteria;
-- current outcome level;
-- That Guy reuse/create;
-- options considered;
-- recommendation reason;
-- approval/payment/acquisition;
-- internal reaction;
-- verified external effect;
-- blocker/incomplete supporting work.
+These mechanisms let long-running objectives continue across model calls, external services and process restarts without losing causal state.
 
-An optional deeper trace/graph may show technical orchestration for demo/debugging.
+## Demo architecture
 
-Do not expose private chain-of-thought.
+The recorded scenario was configured to exercise both MAKE and BUY in a compact run.
 
-## 21. Historical supersession
+The scenario uses a simulated cross-platform research benchmark. The management engine, strategy selection, approvals, payment lifecycle, downstream worker resumption, final assessment and PDF flow all use the same generic architecture described above.
 
-Accepted M1/M2 evidence remains valid for its original scope.
-
-Superseded planning assumptions include:
-
-- “all controlled resources ⇒ MAKE” as final economic choice;
-- BUY only for scarce resources;
-- global rejection of generic external cognition;
-- scenario-specific growth/research role routing as target architecture;
-- Worker completion implying Objective completion;
-- arbitrary-prompt robustness being out of scope;
-- persistent workforce being parked for later;
-- M4 being a fixed two-provider choreography.
-
-The existing sourcing kernel is an accepted historical/current primitive to evolve into the single deterministic eligibility/authorization authority; do not create a competing second policy authority.
+Payments and settlement run on **OKX Testnet**.
