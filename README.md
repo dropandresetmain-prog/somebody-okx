@@ -136,6 +136,24 @@ The important product idea is simple:
 
 Without an external market and transaction rail, Somebody can manage the capability the company already owns. OKX lets it cross that boundary, acquire something the company genuinely lacks, verify it and put the result back to work.
 
+### Inspect the OKX integration
+
+The repository keeps live OKX integration code separate from the controlled Testnet/replay surfaces used for the submission demo.
+
+| Integration seam | Implementation |
+| --- | --- |
+| OKX AI / Onchain OS service discovery | [`lib/market/okxDiscovery.ts`](lib/market/okxDiscovery.ts) |
+| Application bridge into OKX discovery | [`app/api/okx/discover/route.ts`](app/api/okx/discover/route.ts) |
+| Verified service mapping, including Newsliquid | [`lib/market/registryData.ts`](lib/market/registryData.ts) |
+| Newsliquid provider + confirmed live x402 endpoint contract | [`lib/providers/newsliquid.ts`](lib/providers/newsliquid.ts) |
+| Official Onchain OS / Agentic Wallet payment executor | [`lib/payment/onchainOsExecutor.ts`](lib/payment/onchainOsExecutor.ts) |
+| x402 v2 interoperability handling | [`lib/payment/x402V2Compat.ts`](lib/payment/x402V2Compat.ts) |
+| X Layer Testnet settlement verification | [`lib/payment/xlayerSettlement.ts`](lib/payment/xlayerSettlement.ts) |
+| Controlled Testnet marketplace used in the demo | [`lib/market/testnetDemoMarket.ts`](lib/market/testnetDemoMarket.ts) |
+| Social Media Guru controlled provider adapter | [`lib/providers/socialMediaGuru.ts`](lib/providers/socialMediaGuru.ts) |
+
+The live discovery path uses the official `onchainos agent service-match` interface. The demo-specific market is intentionally separate and explicitly marked as controlled Testnet data, so the replay does not masquerade as a fresh live marketplace call.
+
 ---
 
 ## Financial authority stays with the founder
