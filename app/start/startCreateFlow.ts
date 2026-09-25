@@ -14,7 +14,7 @@ export const CREATE_TRANSITION_ASSET = "/mascot/duo/duo-walking-transparent.webp
 /** Shown while start capabilities are still loading. */
 export const START_LOADING_COPY = "Getting things ready…";
 /** Shown once loaded, when Create Objective is not yet open to this visitor. */
-export const START_NOT_OPEN_COPY = "You'll be able to start a new objective here soon.";
+export const START_NOT_OPEN_COPY = "New objectives can't be started from this workspace right now.";
 
 export function trimObjectiveRequest(raw: string): string {
   return raw.trim();
