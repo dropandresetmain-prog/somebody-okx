@@ -212,11 +212,11 @@ async function interpret(t: Backend) {
 
 async function readReqs(t: Backend): Promise<Requirement[]> {
   return t.query(async (ctx) => {
-    const rows = await ctx.db
+    const rows = await (ctx.db as any)
       .query("requirements")
-      .withIndex("by_objectiveKey", (q) => q.eq("objectiveKey", KEY))
+      .withIndex("by_objectiveKey", (q: any) => q.eq("objectiveKey", KEY))
       .collect();
-    return rows.map((row) => (row as unknown as { data: Requirement }).data);
+    return rows.map((row: unknown) => (row as { data: Requirement }).data);
   });
 }
 
