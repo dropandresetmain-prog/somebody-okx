@@ -12,6 +12,9 @@ import {
   triggerBrowserPdfDownload,
 } from "../../../lib/product/finalReportPdf";
 import type { SomebodyMode } from "../../../lib/product/mode";
+import { ReportDocument } from "./ReportDocument";
+import "../nodeTestCssShim";
+import "../final-report.css";
 
 // Main-column "Final deliverable" (post-founder-live-run Incident #2): when an
 // Objective is completed, the governed final artifact must be unmistakable,
@@ -119,7 +122,7 @@ export function FinalDeliverable({
       {display.detail ? <p className="v6-final-deliverable-summary">{display.detail}</p> : null}
       {selected.content ? (
         <div className="v6-final-deliverable-content">
-          <pre>{selected.content}</pre>
+          <ReportDocument content={selected.content} />
         </div>
       ) : (
         <p className="muted v6-final-deliverable-empty">No stored content for this deliverable.</p>

@@ -14,6 +14,7 @@
 
 import { PDFDocument, StandardFonts, rgb, type PDFFont } from "pdf-lib";
 import type { DeliverableView, ObjectiveView } from "../../app/product/contracts";
+import { parseReportBlocks } from "./reportBlocks";
 
 /** Display selection for the Final Deliverable surface (verified, else current). */
 export function selectDisplayFinalDeliverable(deliverables: DeliverableView[]): DeliverableView | null {
@@ -99,29 +100,30 @@ export function buildFinalReportPresentation(args: BuildFinalReportPresentationA
 /**
  * Light presentation parsing for Markdown-like artifact text.
  * Preserves every character of non-blank structure; never invents sections.
+ *
+ * This is an adapter over the shared `parseReportBlocks` parser (lib/product/
+ * reportBlocks.ts) — the SAME parser the browser report (ReportDocument.tsx)
+ * uses — narrowed to this module's existing `FinalReportBlock` shape so the
+ * PDF output is unchanged. Heading level 3 clamps to 2 and ordered list items
+ * carry their numeral inline, since the PDF renderer below only distinguishes
+ * heading/list_item/paragraph/blank.
  */
 export function parseArtifactBlocks(content: string): FinalReportBlock[] {
-  const lines = content.replace(/\r\n/g, "\n").split("\n");
-  const blocks: FinalReportBlock[] = [];
-  for (const line of lines) {
-    if (line.trim().length === 0) {
-      blocks.push({ kind: "blank" });
-      continue;
+  const rich = parseReportBlocks(content);
+  return rich.map((block): FinalReportBlock => {
+    switch (block.kind) {
+      case "blank":
+        return { kind: "blank" };
+      case "heading":
+        return { kind: "heading", level: block.level === 1 ? 1 : 2, text: block.text };
+      case "bullet_item":
+        return { kind: "list_item", text: block.text };
+      case "ordered_item":
+        return { kind: "list_item", text: `${block.marker} ${block.text}` };
+      case "paragraph":
+        return { kind: "paragraph", text: block.text };
     }
-    const headingMatch = /^(#{1,2})\s+(.+)$/.exec(line);
-    if (headingMatch) {
-      const level = headingMatch[1].length === 1 ? 1 : 2;
-      blocks.push({ kind: "heading", level, text: headingMatch[2] });
-      continue;
-    }
-    const listMatch = /^([-*•])\s+(.+)$/.exec(line);
-    if (listMatch) {
-      blocks.push({ kind: "list_item", text: listMatch[2] });
-      continue;
-    }
-    blocks.push({ kind: "paragraph", text: line });
-  }
-  return blocks;
+  });
 }
 
 export function finalReportPdfFilename(presentation: FinalReportPresentation): string {
