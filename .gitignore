@@ -7,13 +7,18 @@
 next-env.d.ts
 *.tsbuildinfo
 
-# env files — secrets never committed; .env.example is the only tracked env file
+# environment
 .env
 .env.*
 !.env.example
 
-# local smoke-test scratch
+# local runtime state
+/.claude/
+/.convex/local/
+/.tmp-convex-export*
+/.m3-*
 /qbo-smoketest/
+/.nm-overlay/
 
 # misc
 .DS_Store
@@ -21,7 +26,3 @@ Thumbs.db
 *.pem
 npm-debug.log*
 .vercel
-
-# local integration dep overlay (Windows install workaround)
-.nm-overlay/
-

@@ -1,5 +1,5 @@
 {
-  "name": "trust-issues",
+  "name": "somebody-okx",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -10,8 +10,6 @@
     "start": "next start --hostname 127.0.0.1",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts",
-    "m3:seller": "node --env-file=.env.local ./node_modules/tsx/dist/cli.mjs scripts/m3-controlled-seller.ts",
-    "m3:local-demo-driver": "tsx --env-file=.env.local scripts/local-demo-m3-driver-watcher.ts",
     "typecheck:convex": "tsc -p convex/tsconfig.json --noEmit",
     "convex:dev": "convex dev --env-file .env.local",
     "convex:dev:local": "convex dev --env-file .env.local",
@@ -21,7 +19,9 @@
     "gate:cloud": "node scripts/gate/run-objective.mjs --env-file=.env.cloud.local",
     "gate:peek:local": "node scripts/gate/peek.mjs",
     "gate:peek:cloud": "node scripts/gate/peek.mjs --env-file=.env.cloud.local",
-    "okx:prepare:local": "node scripts/prepare-okx-demo.mjs .env.local"
+    "okx:prepare:local": "node scripts/prepare-okx-demo.mjs .env.local",
+    "okx:merchant": "node --env-file=.env.local ./node_modules/tsx/dist/cli.mjs scripts/m3-controlled-seller.ts",
+    "okx:payment-driver": "tsx --env-file=.env.local scripts/local-demo-m3-driver-watcher.ts"
   },
   "dependencies": {
     "@langchain/langgraph": "^1.4.15",
